@@ -3,12 +3,12 @@
 Living state of the project. Read this first; update it whenever work lands.
 
 **Last updated:** 2026-08-10
-**Current phase:** Phase 0 — Repo & accounts (see [ROADMAP.md](ROADMAP.md))
+**Current phase:** Phase 1 — Database foundation (see [ROADMAP.md](ROADMAP.md))
 
 ## Phase progress
 
 - [x] Planning: architecture, roadmap, and agent context written (2026-07-12)
-- [ ] Phase 0 — Repo on GitHub, accounts created, MIT license, README
+- [x] Phase 0 — Repo on GitHub, accounts created, MIT license, README (2026-08-10)
 - [ ] Phase 1 — Supabase project, schema migrations, Notion history import
 - [ ] Phase 2 — Telegram bot walking skeleton (text only, no LLM)
 - [ ] Phase 3 — Gemini extraction (text → photo → voice)
@@ -19,17 +19,19 @@ Living state of the project. Read this first; update it whenever work lands.
 
 ## What exists right now
 
-Documentation only. No code, no database, no migrations, no deployed Lambda.
-The repo contains `AGENTS.md`, `CLAUDE.md`, and `docs/`.
+Phase 0 complete: public GitHub repo, MIT `LICENSE`, root `README.md`, accounts
+(AWS, Supabase, Grafana Cloud, Google AI Studio, Telegram bot) with secrets in
+a password manager, AWS hygiene (`ca-central-1`, non-root admin), and `infra/`
+with pinned providers plus a `$1/month` budget filtered to `Project=finflow`
+(plus bootstrap SSM parameter). No Supabase project/schema, migrations, or
+deployed Lambda yet.
 
 ## Next concrete step
 
-Phase 0: create the AWS, Supabase, Grafana Cloud, and Google AI Studio
-accounts, register the Telegram bot with @BotFather, add an MIT `LICENSE` and a
-README that points at `docs/`, and scaffold `infra/` (Terraform, pinned aws +
-supabase + grafana providers, local gitignored state). On AWS, do root MFA and
-the $1 budget alarm *first*. Store every key in a password manager; commit none
-of them.
+Phase 1: provision the Supabase project via Terraform (`infra/`), link the
+Supabase CLI, add migration 0001 from [DATA_MODEL.md](DATA_MODEL.md), seed
+taxonomy data, import Notion history, and create a read-only Postgres role for
+future MCP/Grafana use.
 
 ## Open questions
 
@@ -47,3 +49,5 @@ of them.
   Phase 4 rather than assuming it.
 - Gemini free-tier quotas and model names change. Pin the model in code and
   record the version in `DECISIONS.md` when chosen.
+- AWS fails open on cost; keep the Phase 0 `Project=finflow` budget active and
+  activate the `Project` cost allocation tag in Billing when it appears.

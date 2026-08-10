@@ -183,6 +183,29 @@ ceiling, so the retention question is moot rather than deferred.
 
 ---
 
+## 2026-08-10 — Budget scoped to `Project=finflow`, not the whole account
+
+The Phase 0 `$1/month` budget filters on cost allocation tag
+`user:Project$finflow`. A whole-account budget would fire on unrelated CLI
+experiments and defeat the FinFlow cost constraint.
+
+**Mechanics:** `providers.tf` applies `default_tags { Project = "finflow" }` to
+every resource this root module creates. `aws_ce_cost_allocation_tag` activates
+`Project` for billing. The budget's `cost_filter` keeps only that tag.
+
+**Ruled out:** account-wide budget; filtering by service list (Lambda+S3+…) —
+brittle as the stack grows and still mixes in non-FinFlow use of those
+services.
+
+**Caveat:** AWS rejects activating a cost allocation tag until that key has
+appeared in billing data ("Tag keys not found"). Phase 0 therefore creates a
+free SSM parameter (`/finflow/bootstrap`) tagged `Project=finflow` so the key
+shows up, then you activate `Project` in Billing → Cost allocation tags (up to
+24h). Untagged resources do not count — by design. AWS bills in USD, so the
+alarm unit stays USD even though transaction currency is CAD.
+
+---
+
 ## 2026-08-10 — Terraform owns the Lambda resource; CI owns its code
 
 Terraform manages `aws_lambda_function`, its IAM role, and the Function URL.

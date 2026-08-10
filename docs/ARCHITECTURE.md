@@ -168,7 +168,9 @@ rationale for its shape:
   referenced by ARN; they are never Terraform variables and never in state.
 - **A budget alarm is a required resource, not a nice-to-have.** The Supabase
   and Grafana free tiers fail closed — you hit a limit and things stop. AWS
-  fails open and bills. The alarm is what replaces that safety property.
+  fails open and bills. The alarm is what replaces that safety property. It
+  filters on cost allocation tag `Project=finflow` (matched by provider
+  `default_tags`), not the whole account.
 - Not terraformable, documented as manual steps in the deploy guide: GitHub
   repo, AWS/Supabase/Grafana accounts, BotFather bot creation, Gemini API key,
   and writing the secret values into Parameter Store.

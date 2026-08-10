@@ -7,20 +7,23 @@ until the previous one's acceptance check passes. Update
 
 ## Phase 0 — Repo & accounts (≈1 evening)
 
-- [ ] `git init`, push to a public GitHub repo
-- [ ] Create accounts: AWS, Supabase, Grafana Cloud, Google AI Studio
+- [x] `git init`, push to a public GitHub repo
+- [x] Create accounts: AWS, Supabase, Grafana Cloud, Google AI Studio
       (Gemini API key), Telegram bot via @BotFather
       *(accounts, the bot, and API keys are manual — not terraformable)*
-- [ ] AWS account hygiene **before anything else**: root MFA, an IAM admin user
+- [x] AWS account hygiene **before anything else**: root MFA, an IAM admin user
       or Identity Center user for daily use, region `ca-central-1`
-- [ ] Add MIT license, README stub pointing at docs/
-- [ ] `infra/` Terraform scaffold: pinned providers (aws, supabase, grafana),
+- [x] Add MIT license, README stub pointing at docs/
+- [x] `infra/` Terraform scaffold: pinned providers (aws, supabase, grafana),
       local state (gitignored — state holds secrets, repo is public)
-- [ ] `aws_budgets_budget` at $1/month with an email alert — the first AWS
-      resource to exist, since AWS fails open on cost
+- [x] `aws_budgets_budget` at $1/month with an email alert — the first AWS
+      resource to exist, since AWS fails open on cost. Scoped to tag
+      `Project=finflow` (not whole-account). Activate `Project` in Billing →
+      Cost allocation tags when it appears (up to 24h after first tagged usage).
 
 **Done when:** repo is on GitHub, all API keys exist (stored in a password
 manager, none committed), and the budget alarm has fired a test notification.
+**(Met 2026-08-10.)**
 
 ## Phase 1 — Database foundation (≈1–2 evenings)
 
