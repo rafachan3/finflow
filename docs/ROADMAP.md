@@ -1,8 +1,9 @@
 # Roadmap
 
 Each phase ends with something that works end-to-end. Don't start a phase
-until the previous one's acceptance check passes. Update CLAUDE.md's status
-list as phases land.
+until the previous one's acceptance check passes. Update
+[STATUS.md](STATUS.md) as phases land, and append to
+[DECISIONS.md](DECISIONS.md) when a phase settles an open question.
 
 ## Phase 0 — Repo & accounts (≈1 evening)
 
@@ -17,7 +18,7 @@ manager, none committed).
 ## Phase 1 — Database foundation (≈1–2 evenings)
 
 - [ ] Supabase project + Supabase CLI linked (`supabase/migrations/`)
-- [ ] Migration 0001: full schema from docs/ARCHITECTURE.md
+- [ ] Migration 0001: full schema from docs/DATA_MODEL.md
 - [ ] Seed migration: categories, subcategories (with bucket/cadence mapping
       replicating the Notion formulas), tags, income sources, accounts,
       merchants (from Notion tag list: Costco, Amazon, Dollarama, ...)
@@ -31,7 +32,7 @@ count and a spot-check of 10 random rows matches Notion exactly.
 ## Phase 2 — Telegram walking skeleton, no LLM (≈2 evenings)
 
 - [ ] Cloudflare Worker + webhook registered with secret token
-- [ ] Chat-ID allowlist (only Rafael)
+- [ ] Chat-ID allowlist (owner only), chat ID stored as a Worker secret
 - [ ] Text-only quick-log format: `12.50 lunch chipotle` → parsed with a dumb
       regex → `ingestions` row → reply with Confirm / Discard buttons
 - [ ] Confirm button → transaction inserted; Discard → status flip

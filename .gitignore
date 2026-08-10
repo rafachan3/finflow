@@ -1,2 +1,7 @@
 .DS_Store
 .env
+.Rhistory
+
+# Machine-local agent context — never commit
+CLAUDE.local.md
+AGENTS.local.md

@@ -68,93 +68,12 @@
 - Note: free projects pause after ~1 week of inactivity; daily logging keeps it
   warm, and the nightly dbt Action acts as a heartbeat.
 
-### Schema (DDL sketch)
+### Schema
 
-```sql
-create type transaction_type as enum ('income', 'expense', 'transfer');
-create type bucket_type      as enum ('needs', 'wants');
-create type cadence_type     as enum ('fixed', 'variable');
-create type funding_source   as enum ('self', 'other');
+The full DDL lives in **[DATA_MODEL.md](DATA_MODEL.md)** — that file is the
+schema contract and must stay in sync with `supabase/migrations/`. The
+rationale for its shape:
 
-create table categories (
-  id   smallint generated always as identity primary key,
-  name text not null unique                       -- Food, Transit, Bills, ...
-);
-
-create table subcategories (
-  id          smallint generated always as identity primary key,
-  category_id smallint not null references categories(id),
-  name        text not null,                      -- Groceries, Rent, Bixi, ...
-  bucket      bucket_type,                        -- was a Notion formula
-  cadence     cadence_type,                       -- was a Notion formula
-  unique (category_id, name)
-);
-
-create table merchants (
-  id      integer generated always as identity primary key,
-  name    text not null unique,                   -- Costco, Amazon, Dollarama...
-  aliases text[] not null default '{}'            -- for LLM normalization
-);
-
-create table income_sources (
-  id   smallint generated always as identity primary key,
-  name text not null unique                       -- Salary, Family support, Refund...
-);
-
-create table accounts (
-  id   smallint generated always as identity primary key,
-  name text not null unique,                      -- Savings, Investment
-  kind text not null                              -- savings | investment
-);
-
-create table transactions (
-  id               uuid primary key default gen_random_uuid(),
-  occurred_on      date not null,
-  type             transaction_type not null,
-  amount           numeric(12,2) not null check (amount > 0),
-  currency         char(3) not null default 'CAD',
-  description      text not null,
-  subcategory_id   smallint references subcategories(id),
-  merchant_id      integer  references merchants(id),
-  income_source_id smallint references income_sources(id),
-  to_account_id    smallint references accounts(id),
-  funded_by        funding_source not null default 'self',
-  notes            text,
-  created_at       timestamptz not null default now(),
-  check (type <> 'expense'  or subcategory_id   is not null),
-  check (type <> 'income'   or income_source_id is not null),
-  check (type <> 'transfer' or to_account_id    is not null)
-);
-create index on transactions (occurred_on);
-create index on transactions (subcategory_id);
-
-create table tags (
-  id   smallint generated always as identity primary key,
-  name text not null unique                       -- Travel, Social, Avoidable...
-);
-
-create table transaction_tags (
-  transaction_id uuid     not null references transactions(id) on delete cascade,
-  tag_id         smallint not null references tags(id),
-  primary key (transaction_id, tag_id)
-);
-
--- Audit + human-in-the-loop staging. Every Telegram message lands here first.
-create table ingestions (
-  id                 uuid primary key default gen_random_uuid(),
-  source             text not null check (source in ('photo','voice','text')),
-  telegram_update_id bigint not null unique,      -- idempotent webhook retries
-  raw_payload        jsonb not null,              -- full Telegram update
-  media_path         text,                        -- Supabase Storage object
-  extraction         jsonb,                       -- LLM structured output
-  status             text not null default 'pending'
-                     check (status in ('pending','confirmed','discarded')),
-  transaction_id     uuid references transactions(id),
-  created_at         timestamptz not null default now()
-);
-```
-
-Design notes:
 - Notion's "Financial Future" rows become `type = 'transfer'` with a
   `to_account_id` — savings are not expenses.
 - `bucket` and `cadence` live on `subcategories` (they're properties of what
@@ -188,8 +107,9 @@ Design notes:
   - `data-analyst` — answers questions, produces charts/tables from marts
   - `sql-runner` — translates NL → SQL against the semantic layer, read-only
   - `spend-coach` — monthly reviews: anomalies, category drift, savings rate
-- CLAUDE.md + SEMANTIC_LAYER.md give any session full context, so the agent
-  is reproducible from a fresh clone. Marginal cost: $0 (existing Claude plan).
+- `AGENTS.md` (imported by `CLAUDE.md`) indexes STATUS, DECISIONS, DATA_MODEL
+  and SEMANTIC_LAYER, so any session rebuilds full context from a fresh clone.
+  Marginal cost: $0 (existing Claude plan).
 
 ## Security
 - Public repo: all credentials in Worker secrets / Actions secrets / `.env`.
