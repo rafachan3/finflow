@@ -10,4 +10,5 @@ AGENTS.local.md
 *.tfstate
 *.tfstate.*
 *.tfvars
+!*.tfvars.example
 .terraform/
