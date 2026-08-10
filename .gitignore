@@ -5,3 +5,9 @@
 # Machine-local agent context — never commit
 CLAUDE.local.md
 AGENTS.local.md
+
+# Terraform — state and vars contain secrets; never commit
+*.tfstate
+*.tfstate.*
+*.tfvars
+.terraform/

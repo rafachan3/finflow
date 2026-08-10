@@ -23,8 +23,8 @@ something, update it before you finish your turn.
    parsed transaction and Confirm / Edit / Discard buttons.
 4. **Money is `numeric(12,2)`.** Never float. Currency is CAD.
 5. **This repo is public.** No tokens, chat IDs, database URLs, or personal
-   identifiers in tracked files. Secrets live in Worker secrets, GitHub Actions
-   secrets, or `.env`.
+   identifiers in tracked files. Secrets live in SSM Parameter Store, GitHub
+   Actions secrets, or `.env` — never in Terraform variables or state.
 6. **Low friction wins.** Input priority is photos → voice → text. A change
    that adds a step to logging an expense is a regression.
 
@@ -32,12 +32,18 @@ something, update it before you finish your turn.
 
 | Layer | Tool | Cost |
 |---|---|---|
-| Ingestion bot | Telegram Bot API + Cloudflare Workers (TypeScript, webhook) | $0 |
+| Ingestion bot | Telegram Bot API + AWS Lambda + Function URL (TypeScript) | $0 (perpetual free tier) |
 | Extraction | Gemini Flash free tier (native image + audio input) | $0 |
-| Database | Supabase Postgres + Supabase Storage (receipt images) | $0 |
+| Database | Supabase Postgres | $0 |
+| Receipt images | AWS S3 (private, Glacier IR after 1yr) | ~$0.05/mo |
 | Semantic layer | dbt-core, run via GitHub Actions cron | $0 |
 | Dashboards | Grafana Cloud free tier; Supabase SQL editor for ad-hoc | $0 |
 | Analytics agent | Claude Code: subagents in `.claude/agents/` + Postgres MCP | $0 marginal |
+| Infrastructure | Terraform in `infra/` (aws, supabase, grafana providers) | $0 |
+
+AWS is the only component that bills rather than failing closed. A
+`aws_budgets_budget` alarm at $1/month is a required resource, and Lambda's
+free tier (1M req/month) is perpetual, not a 12-month trial.
 
 ## Where knowledge lives
 
@@ -62,8 +68,16 @@ the table above — not appended here.
   if a model disagrees with it, the model is wrong.
 - Work one roadmap phase at a time. Do not start a phase until the previous
   phase's acceptance check in `docs/ROADMAP.md` actually passes.
-- The Cloudflare Worker stays stateless: validate → persist raw → extract →
-  reply. All state lives in Postgres.
+- The ingestion Lambda stays stateless: validate → persist raw → archive media
+  → extract → reply. All state lives in Postgres.
+- Terraform in `infra/` provisions infrastructure only. Database schema belongs
+  to `supabase/migrations/`; secret values are written to Parameter Store out
+  of band and referenced, never passed as Terraform variables.
+- Terraform owns the Lambda function, role, and URL — **not its code**. Code
+  ships via `update-function-code` from CI, and the function carries
+  `ignore_changes = [filename, source_code_hash]`. Never remove that block or
+  add the real bundle to Terraform: both make `terraform apply` roll the
+  deployed function back to the bootstrap stub.
 
 ## Verification
 

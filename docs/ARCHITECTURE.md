@@ -2,52 +2,80 @@
 
 ## System overview
 
+```mermaid
+flowchart TD
+    SRC["photo · voice · text"]
+
+    subgraph ING["INGESTION"]
+        TG["Telegram Bot API"]
+        LM["AWS Lambda + Function URL<br/>stateless webhook"]
+        GM["Gemini Flash<br/>free tier"]
+    end
+
+    subgraph STO["STORAGE"]
+        S3["AWS S3<br/>receipt images"]
+        RAW[("Supabase · ingestions<br/>raw audit + confirm state")]
+        TX[("Supabase · transactions<br/>confirmed rows")]
+    end
+
+    subgraph SEM["SEMANTIC LAYER — dbt-core"]
+        STG["staging/<br/>light renames"]
+        MRT["marts/<br/>fct_monthly_spend · fct_category_month"]
+    end
+
+    subgraph OUT["CONSUMPTION"]
+        GRF["Grafana Cloud<br/>dashboards"]
+        SQL["Supabase SQL editor<br/>ad hoc"]
+    end
+
+    subgraph AGT["AGENT LAYER"]
+        MCP["Postgres MCP<br/>read-only role"]
+        SUB["Claude subagents<br/>data-analyst · sql-runner · spend-coach"]
+    end
+
+    SRC --> TG --> LM
+    LM -->|"1 · persist raw"| RAW
+    LM -->|"2 · archive media"| S3
+    LM -->|"3 · extract"| GM
+    GM -->|"structured JSON"| LM
+    LM -->|"4 · reply: Confirm / Edit / Discard"| TG
+    RAW ==>|"human presses Confirm"| TX
+    TX -->|"nightly GitHub Action"| STG
+    STG --> MRT
+    MRT --> GRF
+    MRT --> MCP
+    MCP --> SUB
+    TX -.->|"ad-hoc SQL"| SQL
 ```
-                        ┌─────────────────────────────────────────────┐
-                        │                INGESTION                    │
- photo / voice / text   │                                             │
- ──── Telegram ────────▶│  Cloudflare Worker (webhook)                │
-                        │   1. store raw update in `ingestions`      │
-                        │   2. fetch media from Telegram file API    │
-                        │   3. Gemini Flash → structured JSON        │
-                        │   4. reply: parsed txn + Confirm/Edit/     │
-                        │      Discard inline buttons                │
-                        └──────────────────┬──────────────────────────┘
-                                           │ on confirm
-                                           ▼
-                        ┌─────────────────────────────────────────────┐
-                        │                 STORAGE                     │
-                        │  Supabase Postgres (normalized schema)      │
-                        │  Supabase Storage (receipt images)          │
-                        └──────────────────┬──────────────────────────┘
-                                           │ nightly GitHub Action
-                                           ▼
-                        ┌─────────────────────────────────────────────┐
-                        │             SEMANTIC LAYER                  │
-                        │  dbt-core: staging → marts (monthly spend,  │
-                        │  category rollups, needs/wants, fixed/var)  │
-                        │  docs/SEMANTIC_LAYER.md = metric contract   │
-                        └───────┬──────────────────────┬──────────────┘
-                                ▼                      ▼
-                  ┌───────────────────────┐  ┌─────────────────────────┐
-                  │      CONSUMPTION      │  │      AGENT LAYER        │
-                  │ Grafana Cloud         │  │ Claude Code (this repo) │
-                  │ dashboards; Supabase  │  │ Postgres MCP + subagents│
-                  │ SQL editor (ad hoc)   │  │ analyst / sql / coach   │
-                  └───────────────────────┘  └─────────────────────────┘
-```
+
+`docs/SEMANTIC_LAYER.md` is the metric contract for the marts layer: both the
+dbt models and the agent read it, so numbers agree everywhere.
 
 ## Component choices and rationale
 
-### Ingestion — Telegram Bot + Cloudflare Workers
+### Ingestion — Telegram Bot + AWS Lambda
 - Telegram Bot API is free, has first-class photo/voice/file APIs, and inline
   keyboards for the confirm loop.
-- Cloudflare Workers free tier: 100k requests/day, webhook model (no polling
-  server to keep alive), TypeScript, secrets management built in.
-- The Worker is intentionally thin: validate → persist raw → call LLM → reply.
-  All state lives in Postgres, so the Worker stays stateless and testable.
+- **Lambda + Function URL** (TypeScript, Node runtime). A Function URL gives a
+  valid HTTPS endpoint on port 443 — exactly what Telegram's `setWebhook`
+  requires — with no API Gateway in front, so no API Gateway bill.
+- Lambda's free tier is **perpetual**, not 12-month: 1M requests and 400k
+  GB-seconds per month, against a workload of ~150 invocations. Ingestion
+  compute is $0 indefinitely, not $0 until a trial expires.
+- The handler is intentionally thin: validate → persist raw → archive media →
+  extract → reply. All state lives in Postgres, so it stays stateless.
 - Idempotency: `ingestions.telegram_update_id` is UNIQUE; Telegram retries
   webhooks, and the unique constraint makes retries harmless.
+- Secrets (Telegram bot token, webhook secret token, chat-ID allowlist, Gemini
+  key, Supabase connection string) live in **SSM Parameter Store** as
+  `SecureString`, read at cold start. Parameter Store's standard tier is free;
+  Secrets Manager would be ~$0.40/secret/month for no benefit here.
+- Connect to Supabase through the **transaction pooler** (port 6543), not a
+  direct connection — Lambda concurrency and per-connection Postgres do not mix.
+  Irrelevant at 5 messages/day, correct by default.
+- Region: `ca-central-1` (Montreal) — lowest latency to the owner and keeps
+  personal financial data in Canada. Marginally pricier than `us-east-1` on S3
+  ($0.025 vs $0.023/GB); immaterial at this volume.
 
 ### Extraction — Gemini Flash (free tier)
 - Handles images (receipts) and audio (voice notes) natively — one API for all
@@ -59,14 +87,31 @@
   merchant, tags[], funded_by, confidence}`.
 - Low confidence → the bot's reply highlights the uncertain fields for editing.
 
-### Storage — Supabase Postgres
-- Free tier: 500 MB Postgres + 1 GB Storage. Years of personal transactions fit
-  in a few MB.
-- Chosen over Neon because receipt images need object storage (Storage bucket,
-  path stored in `ingestions.media_path`) and Studio's SQL editor doubles as
-  the ad-hoc query console the project wants.
+### Storage — Supabase Postgres (rows) + AWS S3 (images)
+
+Storage is deliberately split. Postgres and object storage have different
+constraints here, and the free tiers that fit them are on different clouds.
+
+**Supabase Postgres** — the system of record.
+- Free tier: 500 MB database + 5 GB egress/month. Verify against Supabase's
+  pricing page before relying on these — free-tier limits move.
+- Headroom: a Telegram update's `raw_payload` is ~1–3 KB, so `ingestions`
+  grows a handful of MB per year against 500 MB. Transactions themselves are
+  rounding error. This does not become a problem within the project's lifetime.
+- Kept over RDS/Aurora because there is no durable free Postgres on AWS — see
+  the costed comparison in DECISIONS.md 2026-08-10. Studio's SQL editor also
+  doubles as the ad-hoc query console.
 - Note: free projects pause after ~1 week of inactivity; daily logging keeps it
   warm, and the nightly dbt Action acts as a heartbeat.
+
+**AWS S3** — receipt images, key stored in `ingestions.media_path`.
+- ~$0.023–0.025/GB-month with no cap, versus Supabase Storage's 1 GB ceiling.
+  At ~150 KB per Telegram-compressed photo, a few years of receipts is ~$0.05
+  per month. The image-retention question disappears rather than being deferred.
+- Bucket is private with Block Public Access on; nothing reads it but the
+  Lambda role, and any future UI would use presigned URLs.
+- Lifecycle rule transitions objects to Glacier Instant Retrieval after 1 year
+  — receipts are written once and essentially never read again.
 
 ### Schema
 
@@ -98,7 +143,7 @@ rationale for its shape:
   fixed-expenses donut, most-expensive-wants bar, per-day spend line.
 - Ad-hoc SQL: Supabase Studio editor.
 - Optional later: Evidence.dev static site (built by Actions, hosted on
-  Cloudflare Pages) for a shareable, versioned report layer.
+  S3 + CloudFront) for a shareable, versioned report layer.
 
 ### Agent layer — Claude Code in this repo
 - `.mcp.json` configures a Postgres MCP server (read-only role pointed at
@@ -111,8 +156,78 @@ rationale for its shape:
   and SEMANTIC_LAYER, so any session rebuilds full context from a fresh clone.
   Marginal cost: $0 (existing Claude plan).
 
+### Infrastructure as code — Terraform (`infra/`)
+- Providers: `aws` (Lambda, Function URL, IAM role + policies, S3 bucket +
+  lifecycle + Block Public Access, SSM parameters, CloudWatch log group,
+  Budgets alarm), `supabase` (project, settings — **not** schema; schema lives
+  in `supabase/migrations/`), `grafana` (stack, data source, dashboards as code).
+- Applied incrementally: each resource is terraformed in the phase where it
+  first appears (Supabase in 1, Lambda + S3 + IAM in 2, Grafana in 5).
+- State is local and gitignored — Terraform state embeds secrets and this repo
+  is public. Secret *values* are written to Parameter Store out of band and
+  referenced by ARN; they are never Terraform variables and never in state.
+- **A budget alarm is a required resource, not a nice-to-have.** The Supabase
+  and Grafana free tiers fail closed — you hit a limit and things stop. AWS
+  fails open and bills. The alarm is what replaces that safety property.
+- Not terraformable, documented as manual steps in the deploy guide: GitHub
+  repo, AWS/Supabase/Grafana accounts, BotFather bot creation, Gemini API key,
+  and writing the secret values into Parameter Store.
+
+#### Infrastructure / code boundary
+
+Terraform owns the Lambda **function resource, IAM role, and Function URL**.
+It does not own the function's **code**. Deploys push code separately.
+
+This is forced, not stylistic: Terraform state is local and gitignored (it
+embeds secrets and the repo is public), so CI has no state to plan against and
+cannot run `terraform apply`. Code therefore has to ship by another path.
+
+```hcl
+resource "aws_lambda_function" "ingest" {
+  function_name = "finflow-ingest"
+  role          = aws_iam_role.ingest.arn
+  handler       = "index.handler"
+  runtime       = "nodejs22.x"          # verify latest supported at build time
+
+  # First apply only: a stub so the resource can exist. Real code arrives
+  # via update-function-code. Generated, so no binary is committed.
+  filename         = data.archive_file.bootstrap.output_path
+  source_code_hash = data.archive_file.bootstrap.output_base64sha256
+
+  lifecycle {
+    ignore_changes = [filename, source_code_hash]
+  }
+}
+```
+
+The `ignore_changes` block is the load-bearing line. Without it, the next
+`terraform apply` after any deploy sees drift and reverts the function to the
+bootstrap stub — a silent production rollback triggered by an unrelated infra
+change.
+
+**Deploy path:** GitHub Actions on push to `main` → esbuild bundles TypeScript
+to a single `dist/index.js` → zip → `aws lambda update-function-code`. Actions
+authenticates via **OIDC** assuming a deploy role whose only permission is
+`lambda:UpdateFunctionCode` on this one function. No long-lived AWS access keys
+exist anywhere, which matters more than usual on a public repo.
+
+**Consequence to remember:** `terraform destroy && terraform apply` yields a
+working function running the *stub*, not the app. Re-running the deploy workflow
+is part of any rebuild, and the "deploy your own" guide must say so.
+
 ## Security
-- Public repo: all credentials in Worker secrets / Actions secrets / `.env`.
-- The Worker validates Telegram's `X-Telegram-Bot-Api-Secret-Token` header and
-  ignores updates from any chat ID other than the owner's.
+- Public repo: all credentials in SSM Parameter Store (`SecureString`), GitHub
+  Actions secrets, or `.env`. Never in tracked files, never in Terraform state.
+- The Lambda handler validates Telegram's `X-Telegram-Bot-Api-Secret-Token`
+  header and ignores updates from any chat ID other than the owner's. The
+  Function URL is public by necessity (Telegram must reach it), so these two
+  checks are the entire authentication boundary — they run before any other work.
+- Lambda's IAM role is least-privilege: `s3:PutObject` scoped to the receipts
+  bucket prefix, `ssm:GetParameter` scoped to the project's parameter path,
+  `kms:Decrypt` for those parameters, and CloudWatch Logs write. No wildcards.
+- S3 bucket: Block Public Access enabled, default encryption on, no bucket
+  policy granting anything to `*`.
 - The MCP database role is read-only (`GRANT SELECT` on marts only).
+- AWS billing is a security concern here, not just a cost one: a leaked key on
+  a public repo is exploitable for compute. Budget alarm + least-privilege IAM
+  + no long-lived access keys in CI (use OIDC if Actions ever needs AWS).

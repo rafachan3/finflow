@@ -107,7 +107,7 @@ create table ingestions (
   source             text not null check (source in ('photo','voice','text')),
   telegram_update_id bigint not null unique,      -- idempotent webhook retries
   raw_payload        jsonb not null,              -- full Telegram update
-  media_path         text,                        -- Supabase Storage object
+  media_path         text,                        -- S3 object key
   extraction         jsonb,                       -- LLM structured output
   status             text not null default 'pending'
                      check (status in ('pending','confirmed','discarded')),

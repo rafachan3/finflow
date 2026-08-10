@@ -8,16 +8,24 @@ until the previous one's acceptance check passes. Update
 ## Phase 0 — Repo & accounts (≈1 evening)
 
 - [ ] `git init`, push to a public GitHub repo
-- [ ] Create accounts: Supabase, Cloudflare, Grafana Cloud, Google AI Studio
+- [ ] Create accounts: AWS, Supabase, Grafana Cloud, Google AI Studio
       (Gemini API key), Telegram bot via @BotFather
+      *(accounts, the bot, and API keys are manual — not terraformable)*
+- [ ] AWS account hygiene **before anything else**: root MFA, an IAM admin user
+      or Identity Center user for daily use, region `ca-central-1`
 - [ ] Add MIT license, README stub pointing at docs/
+- [ ] `infra/` Terraform scaffold: pinned providers (aws, supabase, grafana),
+      local state (gitignored — state holds secrets, repo is public)
+- [ ] `aws_budgets_budget` at $1/month with an email alert — the first AWS
+      resource to exist, since AWS fails open on cost
 
-**Done when:** repo is on GitHub and all API keys exist (stored in a password
-manager, none committed).
+**Done when:** repo is on GitHub, all API keys exist (stored in a password
+manager, none committed), and the budget alarm has fired a test notification.
 
 ## Phase 1 — Database foundation (≈1–2 evenings)
 
-- [ ] Supabase project + Supabase CLI linked (`supabase/migrations/`)
+- [ ] Supabase project provisioned via Terraform (`infra/`); Supabase CLI
+      linked (`supabase/migrations/` — schema stays in migrations, not Terraform)
 - [ ] Migration 0001: full schema from docs/DATA_MODEL.md
 - [ ] Seed migration: categories, subcategories (with bucket/cadence mapping
       replicating the Notion formulas), tags, income sources, accounts,
@@ -31,15 +39,25 @@ count and a spot-check of 10 random rows matches Notion exactly.
 
 ## Phase 2 — Telegram walking skeleton, no LLM (≈2 evenings)
 
-- [ ] Cloudflare Worker + webhook registered with secret token
-- [ ] Chat-ID allowlist (owner only), chat ID stored as a Worker secret
+- [ ] Terraform: Lambda + Function URL, IAM execution role, CloudWatch log
+      group, SSM `SecureString` parameters (values written out of band, never
+      as Terraform vars). Function ships with a bootstrap stub and
+      `ignore_changes = [filename, source_code_hash]`
+- [ ] Terraform: GitHub OIDC provider + deploy role scoped to
+      `lambda:UpdateFunctionCode` on this function only — no long-lived keys
+- [ ] Deploy workflow: push to `main` → esbuild bundle → zip →
+      `aws lambda update-function-code`
+- [ ] Telegram webhook registered against the Function URL with a secret token
+- [ ] Chat-ID allowlist (owner only), chat ID read from Parameter Store
 - [ ] Text-only quick-log format: `12.50 lunch chipotle` → parsed with a dumb
       regex → `ingestions` row → reply with Confirm / Discard buttons
 - [ ] Confirm button → transaction inserted; Discard → status flip
 - [ ] Idempotency verified (replay the same update, no duplicate)
 
 **Done when:** a text message becomes a confirmed row in Postgres from your
-phone, and the bot survives a webhook retry without duplicating.
+phone, the bot survives a webhook retry without duplicating, and a subsequent
+`terraform plan` reports **no changes** (proving the deploy and Terraform are
+not fighting over the function's code).
 
 *Why before the LLM: the confirm loop, webhook plumbing, and DB writes are the
 skeleton everything else hangs on. Ship the smallest loop first.*
@@ -48,14 +66,17 @@ skeleton everything else hangs on. Ship the smallest loop first.*
 
 - [ ] 3a. Natural-language text via Gemini structured output
       (taxonomy injected into the prompt from the DB)
+- [ ] Terraform: S3 receipts bucket (Block Public Access, default encryption,
+      Glacier IR lifecycle at 1 year) + `s3:PutObject` on the Lambda role
 - [ ] 3b. Receipt photos: Telegram file API → Gemini vision → itemized total,
-      merchant, date; image archived to Supabase Storage
+      merchant, date; image archived to S3, key in `ingestions.media_path`
 - [ ] 3c. Voice notes: Telegram OGG → Gemini audio input → same pipeline
 - [ ] Edit flow: reply buttons let you fix category/amount before confirm
 - [ ] Log Gemini token usage per request into `ingestions.extraction`
 
 **Done when:** photo of a real receipt and a voice note each produce a correct
-confirmed transaction with ≤1 manual correction on average.
+confirmed transaction with ≤1 manual correction on average, and the image is
+retrievable from S3 at the key recorded in `ingestions.media_path`.
 
 ## Phase 4 — Semantic layer (≈2 evenings)
 
@@ -71,7 +92,8 @@ one sample month.
 
 ## Phase 5 — Dashboards (≈1–2 evenings)
 
-- [ ] Grafana Cloud → Supabase (read-only role)
+- [ ] Grafana Cloud stack + Postgres data source (read-only role) via
+      Terraform; dashboards as code (grafana provider) where practical
 - [ ] Rebuild the four Notion views: cumulative monthly spend (ex-rent,
       ex-externally-funded), fixed-expenses donut, most-expensive-wants bar, per-day line
 - [ ] One new view Notion couldn't do well: month-over-month category drift
@@ -91,5 +113,8 @@ with numbers matching the dashboards.
 ## Phase 7 — Open-source polish (ongoing)
 
 - [ ] README with architecture diagram + "deploy your own" guide
+      (`terraform apply` + manual steps list: BotFather, Gemini key, secrets)
 - [ ] Secrets audit (git history clean), example `.env.example`
-- [ ] Optional: Evidence.dev static report site on Cloudflare Pages
+- [ ] Cost check: one full month of AWS billing confirms the ingestion side is
+      under $0.10 — record the actual figure in DECISIONS.md
+- [ ] Optional: Evidence.dev static report site on S3 + CloudFront

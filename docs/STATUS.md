@@ -2,7 +2,7 @@
 
 Living state of the project. Read this first; update it whenever work lands.
 
-**Last updated:** 2026-08-08
+**Last updated:** 2026-08-10
 **Current phase:** Phase 0 — Repo & accounts (see [ROADMAP.md](ROADMAP.md))
 
 ## Phase progress
@@ -19,15 +19,17 @@ Living state of the project. Read this first; update it whenever work lands.
 
 ## What exists right now
 
-Documentation only. No code, no database, no migrations, no deployed Worker.
+Documentation only. No code, no database, no migrations, no deployed Lambda.
 The repo contains `AGENTS.md`, `CLAUDE.md`, and `docs/`.
 
 ## Next concrete step
 
-Phase 0: create the Supabase, Cloudflare, Grafana Cloud, and Google AI Studio
+Phase 0: create the AWS, Supabase, Grafana Cloud, and Google AI Studio
 accounts, register the Telegram bot with @BotFather, add an MIT `LICENSE` and a
-README that points at `docs/`. Store every key in a password manager; commit
-none of them.
+README that points at `docs/`, and scaffold `infra/` (Terraform, pinned aws +
+supabase + grafana providers, local gitignored state). On AWS, do root MFA and
+the $1 budget alarm *first*. Store every key in a password manager; commit none
+of them.
 
 ## Open questions
 
