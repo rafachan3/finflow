@@ -205,7 +205,7 @@ create table income_sources (
 create table accounts (
   id   smallint generated always as identity primary key,
   name text not null unique,                      -- values seeded locally
-  kind text not null                              -- savings | investment
+  kind text not null check (kind in ('savings', 'investment'))
 );
 
 -- Who paid. The tracked seed contains only 'self'; additional sources are
