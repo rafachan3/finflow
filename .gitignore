@@ -12,3 +12,10 @@ AGENTS.local.md
 *.tfvars
 !*.tfvars.example
 .terraform/
+
+# Personal seed overlay and imported personal data — never commit
+supabase/seed.personal.sql
+scripts/import/data/
+
+# Supabase CLI local artifacts
+supabase/.temp/
