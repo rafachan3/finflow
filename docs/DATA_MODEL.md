@@ -19,6 +19,124 @@ are lookup tables; tags stay for free-form *context* only (Travel, Social,
 Avoidable…). Every Telegram message lands in `ingestions` before it can
 become a confirmed transaction.
 
+## Entity-relationship diagram
+
+The diagram shows entities, keys, and relationship cardinality only. Check
+constraints, enum values, and cross-table rules (tax allocation, the
+item-type/subcategory category match) are not representable here — the DDL
+below and [Invariants](#invariants) remain the authority.
+
+```mermaid
+erDiagram
+  categories ||--o{ subcategories : "groups"
+  categories ||--o{ item_types : "scopes"
+  transactions ||--o{ transaction_items : "has lines"
+  subcategories ||--o{ transaction_items : "classifies"
+  item_types |o--o{ transaction_items : "details"
+  merchants |o--o{ transactions : "sold by"
+  venues |o--o{ transactions : "bought at"
+  income_sources |o--o{ transactions : "earned from"
+  accounts |o--o{ transactions : "transferred to"
+  funding_sources ||--o{ transactions : "paid by"
+  transactions ||--o{ transaction_tags : ""
+  tags ||--o{ transaction_tags : ""
+  transactions |o--o{ ingestions : "confirmed from"
+
+  transactions {
+    uuid id PK
+    date occurred_on
+    transaction_type type "income | expense | transfer"
+    numeric amount "12,2 — always positive"
+    char3 currency "CAD"
+    text description
+    integer merchant_id FK "nullable"
+    smallint venue_id FK "nullable"
+    smallint income_source_id FK "required if income"
+    smallint to_account_id FK "required if transfer"
+    smallint funding_source_id FK
+    boolean is_recurring
+    text notes "nullable"
+    timestamptz created_at
+  }
+
+  transaction_items {
+    uuid id PK
+    uuid transaction_id FK
+    text description
+    numeric amount "12,2 — tax allocated in"
+    smallint subcategory_id FK
+    smallint item_type_id FK "nullable"
+    bucket_type bucket "needs | wants"
+  }
+
+  transaction_tags {
+    uuid transaction_id PK,FK
+    smallint tag_id PK,FK
+  }
+
+  ingestions {
+    uuid id PK
+    text source "photo | voice | text"
+    bigint telegram_update_id UK
+    jsonb raw_payload
+    text media_path "nullable — S3 key"
+    jsonb extraction "nullable — LLM output"
+    text status "pending | confirmed | discarded"
+    uuid transaction_id FK "nullable until confirmed"
+    timestamptz created_at
+  }
+
+  categories {
+    smallint id PK
+    text name UK
+  }
+
+  subcategories {
+    smallint id PK
+    smallint category_id FK
+    text name
+    bucket_type default_bucket "nullable hint"
+  }
+
+  item_types {
+    smallint id PK
+    smallint category_id FK
+    text name
+  }
+
+  merchants {
+    integer id PK
+    text name UK
+    text_array aliases
+  }
+
+  venues {
+    smallint id PK
+    text name UK
+  }
+
+  income_sources {
+    smallint id PK
+    text name UK
+  }
+
+  accounts {
+    smallint id PK
+    text name UK
+    text kind "savings | investment"
+  }
+
+  funding_sources {
+    smallint id PK
+    text name UK
+  }
+
+  tags {
+    smallint id PK
+    text name UK
+  }
+```
+
 ## Migrated from Notion
 
 The system replaces a Notion "Transactions" database. The one-off import
