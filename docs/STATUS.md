@@ -2,7 +2,7 @@
 
 Living state of the project. Read this first; update it whenever work lands.
 
-**Last updated:** 2026-08-10
+**Last updated:** 2026-08-13
 **Current phase:** Phase 1 — Database foundation (see [ROADMAP.md](ROADMAP.md))
 
 ## Phase progress
@@ -26,19 +26,23 @@ with pinned providers plus a `$1/month` budget filtered to `Project=finflow`
 (plus bootstrap SSM parameter). No Supabase project/schema, migrations, or
 deployed Lambda yet.
 
+Phase 1 in progress (2026-08-13): data model v2 designed and documented —
+header/lines schema with item-level classification, taxonomy v2 in
+[TAXONOMY.md](TAXONOMY.md), public-template/personal-overlay seed split (see
+DECISIONS.md 2026-08-13 entries). Import scope settled: Notion via MCP,
+2026-06-01 onward.
+
 ## Next concrete step
 
-Phase 1: provision the Supabase project via Terraform (`infra/`), link the
-Supabase CLI, add migration 0001 from [DATA_MODEL.md](DATA_MODEL.md), seed
-taxonomy data, import Notion history, and create a read-only Postgres role for
-future MCP/Grafana use.
+Phase 1 remainder: `supabase init` + migration 0001 (schema from
+[DATA_MODEL.md](DATA_MODEL.md)) + generic seed migration, personal seed
+overlay, provision the Supabase project via Terraform (`infra/`), run the
+Notion import (June 2026 onward), create the read-only Postgres role.
 
 ## Open questions
 
-- Notion export path for the history import: MCP pull vs. manual CSV export.
-  Decide during Phase 1.
-- Whether `merchants.aliases` is seeded by hand from the Notion tag list or
-  learned from extractions over time.
+- Whether `merchants.aliases` is seeded by hand or learned from extractions
+  over time.
 - Grafana Cloud free tier's connection limits against a Supabase free project
   that pauses on inactivity — verify before building Phase 5 dashboards on it.
 

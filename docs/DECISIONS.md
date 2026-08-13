@@ -240,3 +240,64 @@ function running the stub, not the app. Re-running the deploy workflow is a
 required step in any rebuild and must appear in the Phase 7 deploy guide.
 Phase 2's acceptance check includes a clean `terraform plan` after a deploy,
 which is what proves the two systems are not fighting.
+
+---
+
+## 2026-08-13 — Header/lines model with item-level classification
+
+**Supersedes** the 2026-07-12 "`bucket` and `cadence` live on `subcategories`"
+entry. The owner redesigned the taxonomy, and the actual Notion data
+invalidated the old premise: Groceries alone split 82 needs / 47 wants row by
+row, so bucket is not a property of the subcategory.
+
+`transactions` becomes a header; classification moves to a new
+`transaction_items` table — one row per receipt line, each carrying its own
+`subcategory_id`, optional `item_type_id`, and needs/wants `bucket`. Every
+expense has at least one line; line amounts, with tax allocated
+proportionally at extraction, sum to the header amount. A third taxonomy
+level (`item_types`, scoped per category) exists only where subcategory and
+item type answer different questions: Food and drink, Housing, Health and
+wellness. The taxonomy contract is docs/TAXONOMY.md.
+
+Also in this redesign: `cadence` is dropped in favour of a per-transaction
+`is_recurring` boolean (matching how the Notion "Recurring expense" checkbox
+was actually used); the tag pile splits into context `tags` (multi-valued), a
+single-valued `venues` lookup, and the existing `merchants` table; the
+`funding_source` enum becomes a `funding_sources` lookup table.
+
+**Ruled out:** item types on every category (redundant metadata where
+subcategory already answers the only useful question); enforcing
+lines-sum-to-header with database triggers (application logic + dbt tests
+suffice at this scale); standalone beverage subcategories (beverages are item
+types — the channel and the product are independent dimensions).
+
+---
+
+## 2026-08-13 — Public taxonomy template, untracked personal overlay
+
+The repo is public; the owner's personal lookup values (accounts, income
+sources, funding sources beyond 'self', personal tags, merchant list) are
+not. The tracked seed migration contains only the generic, fork-ready
+taxonomy from docs/TAXONOMY.md. Personal values live in an untracked
+`supabase/seed.personal.sql`, applied by hand, with a tracked
+`seed.personal.example.sql` as the template for forks.
+
+Because earlier commits already carried personal references in the docs, the
+git history was rewritten with `git filter-repo` and force-pushed — done now,
+while the repo is young and has no forks, rather than left to the Phase 7
+audit.
+
+**Ruled out:** committing personal seeds and relying on obscurity; a private
+fork holding the personal layer (two repos to keep in sync for a handful of
+SQL inserts).
+
+---
+
+## 2026-08-13 — Notion import: via MCP, June 2026 onward
+
+The Phase 1 history import pulls from Notion through the MCP server (settles
+the STATUS open question — no CSV export step). Scope is 2026-06-01 onward by
+owner decision: October 2025 rows were an early trial (108 of 109 lack a
+transaction type) and May 2026 was explicitly excluded as well. Each Notion
+row becomes one transaction with one line item — Notion has no receipt
+grouping key, so no grouping is invented.

@@ -2,98 +2,142 @@
 
 The schema contract. `supabase/migrations/` must agree with this file; change
 both in the same commit. For *why* the storage layer looks like this, see
-[ARCHITECTURE.md](ARCHITECTURE.md); for when each choice was made, see
-[DECISIONS.md](DECISIONS.md).
+[ARCHITECTURE.md](ARCHITECTURE.md); for the classification taxonomy the seed
+data implements, see [TAXONOMY.md](TAXONOMY.md); for when each choice was
+made, see [DECISIONS.md](DECISIONS.md).
 
 ## Shape in one paragraph
 
-Transactions are `income | expense | transfer`. A two-level taxonomy of 10
-categories → 37 subcategories classifies spend, with `bucket` (needs/wants) and
-`cadence` (fixed/variable) stored as attributes of the *subcategory*. Merchants
-are first-class rows with an alias array for LLM normalization. Tags stay for
-free-form context (Travel, Social, Avoidable…). `funded_by` records who paid.
-Every Telegram message lands in `ingestions` before it can become a confirmed
-transaction.
+Transactions are `income | expense | transfer` **headers**; classification
+lives on `transaction_items` **lines**. A three-level taxonomy — 11 categories
+→ 55 subcategories → item types where they earn their keep (see
+[TAXONOMY.md](TAXONOMY.md)) — classifies each line, along with a per-line
+needs/wants `bucket`. Every expense has at least one line; a receipt with
+line-item detail has many, and lines from one receipt may belong to different
+categories. Merchants, venues, funding sources, income sources, and accounts
+are lookup tables; tags stay for free-form *context* only (Travel, Social,
+Avoidable…). Every Telegram message lands in `ingestions` before it can
+become a confirmed transaction.
 
 ## Migrated from Notion
 
-The system replaces a Notion "Transactions" database. Mapping:
+The system replaces a Notion "Transactions" database. The one-off import
+covers June 2026 onward. Mapping:
 
 | Notion | Postgres |
 |---|---|
 | "Financial Future" rows | `type = 'transfer'` with a `to_account_id` — savings are not expenses |
-| `bucket` / `cadence` formulas | Columns on `subcategories` |
-| Merchants mixed into the tag list | `merchants` table, referenced by `transactions.merchant_id` |
-| Remaining context tags | `tags` + `transaction_tags` |
-| "Paid by family?" checkbox | `funded_by` enum (`self` \| `other`) |
+| `Bucket` select (per row) | `transaction_items.bucket` (per line) |
+| "Recurring expense" checkbox | `transactions.is_recurring` |
+| Funding checkbox | `transactions.funding_source_id` → `funding_sources` lookup |
+| Expense Category / Subcategory selects | `transaction_items.subcategory_id` (taxonomy v2) |
+| Tags multi-select (context, venues, and merchants mixed together) | Split three ways: context → `tags` + `transaction_tags`; venue/channel → `transactions.venue_id`; merchant names → `transactions.merchant_id` |
 
-The Notion database and data-source identifiers used for the one-off import are
-in the untracked `CLAUDE.local.md`, not here.
+The Notion database and data-source identifiers used for the import are in
+the untracked `CLAUDE.local.md`, not here.
 
 ## DDL
 
 ```sql
 create type transaction_type as enum ('income', 'expense', 'transfer');
 create type bucket_type      as enum ('needs', 'wants');
-create type cadence_type     as enum ('fixed', 'variable');
-create type funding_source   as enum ('self', 'other');
 
 create table categories (
   id   smallint generated always as identity primary key,
-  name text not null unique                       -- Food, Transit, Bills, ...
+  name text not null unique
 );
 
 create table subcategories (
+  id             smallint generated always as identity primary key,
+  category_id    smallint not null references categories(id),
+  name           text not null,
+  default_bucket bucket_type,      -- extraction hint only; the authoritative
+                                   -- bucket is per line item
+  unique (category_id, name)
+);
+
+-- Third classification level, only for categories where it earns its keep
+-- (see TAXONOMY.md). Scoped to a category, not a subcategory: Food & drink
+-- item types apply across all its channels.
+create table item_types (
   id          smallint generated always as identity primary key,
   category_id smallint not null references categories(id),
-  name        text not null,                      -- Groceries, Rent, Bixi, ...
-  bucket      bucket_type,                        -- was a Notion formula
-  cadence     cadence_type,                       -- was a Notion formula
+  name        text not null,
   unique (category_id, name)
 );
 
 create table merchants (
   id      integer generated always as identity primary key,
-  name    text not null unique,                   -- Costco, Amazon, Dollarama...
+  name    text not null unique,
   aliases text[] not null default '{}'            -- for LLM normalization
+);
+
+-- Venue / channel of purchase (Supermarket, Coffee Shop, Pharmacy, ...).
+-- Single-valued per transaction, unlike tags.
+create table venues (
+  id   smallint generated always as identity primary key,
+  name text not null unique
 );
 
 create table income_sources (
   id   smallint generated always as identity primary key,
-  name text not null unique                       -- Salary, Family support, Refund...
+  name text not null unique                       -- values seeded locally
 );
 
 create table accounts (
   id   smallint generated always as identity primary key,
-  name text not null unique,                      -- Savings, Investment
+  name text not null unique,                      -- values seeded locally
   kind text not null                              -- savings | investment
 );
 
+-- Who paid. The tracked seed contains only 'self'; additional sources are
+-- personal and live in the untracked overlay.
+create table funding_sources (
+  id   smallint generated always as identity primary key,
+  name text not null unique
+);
+
+-- Free-form context only (Travel, Social, Avoidable, ...). Venues and
+-- merchants are NOT tags.
+create table tags (
+  id   smallint generated always as identity primary key,
+  name text not null unique
+);
+
 create table transactions (
-  id               uuid primary key default gen_random_uuid(),
-  occurred_on      date not null,
-  type             transaction_type not null,
-  amount           numeric(12,2) not null check (amount > 0),
-  currency         char(3) not null default 'CAD',
-  description      text not null,
-  subcategory_id   smallint references subcategories(id),
-  merchant_id      integer  references merchants(id),
-  income_source_id smallint references income_sources(id),
-  to_account_id    smallint references accounts(id),
-  funded_by        funding_source not null default 'self',
-  notes            text,
-  created_at       timestamptz not null default now(),
-  check (type <> 'expense'  or subcategory_id   is not null),
+  id                uuid primary key default gen_random_uuid(),
+  occurred_on       date not null,
+  type              transaction_type not null,
+  amount            numeric(12,2) not null check (amount > 0),
+  currency          char(3) not null default 'CAD',
+  description       text not null,
+  merchant_id       integer  references merchants(id),
+  venue_id          smallint references venues(id),
+  income_source_id  smallint references income_sources(id),
+  to_account_id     smallint references accounts(id),
+  funding_source_id smallint not null references funding_sources(id),
+  is_recurring      boolean not null default false,
+  notes             text,
+  created_at        timestamptz not null default now(),
   check (type <> 'income'   or income_source_id is not null),
   check (type <> 'transfer' or to_account_id    is not null)
 );
 create index on transactions (occurred_on);
-create index on transactions (subcategory_id);
 
-create table tags (
-  id   smallint generated always as identity primary key,
-  name text not null unique                       -- Travel, Social, Avoidable...
+-- Receipt line items. Classification lives here, not on the header, because
+-- one receipt can span categories and one meal can span item types. A simple
+-- quick-log expense gets exactly one line mirroring the header.
+create table transaction_items (
+  id             uuid primary key default gen_random_uuid(),
+  transaction_id uuid not null references transactions(id) on delete cascade,
+  description    text not null,
+  amount         numeric(12,2) not null check (amount > 0),
+  subcategory_id smallint not null references subcategories(id),
+  item_type_id   smallint references item_types(id),
+  bucket         bucket_type not null
 );
+create index on transaction_items (transaction_id);
+create index on transaction_items (subcategory_id);
 
 create table transaction_tags (
   transaction_id uuid     not null references transactions(id) on delete cascade,
@@ -116,22 +160,49 @@ create table ingestions (
 );
 ```
 
+## Seed data: tracked template + personal overlay
+
+The repo is public and the seed data splits accordingly:
+
+- **Tracked seed migration** — everything generic and fork-ready: categories,
+  subcategories (with `default_bucket` hints), item types, venues, context
+  tags, and the `'self'` funding source. This is the template a fork starts
+  from; [TAXONOMY.md](TAXONOMY.md) is its contract.
+- **Untracked personal overlay** — `supabase/seed.personal.sql`, gitignored,
+  applied once by hand (`psql -f`). Holds the owner-specific lookup values:
+  accounts, income sources, additional funding sources, personal tags, and
+  recurring merchants. A tracked `supabase/seed.personal.example.sql` shows
+  the format with placeholder values so a fork can build its own overlay.
+
+Nothing in a tracked file may name a personal account, income source,
+funding source, tag, or merchant.
+
 ## Extraction payload
 
-`ingestions.extraction` holds the LLM's structured output:
+`ingestions.extraction` holds the LLM's structured output. Item amounts
+include proportionally allocated tax, so they always sum to the transaction
+amount:
 
 ```json
 {
   "type": "expense",
-  "amount": "12.50",
+  "amount": "27.60",
   "currency": "CAD",
   "date": "2026-08-08",
-  "description": "lunch",
-  "category": "Food",
-  "subcategory": "Eating out",
-  "merchant": "Chipotle",
+  "description": "McDonald's lunch",
+  "merchant": "McDonald's",
+  "venue": "Fast Food",
   "tags": ["Social"],
   "funded_by": "self",
+  "is_recurring": false,
+  "items": [
+    { "description": "Burger combo", "amount": "19.55",
+      "category": "Food and drink", "subcategory": "Takeout / Quick Service",
+      "item_type": "Meals & Prepared Food", "bucket": "wants" },
+    { "description": "Coke", "amount": "8.05",
+      "category": "Food and drink", "subcategory": "Takeout / Quick Service",
+      "item_type": "Non-Alcoholic Beverages", "bucket": "wants" }
+  ],
   "confidence": 0.91
 }
 ```
@@ -144,5 +215,11 @@ editing before the user can confirm.
 - Money is `numeric(12,2)`. Never float.
 - A row in `transactions` exists only because a human pressed Confirm on the
   corresponding `ingestions` row.
+- Every `expense` transaction has at least one `transaction_items` row, and
+  the line amounts sum to `transactions.amount` (tax allocated
+  proportionally at extraction). Income and transfer transactions have no
+  lines. Enforced by application logic and dbt tests, not triggers.
+- An item's `item_type_id`, when set, must belong to the same category as
+  its `subcategory_id` (dbt test).
 - `ingestions.telegram_update_id` is UNIQUE — webhook retries are harmless.
 - Migrations are never edited after merge; correct forward with a new one.

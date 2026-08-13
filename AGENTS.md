@@ -53,6 +53,7 @@ free tier (1M req/month) is perpetual, not a 12-month trial.
 | `docs/ROADMAP.md` | The 7 phases and their acceptance checks | Scope changes |
 | `docs/ARCHITECTURE.md` | System diagram, component rationale, security | A component choice changes |
 | `docs/DATA_MODEL.md` | Full DDL, Notion → Postgres mapping | Schema changes (with the migration) |
+| `docs/TAXONOMY.md` | Category/subcategory/item-type contract, classification rules | Taxonomy changes (with the seed migration) |
 | `docs/SEMANTIC_LAYER.md` | Canonical metric definitions *(created in Phase 4)* | A metric is added or redefined |
 | `docs/DECISIONS.md` | Dated log of decisions and what they ruled out | A decision is made or reversed |
 

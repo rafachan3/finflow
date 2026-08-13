@@ -81,10 +81,12 @@ dbt models and the agent read it, so numbers agree everywhere.
 - Handles images (receipts) and audio (voice notes) natively — one API for all
   three input types. Free-tier quota comfortably covers personal volume
   (a handful of requests/day).
-- Prompt includes the live category/subcategory/tag taxonomy (fetched from
-  Postgres) and requests structured JSON output matching the `extraction`
-  schema: `{type, amount, currency, date, description, category, subcategory,
-  merchant, tags[], funded_by, confidence}`.
+- Prompt includes the live taxonomy (fetched from Postgres, contract in
+  docs/TAXONOMY.md) and requests structured JSON output matching the
+  `extraction` schema: `{type, amount, currency, date, description, merchant,
+  venue, tags[], funded_by, is_recurring, items[], confidence}` — where each
+  item carries its own subcategory, item type, and needs/wants bucket, and
+  item amounts (tax allocated proportionally) sum to the transaction amount.
 - Low confidence → the bot's reply highlights the uncertain fields for editing.
 
 ### Storage — Supabase Postgres (rows) + AWS S3 (images)
@@ -121,8 +123,11 @@ rationale for its shape:
 
 - Notion's "Financial Future" rows become `type = 'transfer'` with a
   `to_account_id` — savings are not expenses.
-- `bucket` and `cadence` live on `subcategories` (they're properties of what
-  kind of spend it is, exactly like the Notion formulas derived them).
+- Transactions are headers; classification (subcategory, item type, and the
+  needs/wants `bucket`) lives on `transaction_items` lines, because one
+  receipt can span categories and the same subcategory can be a need or a
+  want depending on the line. Subcategories keep a `default_bucket` only as
+  an extraction hint.
 - Money is `numeric`, never `float`.
 - `ingestions` separates "what arrived" from "what I confirmed" — auditability,
   reprocessing (better prompts later can re-run old receipts), and a natural
@@ -132,8 +137,8 @@ rationale for its shape:
 - dbt project in `dbt/`: `staging/` (light renames from raw tables) →
   `marts/` (fct_monthly_spend, fct_category_month, dim views).
 - Canonical metric definitions in `docs/SEMANTIC_LAYER.md`, e.g.
-  **discretionary spend** = expenses where funded_by = 'self' AND subcategory
-  ≠ Rent; **savings rate** = transfers / income per month. Both dbt models
+  **discretionary spend** = expenses with funding source 'self' AND
+  subcategory ≠ Rent; **savings rate** = transfers / income per month. Both dbt models
   and the agent reference this file so numbers agree everywhere.
 - Runs free on GitHub Actions nightly cron (public repo = unlimited minutes).
 

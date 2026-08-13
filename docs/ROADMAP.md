@@ -30,15 +30,19 @@ manager, none committed), and the budget alarm has fired a test notification.
 - [ ] Supabase project provisioned via Terraform (`infra/`); Supabase CLI
       linked (`supabase/migrations/` — schema stays in migrations, not Terraform)
 - [ ] Migration 0001: full schema from docs/DATA_MODEL.md
-- [ ] Seed migration: categories, subcategories (with bucket/cadence mapping
-      replicating the Notion formulas), tags, income sources, accounts,
-      merchants (from Notion tag list: Costco, Amazon, Dollarama, ...)
-- [ ] One-off import script: Notion → CSV → `transactions` (Claude can pull
-      the Notion data via MCP and generate the CSV)
+- [ ] Seed migration: the generic taxonomy template from docs/TAXONOMY.md —
+      categories, subcategories (with default buckets), item types, venues,
+      context tags, and the 'self' funding source
+- [ ] Personal overlay: untracked `supabase/seed.personal.sql` (accounts,
+      income sources, extra funding sources, personal tags, merchants),
+      built from the tracked `.example` template and applied by hand
+- [ ] One-off import: Notion (via MCP) → CSV → `transactions` +
+      `transaction_items`, June 2026 onward
 - [ ] Read-only Postgres role for future MCP/Grafana use
 
 **Done when:** `select count(*) from transactions` matches the Notion row
-count and a spot-check of 10 random rows matches Notion exactly.
+count for the imported date range and a spot-check of 10 random rows matches
+Notion exactly.
 
 ## Phase 2 — Telegram walking skeleton, no LLM (≈2 evenings)
 
@@ -98,7 +102,8 @@ one sample month.
 - [ ] Grafana Cloud stack + Postgres data source (read-only role) via
       Terraform; dashboards as code (grafana provider) where practical
 - [ ] Rebuild the four Notion views: cumulative monthly spend (ex-rent,
-      ex-externally-funded), fixed-expenses donut, most-expensive-wants bar, per-day line
+      ex-externally-funded), fixed-expenses donut, most-expensive-wants bar,
+      per-day line
 - [ ] One new view Notion couldn't do well: month-over-month category drift
 
 **Done when:** the Notion database is no longer needed day-to-day.
