@@ -10,6 +10,7 @@ Living state of the project. Read this first; update it whenever work lands.
 - [x] Planning: architecture, roadmap, and agent context written (2026-07-12)
 - [x] Phase 0 — Repo on GitHub, accounts created, MIT license, README (2026-08-10)
 - [x] Phase 1 — Supabase project, schema migrations, Notion history import (2026-08-13)
+- [x] Taxonomy tweak — Hygiene + Beauty → Personal care (Health and wellness); buckets untouched (2026-08-13)
 - [ ] Phase 2 — Telegram bot walking skeleton (text only, no LLM)
 - [ ] Phase 3 — Gemini extraction (text → photo → voice)
 - [ ] Phase 4 — dbt semantic layer
@@ -39,11 +40,17 @@ spot-checked 10 random production rows against Notion — all matched.
 Read-only role password set out of band. The import tooling remains
 untracked (`scripts/import/`, gitignored).
 
+Taxonomy merge (2026-08-13, migration 0005): Hygiene and Beauty collapsed into
+**Personal care** under Health and wellness. `transaction_items.bucket` left
+unchanged. Contract updated in [TAXONOMY.md](TAXONOMY.md); personal bucket
+guide updated in untracked `docs/BUCKET_RULES.local.md`. Notion not yet
+updated.
+
 ## Next concrete step
 
-Start Phase 2 — Telegram walking skeleton (text only, no LLM): Lambda +
-Function URL, allowlisted chat, Confirm / Edit / Discard buttons, persist
-confirmed text expenses.
+Apply migration 0005 with `supabase db push`, then verify Personal care line
+counts and untouched buckets. After that: Phase 2 — Telegram walking skeleton
+(text only, no LLM).
 
 ## Open questions
 

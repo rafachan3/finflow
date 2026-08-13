@@ -10,7 +10,7 @@ made, see [DECISIONS.md](DECISIONS.md).
 
 Transactions are `income | expense | transfer` **headers**; classification
 lives on `transaction_items` **lines**. A three-level taxonomy — 11 categories
-→ 55 subcategories → item types where they earn their keep (see
+→ 54 subcategories → item types where they earn their keep (see
 [TAXONOMY.md](TAXONOMY.md)) — classifies each line, along with a per-line
 needs/wants `bucket`. Every expense has at least one line; a receipt with
 line-item detail has many, and lines from one receipt may belong to different
