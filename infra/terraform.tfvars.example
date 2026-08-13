@@ -3,3 +3,6 @@
 #   cp terraform.tfvars.example terraform.tfvars
 #
 budget_alert_email = "you@example.com"
+
+# Supabase organization slug (dashboard URL: supabase.com/dashboard/org/<slug>)
+supabase_organization_id = "your-org-slug"

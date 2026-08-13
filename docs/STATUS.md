@@ -29,15 +29,22 @@ deployed Lambda yet.
 Phase 1 in progress (2026-08-13): data model v2 designed and documented —
 header/lines schema with item-level classification, taxonomy v2 in
 [TAXONOMY.md](TAXONOMY.md), public-template/personal-overlay seed split (see
-DECISIONS.md 2026-08-13 entries). Import scope settled: Notion via MCP,
-2026-06-01 onward.
+DECISIONS.md 2026-08-13 entries). Git history rewritten and force-pushed to
+remove personal references. Migrations 0001–0003 (schema, generic taxonomy
+seed, read-only role) written and validated against a local Supabase stack
+(`supabase db reset`). Notion import built and fully rehearsed locally:
+332 transactions (317 expense / 12 income / 3 transfer, June 2026 onward)
+reconciled row-by-row against the Notion source — counts, sums, tags,
+venues, and merchants all match.
 
 ## Next concrete step
 
-Phase 1 remainder: `supabase init` + migration 0001 (schema from
-[DATA_MODEL.md](DATA_MODEL.md)) + generic seed migration, personal seed
-overlay, provision the Supabase project via Terraform (`infra/`), run the
-Notion import (June 2026 onward), create the read-only Postgres role.
+Provision the Supabase project (`infra/supabase.tf` is written; needs
+`SUPABASE_ACCESS_TOKEN` in the environment and `supabase_organization_id`
+in `terraform.tfvars`), rotate the database password out of band, then:
+`supabase link` + `supabase db push`, apply `supabase/seed.personal.sql`,
+run `scripts/import/data/import.sql`, set the read-only role's password,
+and re-run the acceptance check against production.
 
 ## Open questions
 

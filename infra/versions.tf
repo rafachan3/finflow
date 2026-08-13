@@ -14,6 +14,10 @@ terraform {
       source  = "grafana/grafana"
       version = "~> 4.44"
     }
+    random = {
+      source  = "hashicorp/random"
+      version = "~> 3.6"
+    }
   }
 
   # Local state only. State embeds secrets; this repo is public.

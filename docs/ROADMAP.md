@@ -36,7 +36,8 @@ manager, none committed), and the budget alarm has fired a test notification.
 - [ ] Personal overlay: untracked `supabase/seed.personal.sql` (accounts,
       income sources, extra funding sources, personal tags, merchants),
       built from the tracked `.example` template and applied by hand
-- [ ] One-off import: Notion (via MCP) → CSV → `transactions` +
+- [ ] One-off import: Notion (via MCP) → raw JSON pages →
+      `scripts/import/notion_to_sql.py` → `transactions` +
       `transaction_items`, June 2026 onward
 - [ ] Read-only Postgres role for future MCP/Grafana use
 
