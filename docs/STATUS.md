@@ -35,7 +35,8 @@ seed, read-only role) written and validated against a local Supabase stack
 (`supabase db reset`). Notion import built and fully rehearsed locally:
 332 transactions (317 expense / 12 income / 3 transfer, June 2026 onward)
 reconciled row-by-row against the Notion source — counts, sums, tags,
-venues, and merchants all match.
+venues, and merchants all match. The import tooling itself is untracked
+(`scripts/import/`, gitignored — it embeds personal taxonomy values).
 
 ## Next concrete step
 
@@ -43,8 +44,9 @@ Provision the Supabase project (`infra/supabase.tf` is written; needs
 `SUPABASE_ACCESS_TOKEN` in the environment and `supabase_organization_id`
 in `terraform.tfvars`), rotate the database password out of band, then:
 `supabase link` + `supabase db push`, apply `supabase/seed.personal.sql`,
-run `scripts/import/data/import.sql`, set the read-only role's password,
-and re-run the acceptance check against production.
+run the locally generated import SQL (untracked `scripts/import/`), set the
+read-only role's password, and re-run the acceptance check against
+production.
 
 ## Open questions
 
