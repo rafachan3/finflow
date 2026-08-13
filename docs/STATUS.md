@@ -41,8 +41,9 @@ untracked (`scripts/import/`, gitignored).
 
 ## Next concrete step
 
-Prune the Notion mapping table in DATA_MODEL.md into a DECISIONS.md entry
-(Phase 1 docs graduation), then start Phase 2 (Telegram walking skeleton).
+Start Phase 2 — Telegram walking skeleton (text only, no LLM): Lambda +
+Function URL, allowlisted chat, Confirm / Edit / Discard buttons, persist
+confirmed text expenses.
 
 ## Open questions
 

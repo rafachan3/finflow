@@ -300,7 +300,23 @@ the STATUS open question — no CSV export step). Scope is 2026-06-01 onward by
 owner decision: October 2025 rows were an early trial (108 of 109 lack a
 transaction type) and May 2026 was explicitly excluded as well. Each Notion
 row becomes one transaction with one line item — Notion has no receipt
-grouping key, so no grouping is invented.
+grouping key, so no grouping is invented. Database and data-source IDs for
+the import live in untracked `CLAUDE.local.md`.
+
+Field mapping used for the import (historical; the live schema contract is
+`DATA_MODEL.md`):
+
+| Notion | Postgres |
+|---|---|
+| "Financial Future" rows | `type = 'transfer'` with a `to_account_id` — savings are not expenses |
+| `Bucket` select (per row) | `transaction_items.bucket` (per line) |
+| "Recurring expense" checkbox | `transactions.is_recurring` |
+| Funding checkbox | `transactions.funding_source_id` → `funding_sources` lookup |
+| Expense Category / Subcategory selects | `transaction_items.subcategory_id` (taxonomy v2) |
+| Tags multi-select (context, venues, and merchants mixed) | Split three ways: context → `tags` + `transaction_tags`; venue/channel → `transactions.venue_id`; merchant names → `transactions.merchant_id` |
+
+After the production import and spot-check passed, this mapping was moved
+out of `DATA_MODEL.md` so the schema contract stays present-tense.
 
 ---
 

@@ -137,23 +137,6 @@ erDiagram
   }
 ```
 
-## Migrated from Notion
-
-The system replaces a Notion "Transactions" database. The one-off import
-covers June 2026 onward. Mapping:
-
-| Notion | Postgres |
-|---|---|
-| "Financial Future" rows | `type = 'transfer'` with a `to_account_id` — savings are not expenses |
-| `Bucket` select (per row) | `transaction_items.bucket` (per line) |
-| "Recurring expense" checkbox | `transactions.is_recurring` |
-| Funding checkbox | `transactions.funding_source_id` → `funding_sources` lookup |
-| Expense Category / Subcategory selects | `transaction_items.subcategory_id` (taxonomy v2) |
-| Tags multi-select (context, venues, and merchants mixed together) | Split three ways: context → `tags` + `transaction_tags`; venue/channel → `transactions.venue_id`; merchant names → `transactions.merchant_id` |
-
-The Notion database and data-source identifiers used for the import are in
-the untracked `CLAUDE.local.md`, not here.
-
 ## DDL
 
 ```sql
