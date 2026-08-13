@@ -27,21 +27,21 @@ manager, none committed), and the budget alarm has fired a test notification.
 
 ## Phase 1 — Database foundation (≈1–2 evenings)
 
-- [ ] Supabase project provisioned via Terraform (`infra/`); Supabase CLI
+- [x] Supabase project provisioned via Terraform (`infra/`); Supabase CLI
       linked (`supabase/migrations/` — schema stays in migrations, not Terraform)
-- [ ] Migration 0001: full schema from docs/DATA_MODEL.md
-- [ ] Seed migration: the generic taxonomy template from docs/TAXONOMY.md —
+- [x] Migration 0001: full schema from docs/DATA_MODEL.md
+- [x] Seed migration: the generic taxonomy template from docs/TAXONOMY.md —
       categories, subcategories (with default buckets), item types, venues,
       context tags, and the 'self' funding source
-- [ ] Personal overlay: untracked `supabase/seed.personal.sql` (accounts,
+- [x] Personal overlay: untracked `supabase/seed.personal.sql` (accounts,
       income sources, extra funding sources, personal tags, merchants),
       built from the tracked `.example` template and applied by hand
-- [ ] One-off import: Notion (via MCP) → raw JSON pages → generated SQL →
+- [x] One-off import: Notion (via MCP) → raw JSON pages → generated SQL →
       `transactions` + `transaction_items`, June 2026 onward. The import
       tooling is untracked (`scripts/import/`, gitignored): it embeds the
       owner's personal taxonomy values and a fork starts from an empty
       database, so it has no template value
-- [ ] Read-only Postgres role for future MCP/Grafana use
+- [x] Read-only Postgres role for future MCP/Grafana use
 
 **Done when:** `select count(*) from transactions` matches the Notion row
 count for the imported date range and a spot-check of 10 random rows matches

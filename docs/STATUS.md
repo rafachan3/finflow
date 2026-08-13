@@ -3,13 +3,13 @@
 Living state of the project. Read this first; update it whenever work lands.
 
 **Last updated:** 2026-08-13
-**Current phase:** Phase 1 — Database foundation (see [ROADMAP.md](ROADMAP.md))
+**Current phase:** Phase 2 — Telegram walking skeleton (see [ROADMAP.md](ROADMAP.md))
 
 ## Phase progress
 
 - [x] Planning: architecture, roadmap, and agent context written (2026-07-12)
 - [x] Phase 0 — Repo on GitHub, accounts created, MIT license, README (2026-08-10)
-- [ ] Phase 1 — Supabase project, schema migrations, Notion history import
+- [x] Phase 1 — Supabase project, schema migrations, Notion history import (2026-08-13)
 - [ ] Phase 2 — Telegram bot walking skeleton (text only, no LLM)
 - [ ] Phase 3 — Gemini extraction (text → photo → voice)
 - [ ] Phase 4 — dbt semantic layer
@@ -22,31 +22,27 @@ Living state of the project. Read this first; update it whenever work lands.
 Phase 0 complete: public GitHub repo, MIT `LICENSE`, root `README.md`, accounts
 (AWS, Supabase, Grafana Cloud, Google AI Studio, Telegram bot) with secrets in
 a password manager, AWS hygiene (`ca-central-1`, non-root admin), and `infra/`
-with pinned providers plus a `$1/month` budget filtered to `Project=finflow`
-(plus bootstrap SSM parameter). No Supabase project/schema, migrations, or
-deployed Lambda yet.
+with pinned providers plus a `$1/month` budget filtered to `Project=finflow`.
 
-Phase 1 in progress (2026-08-13): data model v2 designed and documented —
-header/lines schema with item-level classification, taxonomy v2 in
-[TAXONOMY.md](TAXONOMY.md), public-template/personal-overlay seed split (see
-DECISIONS.md 2026-08-13 entries). Git history rewritten and force-pushed to
-remove personal references. Migrations 0001–0003 (schema, generic taxonomy
-seed, read-only role) written and validated against a local Supabase stack
-(`supabase db reset`). Notion import built and fully rehearsed locally:
-332 transactions (317 expense / 12 income / 3 transfer, June 2026 onward)
-reconciled row-by-row against the Notion source — counts, sums, tags,
-venues, and merchants all match. The import tooling itself is untracked
-(`scripts/import/`, gitignored — it embeds personal taxonomy values).
+Phase 1 complete (2026-08-13): data model v2 — header/lines schema with
+item-level classification, taxonomy v2 in [TAXONOMY.md](TAXONOMY.md),
+public-template/personal-overlay seed split (see DECISIONS.md 2026-08-13
+entries). Git history rewritten and force-pushed to remove personal
+references. Supabase project provisioned via Terraform (`ca-central-1`),
+database password rotated out of band. Migrations 0001–0004 (schema, generic
+taxonomy seed, read-only role, accounts.kind check) applied via
+`supabase db push`. Personal seed overlay and the Notion import applied
+through the pooler: 332 transactions (317 expense / 12 income / 3 transfer,
+2026-06-01 → 2026-08-12). Production checks pass: counts match the rehearsed
+reconciliation, zero expenses without lines, zero line-sum mismatches. Owner
+spot-checked 10 random production rows against Notion — all matched.
+Read-only role password set out of band. The import tooling remains
+untracked (`scripts/import/`, gitignored).
 
 ## Next concrete step
 
-Provision the Supabase project (`infra/supabase.tf` is written; needs
-`SUPABASE_ACCESS_TOKEN` in the environment and `supabase_organization_id`
-in `terraform.tfvars`), rotate the database password out of band, then:
-`supabase link` + `supabase db push`, apply `supabase/seed.personal.sql`,
-run the locally generated import SQL (untracked `scripts/import/`), set the
-read-only role's password, and re-run the acceptance check against
-production.
+Prune the Notion mapping table in DATA_MODEL.md into a DECISIONS.md entry
+(Phase 1 docs graduation), then start Phase 2 (Telegram walking skeleton).
 
 ## Open questions
 
