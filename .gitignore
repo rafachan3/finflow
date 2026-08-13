@@ -2,9 +2,9 @@
 .env
 .Rhistory
 
-# Machine-local agent context — never commit
-CLAUDE.local.md
-AGENTS.local.md
+# Machine-local / owner-specific context — never commit
+# (CLAUDE.local.md, AGENTS.local.md, docs/BUCKET_RULES.local.md, ...)
+*.local.md
 
 # Terraform — state and vars contain secrets; never commit
 *.tfstate

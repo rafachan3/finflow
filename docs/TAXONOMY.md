@@ -158,3 +158,10 @@ nullable `default_bucket` that seeds the extraction prompt's suggestion;
 the human confirms or overrides per line. Transfers to savings or
 investment accounts are not expenses and have no bucket — they are
 `type = 'transfer'` transactions.
+
+The hints here are generic priors only. An owner's actual needs/wants
+rulings are personal by nature (what counts as a "reasonable basic
+alternative" differs per person), so they belong in an untracked
+`docs/BUCKET_RULES.local.md`, not in this file or the seed. That file, when
+present, is the authority the classification step applies; the hints never
+override it.

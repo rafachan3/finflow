@@ -301,3 +301,21 @@ owner decision: October 2025 rows were an early trial (108 of 109 lack a
 transaction type) and May 2026 was explicitly excluded as well. Each Notion
 row becomes one transaction with one line item — Notion has no receipt
 grouping key, so no grouping is invented.
+
+---
+
+## 2026-08-13 — Needs/wants rulings are personal and live untracked
+
+The owner's needs/wants classification guide (the 50/30/20 bucket test,
+per-domain rulings, tag overrides, default-to-wants on missing context) is
+deliberately not generalizable, so it lives in the untracked
+`docs/BUCKET_RULES.local.md` — same pattern as the personal seed overlay.
+Tracked `default_bucket` hints stay generic priors; where they disagree with
+the personal guide (e.g. Financial fees), the guide wins at classification
+time. A dedicated bucket-classifier subagent that applies the guide is
+planned for the Phase 6 agent layer.
+
+**Ruled out:** encoding the personal rulings in the tracked seed or
+TAXONOMY.md (not fork-appropriate, and several rulings are item-level, not
+subcategory-level); reworking `default_bucket` values to match the personal
+guide (hints are priors, not verdicts — churn with no behavioral gain).

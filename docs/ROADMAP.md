@@ -115,6 +115,9 @@ one sample month.
 
 - [ ] `.mcp.json`: Postgres MCP server with the read-only role
 - [ ] `.claude/agents/`: data-analyst, sql-runner, spend-coach subagents
+- [ ] Bucket-classifier subagent: applies the owner's untracked needs/wants
+      ruleset (`docs/BUCKET_RULES.local.md`) to unclassified lines; it is the
+      only agent that assigns buckets
 - [ ] Test battery: 10 real questions ("how much did I spend on eating out
       last month vs my 3-month average?") answered correctly against marts
 
