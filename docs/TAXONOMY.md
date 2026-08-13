@@ -30,10 +30,10 @@ item type answers a different one.
 |---|---|
 | Bills | Internet and phone · Utilities · Other bills |
 | Food and drink | Groceries · Restaurants · Takeout / Quick Service · Delivery · Bars and nightlife · Other food and drink |
-| Health and wellness | Fitness · Medical · Hygiene · Other health |
+| Health and wellness | Fitness · Medical · Personal care · Other health |
 | Housing | Rent · Home and renter's insurance · Mortgage · Household supplies · Household goods · Laundry · Property taxes · Other housing |
 | Finances | Financial fees · Taxes · Personal loans · Student loans · Other finances |
-| Personal | Beauty · Entertainment and activities · Hobbies · Bets · Pets · Other personal |
+| Personal | Entertainment and activities · Hobbies · Bets · Pets · Other personal |
 | Career and professional | Education and training · Software and digital · Equipment · Certifications and career · Other career and professional |
 | Shopping | Clothing and accessories · Gifts · Memberships · Other shopping |
 | Transportation | Auto insurance · Maintenance · Car loan payments · Gas, parking and tolls · Public transit · Taxis and rideshares · Other transportation |
@@ -42,6 +42,11 @@ item type answers a different one.
 
 Definitions that need more than their name:
 
+- **Personal care** — hygiene and grooming products and services for the
+  body (toothpaste, deodorant, shampoo, cleanser, sunscreen, haircuts,
+  cosmetics, styling). Lives under Health and wellness so all personal-care
+  spend rolls up in one place. Needs vs wants is decided per line, not by
+  this subcategory — `default_bucket` is null on purpose.
 - **Household supplies** — consumed and replaced regularly: paper towels,
   garbage bags, cleaning solution, sponges.
 - **Household goods** — physical things for the home expected to last:

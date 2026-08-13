@@ -335,3 +335,25 @@ planned for the Phase 6 agent layer.
 TAXONOMY.md (not fork-appropriate, and several rulings are item-level, not
 subcategory-level); reworking `default_bucket` values to match the personal
 guide (hints are priors, not verdicts — churn with no behavioral gain).
+
+---
+
+## 2026-08-13 — Merge Hygiene + Beauty into Personal care
+
+Hygiene (under Health and wellness) and Beauty (under Personal) correlated
+perfectly with Bucket in the Notion history — every Hygiene row was Needs,
+every Beauty row was Wants — which made the split redundant with the
+per-line bucket and split personal-care spend across two parents so it
+could not roll up in one place.
+
+Merged both into a single subcategory **Personal care** under Health and
+wellness (`default_bucket` null). Existing `transaction_items.bucket`
+values are left untouched: the merged subcategory deliberately mixes Needs
+and Wants. Applied via forward migration 0005; seed migration 0002 is not
+rewritten (migrations are append-only after merge). Notion left alone for
+a separate pass.
+
+**Ruled out:** keeping the split and relying on a cross-category rollup
+view; encoding Need/Want in the subcategory name; rewriting Notion select
+option lists wholesale (risk of wiping unrelated options — record-level
+writes only, when Notion is updated).
