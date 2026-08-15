@@ -2,7 +2,7 @@
 
 Living state of the project. Read this first; update it whenever work lands.
 
-**Last updated:** 2026-08-13
+**Last updated:** 2026-08-15
 **Current phase:** Phase 2 — Telegram walking skeleton (see [ROADMAP.md](ROADMAP.md))
 
 ## Phase progress
@@ -48,9 +48,10 @@ updated.
 
 ## Next concrete step
 
-Apply migration 0005 with `supabase db push`, then verify Personal care line
-counts and untouched buckets. After that: Phase 2 — Telegram walking skeleton
-(text only, no LLM).
+Phase 2 design approved in session (local working notes only; not tracked).
+Locked choices live in [DECISIONS.md](DECISIONS.md) (2026-08-15) and
+[ROADMAP.md](ROADMAP.md) Phase 2. Next: implementation plan, then ship
+infra → handler → CI deploy. Migration 0005 is already applied.
 
 ## Open questions
 

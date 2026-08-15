@@ -357,3 +357,16 @@ a separate pass.
 view; encoding Need/Want in the subcategory name; rewriting Notion select
 option lists wholesale (risk of wiping unrelated options — record-level
 writes only, when Notion is updated).
+
+---
+
+## 2026-08-15 — Phase 2 quick-log uses hardcoded Other personal + wants
+
+Phase 2 Confirm must write a `transaction_items` row without Gemini. Until
+Phase 3 extraction exists, every quick-log confirmation uses subcategory
+**Other personal**, `bucket = wants`, and `item_type_id` null. Description
+and amount come from a dumb regex on the Telegram text.
+
+**Ruled out:** keyword→subcategory maps in Phase 2 (throwaway logic before
+the LLM path); using Other food and drink as the placeholder (would skew
+food stats during skeleton testing).
