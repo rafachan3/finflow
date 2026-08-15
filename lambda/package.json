@@ -1,0 +1,22 @@
+{
+  "name": "finflow-ingest",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "build": "tsc --noEmit",
+    "bundle": "esbuild src/handler.ts --bundle --platform=node --target=node22 --outfile=dist/index.js --format=cjs"
+  },
+  "dependencies": {
+    "@aws-sdk/client-ssm": "^3.800.0",
+    "pg": "^8.16.0"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "^8.10.149",
+    "@types/node": "^22.15.0",
+    "@types/pg": "^8.15.0",
+    "esbuild": "^0.25.0",
+    "typescript": "^5.8.0",
+    "vitest": "^3.1.0"
+  }
+}
