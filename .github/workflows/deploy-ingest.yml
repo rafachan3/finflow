@@ -1,0 +1,41 @@
+name: Deploy ingest Lambda
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "lambda/**"
+      - ".github/workflows/deploy-ingest.yml"
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: lambda
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: lambda/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - run: npm run bundle
+      - name: Zip bundle
+        run: (cd dist && zip -j ../ingest.zip index.js)
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_INGEST_DEPLOY_ROLE_ARN }}
+          aws-region: ca-central-1
+      - name: Update function code
+        run: |
+          aws lambda update-function-code \
+            --function-name finflow-ingest \
+            --zip-file fileb://ingest.zip
