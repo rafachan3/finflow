@@ -6,6 +6,9 @@
 # (CLAUDE.local.md, AGENTS.local.md, docs/BUCKET_RULES.local.md, ...)
 *.local.md
 
+# Agent working notes / brainstorming specs — local only, never commit
+docs/superpowers/
+
 # Terraform — state and vars contain secrets; never commit
 *.tfstate
 *.tfstate.*
