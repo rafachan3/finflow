@@ -9,3 +9,6 @@ supabase_organization_id = "your-org-slug"
 
 # Must match the GitHub repo that assumes the ingest OIDC deploy role (owner/name).
 github_repository = "your-github-user/finflow"
+# Public numeric ids from https://api.github.com/repos/<owner>/<name>
+github_owner_id = "0"
+github_repo_id  = "0"
