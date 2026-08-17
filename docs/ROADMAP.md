@@ -49,20 +49,20 @@ Notion exactly.
 
 ## Phase 2 — Telegram walking skeleton, no LLM (≈2 evenings)
 
-- [ ] Terraform: Lambda + Function URL, IAM execution role, CloudWatch log
+- [x] Terraform: Lambda + Function URL, IAM execution role, CloudWatch log
       group, SSM `SecureString` parameters (values written out of band, never
       as Terraform vars). Function ships with a bootstrap stub and
       `ignore_changes = [filename, source_code_hash]`
-- [ ] Terraform: GitHub OIDC provider + deploy role scoped to
+- [x] Terraform: GitHub OIDC provider + deploy role scoped to
       `lambda:UpdateFunctionCode` on this function only — no long-lived keys
-- [ ] Deploy workflow: push to `main` → esbuild bundle → zip →
+- [x] Deploy workflow: push to `main` → esbuild bundle → zip →
       `aws lambda update-function-code`
-- [ ] Telegram webhook registered against the Function URL with a secret token
-- [ ] Chat-ID allowlist (owner only), chat ID read from Parameter Store
-- [ ] Text-only quick-log format: `12.50 lunch chipotle` → parsed with a dumb
+- [x] Telegram webhook registered against the Function URL with a secret token
+- [x] Chat-ID allowlist (owner only), chat ID read from Parameter Store
+- [x] Text-only quick-log format: `12.50 lunch chipotle` → parsed with a dumb
       regex → `ingestions` row → reply with Confirm / Discard buttons
-- [ ] Confirm button → transaction inserted; Discard → status flip
-- [ ] Idempotency verified (replay the same update, no duplicate)
+- [x] Confirm button → transaction inserted; Discard → status flip
+- [x] Idempotency verified (replay the same update, no duplicate)
 
 **Done when:** a text message becomes a confirmed row in Postgres from your
 phone, the bot survives a webhook retry without duplicating, and a subsequent

@@ -2,8 +2,8 @@
 
 Living state of the project. Read this first; update it whenever work lands.
 
-**Last updated:** 2026-08-15
-**Current phase:** Phase 2 — Telegram walking skeleton (see [ROADMAP.md](ROADMAP.md))
+**Last updated:** 2026-08-17
+**Current phase:** Phase 3 — Gemini extraction (see [ROADMAP.md](ROADMAP.md))
 
 ## Phase progress
 
@@ -11,7 +11,7 @@ Living state of the project. Read this first; update it whenever work lands.
 - [x] Phase 0 — Repo on GitHub, accounts created, MIT license, README (2026-08-10)
 - [x] Phase 1 — Supabase project, schema migrations, Notion history import (2026-08-13)
 - [x] Taxonomy tweak — Hygiene + Beauty → Personal care (Health and wellness); buckets untouched (2026-08-13)
-- [ ] Phase 2 — Telegram bot walking skeleton (text only, no LLM)
+- [x] Phase 2 — Telegram bot walking skeleton (text only, no LLM) (2026-08-17)
 - [ ] Phase 3 — Gemini extraction (text → photo → voice)
 - [ ] Phase 4 — dbt semantic layer
 - [ ] Phase 5 — Grafana dashboards
@@ -46,12 +46,22 @@ unchanged. Contract updated in [TAXONOMY.md](TAXONOMY.md); personal bucket
 guide updated in untracked `docs/BUCKET_RULES.local.md`. Notion not yet
 updated.
 
+Phase 2 complete (2026-08-17): `finflow-ingest` Lambda + Function URL in
+`ca-central-1`; SSM shells for bot token, webhook secret, chat allowlist, and
+pooler DB URL (values out of band); GitHub OIDC deploy role + Actions workflow
+(`Deploy ingest Lambda` on push to `main`). Ingest handler: text quick-log
+regex → `ingestions` pending → Telegram Confirm/Discard; Confirm writes
+`transactions` + one `transaction_items` line (Phase 2 placeholder: Other
+personal / wants). Webhook registered; phone smoke test passed (2026-08-17:
+`12.50 lunch chipotle` confirmed in Postgres). OIDC trust policy updated for
+GitHub immutable repo-id `sub` claims (DECISIONS.md 2026-08-17).
+
 ## Next concrete step
 
-Phase 2 design approved in session (local working notes only; not tracked).
-Locked choices live in [DECISIONS.md](DECISIONS.md) (2026-08-15) and
-[ROADMAP.md](ROADMAP.md) Phase 2. Next: implementation plan, then ship
-infra → handler → CI deploy. Migration 0005 is already applied.
+Phase 3 — Gemini text extraction: structured output, taxonomy from DB, then S3
++ photo/voice per [ROADMAP.md](ROADMAP.md). Optional hygiene: `terraform apply`
+in `infra/` if plan shows only Lambda `description` drift from manual
+`update-function-configuration` SSM reloads (not code/hash drift).
 
 ## Open questions
 

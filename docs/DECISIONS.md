@@ -370,3 +370,17 @@ and amount come from a dumb regex on the Telegram text.
 **Ruled out:** keyword→subcategory maps in Phase 2 (throwaway logic before
 the LLM path); using Other food and drink as the placeholder (would skew
 food stats during skeleton testing).
+
+---
+
+## 2026-08-17 — GitHub OIDC trust policy accepts immutable repo-id `sub` claims
+
+Repos created after 2026-07-15 emit OIDC subjects like
+`repo:owner@OWNER_ID/name@REPO_ID:ref:refs/heads/main`. The Phase 2 deploy
+role originally trusted only `repo:owner/name:ref:…`, so Actions failed with
+`AssumeRoleWithWebIdentity`. Trust policy now lists both legacy and
+immutable-id patterns; owner/repo ids are Terraform variables (public GitHub
+API values).
+
+**Ruled out:** requiring every fork to discover ids by trial deploy; using
+long-lived AWS access keys in GitHub instead of OIDC.
