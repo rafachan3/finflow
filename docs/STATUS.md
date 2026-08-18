@@ -12,7 +12,7 @@ Living state of the project. Read this first; update it whenever work lands.
 - [x] Phase 1 — Supabase project, schema migrations, Notion history import (2026-08-13)
 - [x] Taxonomy tweak — Hygiene + Beauty → Personal care (Health and wellness); buckets untouched (2026-08-13)
 - [x] Phase 2 — Telegram bot walking skeleton (text only, no LLM) (2026-08-17)
-- [ ] Phase 3 — Gemini extraction (text → photo → voice) — **3a phone-tested 2026-08-17**
+- [ ] Phase 3 — Gemini extraction (text → photo → voice) — **3a on main, Actions deploy green 2026-08-17**
 - [ ] Phase 4 — dbt semantic layer
 - [ ] Phase 5 — Grafana dashboards
 - [ ] Phase 6 — Claude analytics agent (subagents + Postgres MCP)
@@ -62,13 +62,14 @@ checks; Confirm writes classified lines. Lambda timeout 30s. SSM:
 `/finflow/gemini/api-key`, `/finflow/bucket-rules` (Advanced). Phone smoke
 test: `12.50 lunch chipotle` → Takeout / Quick Service / wants (not Other
 personal); Chipotle not in merchant lookup so `merchant_id` null as designed.
-Photos still reply "next slice". Deployed via `update-function-code` from
-the branch; merge to `main` so Actions owns the next zip.
+Photos still reply "next slice". Merged as #5; `Deploy ingest Lambda` on
+`main` passed (run 32088245837), so Actions owns the zip.
 
 ## Next concrete step
 
-Commit and merge 3a to `main` so GitHub Actions deploys the same zip. Then
-Phase 3b: S3 + receipt photos.
+Phase 3b, first slice: Terraform S3 receipts bucket (Block Public Access,
+default encryption, Glacier IR at 1 year) + `s3:PutObject` on the Lambda
+role. Then receipt photos.
 
 ## Open questions
 
