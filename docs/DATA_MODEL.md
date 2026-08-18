@@ -312,6 +312,13 @@ amount:
   "usage": {
     "extractor": { "input": 1200, "output": 180 },
     "bucket": { "input": 800, "output": 40 }
+  },
+  "meta": {
+    "model": "gemini-3.6-flash",
+    "extractor_sha256": "…64 hex…",
+    "taxonomy_sha256": "…64 hex…",
+    "bucket_sha256": "…64 hex…",
+    "rules_sha256": "…64 hex…"
   }
 }
 ```
@@ -322,6 +329,15 @@ specialist runs. Tags are transaction-level, not per line.
 
 Low confidence is stored on the payload for later Edit buttons. Phase 3a
 still only offers Confirm / Discard; failed mechanical checks omit Confirm.
+
+`meta` identifies what the model saw: pin name, plus sha256 of the static
+extractor instructions (today's calendar date is a placeholder so the hash
+does not rotate daily), the live taxonomy blob, the static bucket
+instructions, and the rules string actually sent. Bucket/rules hashes are
+omitted when the bucket call is skipped (income/transfer). This is not an
+accuracy label. A Phase 4 mart can group token cost (and later Edit diffs)
+by these hashes. Do not use a manual prompt-version string — it will not
+bump when SSM rules change.
 
 ## Invariants
 

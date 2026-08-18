@@ -14,6 +14,14 @@ export type ExtractionItem = {
 
 export type TokenUsage = { input: number; output: number };
 
+export type ExtractionMeta = {
+  model: string;
+  extractor_sha256: string;
+  taxonomy_sha256: string;
+  bucket_sha256?: string;
+  rules_sha256?: string;
+};
+
 export type Extraction = {
   type: TxType;
   amount: Money;
@@ -30,6 +38,7 @@ export type Extraction = {
   items: ExtractionItem[];
   confidence: number;
   usage?: { extractor?: TokenUsage; bucket?: TokenUsage };
+  meta?: ExtractionMeta;
 };
 
 export type TaxonomySnapshot = {

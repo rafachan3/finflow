@@ -84,7 +84,9 @@ skeleton everything else hangs on. Ship the smallest loop first.*
       merchant, date; image archived to S3, key in `ingestions.media_path`
 - [ ] 3c. Voice notes: Telegram OGG → Gemini audio input → same pipeline
 - [ ] Edit flow: reply buttons let you fix category/amount before confirm
-- [ ] Log Gemini token usage per request into `ingestions.extraction`
+- [x] Log Gemini token usage per request into `ingestions.extraction`,
+      plus `meta` (model + sha256 of extractor, taxonomy, bucket prompt,
+      and rules). No eval mart until Phase 4.
 
 **Done when:** photo of a real receipt and a voice note each produce a correct
 confirmed transaction with ≤1 manual correction on average, and the image is

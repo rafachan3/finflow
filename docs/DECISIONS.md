@@ -425,3 +425,17 @@ justified at this volume. Revisit only if receipts are systematically misread.
 item-type Gemini call; Claude or DeepSeek on ingest; storing `transactions`
 before Confirm; making `ingestions` wait until Confirm (breaks webhook
 idempotency).
+
+---
+
+## 2026-08-17 — Extraction `meta` hashes, not a prompt version string
+
+Each `ingestions.extraction` stores `usage` (already) and `meta`: Gemini
+model name plus sha256 of (1) static extractor instructions, (2) the
+taxonomy blob sent, (3) static bucket instructions, (4) the rules string
+sent. Today's date is a placeholder in the extractor hash so daily logs
+do not look like new experiments. Confirm is not an accuracy label.
+
+**Ruled out:** a manual `PROMPT_VERSION = "3a"` constant (forgotten bumps;
+SSM `BUCKET_RULES` can change with no deploy); an eval mart or MLflow in
+Phase 3 (dbt does not exist yet; Edit diffs do not exist yet).

@@ -104,6 +104,65 @@ describe("extractFromText", () => {
     expect(result.items[0].bucket_why).toBe("takeout");
     expect(result.usage?.extractor).toEqual({ input: 100, output: 40 });
     expect(result.usage?.bucket).toEqual({ input: 50, output: 10 });
+    expect(result.meta?.model).toBe("gemini-3.6-flash");
+    expect(result.meta?.extractor_sha256).toMatch(/^[0-9a-f]{64}$/);
+    expect(result.meta?.taxonomy_sha256).toMatch(/^[0-9a-f]{64}$/);
+    expect(result.meta?.bucket_sha256).toMatch(/^[0-9a-f]{64}$/);
+    expect(result.meta?.rules_sha256).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it("hashes prompt text, not today's date, and splits taxonomy from rules", async () => {
+    const mockPair = () =>
+      vi
+        .fn()
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => geminiJson(extracted, 100, 40),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () =>
+            geminiJson(
+              { buckets: [{ bucket: "wants", why: "takeout" }] },
+              50,
+              10,
+            ),
+        });
+
+    const run = async (
+      fetchMock: ReturnType<typeof vi.fn>,
+      extra: Partial<{
+        today: string;
+        bucketRules: string;
+        taxonomy: TaxonomySnapshot;
+      }>,
+    ) => {
+      vi.stubGlobal("fetch", fetchMock);
+      return extractFromText({
+        apiKey: "test-key",
+        text: "12.50 lunch chipotle",
+        taxonomy: extra.taxonomy ?? taxonomy,
+        bucketRules: extra.bucketRules ?? "Takeout is wants.",
+        today: extra.today ?? "2026-08-17",
+      });
+    };
+
+    const a = await run(mockPair(), { today: "2026-08-17" });
+    vi.unstubAllGlobals();
+    const b = await run(mockPair(), { today: "2026-08-18" });
+    vi.unstubAllGlobals();
+    const c = await run(mockPair(), { bucketRules: "Takeout is needs." });
+    vi.unstubAllGlobals();
+    const d = await run(mockPair(), {
+      taxonomy: { ...taxonomy, merchants: ["Chipotle", "McDonald's"] },
+    });
+
+    expect(a.meta?.extractor_sha256).toBe(b.meta?.extractor_sha256);
+    expect(a.meta?.taxonomy_sha256).toBe(b.meta?.taxonomy_sha256);
+    expect(a.meta?.rules_sha256).not.toBe(c.meta?.rules_sha256);
+    expect(a.meta?.extractor_sha256).toBe(c.meta?.extractor_sha256);
+    expect(a.meta?.taxonomy_sha256).not.toBe(d.meta?.taxonomy_sha256);
+    expect(a.meta?.extractor_sha256).toBe(d.meta?.extractor_sha256);
   });
 
   it("skips the bucket call for income", async () => {
@@ -134,6 +193,11 @@ describe("extractFromText", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(result.items).toEqual([]);
     expect(result.type).toBe("income");
+    expect(result.meta?.model).toBe("gemini-3.6-flash");
+    expect(result.meta?.extractor_sha256).toMatch(/^[0-9a-f]{64}$/);
+    expect(result.meta?.taxonomy_sha256).toMatch(/^[0-9a-f]{64}$/);
+    expect(result.meta?.bucket_sha256).toBeUndefined();
+    expect(result.meta?.rules_sha256).toBeUndefined();
   });
 
   it("sends the API key in a header, not the URL", async () => {
