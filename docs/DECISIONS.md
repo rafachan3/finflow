@@ -384,3 +384,44 @@ API values).
 
 **Ruled out:** requiring every fork to discover ids by trial deploy; using
 long-lived AWS access keys in GitHub instead of OIDC.
+
+---
+
+## 2026-08-17 — Phase 3a: two Gemini specialists on the ingest path
+
+Natural-language text (all of it — the Phase 2 regex is gone) is extracted by
+**two sequential Gemini Flash free-tier calls** inside the existing Lambda, not
+one combined prompt and not a Claude Code subagent on the webhook.
+
+1. **Extractor** — facts + taxonomy (category, subcategory, `item_type`). No
+   bucket. Taxonomy is loaded live from Postgres.
+2. **Bucket specialist** — `docs/BUCKET_RULES.local.md` injected from SSM.
+   Assigns `needs` / `wants` plus a short why.
+
+Confirm still required. `ingestions` pending is written only after mechanical
+checks pass (line amounts sum in integer cents, names exist in taxonomy).
+`transactions` is written only on Confirm. The Telegram preview shows every
+field that will land in the ledger, including tags, venue, funding, and lines.
+
+`item_type` stays on the extractor: it is the same TAXONOMY.md contract as
+subcategory, not a third specialist. Photos, voice, S3, and Edit buttons stay
+later in Phase 3.
+
+Phase 6's Claude `bucket-classifier` is the **same role on a different
+runtime**: on-demand backfill / explain / owner-requested reclassify. It is
+not on the Telegram hot path and does not silently overwrite confirmed
+buckets.
+
+**Model:** `gemini-3.6-flash` (free). `gemini-2.5-flash` 404s for new API
+keys ("no longer available to new users"). Paid Flash and Pro were considered;
+paying does not change the model on free vs paid Flash, and Pro is not
+justified at this volume. Revisit only if receipts are systematically misread.
+
+**SSM:** `/finflow/gemini/api-key` (standard SecureString) and
+`/finflow/bucket-rules` (**Advanced** SecureString). The local rules file is
+~6.1KB; standard parameters cap at 4KB. Advanced is $0.05/param/month.
+
+**Ruled out:** stuffing bucket rules into the extractor prompt; a third
+item-type Gemini call; Claude or DeepSeek on ingest; storing `transactions`
+before Confirm; making `ingestions` wait until Confirm (breaks webhook
+idempotency).

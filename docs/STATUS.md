@@ -12,7 +12,7 @@ Living state of the project. Read this first; update it whenever work lands.
 - [x] Phase 1 — Supabase project, schema migrations, Notion history import (2026-08-13)
 - [x] Taxonomy tweak — Hygiene + Beauty → Personal care (Health and wellness); buckets untouched (2026-08-13)
 - [x] Phase 2 — Telegram bot walking skeleton (text only, no LLM) (2026-08-17)
-- [ ] Phase 3 — Gemini extraction (text → photo → voice)
+- [ ] Phase 3 — Gemini extraction (text → photo → voice) — **3a phone-tested 2026-08-17**
 - [ ] Phase 4 — dbt semantic layer
 - [ ] Phase 5 — Grafana dashboards
 - [ ] Phase 6 — Claude analytics agent (subagents + Postgres MCP)
@@ -56,12 +56,19 @@ personal / wants). Webhook registered; phone smoke test passed (2026-08-17:
 `12.50 lunch chipotle` confirmed in Postgres). OIDC trust policy updated for
 GitHub immutable repo-id `sub` claims (DECISIONS.md 2026-08-17).
 
+Phase 3a complete (2026-08-17): all text through Gemini `gemini-3.6-flash`
+(free); extractor then bucket specialist; full preview + cents/taxonomy
+checks; Confirm writes classified lines. Lambda timeout 30s. SSM:
+`/finflow/gemini/api-key`, `/finflow/bucket-rules` (Advanced). Phone smoke
+test: `12.50 lunch chipotle` → Takeout / Quick Service / wants (not Other
+personal); Chipotle not in merchant lookup so `merchant_id` null as designed.
+Photos still reply "next slice". Deployed via `update-function-code` from
+the branch; merge to `main` so Actions owns the next zip.
+
 ## Next concrete step
 
-Phase 3 — Gemini text extraction: structured output, taxonomy from DB, then S3
-+ photo/voice per [ROADMAP.md](ROADMAP.md). Optional hygiene: `terraform apply`
-in `infra/` if plan shows only Lambda `description` drift from manual
-`update-function-configuration` SSM reloads (not code/hash drift).
+Commit and merge 3a to `main` so GitHub Actions deploys the same zip. Then
+Phase 3b: S3 + receipt photos.
 
 ## Open questions
 
@@ -75,7 +82,8 @@ in `infra/` if plan shows only Lambda `description` drift from manual
 - Supabase free projects pause after ~1 week of inactivity. Daily logging plus
   the nightly dbt Action should keep it warm; confirm this empirically in
   Phase 4 rather than assuming it.
-- Gemini free-tier quotas and model names change. Pin the model in code and
-  record the version in `DECISIONS.md` when chosen.
+- Gemini free-tier quotas and model names change. Pinned to `gemini-3.6-flash`
+  (DECISIONS.md 2026-08-17); `gemini-2.5-flash` rejected new keys with HTTP 404.
 - AWS fails open on cost; keep the Phase 0 `Project=finflow` budget active and
   activate the `Project` cost allocation tag in Billing when it appears.
+- One Advanced SSM parameter is $0.05/month (`/finflow/bucket-rules`).

@@ -74,8 +74,10 @@ skeleton everything else hangs on. Ship the smallest loop first.*
 
 ## Phase 3 — LLM extraction (≈2–3 evenings)
 
-- [ ] 3a. Natural-language text via Gemini structured output
-      (taxonomy injected into the prompt from the DB)
+- [x] 3a. Natural-language text via Gemini structured output: extractor
+      (taxonomy from DB, including item_type) then bucket specialist
+      (BUCKET_RULES from SSM); full Telegram preview + cents/taxonomy checks
+      before Confirm *(phone-tested 2026-08-17)*
 - [ ] Terraform: S3 receipts bucket (Block Public Access, default encryption,
       Glacier IR lifecycle at 1 year) + `s3:PutObject` on the Lambda role
 - [ ] 3b. Receipt photos: Telegram file API → Gemini vision → itemized total,
@@ -115,9 +117,10 @@ one sample month.
 
 - [ ] `.mcp.json`: Postgres MCP server with the read-only role
 - [ ] `.claude/agents/`: data-analyst, sql-runner, spend-coach subagents
-- [ ] Bucket-classifier subagent: applies the owner's untracked needs/wants
-      ruleset (`docs/BUCKET_RULES.local.md`) to unclassified lines; it is the
-      only agent that assigns buckets
+- [ ] Bucket-classifier subagent: same `docs/BUCKET_RULES.local.md` rules as
+      ingest, for backfill / explain / owner-requested reclassify. Ingest
+      already assigns buckets on Confirm; this agent does not silently
+      overwrite confirmed values
 - [ ] Test battery: 10 real questions ("how much did I spend on eating out
       last month vs my 3-month average?") answered correctly against marts
 

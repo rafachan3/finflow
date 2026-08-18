@@ -7,8 +7,14 @@ import {
   confirmIngestion,
   discardIngestion,
   insertPendingIngestion,
+  loadTaxonomy,
 } from "./db.js";
-import { parseQuickLog } from "./parse.js";
+import {
+  formatPreview,
+  normalizeTaxonomyNames,
+  validateExtraction,
+} from "./extraction.js";
+import { extractFromText } from "./gemini.js";
 import {
   answerCallbackQuery,
   confirmDiscardKeyboard,
@@ -20,6 +26,7 @@ type TelegramMessage = {
   message_id?: number;
   chat: TelegramChat;
   text?: string;
+  photo?: unknown[];
 };
 type TelegramCallbackQuery = {
   id: string;
@@ -32,7 +39,6 @@ type TelegramUpdate = {
   callback_query?: TelegramCallbackQuery;
 };
 
-const USAGE = "Send: 12.50 lunch chipotle";
 const CALLBACK_RE =
   /^([cd]):([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i;
 
@@ -59,41 +65,80 @@ function headerSecret(event: APIGatewayProxyEventV2): string | undefined {
   );
 }
 
+function todayToronto(now = new Date()): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Toronto",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(now);
+}
+
 async function handleMessage(
   update: TelegramUpdate,
-  botToken: string,
-  allowedChatIds: Set<number>,
+  config: Awaited<ReturnType<typeof getConfig>>,
 ): Promise<APIGatewayProxyResultV2> {
   const message = update.message!;
-  if (!allowedChatIds.has(message.chat.id)) {
+  if (!config.allowedChatIds.has(message.chat.id)) {
     return ok("ignored");
   }
-  if (!message.text) {
-    return ok("ignored");
-  }
-
-  const parsed = parseQuickLog(message.text);
-  if (!parsed) {
-    await sendMessage(botToken, message.chat.id, USAGE);
+  if (message.photo?.length) {
+    await sendMessage(
+      config.botToken,
+      message.chat.id,
+      "Photos come in the next slice. Send a text description for now.",
+    );
     return ok("ok");
   }
-
-  const inserted = await insertPendingIngestion({
-    telegramUpdateId: update.update_id,
-    rawPayload: update,
-    extraction: parsed,
-  });
-  if (inserted === "duplicate") {
-    return ok("duplicate");
+  const text = message.text?.trim();
+  if (!text) {
+    return ok("ignored");
   }
 
-  await sendMessage(
-    botToken,
-    message.chat.id,
-    `CAD ${parsed.amount} — ${parsed.description}`,
-    confirmDiscardKeyboard(inserted.id),
-  );
-  return ok("ok");
+  try {
+    const taxonomy = await loadTaxonomy();
+    const extraction = normalizeTaxonomyNames(
+      await extractFromText({
+        apiKey: config.geminiApiKey,
+        text,
+        taxonomy,
+        bucketRules: config.bucketRules,
+        today: todayToronto(),
+      }),
+      taxonomy,
+    );
+    const checks = validateExtraction(extraction, taxonomy);
+    const preview = formatPreview(extraction, checks);
+    if (!checks.ok) {
+      await sendMessage(config.botToken, message.chat.id, preview);
+      return ok("ok");
+    }
+
+    const inserted = await insertPendingIngestion({
+      telegramUpdateId: update.update_id,
+      rawPayload: update,
+      extraction,
+    });
+    if (inserted === "duplicate") {
+      return ok("duplicate");
+    }
+
+    await sendMessage(
+      config.botToken,
+      message.chat.id,
+      preview,
+      confirmDiscardKeyboard(inserted.id),
+    );
+    return ok("ok");
+  } catch (err) {
+    console.error("extract error", err);
+    await sendMessage(
+      config.botToken,
+      message.chat.id,
+      "Couldn't parse that. Try again in a sentence.",
+    );
+    return ok("ok");
+  }
 }
 
 async function handleCallback(
@@ -143,11 +188,7 @@ export async function handler(
     const update = parseUpdate(event);
 
     if (update.message) {
-      return await handleMessage(
-        update,
-        config.botToken,
-        config.allowedChatIds,
-      );
+      return await handleMessage(update, config);
     }
 
     if (update.callback_query) {
