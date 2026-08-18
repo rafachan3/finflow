@@ -9,7 +9,8 @@ flowchart TD
     subgraph ING["INGESTION"]
         TG["Telegram Bot API"]
         LM["AWS Lambda + Function URL<br/>stateless webhook"]
-        GM["Gemini Flash<br/>free tier"]
+        EX["Gemini Flash · extractor<br/>facts + taxonomy"]
+        BK["Gemini Flash · bucket specialist<br/>needs / wants"]
     end
 
     subgraph STO["STORAGE"]
@@ -30,15 +31,16 @@ flowchart TD
 
     subgraph AGT["AGENT LAYER"]
         MCP["Postgres MCP<br/>read-only role"]
-        SUB["Claude subagents<br/>data-analyst · sql-runner · spend-coach"]
+        SUB["Claude subagents<br/>data-analyst · sql-runner · spend-coach<br/>bucket-classifier"]
     end
 
     SRC --> TG --> LM
-    LM -->|"1 · persist raw"| RAW
-    LM -->|"2 · archive media"| S3
-    LM -->|"3 · extract"| GM
-    GM -->|"structured JSON"| LM
-    LM -->|"4 · reply: Confirm / Edit / Discard"| TG
+    LM -->|"1 · extract"| EX
+    EX -->|"lines, no bucket"| BK
+    BK -->|"buckets"| LM
+    LM -->|"2 · validate + persist pending"| RAW
+    LM -->|"photos later"| S3
+    LM -->|"3 · preview: Confirm / Discard"| TG
     RAW ==>|"human presses Confirm"| TX
     TX -->|"nightly GitHub Action"| STG
     STG --> MRT
@@ -47,6 +49,10 @@ flowchart TD
     MCP --> SUB
     TX -.->|"ad-hoc SQL"| SQL
 ```
+
+Phase 3a is text only (two Gemini calls, then checks, then pending). S3, photos,
+voice, and Edit buttons remain later in Phase 3. The diagram keeps those as
+future edges so the system view stays whole.
 
 `docs/SEMANTIC_LAYER.md` is the metric contract for the marts layer: both the
 dbt models and the agent read it, so numbers agree everywhere.
@@ -62,8 +68,10 @@ dbt models and the agent read it, so numbers agree everywhere.
 - Lambda's free tier is **perpetual**, not 12-month: 1M requests and 400k
   GB-seconds per month, against a workload of ~150 invocations. Ingestion
   compute is $0 indefinitely, not $0 until a trial expires.
-- The handler is intentionally thin: validate → persist raw → archive media →
-  extract → reply. All state lives in Postgres, so it stays stateless.
+- The handler is intentionally thin: authenticate → extract (two Gemini
+  specialists) → validate → persist pending → reply. Photos later insert
+  archive-media before extract. All state lives in Postgres, so it stays
+  stateless.
 - Idempotency: `ingestions.telegram_update_id` is UNIQUE; Telegram retries
   webhooks, and the unique constraint makes retries harmless.
 - Secrets (Telegram bot token, webhook secret token, chat-ID allowlist, Gemini
@@ -80,14 +88,16 @@ dbt models and the agent read it, so numbers agree everywhere.
 ### Extraction — Gemini Flash (free tier)
 - Handles images (receipts) and audio (voice notes) natively — one API for all
   three input types. Free-tier quota comfortably covers personal volume
-  (a handful of requests/day).
-- Prompt includes the live taxonomy (fetched from Postgres, contract in
-  docs/TAXONOMY.md) and requests structured JSON output matching the
-  `extraction` schema: `{type, amount, currency, date, description, merchant,
-  venue, tags[], funded_by, is_recurring, items[], confidence}` — where each
-  item carries its own subcategory, item type, and needs/wants bucket, and
-  item amounts (tax allocated proportionally) sum to the transaction amount.
-- Low confidence → the bot's reply highlights the uncertain fields for editing.
+  (a handful of requests/day). Model pinned: `gemini-3.6-flash`.
+- Two sequential structured-output calls in the Lambda, not one prompt:
+  **extractor** (facts + taxonomy, including `item_type`) then **bucket
+  specialist** (personal rules from SSM). Item type is not a third call.
+- Extractor prompt includes the live taxonomy (fetched from Postgres, contract
+  in docs/TAXONOMY.md). Output matches the `extraction` schema in
+  DATA_MODEL.md. Line amounts (tax allocated proportionally) must sum to the
+  header; that check is **code** (integer cents), not another model.
+- The bot replies with the full proposed ledger row plus check results.
+  Confirm / Discard only appear when checks pass. Edit buttons are later.
 
 ### Storage — Supabase Postgres (rows) + AWS S3 (images)
 
@@ -157,6 +167,8 @@ rationale for its shape:
   - `data-analyst` — answers questions, produces charts/tables from marts
   - `sql-runner` — translates NL → SQL against the semantic layer, read-only
   - `spend-coach` — monthly reviews: anomalies, category drift, savings rate
+  - `bucket-classifier` — same rules as ingest, for backfill / explain /
+    owner-requested reclassify only; not the Telegram hot path
 - `AGENTS.md` (imported by `CLAUDE.md`) indexes STATUS, DECISIONS, DATA_MODEL
   and SEMANTIC_LAYER, so any session rebuilds full context from a fresh clone.
   Marginal cost: $0 (existing Claude plan).

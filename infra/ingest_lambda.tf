@@ -82,7 +82,7 @@ resource "aws_lambda_function" "ingest" {
   role          = aws_iam_role.ingest.arn
   handler       = "index.handler"
   runtime       = "nodejs22.x"
-  timeout       = 15
+  timeout       = 30
 
   filename         = data.archive_file.bootstrap.output_path
   source_code_hash = data.archive_file.bootstrap.output_base64sha256
@@ -132,6 +132,28 @@ resource "aws_ssm_parameter" "telegram_allowed_chat_ids" {
 resource "aws_ssm_parameter" "supabase_database_url" {
   name  = "/finflow/supabase/database-url"
   type  = "SecureString"
+  value = "REPLACE_ME"
+
+  lifecycle {
+    ignore_changes = [value]
+  }
+}
+
+resource "aws_ssm_parameter" "gemini_api_key" {
+  name  = "/finflow/gemini/api-key"
+  type  = "SecureString"
+  value = "REPLACE_ME"
+
+  lifecycle {
+    ignore_changes = [value]
+  }
+}
+
+# Advanced: BUCKET_RULES.local.md is ~6KB; standard SSM max is 4KB.
+resource "aws_ssm_parameter" "bucket_rules" {
+  name  = "/finflow/bucket-rules"
+  type  = "SecureString"
+  tier  = "Advanced"
   value = "REPLACE_ME"
 
   lifecycle {

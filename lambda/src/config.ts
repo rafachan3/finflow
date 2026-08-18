@@ -4,12 +4,16 @@ const PARAM_BOT_TOKEN = "/finflow/telegram/bot-token";
 const PARAM_WEBHOOK_SECRET = "/finflow/telegram/webhook-secret";
 const PARAM_ALLOWED_CHAT_IDS = "/finflow/telegram/allowed-chat-ids";
 const PARAM_DATABASE_URL = "/finflow/supabase/database-url";
+const PARAM_GEMINI_API_KEY = "/finflow/gemini/api-key";
+const PARAM_BUCKET_RULES = "/finflow/bucket-rules";
 
 export type Config = {
   botToken: string;
   webhookSecret: string;
   allowedChatIds: Set<number>;
   databaseUrl: string;
+  geminiApiKey: string;
+  bucketRules: string;
 };
 
 let cached: Config | undefined;
@@ -31,6 +35,7 @@ function parseAllowedChatIds(raw: string): Set<number> {
 async function getParameter(
   client: SSMClient,
   name: string,
+  opts: { allowEmpty?: boolean } = {},
 ): Promise<string> {
   const result = await client.send(
     new GetParameterCommand({
@@ -39,21 +44,28 @@ async function getParameter(
     }),
   );
   const value = result.Parameter?.Value;
-  if (value === undefined || value === "") {
+  if (value === undefined || (!opts.allowEmpty && value === "")) {
     throw new Error(`Missing or empty SSM parameter: ${name}`);
   }
-  return value;
+  return value ?? "";
 }
 
 async function loadConfig(): Promise<Config> {
-  // Four GetParameter calls — Task 1 IAM grants ssm:GetParameter only
-  // (not GetParameters).
   const client = new SSMClient({});
-  const [botToken, webhookSecret, allowedRaw, databaseUrl] = await Promise.all([
+  const [
+    botToken,
+    webhookSecret,
+    allowedRaw,
+    databaseUrl,
+    geminiApiKey,
+    bucketRules,
+  ] = await Promise.all([
     getParameter(client, PARAM_BOT_TOKEN),
     getParameter(client, PARAM_WEBHOOK_SECRET),
     getParameter(client, PARAM_ALLOWED_CHAT_IDS),
     getParameter(client, PARAM_DATABASE_URL),
+    getParameter(client, PARAM_GEMINI_API_KEY),
+    getParameter(client, PARAM_BUCKET_RULES, { allowEmpty: true }),
   ]);
 
   return {
@@ -61,6 +73,8 @@ async function loadConfig(): Promise<Config> {
     webhookSecret,
     allowedChatIds: parseAllowedChatIds(allowedRaw),
     databaseUrl,
+    geminiApiKey,
+    bucketRules,
   };
 }
 

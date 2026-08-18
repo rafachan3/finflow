@@ -296,20 +296,32 @@ amount:
   "tags": ["Social"],
   "funded_by": "self",
   "is_recurring": false,
+  "income_source": null,
+  "to_account": null,
   "items": [
     { "description": "Burger combo", "amount": "19.55",
       "category": "Food and drink", "subcategory": "Takeout / Quick Service",
-      "item_type": "Meals & Prepared Food", "bucket": "wants" },
+      "item_type": "Meals & Prepared Food", "bucket": "wants",
+      "bucket_why": "takeout is discretionary" },
     { "description": "Coke", "amount": "8.05",
       "category": "Food and drink", "subcategory": "Takeout / Quick Service",
-      "item_type": "Non-Alcoholic Beverages", "bucket": "wants" }
+      "item_type": "Non-Alcoholic Beverages", "bucket": "wants",
+      "bucket_why": "soft drink" }
   ],
-  "confidence": 0.91
+  "confidence": 0.91,
+  "usage": {
+    "extractor": { "input": 1200, "output": 180 },
+    "bucket": { "input": 800, "output": 40 }
+  }
 }
 ```
 
-Low confidence means the bot's reply highlights the uncertain fields for
-editing before the user can confirm.
+`income_source` is required when `type` is `income`; `to_account` when `type`
+is `transfer`. Expense lines include `bucket` only after the bucket
+specialist runs. Tags are transaction-level, not per line.
+
+Low confidence is stored on the payload for later Edit buttons. Phase 3a
+still only offers Confirm / Discard; failed mechanical checks omit Confirm.
 
 ## Invariants
 

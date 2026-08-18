@@ -1,6 +1,10 @@
-import { Pool } from "pg";
+import { Pool, type PoolClient } from "pg";
 import { getConfig } from "./config.js";
-import type { QuickLog } from "./parse.js";
+import {
+  validateExtraction,
+  type Extraction,
+  type TaxonomySnapshot,
+} from "./extraction.js";
 
 let pool: Pool | undefined;
 
@@ -21,10 +25,64 @@ function isUniqueViolation(err: unknown): boolean {
   );
 }
 
+type Querier = { query: Pool["query"] };
+
+export async function loadTaxonomy(
+  db?: Querier,
+): Promise<TaxonomySnapshot> {
+  const q = db ?? (await getPool());
+  // Sequential: a PoolClient cannot safely run Promise.all on one connection.
+  const subs = await q.query<{
+    category: string;
+    name: string;
+    default_bucket: "needs" | "wants" | null;
+  }>(
+    `SELECT c.name AS category, s.name, s.default_bucket
+     FROM subcategories s
+     JOIN categories c ON c.id = s.category_id
+     ORDER BY c.name, s.name`,
+  );
+  const types = await q.query<{ category: string; name: string }>(
+    `SELECT c.name AS category, t.name
+     FROM item_types t
+     JOIN categories c ON c.id = t.category_id
+     ORDER BY c.name, t.name`,
+  );
+  const venues = await q.query<{ name: string }>(
+    `SELECT name FROM venues ORDER BY name`,
+  );
+  const tags = await q.query<{ name: string }>(
+    `SELECT name FROM tags ORDER BY name`,
+  );
+  const funding = await q.query<{ name: string }>(
+    `SELECT name FROM funding_sources ORDER BY name`,
+  );
+  const merchants = await q.query<{ name: string }>(
+    `SELECT name FROM merchants ORDER BY name`,
+  );
+  const income = await q.query<{ name: string }>(
+    `SELECT name FROM income_sources ORDER BY name`,
+  );
+  const accounts = await q.query<{ name: string }>(
+    `SELECT name FROM accounts ORDER BY name`,
+  );
+
+  return {
+    subcategories: subs.rows,
+    itemTypes: types.rows,
+    venues: venues.rows.map((r) => r.name),
+    tags: tags.rows.map((r) => r.name),
+    fundingSources: funding.rows.map((r) => r.name),
+    merchants: merchants.rows.map((r) => r.name),
+    incomeSources: income.rows.map((r) => r.name),
+    accounts: accounts.rows.map((r) => r.name),
+  };
+}
+
 export async function insertPendingIngestion(args: {
   telegramUpdateId: number;
   rawPayload: unknown;
-  extraction: QuickLog;
+  extraction: Extraction;
 }): Promise<{ id: string } | "duplicate"> {
   const db = await getPool();
   try {
@@ -57,6 +115,15 @@ export async function discardIngestion(
   return !result.rowCount ? "already_handled" : "discarded";
 }
 
+async function lookupId(
+  client: PoolClient,
+  sql: string,
+  values: unknown[],
+): Promise<number | null> {
+  const res = await client.query<{ id: number }>(sql, values);
+  return res.rows[0]?.id ?? null;
+}
+
 export async function confirmIngestion(
   ingestionId: string,
 ): Promise<"confirmed" | "already_handled"> {
@@ -68,7 +135,7 @@ export async function confirmIngestion(
     const ing = await client.query<{
       id: string;
       status: string;
-      extraction: QuickLog;
+      extraction: Extraction;
     }>(
       `SELECT id, status, extraction FROM ingestions WHERE id = $1 FOR UPDATE`,
       [ingestionId],
@@ -79,66 +146,136 @@ export async function confirmIngestion(
       return "already_handled";
     }
 
-    const row = ing.rows[0];
-
-    const extraction = row.extraction as QuickLog;
-    if (
-      !extraction ||
-      typeof extraction.amount !== "string" ||
-      typeof extraction.description !== "string"
-    ) {
+    const extraction = ing.rows[0].extraction;
+    const taxonomy = await loadTaxonomy(client);
+    const checks = validateExtraction(extraction, taxonomy);
+    if (!checks.ok) {
       await client.query("ROLLBACK");
-      throw new Error(`Ingestion ${ingestionId} has invalid extraction`);
+      throw new Error(
+        `Ingestion ${ingestionId} failed checks: ${checks.errors.join("; ")}`,
+      );
     }
 
-    const funding = await client.query<{ id: number }>(
-      `SELECT id FROM funding_sources WHERE name = 'self'`,
+    const fundingId = await lookupId(
+      client,
+      `SELECT id FROM funding_sources WHERE name = $1`,
+      [extraction.funded_by],
     );
-    if (funding.rowCount === 0) {
-      await client.query("ROLLBACK");
-      throw new Error("funding_sources row 'self' not found");
+    if (fundingId === null) {
+      throw new Error(`funding source not found: ${extraction.funded_by}`);
     }
 
-    const subcat = await client.query<{ id: number }>(
-      `SELECT id FROM subcategories WHERE name = 'Other personal'`,
-    );
-    if (subcat.rowCount === 0) {
-      await client.query("ROLLBACK");
-      throw new Error("subcategories row 'Other personal' not found");
-    }
+    const merchantId =
+      extraction.merchant === null
+        ? null
+        : await lookupId(
+            client,
+            `SELECT id FROM merchants WHERE name = $1`,
+            [extraction.merchant],
+          );
 
-    // ::text avoids node-pg Date parsing shifting the calendar day across TZ.
-    const dateRes = await client.query<{ occurred_on: string }>(
-      `SELECT (timezone('America/Toronto', now()))::date::text AS occurred_on`,
-    );
-    const occurredOn = dateRes.rows[0].occurred_on;
+    const venueId =
+      extraction.venue === null
+        ? null
+        : await lookupId(
+            client,
+            `SELECT id FROM venues WHERE name = $1`,
+            [extraction.venue],
+          );
+
+    const incomeSourceId =
+      extraction.income_source === null
+        ? null
+        : await lookupId(
+            client,
+            `SELECT id FROM income_sources WHERE name = $1`,
+            [extraction.income_source],
+          );
+
+    const toAccountId =
+      extraction.to_account === null
+        ? null
+        : await lookupId(
+            client,
+            `SELECT id FROM accounts WHERE name = $1`,
+            [extraction.to_account],
+          );
 
     const tx = await client.query<{ id: string }>(
       `INSERT INTO transactions (
          occurred_on, type, amount, currency, description,
+         merchant_id, venue_id, income_source_id, to_account_id,
          funding_source_id, is_recurring
-       ) VALUES ($1, 'expense', $2, 'CAD', $3, $4, false)
+       ) VALUES ($1, $2, $3, 'CAD', $4, $5, $6, $7, $8, $9, $10)
        RETURNING id`,
       [
-        occurredOn,
+        extraction.date,
+        extraction.type,
         extraction.amount,
         extraction.description,
-        funding.rows[0].id,
+        merchantId,
+        venueId,
+        incomeSourceId,
+        toAccountId,
+        fundingId,
+        extraction.is_recurring,
       ],
     );
     const transactionId = tx.rows[0].id;
 
-    await client.query(
-      `INSERT INTO transaction_items (
-         transaction_id, description, amount, subcategory_id, item_type_id, bucket
-       ) VALUES ($1, $2, $3, $4, null, 'wants')`,
-      [
-        transactionId,
-        extraction.description,
-        extraction.amount,
-        subcat.rows[0].id,
-      ],
-    );
+    if (extraction.type === "expense") {
+      for (const item of extraction.items) {
+        const sub = await client.query<{ id: number }>(
+          `SELECT s.id
+           FROM subcategories s
+           JOIN categories c ON c.id = s.category_id
+           WHERE c.name = $1 AND s.name = $2`,
+          [item.category, item.subcategory],
+        );
+        if (!sub.rowCount) {
+          throw new Error(
+            `subcategory not found: ${item.category} / ${item.subcategory}`,
+          );
+        }
+        let itemTypeId: number | null = null;
+        if (item.item_type) {
+          const it = await client.query<{ id: number }>(
+            `SELECT t.id
+             FROM item_types t
+             JOIN categories c ON c.id = t.category_id
+             WHERE c.name = $1 AND t.name = $2`,
+            [item.category, item.item_type],
+          );
+          itemTypeId = it.rows[0]?.id ?? null;
+        }
+        await client.query(
+          `INSERT INTO transaction_items (
+             transaction_id, description, amount, subcategory_id, item_type_id, bucket
+           ) VALUES ($1, $2, $3, $4, $5, $6)`,
+          [
+            transactionId,
+            item.description,
+            item.amount,
+            sub.rows[0].id,
+            itemTypeId,
+            item.bucket,
+          ],
+        );
+      }
+    }
+
+    for (const tag of extraction.tags) {
+      const tagId = await lookupId(
+        client,
+        `SELECT id FROM tags WHERE name = $1`,
+        [tag],
+      );
+      if (tagId === null) continue;
+      await client.query(
+        `INSERT INTO transaction_tags (transaction_id, tag_id) VALUES ($1, $2)`,
+        [transactionId, tagId],
+      );
+    }
 
     await client.query(
       `UPDATE ingestions
