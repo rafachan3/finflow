@@ -290,6 +290,7 @@ amount:
   "amount": "27.60",
   "currency": "CAD",
   "date": "2026-08-08",
+  "date_source": "stated",
   "description": "McDonald's lunch",
   "merchant": "McDonald's",
   "venue": "Fast Food",
@@ -325,7 +326,10 @@ amount:
 
 `income_source` is required when `type` is `income`; `to_account` when `type`
 is `transfer`. Expense lines include `bucket` only after the bucket
-specialist runs. Tags are transaction-level, not per line.
+specialist runs. Tags are transaction-level, not per line. `date_source` is
+`stated` (user, caption, or receipt), `today_default` (text with no date),
+`missing` (photo with no date — Confirm omitted), or `fix` (owner typed a
+date after Fix date).
 
 Low confidence is stored on the payload for later Edit buttons. Phase 3a
 still only offers Confirm / Discard; failed mechanical checks omit Confirm.
