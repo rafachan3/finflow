@@ -12,7 +12,7 @@ Living state of the project. Read this first; update it whenever work lands.
 - [x] Phase 1 — Supabase project, schema migrations, Notion history import (2026-08-13)
 - [x] Taxonomy tweak — Hygiene + Beauty → Personal care (Health and wellness); buckets untouched (2026-08-13)
 - [x] Phase 2 — Telegram bot walking skeleton (text only, no LLM) (2026-08-17)
-- [ ] Phase 3 — Gemini extraction (text → photo → voice) — **date HITL coded, migration 0006 applied; not phone-tested**
+- [ ] Phase 3 — Gemini extraction (text → photo → voice) — **date HITL phone-tested 2026-08-18**
 - [ ] Phase 4 — dbt semantic layer
 - [ ] Phase 5 — Grafana dashboards
 - [ ] Phase 6 — Claude analytics agent (subagents + Postgres MCP)
@@ -65,16 +65,18 @@ personal); Chipotle not in merchant lookup so `merchant_id` null as designed.
 Photos still reply "next slice". Merged as #5; `Deploy ingest Lambda` on
 `main` passed (run 32088245837), so Actions owns the zip.
 
-Date HITL (2026-08-18, `feat/ingest-fix-date`, not on `main` until merged):
-text with no date → today + warning; Fix date → `awaiting_date`; next text
-is the date. Extraction `meta` hashes (model + prompt/taxonomy/rules sha256)
-are stored on each row. Migration 0006 applied via `supabase db push`.
-Category/amount Edit, S3, and photos are still later.
+Date HITL (2026-08-18, #7): text with no date → today + warning; Fix date →
+`awaiting_date`; next text is the date (or “still waiting” if it is not a
+date). Phone-tested: default-today Chipotle, Fix date → yesterday wrote
+`occurred_on` 2026-08-17, `12.50 coffee` while waiting did not create a
+transaction. Extraction `meta` hashes stored per row. Migration 0006
+applied. Category/amount Edit, S3, and photos are still later.
 
 ## Next concrete step
 
-Merge and deploy `feat/ingest-fix-date` (Actions on `main`), then phone-test
-Fix date. Then Phase 3b, first slice: Terraform S3 receipts bucket.
+Phase 3b, first slice: Terraform S3 receipts bucket (Block Public Access,
+default encryption, Glacier IR at 1 year) + `s3:PutObject` on the Lambda
+role. Then receipt photos.
 
 ## Open questions
 
