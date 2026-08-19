@@ -1,9 +1,11 @@
+import { createHash } from "node:crypto";
 import {
   mergeBuckets,
   normalizeTaxonomyNames,
   type Bucket,
   type Extraction,
   type ExtractionItem,
+  type ExtractionMeta,
   type TaxonomySnapshot,
   type TokenUsage,
   type TxType,
@@ -12,6 +14,48 @@ import {
 export const GEMINI_MODEL = "gemini-3.6-flash";
 
 const ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
+
+const EXTRACTOR_STATIC_PROMPT = [
+  "You extract Canadian personal-finance transactions from a short text.",
+  "Today is YYYY-MM-DD (America/Toronto). Currency is CAD.",
+  "Amounts are strings with exactly two decimal places. Line amounts include tax and MUST sum to the header amount.",
+  "Do not assign needs/wants. Item types must belong to the same category as the subcategory.",
+  "category, subcategory, and item_type are separate fields. Never repeat the category inside subcategory or item_type. Example: category='Food and drink', subcategory='Takeout / Quick Service', item_type='Meals & Prepared Food'.",
+  "Use Other … subcategories only when nothing more specific fits.",
+  "date is YYYY-MM-DD only when the user stated a calendar date (including today, yesterday, or a month and day). If they did not, return an empty string. Never guess today's date.",
+].join("\n");
+
+const BUCKET_STATIC_PROMPT = [
+  "You assign needs or wants to each expense line.",
+  "Apply these rules. They override default_bucket hints.",
+].join("\n\n");
+
+function sha256Hex(text: string): string {
+  return createHash("sha256").update(text, "utf8").digest("hex");
+}
+
+function extractorSystem(today: string, taxonomy: TaxonomySnapshot): string {
+  return [
+    EXTRACTOR_STATIC_PROMPT.replace("YYYY-MM-DD", today),
+    taxonomyPrompt(taxonomy),
+  ].join("\n");
+}
+
+function promptMeta(
+  taxonomy: TaxonomySnapshot,
+  bucket?: { prompt: string; rules: string },
+): ExtractionMeta {
+  const meta: ExtractionMeta = {
+    model: GEMINI_MODEL,
+    extractor_sha256: sha256Hex(EXTRACTOR_STATIC_PROMPT),
+    taxonomy_sha256: sha256Hex(taxonomyPrompt(taxonomy)),
+  };
+  if (bucket) {
+    meta.bucket_sha256 = sha256Hex(bucket.prompt);
+    meta.rules_sha256 = sha256Hex(bucket.rules);
+  }
+  return meta;
+}
 
 const ITEM_PROPERTIES = {
   description: { type: "STRING" },
@@ -207,15 +251,7 @@ export async function extractFromText(args: {
   const extractor = await generateJson({
     apiKey: args.apiKey,
     schema: EXTRACTOR_SCHEMA,
-    system: [
-      "You extract Canadian personal-finance transactions from a short text.",
-      `Today is ${args.today} (America/Toronto). Currency is CAD.`,
-      "Amounts are strings with exactly two decimal places. Line amounts include tax and MUST sum to the header amount.",
-      "Do not assign needs/wants. Item types must belong to the same category as the subcategory.",
-      "category, subcategory, and item_type are separate fields. Never repeat the category inside subcategory or item_type. Example: category='Food and drink', subcategory='Takeout / Quick Service', item_type='Meals & Prepared Food'.",
-      "Use Other … subcategories only when nothing more specific fits.",
-      taxonomyPrompt(args.taxonomy),
-    ].join("\n"),
+    system: extractorSystem(args.today, args.taxonomy),
     user: args.text,
   });
 
@@ -224,6 +260,7 @@ export async function extractFromText(args: {
     args.taxonomy,
   );
   extraction.usage = { extractor: extractor.usage };
+  extraction.meta = promptMeta(args.taxonomy);
 
   if (extraction.type !== "expense" || extraction.items.length === 0) {
     return extraction;
@@ -236,11 +273,7 @@ export async function extractFromText(args: {
   const bucketRes = await generateJson({
     apiKey: args.apiKey,
     schema: BUCKET_SCHEMA,
-    system: [
-      "You assign needs or wants to each expense line.",
-      "Apply these rules. They override default_bucket hints.",
-      rules,
-    ].join("\n\n"),
+    system: [BUCKET_STATIC_PROMPT, rules].join("\n\n"),
     user: JSON.stringify(
       extraction.items.map((item, index) => ({
         index,
@@ -265,5 +298,9 @@ export async function extractFromText(args: {
     extractor: extractor.usage,
     bucket: bucketRes.usage,
   };
+  merged.meta = promptMeta(args.taxonomy, {
+    prompt: BUCKET_STATIC_PROMPT,
+    rules,
+  });
   return merged;
 }

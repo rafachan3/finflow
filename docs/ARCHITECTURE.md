@@ -40,7 +40,7 @@ flowchart TD
     BK -->|"buckets"| LM
     LM -->|"2 · validate + persist pending"| RAW
     LM -->|"photos later"| S3
-    LM -->|"3 · preview: Confirm / Discard"| TG
+    LM -->|"3 · preview: Confirm / Discard / Fix date"| TG
     RAW ==>|"human presses Confirm"| TX
     TX -->|"nightly GitHub Action"| STG
     STG --> MRT
@@ -50,8 +50,9 @@ flowchart TD
     TX -.->|"ad-hoc SQL"| SQL
 ```
 
-Phase 3a is text only (two Gemini calls, then checks, then pending). S3, photos,
-voice, and Edit buttons remain later in Phase 3. The diagram keeps those as
+Phase 3a is text only (two Gemini calls, then checks, then pending). Date HITL
+(Fix date / `awaiting_date`) is on the text path. S3, photos, voice, and
+category/amount Edit remain later in Phase 3. The diagram keeps those as
 future edges so the system view stays whole.
 
 `docs/SEMANTIC_LAYER.md` is the metric contract for the marts layer: both the
@@ -97,7 +98,9 @@ dbt models and the agent read it, so numbers agree everywhere.
   DATA_MODEL.md. Line amounts (tax allocated proportionally) must sum to the
   header; that check is **code** (integer cents), not another model.
 - The bot replies with the full proposed ledger row plus check results.
-  Confirm / Discard only appear when checks pass. Edit buttons are later.
+  Confirm / Discard / Fix date appear when checks pass. Text with no date
+  defaults to today and warns. Photos with no printed/caption date omit
+  Confirm (not wired yet). Category/amount Edit is later.
 
 ### Storage — Supabase Postgres (rows) + AWS S3 (images)
 

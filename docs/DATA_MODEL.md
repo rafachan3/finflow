@@ -81,7 +81,7 @@ erDiagram
     jsonb raw_payload
     text media_path "nullable — S3 key"
     jsonb extraction "nullable — LLM output"
-    text status "pending | confirmed | discarded"
+    text status "pending | awaiting_date | confirmed | discarded"
     uuid transaction_id FK "nullable until confirmed"
     timestamptz created_at
   }
@@ -255,7 +255,7 @@ create table ingestions (
   media_path         text,                        -- S3 object key
   extraction         jsonb,                       -- LLM structured output
   status             text not null default 'pending'
-                     check (status in ('pending','confirmed','discarded')),
+                     check (status in ('pending','awaiting_date','confirmed','discarded')),
   transaction_id     uuid references transactions(id),
   created_at         timestamptz not null default now()
 );
@@ -290,6 +290,7 @@ amount:
   "amount": "27.60",
   "currency": "CAD",
   "date": "2026-08-08",
+  "date_source": "stated",
   "description": "McDonald's lunch",
   "merchant": "McDonald's",
   "venue": "Fast Food",
@@ -312,16 +313,35 @@ amount:
   "usage": {
     "extractor": { "input": 1200, "output": 180 },
     "bucket": { "input": 800, "output": 40 }
+  },
+  "meta": {
+    "model": "gemini-3.6-flash",
+    "extractor_sha256": "…64 hex…",
+    "taxonomy_sha256": "…64 hex…",
+    "bucket_sha256": "…64 hex…",
+    "rules_sha256": "…64 hex…"
   }
 }
 ```
 
 `income_source` is required when `type` is `income`; `to_account` when `type`
 is `transfer`. Expense lines include `bucket` only after the bucket
-specialist runs. Tags are transaction-level, not per line.
+specialist runs. Tags are transaction-level, not per line. `date_source` is
+`stated` (user, caption, or receipt), `today_default` (text with no date),
+`missing` (photo with no date — Confirm omitted), or `fix` (owner typed a
+date after Fix date).
 
 Low confidence is stored on the payload for later Edit buttons. Phase 3a
 still only offers Confirm / Discard; failed mechanical checks omit Confirm.
+
+`meta` identifies what the model saw: pin name, plus sha256 of the static
+extractor instructions (today's calendar date is a placeholder so the hash
+does not rotate daily), the live taxonomy blob, the static bucket
+instructions, and the rules string actually sent. Bucket/rules hashes are
+omitted when the bucket call is skipped (income/transfer). This is not an
+accuracy label. A Phase 4 mart can group token cost (and later Edit diffs)
+by these hashes. Do not use a manual prompt-version string — it will not
+bump when SSM rules change.
 
 ## Invariants
 

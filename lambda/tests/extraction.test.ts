@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  applyDatePolicy,
   formatPreview,
   mergeBuckets,
   normalizeTaxonomyNames,
   parseCents,
+  parseDateReply,
   validateExtraction,
   type Extraction,
   type TaxonomySnapshot,
@@ -85,6 +87,59 @@ describe("parseCents", () => {
   });
 });
 
+describe("parseDateReply", () => {
+  const today = "2026-08-18";
+
+  it("accepts ISO, today, yesterday, and month-day names", () => {
+    expect(parseDateReply("2026-08-10", today)).toBe("2026-08-10");
+    expect(parseDateReply("today", today)).toBe("2026-08-18");
+    expect(parseDateReply("yesterday", today)).toBe("2026-08-17");
+    expect(parseDateReply("Aug 10", today)).toBe("2026-08-10");
+    expect(parseDateReply("August 10", today)).toBe("2026-08-10");
+  });
+
+  it("uses last year when a month-day would be in the future", () => {
+    expect(parseDateReply("Dec 20", "2026-08-18")).toBe("2025-12-20");
+  });
+
+  it("rejects a new expense or an impossible calendar day", () => {
+    expect(parseDateReply("12.50 lunch chipotle", today)).toBeNull();
+    expect(parseDateReply("2026-02-31", today)).toBeNull();
+  });
+});
+
+describe("applyDatePolicy", () => {
+  const today = "2026-08-18";
+
+  it("keeps a stated ISO date on text and photo", () => {
+    expect(applyDatePolicy({ channel: "text", extractedDate: "2026-08-10", today })).toEqual({
+      date: "2026-08-10",
+      date_source: "stated",
+      warnings: [],
+      errors: [],
+    });
+    expect(applyDatePolicy({ channel: "photo", extractedDate: "2026-08-10", today }).date_source).toBe(
+      "stated",
+    );
+  });
+
+  it("defaults text with no date to today and warns", () => {
+    const result = applyDatePolicy({ channel: "text", extractedDate: null, today });
+    expect(result.date).toBe(today);
+    expect(result.date_source).toBe("today_default");
+    expect(result.errors).toEqual([]);
+    expect(result.warnings.some((w) => /defaulted to today/i.test(w))).toBe(true);
+  });
+
+  it("does not default a photo with no date", () => {
+    const result = applyDatePolicy({ channel: "photo", extractedDate: "", today });
+    expect(result.date).toBe("");
+    expect(result.date_source).toBe("missing");
+    expect(result.errors.some((e) => /date/i.test(e))).toBe(true);
+    expect(result.warnings).toEqual([]);
+  });
+});
+
 describe("validateExtraction", () => {
   it("accepts a balanced expense with live taxonomy", () => {
     const result = validateExtraction(expense(), taxonomy);
@@ -140,6 +195,26 @@ describe("validateExtraction", () => {
     expect(
       validateExtraction(expense({ tags: ["NotATag"] }), taxonomy).ok,
     ).toBe(false);
+  });
+
+  it("warns when the date was defaulted to today and still allows confirm", () => {
+    const result = validateExtraction(
+      expense({ date: "2026-08-18", date_source: "today_default" }),
+      taxonomy,
+    );
+    expect(result.ok).toBe(true);
+    expect(result.warnings.some((w) => /defaulted to today/i.test(w))).toBe(true);
+  });
+
+  it("rejects a missing date", () => {
+    const result = validateExtraction(
+      expense({ date: "", date_source: "missing" }),
+      taxonomy,
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.errors.some((e) => /date/i.test(e))).toBe(true);
+    }
   });
 
   it("allows an unknown merchant (nullable FK)", () => {

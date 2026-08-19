@@ -12,6 +12,9 @@ vi.mock("../src/db.js", () => ({
   discardIngestion: vi.fn(),
   insertPendingIngestion: vi.fn(),
   loadTaxonomy: vi.fn(),
+  findAwaitingDateIngestion: vi.fn(),
+  setIngestionAwaitingDate: vi.fn(),
+  applyIngestionDate: vi.fn(),
 }));
 vi.mock("../src/gemini.js", () => ({
   extractFromText: vi.fn(),
@@ -19,13 +22,17 @@ vi.mock("../src/gemini.js", () => ({
 vi.mock("../src/telegram.js", () => ({
   answerCallbackQuery: vi.fn(),
   confirmDiscardKeyboard: vi.fn((id: string) => ({ confirm: id })),
+  reviewKeyboard: vi.fn((id: string) => ({ confirm: id })),
   sendMessage: vi.fn(),
 }));
 
 import { getConfig } from "../src/config.js";
 import {
+  applyIngestionDate,
+  findAwaitingDateIngestion,
   insertPendingIngestion,
   loadTaxonomy,
+  setIngestionAwaitingDate,
 } from "../src/db.js";
 import { extractFromText } from "../src/gemini.js";
 import { sendMessage } from "../src/telegram.js";
@@ -101,10 +108,12 @@ beforeEach(() => {
   vi.mocked(loadTaxonomy).mockResolvedValue(taxonomy);
   vi.mocked(extractFromText).mockResolvedValue(extraction);
   vi.mocked(insertPendingIngestion).mockResolvedValue({ id: "ing-1" });
+  vi.mocked(findAwaitingDateIngestion).mockResolvedValue(null);
 });
 
 afterEach(() => {
   vi.clearAllMocks();
+  vi.useRealTimers();
 });
 
 async function bodyOf(
@@ -140,7 +149,10 @@ describe("handler", () => {
     expect(insertPendingIngestion).toHaveBeenCalledWith(
       expect.objectContaining({
         telegramUpdateId: 9,
-        extraction,
+        extraction: expect.objectContaining({
+          date: "2026-08-17",
+          date_source: "stated",
+        }),
       }),
     );
     expect(sendMessage).toHaveBeenCalledWith(
@@ -172,6 +184,114 @@ describe("handler", () => {
     );
     const args = vi.mocked(sendMessage).mock.calls[0];
     expect(args.length).toBe(3);
+  });
+
+  it("defaults a missing Gemini date to today and warns", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-18T16:00:00Z"));
+    vi.mocked(extractFromText).mockResolvedValue({ ...extraction, date: "" });
+
+    await handler(
+      event({
+        update_id: 12,
+        message: { chat: { id: 1 }, text: "12.50 lunch chipotle" },
+      }),
+    );
+
+    expect(insertPendingIngestion).toHaveBeenCalledWith(
+      expect.objectContaining({
+        extraction: expect.objectContaining({
+          date: "2026-08-18",
+          date_source: "today_default",
+        }),
+      }),
+    );
+    expect(sendMessage).toHaveBeenCalledWith(
+      "t",
+      1,
+      expect.stringMatching(/defaulted to today/i),
+      { confirm: "ing-1" },
+    );
+  });
+
+  it("asks for a date on Fix date and does not confirm", async () => {
+    vi.mocked(setIngestionAwaitingDate).mockResolvedValue(true);
+
+    await handler(
+      event({
+        update_id: 13,
+        callback_query: {
+          id: "cb1",
+          data: "f:aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+          message: { chat: { id: 1 } },
+        },
+      }),
+    );
+
+    expect(setIngestionAwaitingDate).toHaveBeenCalledWith(
+      "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+    );
+    expect(sendMessage).toHaveBeenCalledWith(
+      "t",
+      1,
+      expect.stringMatching(/send the date/i),
+      { confirm: "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee" },
+    );
+  });
+
+  it("applies a date reply while awaiting and does not start a new extraction", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-18T16:00:00Z"));
+    vi.mocked(findAwaitingDateIngestion).mockResolvedValue({
+      id: "ing-1",
+      extraction: {
+        ...extraction,
+        date: "2026-08-18",
+        date_source: "today_default",
+      },
+    });
+    vi.mocked(applyIngestionDate).mockResolvedValue(true);
+
+    await handler(
+      event({
+        update_id: 14,
+        message: { chat: { id: 1 }, text: "yesterday" },
+      }),
+    );
+
+    expect(extractFromText).not.toHaveBeenCalled();
+    expect(applyIngestionDate).toHaveBeenCalledWith(
+      "ing-1",
+      expect.objectContaining({ date: "2026-08-17", date_source: "fix" }),
+    );
+    expect(sendMessage).toHaveBeenCalledWith(
+      "t",
+      1,
+      expect.stringContaining("2026-08-17"),
+      { confirm: "ing-1" },
+    );
+  });
+
+  it("does not treat a new expense as a date while awaiting_date", async () => {
+    vi.mocked(findAwaitingDateIngestion).mockResolvedValue({
+      id: "ing-1",
+      extraction,
+    });
+
+    await handler(
+      event({
+        update_id: 15,
+        message: { chat: { id: 1 }, text: "12.50 coffee" },
+      }),
+    );
+
+    expect(extractFromText).not.toHaveBeenCalled();
+    expect(applyIngestionDate).not.toHaveBeenCalled();
+    expect(sendMessage).toHaveBeenCalledWith(
+      "t",
+      1,
+      expect.stringMatching(/waiting for a date/i),
+    );
   });
 
   it("tells the user photos are not in this slice", async () => {

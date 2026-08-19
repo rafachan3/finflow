@@ -14,11 +14,22 @@ export type ExtractionItem = {
 
 export type TokenUsage = { input: number; output: number };
 
+export type ExtractionMeta = {
+  model: string;
+  extractor_sha256: string;
+  taxonomy_sha256: string;
+  bucket_sha256?: string;
+  rules_sha256?: string;
+};
+
+export type DateSource = "stated" | "today_default" | "missing" | "fix";
+
 export type Extraction = {
   type: TxType;
   amount: Money;
   currency: "CAD";
   date: string;
+  date_source?: DateSource;
   description: string;
   merchant: string | null;
   venue: string | null;
@@ -30,6 +41,7 @@ export type Extraction = {
   items: ExtractionItem[];
   confidence: number;
   usage?: { extractor?: TokenUsage; bucket?: TokenUsage };
+  meta?: ExtractionMeta;
 };
 
 export type TaxonomySnapshot = {
@@ -53,6 +65,144 @@ export type CheckResult =
 
 const CENTS = /^(\d+)\.(\d{2})$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
+const MONTHS: Record<string, number> = {
+  jan: 1,
+  january: 1,
+  feb: 2,
+  february: 2,
+  mar: 3,
+  march: 3,
+  apr: 4,
+  april: 4,
+  may: 5,
+  jun: 6,
+  june: 6,
+  jul: 7,
+  july: 7,
+  aug: 8,
+  august: 8,
+  sep: 9,
+  sept: 9,
+  september: 9,
+  oct: 10,
+  october: 10,
+  nov: 11,
+  november: 11,
+  dec: 12,
+  december: 12,
+};
+
+const MISSING_DATE =
+  "date missing: send YYYY-MM-DD, Aug 10, or yesterday";
+const DEFAULTED_TODAY = "date defaulted to today";
+
+export function isValidIsoDate(value: string): boolean {
+  if (!DATE.test(value)) return false;
+  const [year, month, day] = value.split("-").map(Number);
+  const dt = new Date(Date.UTC(year, month - 1, day));
+  return (
+    dt.getUTCFullYear() === year &&
+    dt.getUTCMonth() === month - 1 &&
+    dt.getUTCDate() === day
+  );
+}
+
+function isoFromUtc(dt: Date): string {
+  const year = dt.getUTCFullYear();
+  const month = String(dt.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(dt.getUTCDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function shiftIso(iso: string, days: number): string {
+  const [year, month, day] = iso.split("-").map(Number);
+  return isoFromUtc(new Date(Date.UTC(year, month - 1, day + days)));
+}
+
+function monthDayIso(
+  month: number,
+  day: number,
+  today: string,
+  year?: number,
+): string | null {
+  if (year !== undefined) {
+    const iso = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    return isValidIsoDate(iso) ? iso : null;
+  }
+  const [ty] = today.split("-").map(Number);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const thisYear = `${ty}-${pad(month)}-${pad(day)}`;
+  if (!isValidIsoDate(thisYear)) return null;
+  if (thisYear <= today) return thisYear;
+  const lastYear = `${ty - 1}-${pad(month)}-${pad(day)}`;
+  return isValidIsoDate(lastYear) ? lastYear : null;
+}
+
+/** Parse a Fix-date reply. Whole message must be a date, not an expense. */
+export function parseDateReply(text: string, today: string): string | null {
+  const raw = text.trim();
+  if (!raw) return null;
+  const lower = raw.toLowerCase();
+  if (lower === "today") return today;
+  if (lower === "yesterday") return shiftIso(today, -1);
+  if (isValidIsoDate(raw)) return raw;
+
+  const named =
+    /^(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+(\d{1,2})(?:[,\s]+(\d{4}))?$/i.exec(
+      raw,
+    );
+  if (named) {
+    const month = MONTHS[named[1].toLowerCase()];
+    const day = Number(named[2]);
+    const year = named[3] ? Number(named[3]) : undefined;
+    return monthDayIso(month, day, today, year);
+  }
+
+  const dayFirst =
+    /^(\d{1,2})\s+(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)(?:[,\s]+(\d{4}))?$/i.exec(
+      raw,
+    );
+  if (dayFirst) {
+    const day = Number(dayFirst[1]);
+    const month = MONTHS[dayFirst[2].toLowerCase()];
+    const year = dayFirst[3] ? Number(dayFirst[3]) : undefined;
+    return monthDayIso(month, day, today, year);
+  }
+
+  return null;
+}
+
+export type DatePolicy = {
+  date: string;
+  date_source: DateSource;
+  warnings: string[];
+  errors: string[];
+};
+
+export function applyDatePolicy(args: {
+  channel: "text" | "photo";
+  extractedDate: string | null | undefined;
+  today: string;
+}): DatePolicy {
+  const raw = (args.extractedDate ?? "").trim();
+  if (isValidIsoDate(raw)) {
+    return { date: raw, date_source: "stated", warnings: [], errors: [] };
+  }
+  if (args.channel === "photo") {
+    return {
+      date: "",
+      date_source: "missing",
+      warnings: [],
+      errors: [MISSING_DATE],
+    };
+  }
+  return {
+    date: args.today,
+    date_source: "today_default",
+    warnings: [DEFAULTED_TODAY],
+    errors: [],
+  };
+}
 
 export function parseCents(amount: string): number | null {
   const m = amount.match(CENTS);
@@ -108,8 +258,13 @@ export function validateExtraction(
   if (extraction.currency !== "CAD") {
     errors.push(`currency must be CAD, got ${extraction.currency}`);
   }
-  if (!DATE.test(extraction.date)) {
+  if (extraction.date_source === "missing" || extraction.date === "") {
+    errors.push(MISSING_DATE);
+  } else if (!isValidIsoDate(extraction.date)) {
     errors.push(`date must be YYYY-MM-DD, got ${extraction.date}`);
+  }
+  if (extraction.date_source === "today_default") {
+    warnings.push(DEFAULTED_TODAY);
   }
 
   const headerCents = parseCents(extraction.amount);

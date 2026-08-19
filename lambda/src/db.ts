@@ -109,10 +109,50 @@ export async function discardIngestion(
   const db = await getPool();
   const result = await db.query(
     `UPDATE ingestions SET status = 'discarded'
-     WHERE id = $1 AND status = 'pending'`,
+     WHERE id = $1 AND status IN ('pending', 'awaiting_date')`,
     [ingestionId],
   );
   return !result.rowCount ? "already_handled" : "discarded";
+}
+
+export async function findAwaitingDateIngestion(): Promise<{
+  id: string;
+  extraction: Extraction;
+} | null> {
+  const db = await getPool();
+  const result = await db.query<{ id: string; extraction: Extraction }>(
+    `SELECT id, extraction FROM ingestions
+     WHERE status = 'awaiting_date'
+     ORDER BY created_at DESC
+     LIMIT 1`,
+  );
+  return result.rows[0] ?? null;
+}
+
+export async function setIngestionAwaitingDate(
+  ingestionId: string,
+): Promise<boolean> {
+  const db = await getPool();
+  const result = await db.query(
+    `UPDATE ingestions SET status = 'awaiting_date'
+     WHERE id = $1 AND status = 'pending'`,
+    [ingestionId],
+  );
+  return Boolean(result.rowCount);
+}
+
+export async function applyIngestionDate(
+  ingestionId: string,
+  extraction: Extraction,
+): Promise<boolean> {
+  const db = await getPool();
+  const result = await db.query(
+    `UPDATE ingestions
+     SET extraction = $2::jsonb, status = 'pending'
+     WHERE id = $1 AND status = 'awaiting_date'`,
+    [ingestionId, JSON.stringify(extraction)],
+  );
+  return Boolean(result.rowCount);
 }
 
 async function lookupId(

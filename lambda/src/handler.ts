@@ -4,20 +4,27 @@ import type {
 } from "aws-lambda";
 import { getConfig } from "./config.js";
 import {
+  applyIngestionDate,
   confirmIngestion,
   discardIngestion,
+  findAwaitingDateIngestion,
   insertPendingIngestion,
   loadTaxonomy,
+  setIngestionAwaitingDate,
 } from "./db.js";
 import {
+  applyDatePolicy,
   formatPreview,
   normalizeTaxonomyNames,
+  parseDateReply,
   validateExtraction,
+  type Extraction,
 } from "./extraction.js";
 import { extractFromText } from "./gemini.js";
 import {
   answerCallbackQuery,
   confirmDiscardKeyboard,
+  reviewKeyboard,
   sendMessage,
 } from "./telegram.js";
 
@@ -40,7 +47,12 @@ type TelegramUpdate = {
 };
 
 const CALLBACK_RE =
-  /^([cd]):([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i;
+  /^([cdf]):([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i;
+
+const ASK_DATE =
+  "Send the date as YYYY-MM-DD, Aug 10, or yesterday.";
+const WAITING_DATE =
+  "Still waiting for a date for the previous item. Send YYYY-MM-DD, Aug 10, or yesterday — or tap Discard.";
 
 function ok(body: string): APIGatewayProxyResultV2 {
   return { statusCode: 200, body };
@@ -74,6 +86,60 @@ function todayToronto(now = new Date()): string {
   }).format(now);
 }
 
+function withDatePolicy(extraction: Extraction, today: string): Extraction {
+  const policy = applyDatePolicy({
+    channel: "text",
+    extractedDate: extraction.date,
+    today,
+  });
+  return {
+    ...extraction,
+    date: policy.date,
+    date_source: policy.date_source,
+  };
+}
+
+async function handleAwaitingDate(
+  text: string,
+  chatId: number,
+  botToken: string,
+  awaiting: { id: string; extraction: Extraction },
+): Promise<APIGatewayProxyResultV2> {
+  const today = todayToronto();
+  const parsed = parseDateReply(text, today);
+  if (!parsed) {
+    await sendMessage(botToken, chatId, WAITING_DATE);
+    return ok("ok");
+  }
+
+  const extraction: Extraction = {
+    ...awaiting.extraction,
+    date: parsed,
+    date_source: "fix",
+  };
+  const taxonomy = await loadTaxonomy();
+  const checks = validateExtraction(extraction, taxonomy);
+  const preview = formatPreview(extraction, checks);
+  if (!checks.ok) {
+    await sendMessage(botToken, chatId, preview);
+    return ok("ok");
+  }
+
+  const applied = await applyIngestionDate(awaiting.id, extraction);
+  if (!applied) {
+    await sendMessage(botToken, chatId, "Already handled.");
+    return ok("ok");
+  }
+
+  await sendMessage(
+    botToken,
+    chatId,
+    preview,
+    confirmDiscardKeyboard(awaiting.id),
+  );
+  return ok("ok");
+}
+
 async function handleMessage(
   update: TelegramUpdate,
   config: Awaited<ReturnType<typeof getConfig>>,
@@ -95,17 +161,31 @@ async function handleMessage(
     return ok("ignored");
   }
 
+  const awaiting = await findAwaitingDateIngestion();
+  if (awaiting) {
+    return await handleAwaitingDate(
+      text,
+      message.chat.id,
+      config.botToken,
+      awaiting,
+    );
+  }
+
   try {
+    const today = todayToronto();
     const taxonomy = await loadTaxonomy();
-    const extraction = normalizeTaxonomyNames(
-      await extractFromText({
-        apiKey: config.geminiApiKey,
-        text,
+    const extraction = withDatePolicy(
+      normalizeTaxonomyNames(
+        await extractFromText({
+          apiKey: config.geminiApiKey,
+          text,
+          taxonomy,
+          bucketRules: config.bucketRules,
+          today,
+        }),
         taxonomy,
-        bucketRules: config.bucketRules,
-        today: todayToronto(),
-      }),
-      taxonomy,
+      ),
+      today,
     );
     const checks = validateExtraction(extraction, taxonomy);
     const preview = formatPreview(extraction, checks);
@@ -165,6 +245,21 @@ async function handleCallback(
   if (action === "c") {
     const result = await confirmIngestion(ingestionId);
     ack = result === "confirmed" ? "Saved." : "Already handled.";
+  } else if (action === "f") {
+    const started = await setIngestionAwaitingDate(ingestionId);
+    ack = started ? "Send the date." : "Already handled.";
+    await answerCallbackQuery(botToken, cb.id, ack);
+    if (started) {
+      await sendMessage(
+        botToken,
+        chatId,
+        ASK_DATE,
+        reviewKeyboard(ingestionId, { confirm: false }),
+      );
+    } else {
+      await sendMessage(botToken, chatId, ack);
+    }
+    return ok("ok");
   } else {
     const result = await discardIngestion(ingestionId);
     ack = result === "discarded" ? "Discarded." : "Already handled.";
