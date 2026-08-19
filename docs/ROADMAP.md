@@ -85,7 +85,7 @@ skeleton everything else hangs on. Ship the smallest loop first.*
 - [ ] 3c. Voice notes: Telegram OGG → Gemini audio input → same pipeline
 - [x] Date HITL: text with no date defaults to today (warning); photo with
       no date blocks Confirm; Fix date → `ingestions.status = awaiting_date`
-      *(migration 0006 applied 2026-08-18; phone-test after this branch deploys)*
+      *(phone-tested 2026-08-18)*
 - [ ] Edit flow: reply buttons let you fix category/amount before confirm
       (date-only Fix date already shipped)
 - [x] Log Gemini token usage per request into `ingestions.extraction`,
