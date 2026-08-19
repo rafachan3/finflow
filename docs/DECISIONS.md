@@ -439,3 +439,23 @@ do not look like new experiments. Confirm is not an accuracy label.
 **Ruled out:** a manual `PROMPT_VERSION = "3a"` constant (forgotten bumps;
 SSM `BUCKET_RULES` can change with no deploy); an eval mart or MLflow in
 Phase 3 (dbt does not exist yet; Edit diffs do not exist yet).
+
+---
+
+## 2026-08-18 — Date HITL: default today on text, Fix date before Confirm
+
+Backdated logs and receipts need a real `occurred_on`, not silent "today."
+Option C: **text** with no stated date defaults to today (America/Toronto)
+and the preview warns `date defaulted to today`. **Photos** with no printed
+date and no caption date omit Confirm (policy is in code; photos still
+stubbed). Gemini must not invent today; empty date is defaulted in Lambda.
+
+A stated date in the message wins. Before Confirm, **Fix date** sets
+`ingestions.status` to `awaiting_date`; the next text is a date (`YYYY-MM-DD`,
+`yesterday`, `Aug 10`), not a new expense. `date_source` on the extraction
+JSON is `stated` | `today_default` | `missing` | `fix`. Category/amount Edit
+stays later.
+
+**Ruled out:** never defaulting text (every same-day Chipotle would need a
+date); a full Edit flow in this slice; treating Confirm as extraction
+accuracy.

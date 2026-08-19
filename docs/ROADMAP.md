@@ -83,7 +83,11 @@ skeleton everything else hangs on. Ship the smallest loop first.*
 - [ ] 3b. Receipt photos: Telegram file API → Gemini vision → itemized total,
       merchant, date; image archived to S3, key in `ingestions.media_path`
 - [ ] 3c. Voice notes: Telegram OGG → Gemini audio input → same pipeline
+- [x] Date HITL: text with no date defaults to today (warning); photo with
+      no date blocks Confirm; Fix date → `ingestions.status = awaiting_date`
+      *(migration 0006 applied 2026-08-18; phone-test after this branch deploys)*
 - [ ] Edit flow: reply buttons let you fix category/amount before confirm
+      (date-only Fix date already shipped)
 - [x] Log Gemini token usage per request into `ingestions.extraction`,
       plus `meta` (model + sha256 of extractor, taxonomy, bucket prompt,
       and rules). No eval mart until Phase 4.
