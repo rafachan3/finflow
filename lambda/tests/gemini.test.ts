@@ -109,6 +109,16 @@ describe("extractFromText", () => {
     expect(result.meta?.taxonomy_sha256).toMatch(/^[0-9a-f]{64}$/);
     expect(result.meta?.bucket_sha256).toMatch(/^[0-9a-f]{64}$/);
     expect(result.meta?.rules_sha256).toMatch(/^[0-9a-f]{64}$/);
+
+    const firstSystem = JSON.parse(
+      fetchMock.mock.calls[0][1].body as string,
+    ) as { systemInstruction: { parts: { text: string }[] } };
+    expect(firstSystem.systemInstruction.parts[0].text).toMatch(
+      /empty string/i,
+    );
+    expect(firstSystem.systemInstruction.parts[0].text).toMatch(
+      /never guess/i,
+    );
   });
 
   it("hashes prompt text, not today's date, and splits taxonomy from rules", async () => {

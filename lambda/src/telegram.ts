@@ -57,13 +57,19 @@ export async function answerCallbackQuery(
   await postTelegram(botToken, "answerCallbackQuery", body);
 }
 
+export function reviewKeyboard(
+  ingestionId: string,
+  options: { confirm: boolean } = { confirm: true },
+): object {
+  const row: { text: string; callback_data: string }[] = [];
+  if (options.confirm) {
+    row.push({ text: "Confirm", callback_data: `c:${ingestionId}` });
+  }
+  row.push({ text: "Discard", callback_data: `d:${ingestionId}` });
+  row.push({ text: "Fix date", callback_data: `f:${ingestionId}` });
+  return { inline_keyboard: [row] };
+}
+
 export function confirmDiscardKeyboard(ingestionId: string): object {
-  return {
-    inline_keyboard: [
-      [
-        { text: "Confirm", callback_data: `c:${ingestionId}` },
-        { text: "Discard", callback_data: `d:${ingestionId}` },
-      ],
-    ],
-  };
+  return reviewKeyboard(ingestionId);
 }

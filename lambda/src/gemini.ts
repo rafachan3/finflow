@@ -22,6 +22,7 @@ const EXTRACTOR_STATIC_PROMPT = [
   "Do not assign needs/wants. Item types must belong to the same category as the subcategory.",
   "category, subcategory, and item_type are separate fields. Never repeat the category inside subcategory or item_type. Example: category='Food and drink', subcategory='Takeout / Quick Service', item_type='Meals & Prepared Food'.",
   "Use Other … subcategories only when nothing more specific fits.",
+  "date is YYYY-MM-DD only when the user stated a calendar date (including today, yesterday, or a month and day). If they did not, return an empty string. Never guess today's date.",
 ].join("\n");
 
 const BUCKET_STATIC_PROMPT = [
