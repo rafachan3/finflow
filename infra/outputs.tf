@@ -9,3 +9,7 @@ output "ingest_function_name" {
 output "ingest_deploy_role_arn" {
   value = aws_iam_role.ingest_deploy.arn
 }
+
+output "receipts_bucket_name" {
+  value = aws_s3_bucket.receipts.id
+}
