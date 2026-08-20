@@ -459,3 +459,19 @@ stays later.
 **Ruled out:** never defaulting text (every same-day Chipotle would need a
 date); a full Edit flow in this slice; treating Confirm as extraction
 accuracy.
+
+---
+
+## 2026-08-19 — Receipts bucket: SSE-S3 and account-id name, PutObject only
+
+S3 names are global, so the bucket is `finflow-receipts-<account_id>` rather
+than a bare `finflow-receipts`. Encryption is SSE-S3 (AES256), not a
+customer-managed KMS key: KMS would add API cost against the $1/month cap,
+and receipts are not a compliance workload that needs CMK audit.
+
+The ingest role gets `s3:PutObject` on that bucket's objects only. No
+`GetObject` until the photos slice (or later reprocessing) actually reads
+bytes. No versioning: receipts are written once.
+
+**Ruled out:** KMS CMK; a generic globally-racy bucket name; GetObject "for
+later"; bundling Telegram download / Gemini vision in the same change.
