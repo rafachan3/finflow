@@ -78,8 +78,9 @@ skeleton everything else hangs on. Ship the smallest loop first.*
       (taxonomy from DB, including item_type) then bucket specialist
       (BUCKET_RULES from SSM); full Telegram preview + cents/taxonomy checks
       before Confirm *(phone-tested 2026-08-17)*
-- [ ] Terraform: S3 receipts bucket (Block Public Access, default encryption,
+- [x] Terraform: S3 receipts bucket (Block Public Access, default encryption,
       Glacier IR lifecycle at 1 year) + `s3:PutObject` on the Lambda role
+      *(applied 2026-08-20)*
 - [ ] 3b. Receipt photos: Telegram file API → Gemini vision → itemized total,
       merchant, date; image archived to S3, key in `ingestions.media_path`
 - [ ] 3c. Voice notes: Telegram OGG → Gemini audio input → same pipeline
