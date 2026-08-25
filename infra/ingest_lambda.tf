@@ -39,6 +39,20 @@ resource "aws_iam_role_policy" "ingest_logs" {
   })
 }
 
+resource "aws_iam_role_policy" "ingest_s3" {
+  name = "s3-receipts"
+  role = aws_iam_role.ingest.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = ["s3:PutObject"]
+      Resource = "${aws_s3_bucket.receipts.arn}/*"
+    }]
+  })
+}
+
 resource "aws_iam_role_policy" "ingest_ssm" {
   name = "ssm"
   role = aws_iam_role.ingest.id

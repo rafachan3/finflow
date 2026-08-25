@@ -123,8 +123,9 @@ constraints here, and the free tiers that fit them are on different clouds.
 - ~$0.023–0.025/GB-month with no cap, versus Supabase Storage's 1 GB ceiling.
   At ~150 KB per Telegram-compressed photo, a few years of receipts is ~$0.05
   per month. The image-retention question disappears rather than being deferred.
-- Bucket is private with Block Public Access on; nothing reads it but the
-  Lambda role, and any future UI would use presigned URLs.
+- Bucket is private with Block Public Access on, SSE-S3 (AES256), and a
+  TLS-only deny. The ingest role may `s3:PutObject` only; `GetObject` waits
+  until photos or reprocessing need it. Any future UI would use presigned URLs.
 - Lifecycle rule transitions objects to Glacier Instant Retrieval after 1 year
   — receipts are written once and essentially never read again.
 

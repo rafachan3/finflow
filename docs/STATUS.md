@@ -2,7 +2,7 @@
 
 Living state of the project. Read this first; update it whenever work lands.
 
-**Last updated:** 2026-08-18
+**Last updated:** 2026-08-20
 **Current phase:** Phase 3 — Gemini extraction (see [ROADMAP.md](ROADMAP.md))
 
 ## Phase progress
@@ -70,13 +70,16 @@ Date HITL (2026-08-18, #7): text with no date → today + warning; Fix date →
 date). Phone-tested: default-today Chipotle, Fix date → yesterday wrote
 `occurred_on` 2026-08-17, `12.50 coffee` while waiting did not create a
 transaction. Extraction `meta` hashes stored per row. Migration 0006
-applied. Category/amount Edit, S3, and photos are still later.
+applied. Category/amount Edit and photos are still later.
+
+S3 receipts bucket applied (2026-08-20): `finflow-receipts-<account_id>` in
+`ca-central-1`, Block Public Access, SSE-S3, Glacier IR at 1 year, ingest
+role `s3:PutObject` only. Photos still reply "next slice".
 
 ## Next concrete step
 
-Phase 3b, first slice: Terraform S3 receipts bucket (Block Public Access,
-default encryption, Glacier IR at 1 year) + `s3:PutObject` on the Lambda
-role. Then receipt photos.
+Merge the S3 PR, then 3b receipt photos: Telegram file API → Gemini vision →
+S3 key in `ingestions.media_path`.
 
 ## Open questions
 
