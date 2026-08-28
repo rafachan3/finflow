@@ -80,6 +80,9 @@ export async function loadTaxonomy(
 }
 
 export async function insertPendingIngestion(args: {
+  id?: string;
+  source?: "text" | "photo";
+  mediaPath?: string | null;
   telegramUpdateId: number;
   rawPayload: unknown;
   extraction: Extraction;
@@ -87,13 +90,16 @@ export async function insertPendingIngestion(args: {
   const db = await getPool();
   try {
     const result = await db.query<{ id: string }>(
-      `INSERT INTO ingestions (source, telegram_update_id, raw_payload, extraction, status)
-       VALUES ('text', $1, $2::jsonb, $3::jsonb, 'pending')
+      `INSERT INTO ingestions (id, source, telegram_update_id, raw_payload, extraction, status, media_path)
+       VALUES (COALESCE($1::uuid, gen_random_uuid()), $2, $3, $4::jsonb, $5::jsonb, 'pending', $6)
        RETURNING id`,
       [
+        args.id ?? null,
+        args.source ?? "text",
         args.telegramUpdateId,
         JSON.stringify(args.rawPayload),
         JSON.stringify(args.extraction),
+        args.mediaPath ?? null,
       ],
     );
     return { id: result.rows[0].id };

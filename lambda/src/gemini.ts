@@ -25,6 +25,16 @@ const EXTRACTOR_STATIC_PROMPT = [
   "date is YYYY-MM-DD only when the user stated a calendar date (including today, yesterday, or a month and day). If they did not, return an empty string. Never guess today's date.",
 ].join("\n");
 
+const PHOTO_EXTRACTOR_STATIC_PROMPT = [
+  "You extract Canadian personal-finance transactions from a receipt photo.",
+  "Today is YYYY-MM-DD (America/Toronto). Currency is CAD.",
+  "Amounts are strings with exactly two decimal places. Line amounts include tax and MUST sum to the header amount.",
+  "Do not assign needs/wants. Item types must belong to the same category as the subcategory.",
+  "category, subcategory, and item_type are separate fields. Never repeat the category inside subcategory or item_type. Example: category='Food and drink', subcategory='Takeout / Quick Service', item_type='Meals & Prepared Food'.",
+  "Use Other … subcategories only when nothing more specific fits.",
+  "date is YYYY-MM-DD only when printed on the receipt or stated in the caption (including today, yesterday, or a month and day). If neither, return an empty string. Never guess today's date or the photo send time.",
+].join("\n");
+
 const BUCKET_STATIC_PROMPT = [
   "You assign needs or wants to each expense line.",
   "Apply these rules. They override default_bucket hints.",
@@ -34,9 +44,13 @@ function sha256Hex(text: string): string {
   return createHash("sha256").update(text, "utf8").digest("hex");
 }
 
-function extractorSystem(today: string, taxonomy: TaxonomySnapshot): string {
+function extractorSystem(
+  today: string,
+  taxonomy: TaxonomySnapshot,
+  extractorStatic: string,
+): string {
   return [
-    EXTRACTOR_STATIC_PROMPT.replace("YYYY-MM-DD", today),
+    extractorStatic.replace("YYYY-MM-DD", today),
     taxonomyPrompt(taxonomy),
   ].join("\n");
 }
@@ -44,10 +58,11 @@ function extractorSystem(today: string, taxonomy: TaxonomySnapshot): string {
 function promptMeta(
   taxonomy: TaxonomySnapshot,
   bucket?: { prompt: string; rules: string },
+  extractorStatic: string = EXTRACTOR_STATIC_PROMPT,
 ): ExtractionMeta {
   const meta: ExtractionMeta = {
     model: GEMINI_MODEL,
-    extractor_sha256: sha256Hex(EXTRACTOR_STATIC_PROMPT),
+    extractor_sha256: sha256Hex(extractorStatic),
     taxonomy_sha256: sha256Hex(taxonomyPrompt(taxonomy)),
   };
   if (bucket) {
@@ -138,10 +153,14 @@ type GeminiResponse = {
   error?: { message?: string };
 };
 
+type GeminiUserPart =
+  | { text: string }
+  | { inlineData: { mimeType: string; data: string } };
+
 async function generateJson(args: {
   apiKey: string;
   system: string;
-  user: string;
+  userParts: GeminiUserPart[];
   schema: object;
 }): Promise<{ data: unknown; usage: TokenUsage }> {
   const res = await fetch(ENDPOINT, {
@@ -152,7 +171,7 @@ async function generateJson(args: {
     },
     body: JSON.stringify({
       systemInstruction: { parts: [{ text: args.system }] },
-      contents: [{ role: "user", parts: [{ text: args.user }] }],
+      contents: [{ role: "user", parts: args.userParts }],
       generationConfig: {
         responseMimeType: "application/json",
         responseSchema: args.schema,
@@ -241,18 +260,19 @@ function asExtraction(raw: unknown): Extraction {
   };
 }
 
-export async function extractFromText(args: {
+async function extractFromUserParts(args: {
   apiKey: string;
-  text: string;
   taxonomy: TaxonomySnapshot;
   bucketRules: string;
   today: string;
+  extractorStatic: string;
+  userParts: GeminiUserPart[];
 }): Promise<Extraction> {
   const extractor = await generateJson({
     apiKey: args.apiKey,
     schema: EXTRACTOR_SCHEMA,
-    system: extractorSystem(args.today, args.taxonomy),
-    user: args.text,
+    system: extractorSystem(args.today, args.taxonomy, args.extractorStatic),
+    userParts: args.userParts,
   });
 
   const extraction = normalizeTaxonomyNames(
@@ -260,7 +280,7 @@ export async function extractFromText(args: {
     args.taxonomy,
   );
   extraction.usage = { extractor: extractor.usage };
-  extraction.meta = promptMeta(args.taxonomy);
+  extraction.meta = promptMeta(args.taxonomy, undefined, args.extractorStatic);
 
   if (extraction.type !== "expense" || extraction.items.length === 0) {
     return extraction;
@@ -274,19 +294,23 @@ export async function extractFromText(args: {
     apiKey: args.apiKey,
     schema: BUCKET_SCHEMA,
     system: [BUCKET_STATIC_PROMPT, rules].join("\n\n"),
-    user: JSON.stringify(
-      extraction.items.map((item, index) => ({
-        index,
-        description: item.description,
-        amount: item.amount,
-        category: item.category,
-        subcategory: item.subcategory,
-        item_type: item.item_type,
-        tags: extraction.tags,
-        merchant: extraction.merchant,
-        venue: extraction.venue,
-      })),
-    ),
+    userParts: [
+      {
+        text: JSON.stringify(
+          extraction.items.map((item, index) => ({
+            index,
+            description: item.description,
+            amount: item.amount,
+            category: item.category,
+            subcategory: item.subcategory,
+            item_type: item.item_type,
+            tags: extraction.tags,
+            merchant: extraction.merchant,
+            venue: extraction.venue,
+          })),
+        ),
+      },
+    ],
   });
 
   const parsed = bucketRes.data as {
@@ -298,9 +322,60 @@ export async function extractFromText(args: {
     extractor: extractor.usage,
     bucket: bucketRes.usage,
   };
-  merged.meta = promptMeta(args.taxonomy, {
-    prompt: BUCKET_STATIC_PROMPT,
-    rules,
-  });
+  merged.meta = promptMeta(
+    args.taxonomy,
+    {
+      prompt: BUCKET_STATIC_PROMPT,
+      rules,
+    },
+    args.extractorStatic,
+  );
   return merged;
+}
+
+export async function extractFromText(args: {
+  apiKey: string;
+  text: string;
+  taxonomy: TaxonomySnapshot;
+  bucketRules: string;
+  today: string;
+}): Promise<Extraction> {
+  return extractFromUserParts({
+    apiKey: args.apiKey,
+    taxonomy: args.taxonomy,
+    bucketRules: args.bucketRules,
+    today: args.today,
+    extractorStatic: EXTRACTOR_STATIC_PROMPT,
+    userParts: [{ text: args.text }],
+  });
+}
+
+export async function extractFromPhoto(args: {
+  apiKey: string;
+  image: Buffer;
+  mimeType: string;
+  caption: string;
+  taxonomy: TaxonomySnapshot;
+  bucketRules: string;
+  today: string;
+}): Promise<Extraction> {
+  const caption = args.caption.trim();
+  return extractFromUserParts({
+    apiKey: args.apiKey,
+    taxonomy: args.taxonomy,
+    bucketRules: args.bucketRules,
+    today: args.today,
+    extractorStatic: PHOTO_EXTRACTOR_STATIC_PROMPT,
+    userParts: [
+      {
+        inlineData: {
+          mimeType: args.mimeType,
+          data: args.image.toString("base64"),
+        },
+      },
+      {
+        text: caption || "Extract the transaction from this receipt.",
+      },
+    ],
+  });
 }

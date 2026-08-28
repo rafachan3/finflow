@@ -96,10 +96,16 @@ resource "aws_lambda_function" "ingest" {
   role          = aws_iam_role.ingest.arn
   handler       = "index.handler"
   runtime       = "nodejs22.x"
-  timeout       = 30
+  timeout       = 60
 
   filename         = data.archive_file.bootstrap.output_path
   source_code_hash = data.archive_file.bootstrap.output_base64sha256
+
+  environment {
+    variables = {
+      RECEIPTS_BUCKET = aws_s3_bucket.receipts.id
+    }
+  }
 
   depends_on = [aws_cloudwatch_log_group.ingest]
 
