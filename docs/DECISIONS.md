@@ -475,3 +475,26 @@ bytes. No versioning: receipts are written once.
 
 **Ruled out:** KMS CMK; a generic globally-racy bucket name; GetObject "for
 later"; bundling Telegram download / Gemini vision in the same change.
+
+---
+
+## 2026-08-27 — Phase 3b: Telegram photos, Gemini vision, S3 on persist
+
+Receipts are camera/gallery **photos** (`message.photo`). Caption text goes
+to Gemini with the image. iPhone HEIC sent as a Telegram photo is already
+JPEG; HEIC-as-file (`message.document`) and PDF stay out of scope.
+
+Gemini sees Telegram file bytes, not S3. After checks, persistable photos
+get a UUID, `PutObject` `{uuid}.jpg` or `.png`, then INSERT with that id,
+`source = 'photo'`, and `media_path` = the key. Failed checks (other than
+missing date) do not write S3 or Postgres. The ingest role still has no
+`GetObject`. Bucket name is Lambda env `RECEIPTS_BUCKET` from Terraform,
+not a new SSM parameter. Timeout is 60s.
+
+Date policy from 2026-08-18 is live: printed or caption date required to
+Confirm; otherwise persist without Confirm. Do not use send time or
+default today. A photo while `awaiting_date` is “still waiting.”
+
+**Ruled out:** PDF / document path; GetObject round-trip for vision;
+defaulting a dateless receipt to today; treating a photo as a new expense
+while a date reply is expected.
