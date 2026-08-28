@@ -8,6 +8,7 @@
     "bundle": "esbuild src/handler.ts --bundle --platform=node --target=node22 --outfile=dist/index.js --format=cjs"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1120.0",
     "@aws-sdk/client-ssm": "^3.800.0",
     "pg": "^8.16.0"
   },
