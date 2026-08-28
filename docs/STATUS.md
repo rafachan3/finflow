@@ -2,7 +2,7 @@
 
 Living state of the project. Read this first; update it whenever work lands.
 
-**Last updated:** 2026-08-27
+**Last updated:** 2026-08-28
 **Current phase:** Phase 3 — Gemini extraction (see [ROADMAP.md](ROADMAP.md))
 
 ## Phase progress
@@ -12,7 +12,7 @@ Living state of the project. Read this first; update it whenever work lands.
 - [x] Phase 1 — Supabase project, schema migrations, Notion history import (2026-08-13)
 - [x] Taxonomy tweak — Hygiene + Beauty → Personal care (Health and wellness); buckets untouched (2026-08-13)
 - [x] Phase 2 — Telegram bot walking skeleton (text only, no LLM) (2026-08-17)
-- [ ] Phase 3 — Gemini extraction (text → photo → voice) — **3a + date HITL phone-tested; 3b merged #10, Confirm + S3 not yet checked**
+- [ ] Phase 3 — Gemini extraction (text → photo → voice) — **3a + 3b phone-tested; voice (3c) next**
 - [ ] Phase 4 — dbt semantic layer
 - [ ] Phase 5 — Grafana dashboards
 - [ ] Phase 6 — Claude analytics agent (subagents + Postgres MCP)
@@ -88,17 +88,24 @@ expense. Voice and PDF/document remain later.
 First photo after merge failed with no Telegram reply: the Supabase
 project was `INACTIVE` (paused). Pooler error
 `tenant/user postgres.<ref> not found` at `findAwaitingDateIngestion`;
-the handler returns 500 without sending a message. After restore,
-a Super C grocery receipt ($41.05, 2026-08-17) extracted with correct
-totals, taxonomy, and buckets. Line `description` copied receipt French
-SKUs; English names are a follow-up prompt change. Confirm + S3 object
-not yet verified. Merchant Super C not in lookup (`merchant_id` null).
+the handler returns 500 without sending a message. After restore, a dated grocery receipt photo extracted with correct
+totals, taxonomy, and buckets. Confirm (2026-08-28) wrote the
+`transactions` header and `transaction_items` lines. `ingestions`
+`source=photo`, `status=confirmed`, `media_path` = `{id}.jpg`; that
+object is in the receipts bucket. Merchant was not in lookup
+(`merchant_id` null). Receipt department labels are not stored.
+
+English item descriptions merged as #12: header and line names are
+ordinary English; brand names stay. The confirmed photo used that
+prompt (an earlier discarded send had kept the receipt language).
+
+Dateless-receipt persist (no Confirm) is not yet phone-tested.
 
 ## Next concrete step
 
-Confirm a dated receipt and verify `media_path` in `ingestions` plus the
-object in S3. Then a dateless receipt (persist, no Confirm). Do not check
-ROADMAP 3b until Confirm + S3 pass. English line descriptions next.
+Phase 3c: voice notes (`message.voice` → Gemini audio → same confirm
+loop). Optional leftover smoke: a receipt with no printed or caption
+date persists without Confirm.
 
 ## Open questions
 
