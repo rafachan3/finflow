@@ -1,8 +1,8 @@
-async function postTelegram(
+async function callTelegram(
   botToken: string,
   method: string,
   body: Record<string, unknown>,
-): Promise<void> {
+): Promise<{ ok?: boolean; description?: string; result?: unknown }> {
   const res = await fetch(
     `https://api.telegram.org/bot${botToken}/${method}`,
     {
@@ -19,12 +19,25 @@ async function postTelegram(
     );
   }
 
-  const data = (await res.json()) as { ok?: boolean; description?: string };
+  const data = (await res.json()) as {
+    ok?: boolean;
+    description?: string;
+    result?: unknown;
+  };
   if (!data.ok) {
     throw new Error(
       `Telegram ${method} ok=false${data.description ? `: ${data.description}` : ""}`,
     );
   }
+  return data;
+}
+
+async function postTelegram(
+  botToken: string,
+  method: string,
+  body: Record<string, unknown>,
+): Promise<void> {
+  await callTelegram(botToken, method, body);
 }
 
 export async function sendMessage(
@@ -72,4 +85,52 @@ export function reviewKeyboard(
 
 export function confirmDiscardKeyboard(ingestionId: string): object {
   return reviewKeyboard(ingestionId);
+}
+
+export function largestPhotoFileId(photos: unknown[]): string {
+  let bestId: string | undefined;
+  let bestSize = -1;
+  for (const raw of photos) {
+    if (!raw || typeof raw !== "object") continue;
+    const photo = raw as { file_id?: unknown; file_size?: unknown };
+    if (typeof photo.file_id !== "string" || photo.file_id === "") continue;
+    const size = typeof photo.file_size === "number" ? photo.file_size : -1;
+    if (bestId === undefined || size >= bestSize) {
+      bestId = photo.file_id;
+      bestSize = size;
+    }
+  }
+  if (!bestId) throw new Error("no photo file_id");
+  return bestId;
+}
+
+export type TelegramFile = {
+  bytes: Buffer;
+  mimeType: string;
+};
+
+export async function downloadTelegramFile(
+  botToken: string,
+  fileId: string,
+): Promise<TelegramFile> {
+  const data = await callTelegram(botToken, "getFile", { file_id: fileId });
+  const filePath =
+    data.result && typeof data.result === "object"
+      ? (data.result as { file_path?: unknown }).file_path
+      : undefined;
+  if (typeof filePath !== "string" || filePath === "") {
+    throw new Error("Telegram getFile missing file_path");
+  }
+
+  const res = await fetch(
+    `https://api.telegram.org/file/bot${botToken}/${filePath}`,
+  );
+  if (!res.ok) {
+    throw new Error(`Telegram file HTTP ${res.status}`);
+  }
+  const bytes = Buffer.from(await res.arrayBuffer());
+  const mimeType = filePath.toLowerCase().endsWith(".png")
+    ? "image/png"
+    : "image/jpeg";
+  return { bytes, mimeType };
 }
