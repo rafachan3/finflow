@@ -83,6 +83,8 @@ skeleton everything else hangs on. Ship the smallest loop first.*
       *(applied 2026-08-20)*
 - [ ] 3b. Receipt photos: Telegram file API → Gemini vision → itemized total,
       merchant, date; image archived to S3, key in `ingestions.media_path`
+      *(merged #10; extraction phone-tested 2026-08-27; leave unchecked
+      until Confirm + S3)*
 - [ ] 3c. Voice notes: Telegram OGG → Gemini audio input → same pipeline
 - [x] Date HITL: text with no date defaults to today (warning); photo with
       no date blocks Confirm; Fix date → `ingestions.status = awaiting_date`

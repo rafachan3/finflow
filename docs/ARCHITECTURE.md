@@ -39,7 +39,7 @@ flowchart TD
     EX -->|"lines, no bucket"| BK
     BK -->|"buckets"| LM
     LM -->|"2 · validate + persist pending"| RAW
-    LM -->|"photos later"| S3
+    LM -->|"archive photo on persist"| S3
     LM -->|"3 · preview: Confirm / Discard / Fix date"| TG
     RAW ==>|"human presses Confirm"| TX
     TX -->|"nightly GitHub Action"| STG
@@ -50,10 +50,10 @@ flowchart TD
     TX -.->|"ad-hoc SQL"| SQL
 ```
 
-Phase 3a is text only (two Gemini calls, then checks, then pending). Date HITL
-(Fix date / `awaiting_date`) is on the text path. S3, photos, voice, and
-category/amount Edit remain later in Phase 3. The diagram keeps those as
-future edges so the system view stays whole.
+Text and receipt photos share the same confirm loop. Photos download from
+Telegram, extract with Gemini vision, then archive to S3 only when the
+ingestion is persisted. Voice notes and category/amount Edit remain later
+in Phase 3.
 
 `docs/SEMANTIC_LAYER.md` is the metric contract for the marts layer: both the
 dbt models and the agent read it, so numbers agree everywhere.
@@ -70,9 +70,9 @@ dbt models and the agent read it, so numbers agree everywhere.
   GB-seconds per month, against a workload of ~150 invocations. Ingestion
   compute is $0 indefinitely, not $0 until a trial expires.
 - The handler is intentionally thin: authenticate → extract (two Gemini
-  specialists) → validate → persist pending → reply. Photos later insert
-  archive-media before extract. All state lives in Postgres, so it stays
-  stateless.
+  specialists) → validate → persist pending → reply. Photos download
+  media first; S3 archive happens only on persist (UUID, then PutObject,
+  then INSERT). All state lives in Postgres, so it stays stateless.
 - Idempotency: `ingestions.telegram_update_id` is UNIQUE; Telegram retries
   webhooks, and the unique constraint makes retries harmless.
 - Secrets (Telegram bot token, webhook secret token, chat-ID allowlist, Gemini
@@ -99,8 +99,8 @@ dbt models and the agent read it, so numbers agree everywhere.
   header; that check is **code** (integer cents), not another model.
 - The bot replies with the full proposed ledger row plus check results.
   Confirm / Discard / Fix date appear when checks pass. Text with no date
-  defaults to today and warns. Photos with no printed/caption date omit
-  Confirm (not wired yet). Category/amount Edit is later.
+  defaults to today and warns. Photos with no printed/caption date persist
+  without Confirm. Category/amount Edit is later. Voice is later.
 
 ### Storage — Supabase Postgres (rows) + AWS S3 (images)
 
@@ -124,8 +124,9 @@ constraints here, and the free tiers that fit them are on different clouds.
   At ~150 KB per Telegram-compressed photo, a few years of receipts is ~$0.05
   per month. The image-retention question disappears rather than being deferred.
 - Bucket is private with Block Public Access on, SSE-S3 (AES256), and a
-  TLS-only deny. The ingest role may `s3:PutObject` only; `GetObject` waits
-  until photos or reprocessing need it. Any future UI would use presigned URLs.
+  TLS-only deny. The ingest role may `s3:PutObject` only. Vision uses
+  Telegram file bytes, so `GetObject` is still unused. Any future UI would
+  use presigned URLs.
 - Lifecycle rule transitions objects to Glacier Instant Retrieval after 1 year
   — receipts are written once and essentially never read again.
 

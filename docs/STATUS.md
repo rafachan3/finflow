@@ -2,7 +2,7 @@
 
 Living state of the project. Read this first; update it whenever work lands.
 
-**Last updated:** 2026-08-20
+**Last updated:** 2026-08-27
 **Current phase:** Phase 3 — Gemini extraction (see [ROADMAP.md](ROADMAP.md))
 
 ## Phase progress
@@ -12,7 +12,7 @@ Living state of the project. Read this first; update it whenever work lands.
 - [x] Phase 1 — Supabase project, schema migrations, Notion history import (2026-08-13)
 - [x] Taxonomy tweak — Hygiene + Beauty → Personal care (Health and wellness); buckets untouched (2026-08-13)
 - [x] Phase 2 — Telegram bot walking skeleton (text only, no LLM) (2026-08-17)
-- [ ] Phase 3 — Gemini extraction (text → photo → voice) — **date HITL phone-tested 2026-08-18**
+- [ ] Phase 3 — Gemini extraction (text → photo → voice) — **3a + date HITL phone-tested; 3b merged #10, Confirm + S3 not yet checked**
 - [ ] Phase 4 — dbt semantic layer
 - [ ] Phase 5 — Grafana dashboards
 - [ ] Phase 6 — Claude analytics agent (subagents + Postgres MCP)
@@ -58,28 +58,47 @@ GitHub immutable repo-id `sub` claims (DECISIONS.md 2026-08-17).
 
 Phase 3a complete (2026-08-17): all text through Gemini `gemini-3.6-flash`
 (free); extractor then bucket specialist; full preview + cents/taxonomy
-checks; Confirm writes classified lines. Lambda timeout 30s. SSM:
-`/finflow/gemini/api-key`, `/finflow/bucket-rules` (Advanced). Phone smoke
-test: `12.50 lunch chipotle` → Takeout / Quick Service / wants (not Other
-personal); Chipotle not in merchant lookup so `merchant_id` null as designed.
-Photos still reply "next slice". Merged as #5; `Deploy ingest Lambda` on
-`main` passed (run 32088245837), so Actions owns the zip.
+checks; Confirm writes classified lines. SSM: `/finflow/gemini/api-key`,
+`/finflow/bucket-rules` (Advanced). Phone smoke test: `12.50 lunch chipotle`
+→ Takeout / Quick Service / wants (not Other personal); Chipotle not in
+merchant lookup so `merchant_id` null as designed. Merged as #5;
+`Deploy ingest Lambda` on `main` passed (run 32088245837), so Actions owns
+the zip.
 
 Date HITL (2026-08-18, #7): text with no date → today + warning; Fix date →
 `awaiting_date`; next text is the date (or “still waiting” if it is not a
 date). Phone-tested: default-today Chipotle, Fix date → yesterday wrote
 `occurred_on` 2026-08-17, `12.50 coffee` while waiting did not create a
 transaction. Extraction `meta` hashes stored per row. Migration 0006
-applied. Category/amount Edit and photos are still later.
+applied. Category/amount Edit stays later.
 
-S3 receipts bucket applied (2026-08-20): `finflow-receipts-<account_id>` in
-`ca-central-1`, Block Public Access, SSE-S3, Glacier IR at 1 year, ingest
-role `s3:PutObject` only. Photos still reply "next slice".
+S3 receipts bucket applied (2026-08-20, #9): `finflow-receipts-<account_id>`
+in `ca-central-1`, Block Public Access, SSE-S3, Glacier IR at 1 year, ingest
+role `s3:PutObject` only.
+
+Receipt photos merged as #10 (2026-08-27): camera/gallery `message.photo`
+only. Largest size → Telegram `getFile` → Gemini vision (image + caption)
+→ photo date policy → UUID → S3 `{id}.jpg`/`.png` → `ingestions` with
+`source=photo` and `media_path`. Lambda timeout 60s; env
+`RECEIPTS_BUCKET`. `Deploy ingest Lambda` on `main` passed (run
+33138236837). Dateless receipts persist without Confirm (Fix date /
+Discard stay). A photo while `awaiting_date` is still waiting, not a new
+expense. Voice and PDF/document remain later.
+
+First photo after merge failed with no Telegram reply: the Supabase
+project was `INACTIVE` (paused). Pooler error
+`tenant/user postgres.<ref> not found` at `findAwaitingDateIngestion`;
+the handler returns 500 without sending a message. After restore,
+a Super C grocery receipt ($41.05, 2026-08-17) extracted with correct
+totals, taxonomy, and buckets. Line `description` copied receipt French
+SKUs; English names are a follow-up prompt change. Confirm + S3 object
+not yet verified. Merchant Super C not in lookup (`merchant_id` null).
 
 ## Next concrete step
 
-Merge the S3 PR, then 3b receipt photos: Telegram file API → Gemini vision →
-S3 key in `ingestions.media_path`.
+Confirm a dated receipt and verify `media_path` in `ingestions` plus the
+object in S3. Then a dateless receipt (persist, no Confirm). Do not check
+ROADMAP 3b until Confirm + S3 pass. English line descriptions next.
 
 ## Open questions
 
@@ -90,9 +109,10 @@ S3 key in `ingestions.media_path`.
 
 ## Known risks
 
-- Supabase free projects pause after ~1 week of inactivity. Daily logging plus
-  the nightly dbt Action should keep it warm; confirm this empirically in
-  Phase 4 rather than assuming it.
+- Supabase free projects pause after ~1 week of inactivity. Hit empirically
+  2026-08-27 (`INACTIVE`; bot silent). Daily logging plus the nightly dbt
+  Action should keep it warm once Phase 4 exists; until then, restore from
+  the dashboard after a gap.
 - Gemini free-tier quotas and model names change. Pinned to `gemini-3.6-flash`
   (DECISIONS.md 2026-08-17); `gemini-2.5-flash` rejected new keys with HTTP 404.
 - AWS fails open on cost; keep the Phase 0 `Project=finflow` budget active and
