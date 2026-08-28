@@ -119,6 +119,15 @@ describe("extractFromText", () => {
     expect(firstSystem.systemInstruction.parts[0].text).toMatch(
       /never guess/i,
     );
+    expect(firstSystem.systemInstruction.parts[0].text).toMatch(
+      /ordinary English/i,
+    );
+    expect(firstSystem.systemInstruction.parts[0].text).toMatch(
+      /Translate French/i,
+    );
+    expect(firstSystem.systemInstruction.parts[0].text).toMatch(
+      /Keep brand names/i,
+    );
   });
 
   it("hashes prompt text, not today's date, and splits taxonomy from rules", async () => {
@@ -288,6 +297,9 @@ describe("extractFromPhoto", () => {
     expect(first.systemInstruction.parts[0].text).toMatch(/receipt/i);
     expect(first.systemInstruction.parts[0].text).toMatch(/never guess/i);
     expect(first.systemInstruction.parts[0].text).toMatch(/empty string/i);
+    expect(first.systemInstruction.parts[0].text).toMatch(/ordinary English/i);
+    expect(first.systemInstruction.parts[0].text).toMatch(/Translate French/i);
+    expect(first.systemInstruction.parts[0].text).toMatch(/Keep brand names/i);
 
     const second = JSON.parse(fetchMock.mock.calls[1][1].body as string) as {
       contents: { parts: { text?: string; inlineData?: unknown }[] }[];
