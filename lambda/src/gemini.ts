@@ -15,6 +15,9 @@ export const GEMINI_MODEL = "gemini-3.6-flash";
 
 const ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
 
+const ENGLISH_DESCRIPTIONS =
+  "Header and line descriptions are ordinary English. Translate French and other languages from the receipt or message. Keep brand names. Do not add commentary.";
+
 const EXTRACTOR_STATIC_PROMPT = [
   "You extract Canadian personal-finance transactions from a short text.",
   "Today is YYYY-MM-DD (America/Toronto). Currency is CAD.",
@@ -22,6 +25,7 @@ const EXTRACTOR_STATIC_PROMPT = [
   "Do not assign needs/wants. Item types must belong to the same category as the subcategory.",
   "category, subcategory, and item_type are separate fields. Never repeat the category inside subcategory or item_type. Example: category='Food and drink', subcategory='Takeout / Quick Service', item_type='Meals & Prepared Food'.",
   "Use Other … subcategories only when nothing more specific fits.",
+  ENGLISH_DESCRIPTIONS,
   "date is YYYY-MM-DD only when the user stated a calendar date (including today, yesterday, or a month and day). If they did not, return an empty string. Never guess today's date.",
 ].join("\n");
 
@@ -32,6 +36,7 @@ const PHOTO_EXTRACTOR_STATIC_PROMPT = [
   "Do not assign needs/wants. Item types must belong to the same category as the subcategory.",
   "category, subcategory, and item_type are separate fields. Never repeat the category inside subcategory or item_type. Example: category='Food and drink', subcategory='Takeout / Quick Service', item_type='Meals & Prepared Food'.",
   "Use Other … subcategories only when nothing more specific fits.",
+  ENGLISH_DESCRIPTIONS,
   "date is YYYY-MM-DD only when printed on the receipt or stated in the caption (including today, yesterday, or a month and day). If neither, return an empty string. Never guess today's date or the photo send time.",
 ].join("\n");
 
