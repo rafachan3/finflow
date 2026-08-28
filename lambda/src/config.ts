@@ -14,6 +14,7 @@ export type Config = {
   databaseUrl: string;
   geminiApiKey: string;
   bucketRules: string;
+  receiptsBucket: string;
 };
 
 let cached: Config | undefined;
@@ -68,6 +69,11 @@ async function loadConfig(): Promise<Config> {
     getParameter(client, PARAM_BUCKET_RULES, { allowEmpty: true }),
   ]);
 
+  const receiptsBucket = process.env.RECEIPTS_BUCKET;
+  if (!receiptsBucket) {
+    throw new Error("Missing RECEIPTS_BUCKET");
+  }
+
   return {
     botToken,
     webhookSecret,
@@ -75,6 +81,7 @@ async function loadConfig(): Promise<Config> {
     databaseUrl,
     geminiApiKey,
     bucketRules,
+    receiptsBucket,
   };
 }
 

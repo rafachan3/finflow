@@ -96,6 +96,8 @@ const MISSING_DATE =
   "date missing: send YYYY-MM-DD, Aug 10, or yesterday";
 const DEFAULTED_TODAY = "date defaulted to today";
 
+export { MISSING_DATE };
+
 export function isValidIsoDate(value: string): boolean {
   if (!DATE.test(value)) return false;
   const [year, month, day] = value.split("-").map(Number);

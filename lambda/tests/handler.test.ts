@@ -18,12 +18,18 @@ vi.mock("../src/db.js", () => ({
 }));
 vi.mock("../src/gemini.js", () => ({
   extractFromText: vi.fn(),
+  extractFromPhoto: vi.fn(),
 }));
 vi.mock("../src/telegram.js", () => ({
   answerCallbackQuery: vi.fn(),
   confirmDiscardKeyboard: vi.fn((id: string) => ({ confirm: id })),
   reviewKeyboard: vi.fn((id: string) => ({ confirm: id })),
   sendMessage: vi.fn(),
+  downloadTelegramFile: vi.fn(),
+  largestPhotoFileId: vi.fn(() => "file-big"),
+}));
+vi.mock("../src/s3.js", () => ({
+  putReceipt: vi.fn(),
 }));
 
 import { getConfig } from "../src/config.js";
@@ -34,8 +40,13 @@ import {
   loadTaxonomy,
   setIngestionAwaitingDate,
 } from "../src/db.js";
-import { extractFromText } from "../src/gemini.js";
-import { sendMessage } from "../src/telegram.js";
+import { extractFromPhoto, extractFromText } from "../src/gemini.js";
+import {
+  downloadTelegramFile,
+  reviewKeyboard,
+  sendMessage,
+} from "../src/telegram.js";
+import { putReceipt } from "../src/s3.js";
 import { handler } from "../src/handler.js";
 import type { Extraction, TaxonomySnapshot } from "../src/extraction.js";
 
@@ -104,11 +115,20 @@ beforeEach(() => {
     databaseUrl: "postgres://x",
     geminiApiKey: "g",
     bucketRules: "Takeout is wants.",
+    receiptsBucket: "finflow-receipts-test",
   });
   vi.mocked(loadTaxonomy).mockResolvedValue(taxonomy);
   vi.mocked(extractFromText).mockResolvedValue(extraction);
+  vi.mocked(extractFromPhoto).mockResolvedValue(extraction);
   vi.mocked(insertPendingIngestion).mockResolvedValue({ id: "ing-1" });
   vi.mocked(findAwaitingDateIngestion).mockResolvedValue(null);
+  vi.mocked(downloadTelegramFile).mockResolvedValue({
+    bytes: Buffer.from([0xff, 0xd8, 0xff]),
+    mimeType: "image/jpeg",
+  });
+  vi.mocked(putReceipt).mockResolvedValue(
+    "11111111-1111-1111-1111-111111111111.jpg",
+  );
 });
 
 afterEach(() => {
@@ -294,21 +314,106 @@ describe("handler", () => {
     );
   });
 
-  it("tells the user photos are not in this slice", async () => {
+  it("extracts a receipt photo, archives it, and offers Confirm", async () => {
+    vi.spyOn(crypto, "randomUUID").mockReturnValue(
+      "11111111-1111-1111-1111-111111111111",
+    );
+
     await handler(
       event({
-        update_id: 11,
+        update_id: 16,
         message: {
           chat: { id: 1 },
-          photo: [{ file_id: "x" }],
+          photo: [{ file_id: "small" }, { file_id: "file-big" }],
+          caption: "yesterday chipotle",
         },
       }),
     );
+
+    expect(downloadTelegramFile).toHaveBeenCalledWith("t", "file-big");
+    expect(extractFromPhoto).toHaveBeenCalledWith(
+      expect.objectContaining({
+        apiKey: "g",
+        mimeType: "image/jpeg",
+        caption: "yesterday chipotle",
+      }),
+    );
+    expect(putReceipt).toHaveBeenCalledWith({
+      bucket: "finflow-receipts-test",
+      ingestionId: "11111111-1111-1111-1111-111111111111",
+      body: Buffer.from([0xff, 0xd8, 0xff]),
+      contentType: "image/jpeg",
+    });
+    expect(insertPendingIngestion).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "11111111-1111-1111-1111-111111111111",
+        source: "photo",
+        mediaPath: "11111111-1111-1111-1111-111111111111.jpg",
+        telegramUpdateId: 16,
+        extraction: expect.objectContaining({
+          date: "2026-08-17",
+          date_source: "stated",
+        }),
+      }),
+    );
+    expect(reviewKeyboard).toHaveBeenCalledWith(
+      "11111111-1111-1111-1111-111111111111",
+      { confirm: true },
+    );
     expect(extractFromText).not.toHaveBeenCalled();
+  });
+
+  it("persists a dateless photo without Confirm", async () => {
+    vi.spyOn(crypto, "randomUUID").mockReturnValue(
+      "11111111-1111-1111-1111-111111111111",
+    );
+    vi.mocked(extractFromPhoto).mockResolvedValue({ ...extraction, date: "" });
+
+    await handler(
+      event({
+        update_id: 17,
+        message: {
+          chat: { id: 1 },
+          photo: [{ file_id: "file-big" }],
+        },
+      }),
+    );
+
+    expect(insertPendingIngestion).toHaveBeenCalled();
+    expect(reviewKeyboard).toHaveBeenCalledWith(
+      "11111111-1111-1111-1111-111111111111",
+      { confirm: false },
+    );
     expect(sendMessage).toHaveBeenCalledWith(
       "t",
       1,
-      expect.stringMatching(/photo/i),
+      expect.stringMatching(/date missing/i),
+      { confirm: "11111111-1111-1111-1111-111111111111" },
+    );
+  });
+
+  it("does not start a new photo while awaiting a date", async () => {
+    vi.mocked(findAwaitingDateIngestion).mockResolvedValue({
+      id: "ing-1",
+      extraction,
+    });
+
+    await handler(
+      event({
+        update_id: 18,
+        message: {
+          chat: { id: 1 },
+          photo: [{ file_id: "file-big" }],
+        },
+      }),
+    );
+
+    expect(extractFromPhoto).not.toHaveBeenCalled();
+    expect(putReceipt).not.toHaveBeenCalled();
+    expect(sendMessage).toHaveBeenCalledWith(
+      "t",
+      1,
+      expect.stringMatching(/waiting for a date/i),
     );
   });
 });

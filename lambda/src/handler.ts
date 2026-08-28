@@ -15,15 +15,19 @@ import {
 import {
   applyDatePolicy,
   formatPreview,
+  MISSING_DATE,
   normalizeTaxonomyNames,
   parseDateReply,
   validateExtraction,
   type Extraction,
 } from "./extraction.js";
-import { extractFromText } from "./gemini.js";
+import { extractFromPhoto, extractFromText } from "./gemini.js";
+import { putReceipt } from "./s3.js";
 import {
   answerCallbackQuery,
   confirmDiscardKeyboard,
+  downloadTelegramFile,
+  largestPhotoFileId,
   reviewKeyboard,
   sendMessage,
 } from "./telegram.js";
@@ -33,6 +37,7 @@ type TelegramMessage = {
   message_id?: number;
   chat: TelegramChat;
   text?: string;
+  caption?: string;
   photo?: unknown[];
 };
 type TelegramCallbackQuery = {
@@ -86,9 +91,13 @@ function todayToronto(now = new Date()): string {
   }).format(now);
 }
 
-function withDatePolicy(extraction: Extraction, today: string): Extraction {
+function withDatePolicy(
+  extraction: Extraction,
+  today: string,
+  channel: "text" | "photo" = "text",
+): Extraction {
   const policy = applyDatePolicy({
-    channel: "text",
+    channel,
     extractedDate: extraction.date,
     today,
   });
@@ -97,6 +106,20 @@ function withDatePolicy(extraction: Extraction, today: string): Extraction {
     date: policy.date,
     date_source: policy.date_source,
   };
+}
+
+function photoPersistable(extraction: Extraction, checks: { ok: boolean; errors: string[] }): {
+  persist: boolean;
+  confirm: boolean;
+} {
+  if (checks.ok) return { persist: true, confirm: true };
+  if (
+    extraction.date_source === "missing" &&
+    checks.errors.every((e) => e === MISSING_DATE)
+  ) {
+    return { persist: true, confirm: false };
+  }
+  return { persist: false, confirm: false };
 }
 
 async function handleAwaitingDate(
@@ -140,6 +163,79 @@ async function handleAwaitingDate(
   return ok("ok");
 }
 
+async function handlePhoto(
+  update: TelegramUpdate,
+  config: Awaited<ReturnType<typeof getConfig>>,
+): Promise<APIGatewayProxyResultV2> {
+  const message = update.message!;
+  try {
+    const file = await downloadTelegramFile(
+      config.botToken,
+      largestPhotoFileId(message.photo ?? []),
+    );
+    const today = todayToronto();
+    const taxonomy = await loadTaxonomy();
+    const extraction = withDatePolicy(
+      normalizeTaxonomyNames(
+        await extractFromPhoto({
+          apiKey: config.geminiApiKey,
+          image: file.bytes,
+          mimeType: file.mimeType,
+          caption: message.caption ?? "",
+          taxonomy,
+          bucketRules: config.bucketRules,
+          today,
+        }),
+        taxonomy,
+      ),
+      today,
+      "photo",
+    );
+    const checks = validateExtraction(extraction, taxonomy);
+    const preview = formatPreview(extraction, checks);
+    const offer = photoPersistable(extraction, checks);
+    if (!offer.persist) {
+      await sendMessage(config.botToken, message.chat.id, preview);
+      return ok("ok");
+    }
+
+    const id = crypto.randomUUID();
+    const mediaPath = await putReceipt({
+      bucket: config.receiptsBucket,
+      ingestionId: id,
+      body: file.bytes,
+      contentType: file.mimeType,
+    });
+    const inserted = await insertPendingIngestion({
+      id,
+      source: "photo",
+      mediaPath,
+      telegramUpdateId: update.update_id,
+      rawPayload: update,
+      extraction,
+    });
+    if (inserted === "duplicate") {
+      return ok("duplicate");
+    }
+
+    await sendMessage(
+      config.botToken,
+      message.chat.id,
+      preview,
+      reviewKeyboard(id, { confirm: offer.confirm }),
+    );
+    return ok("ok");
+  } catch (err) {
+    console.error("photo extract error", err);
+    await sendMessage(
+      config.botToken,
+      message.chat.id,
+      "Couldn't read that receipt. Try again.",
+    );
+    return ok("ok");
+  }
+}
+
 async function handleMessage(
   update: TelegramUpdate,
   config: Awaited<ReturnType<typeof getConfig>>,
@@ -148,27 +244,29 @@ async function handleMessage(
   if (!config.allowedChatIds.has(message.chat.id)) {
     return ok("ignored");
   }
-  if (message.photo?.length) {
-    await sendMessage(
-      config.botToken,
-      message.chat.id,
-      "Photos come in the next slice. Send a text description for now.",
-    );
-    return ok("ok");
-  }
-  const text = message.text?.trim();
-  if (!text) {
-    return ok("ignored");
-  }
 
   const awaiting = await findAwaitingDateIngestion();
   if (awaiting) {
+    const text = message.text?.trim();
+    if (!text) {
+      await sendMessage(config.botToken, message.chat.id, WAITING_DATE);
+      return ok("ok");
+    }
     return await handleAwaitingDate(
       text,
       message.chat.id,
       config.botToken,
       awaiting,
     );
+  }
+
+  if (message.photo?.length) {
+    return await handlePhoto(update, config);
+  }
+
+  const text = message.text?.trim();
+  if (!text) {
+    return ok("ignored");
   }
 
   try {
