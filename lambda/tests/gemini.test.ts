@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { extractFromPhoto, extractFromText } from "../src/gemini.js";
+import { extractFromPhoto, extractFromText, extractFromVoice } from "../src/gemini.js";
 import type { TaxonomySnapshot } from "../src/extraction.js";
 
 const taxonomy: TaxonomySnapshot = {
@@ -340,5 +340,99 @@ describe("extractFromPhoto", () => {
     };
     const text = first.contents[0].parts.find((p) => p.text)?.text ?? "";
     expect(text).toMatch(/receipt/i);
+  });
+});
+
+describe("extractFromVoice", () => {
+  it("sends Ogg inline data plus caption, then the bucket specialist without the audio", async () => {
+    const ogg = Buffer.from([0x4f, 0x67, 0x67, 0x53]);
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => geminiJson(extracted, 100, 40),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () =>
+          geminiJson(
+            { buckets: [{ bucket: "wants", why: "takeout" }] },
+            50,
+            10,
+          ),
+      });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await extractFromVoice({
+      apiKey: "test-key",
+      audio: ogg,
+      mimeType: "audio/ogg",
+      caption: "yesterday",
+      taxonomy,
+      bucketRules: "Takeout is wants.",
+      today: "2026-08-17",
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const first = JSON.parse(fetchMock.mock.calls[0][1].body as string) as {
+      systemInstruction: { parts: { text: string }[] };
+      contents: {
+        parts: { text?: string; inlineData?: { mimeType: string; data: string } }[];
+      }[];
+    };
+    const parts = first.contents[0].parts;
+    const inline = parts.find((p) => p.inlineData);
+    expect(inline?.inlineData).toEqual({
+      mimeType: "audio/ogg",
+      data: ogg.toString("base64"),
+    });
+    expect(parts.some((p) => p.text?.includes("yesterday"))).toBe(true);
+    expect(first.systemInstruction.parts[0].text).toMatch(/voice note/i);
+    expect(first.systemInstruction.parts[0].text).toMatch(/never guess/i);
+    expect(first.systemInstruction.parts[0].text).toMatch(/empty string/i);
+    expect(first.systemInstruction.parts[0].text).not.toMatch(/receipt photo/i);
+    expect(first.systemInstruction.parts[0].text).toMatch(/ordinary English/i);
+    expect(first.systemInstruction.parts[0].text).toMatch(/Translate French/i);
+    expect(first.systemInstruction.parts[0].text).toMatch(/Keep brand names/i);
+
+    const second = JSON.parse(fetchMock.mock.calls[1][1].body as string) as {
+      contents: { parts: { text?: string; inlineData?: unknown }[] }[];
+    };
+    expect(JSON.stringify(second.contents)).not.toContain(
+      ogg.toString("base64"),
+    );
+    expect(result.items[0].bucket).toBe("wants");
+    expect(result.meta?.extractor_sha256).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it("uses a voice-note instruction when the caption is empty", async () => {
+    const ogg = Buffer.from([0x4f, 0x67, 0x67, 0x53]);
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () =>
+        geminiJson({
+          ...extracted,
+          type: "income",
+          items: [],
+          income_source: "Salary",
+        }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await extractFromVoice({
+      apiKey: "test-key",
+      audio: ogg,
+      mimeType: "audio/ogg",
+      caption: "  ",
+      taxonomy,
+      bucketRules: "",
+      today: "2026-08-17",
+    });
+
+    const first = JSON.parse(fetchMock.mock.calls[0][1].body as string) as {
+      contents: { parts: { text?: string }[] }[];
+    };
+    const text = first.contents[0].parts.find((p) => p.text)?.text ?? "";
+    expect(text).toMatch(/voice/i);
   });
 });
