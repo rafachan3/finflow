@@ -104,6 +104,24 @@ export function largestPhotoFileId(photos: unknown[]): string {
   return bestId;
 }
 
+export function voiceFileId(voice: unknown): string {
+  if (!voice || typeof voice !== "object") {
+    throw new Error("no voice file_id");
+  }
+  const id = (voice as { file_id?: unknown }).file_id;
+  if (typeof id !== "string" || id === "") {
+    throw new Error("no voice file_id");
+  }
+  return id;
+}
+
+function mimeTypeForPath(filePath: string): string {
+  const lower = filePath.toLowerCase();
+  if (lower.endsWith(".png")) return "image/png";
+  if (lower.endsWith(".oga") || lower.endsWith(".ogg")) return "audio/ogg";
+  return "image/jpeg";
+}
+
 export type TelegramFile = {
   bytes: Buffer;
   mimeType: string;
@@ -129,8 +147,5 @@ export async function downloadTelegramFile(
     throw new Error(`Telegram file HTTP ${res.status}`);
   }
   const bytes = Buffer.from(await res.arrayBuffer());
-  const mimeType = filePath.toLowerCase().endsWith(".png")
-    ? "image/png"
-    : "image/jpeg";
-  return { bytes, mimeType };
+  return { bytes, mimeType: mimeTypeForPath(filePath) };
 }
