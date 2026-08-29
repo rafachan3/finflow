@@ -81,7 +81,7 @@ export async function loadTaxonomy(
 
 export async function insertPendingIngestion(args: {
   id?: string;
-  source?: "text" | "photo";
+  source?: "text" | "photo" | "voice";
   mediaPath?: string | null;
   telegramUpdateId: number;
   rawPayload: unknown;
