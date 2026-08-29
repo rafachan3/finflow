@@ -40,6 +40,17 @@ const PHOTO_EXTRACTOR_STATIC_PROMPT = [
   "date is YYYY-MM-DD only when printed on the receipt or stated in the caption (including today, yesterday, or a month and day). If neither, return an empty string. Never guess today's date or the photo send time.",
 ].join("\n");
 
+const VOICE_EXTRACTOR_STATIC_PROMPT = [
+  "You extract Canadian personal-finance transactions from a voice note.",
+  "Today is YYYY-MM-DD (America/Toronto). Currency is CAD.",
+  "Amounts are strings with exactly two decimal places. Line amounts include tax and MUST sum to the header amount.",
+  "Do not assign needs/wants. Item types must belong to the same category as the subcategory.",
+  "category, subcategory, and item_type are separate fields. Never repeat the category inside subcategory or item_type. Example: category='Food and drink', subcategory='Takeout / Quick Service', item_type='Meals & Prepared Food'.",
+  "Use Other … subcategories only when nothing more specific fits.",
+  ENGLISH_DESCRIPTIONS,
+  "date is YYYY-MM-DD only when the user stated a calendar date in the recording or caption (including today, yesterday, or a month and day). If they did not, return an empty string. Never guess today's date or the voice send time.",
+].join("\n");
+
 const BUCKET_STATIC_PROMPT = [
   "You assign needs or wants to each expense line.",
   "Apply these rules. They override default_bucket hints.",
@@ -380,6 +391,36 @@ export async function extractFromPhoto(args: {
       },
       {
         text: caption || "Extract the transaction from this receipt.",
+      },
+    ],
+  });
+}
+
+export async function extractFromVoice(args: {
+  apiKey: string;
+  audio: Buffer;
+  mimeType: string;
+  caption: string;
+  taxonomy: TaxonomySnapshot;
+  bucketRules: string;
+  today: string;
+}): Promise<Extraction> {
+  const caption = args.caption.trim();
+  return extractFromUserParts({
+    apiKey: args.apiKey,
+    taxonomy: args.taxonomy,
+    bucketRules: args.bucketRules,
+    today: args.today,
+    extractorStatic: VOICE_EXTRACTOR_STATIC_PROMPT,
+    userParts: [
+      {
+        inlineData: {
+          mimeType: args.mimeType,
+          data: args.audio.toString("base64"),
+        },
+      },
+      {
+        text: caption || "Extract the transaction from this voice note.",
       },
     ],
   });

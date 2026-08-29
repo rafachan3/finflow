@@ -3,7 +3,9 @@ import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 const client = new S3Client({});
 
 function extensionFor(contentType: string): string {
-  return contentType === "image/png" ? "png" : "jpg";
+  if (contentType === "image/png") return "png";
+  if (contentType === "audio/ogg") return "ogg";
+  return "jpg";
 }
 
 export async function putReceipt(args: {

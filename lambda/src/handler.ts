@@ -21,7 +21,7 @@ import {
   validateExtraction,
   type Extraction,
 } from "./extraction.js";
-import { extractFromPhoto, extractFromText } from "./gemini.js";
+import { extractFromPhoto, extractFromText, extractFromVoice } from "./gemini.js";
 import { putReceipt } from "./s3.js";
 import {
   answerCallbackQuery,
@@ -30,6 +30,7 @@ import {
   largestPhotoFileId,
   reviewKeyboard,
   sendMessage,
+  voiceFileId,
 } from "./telegram.js";
 
 type TelegramChat = { id: number };
@@ -39,6 +40,7 @@ type TelegramMessage = {
   text?: string;
   caption?: string;
   photo?: unknown[];
+  voice?: unknown;
 };
 type TelegramCallbackQuery = {
   id: string;
@@ -94,7 +96,7 @@ function todayToronto(now = new Date()): string {
 function withDatePolicy(
   extraction: Extraction,
   today: string,
-  channel: "text" | "photo" = "text",
+  channel: "text" | "photo" | "voice" = "text",
 ): Extraction {
   const policy = applyDatePolicy({
     channel,
@@ -236,6 +238,78 @@ async function handlePhoto(
   }
 }
 
+async function handleVoice(
+  update: TelegramUpdate,
+  config: Awaited<ReturnType<typeof getConfig>>,
+): Promise<APIGatewayProxyResultV2> {
+  const message = update.message!;
+  try {
+    const file = await downloadTelegramFile(
+      config.botToken,
+      voiceFileId(message.voice),
+    );
+    const today = todayToronto();
+    const taxonomy = await loadTaxonomy();
+    const extraction = withDatePolicy(
+      normalizeTaxonomyNames(
+        await extractFromVoice({
+          apiKey: config.geminiApiKey,
+          audio: file.bytes,
+          mimeType: file.mimeType,
+          caption: message.caption ?? "",
+          taxonomy,
+          bucketRules: config.bucketRules,
+          today,
+        }),
+        taxonomy,
+      ),
+      today,
+      "voice",
+    );
+    const checks = validateExtraction(extraction, taxonomy);
+    const preview = formatPreview(extraction, checks);
+    if (!checks.ok) {
+      await sendMessage(config.botToken, message.chat.id, preview);
+      return ok("ok");
+    }
+
+    const id = crypto.randomUUID();
+    const mediaPath = await putReceipt({
+      bucket: config.receiptsBucket,
+      ingestionId: id,
+      body: file.bytes,
+      contentType: file.mimeType,
+    });
+    const inserted = await insertPendingIngestion({
+      id,
+      source: "voice",
+      mediaPath,
+      telegramUpdateId: update.update_id,
+      rawPayload: update,
+      extraction,
+    });
+    if (inserted === "duplicate") {
+      return ok("duplicate");
+    }
+
+    await sendMessage(
+      config.botToken,
+      message.chat.id,
+      preview,
+      confirmDiscardKeyboard(id),
+    );
+    return ok("ok");
+  } catch (err) {
+    console.error("voice extract error", err);
+    await sendMessage(
+      config.botToken,
+      message.chat.id,
+      "Couldn't parse that voice note. Try again.",
+    );
+    return ok("ok");
+  }
+}
+
 async function handleMessage(
   update: TelegramUpdate,
   config: Awaited<ReturnType<typeof getConfig>>,
@@ -262,6 +336,10 @@ async function handleMessage(
 
   if (message.photo?.length) {
     return await handlePhoto(update, config);
+  }
+
+  if (message.voice) {
+    return await handleVoice(update, config);
   }
 
   const text = message.text?.trim();

@@ -182,7 +182,7 @@ export type DatePolicy = {
 };
 
 export function applyDatePolicy(args: {
-  channel: "text" | "photo";
+  channel: "text" | "photo" | "voice";
   extractedDate: string | null | undefined;
   today: string;
 }): DatePolicy {

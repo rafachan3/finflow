@@ -19,6 +19,7 @@ vi.mock("../src/db.js", () => ({
 vi.mock("../src/gemini.js", () => ({
   extractFromText: vi.fn(),
   extractFromPhoto: vi.fn(),
+  extractFromVoice: vi.fn(),
 }));
 vi.mock("../src/telegram.js", () => ({
   answerCallbackQuery: vi.fn(),
@@ -27,6 +28,7 @@ vi.mock("../src/telegram.js", () => ({
   sendMessage: vi.fn(),
   downloadTelegramFile: vi.fn(),
   largestPhotoFileId: vi.fn(() => "file-big"),
+  voiceFileId: vi.fn(() => "voice-id"),
 }));
 vi.mock("../src/s3.js", () => ({
   putReceipt: vi.fn(),
@@ -40,11 +42,12 @@ import {
   loadTaxonomy,
   setIngestionAwaitingDate,
 } from "../src/db.js";
-import { extractFromPhoto, extractFromText } from "../src/gemini.js";
+import { extractFromPhoto, extractFromText, extractFromVoice } from "../src/gemini.js";
 import {
   downloadTelegramFile,
   reviewKeyboard,
   sendMessage,
+  voiceFileId,
 } from "../src/telegram.js";
 import { putReceipt } from "../src/s3.js";
 import { handler } from "../src/handler.js";
@@ -120,6 +123,7 @@ beforeEach(() => {
   vi.mocked(loadTaxonomy).mockResolvedValue(taxonomy);
   vi.mocked(extractFromText).mockResolvedValue(extraction);
   vi.mocked(extractFromPhoto).mockResolvedValue(extraction);
+  vi.mocked(extractFromVoice).mockResolvedValue(extraction);
   vi.mocked(insertPendingIngestion).mockResolvedValue({ id: "ing-1" });
   vi.mocked(findAwaitingDateIngestion).mockResolvedValue(null);
   vi.mocked(downloadTelegramFile).mockResolvedValue({
@@ -409,6 +413,171 @@ describe("handler", () => {
     );
 
     expect(extractFromPhoto).not.toHaveBeenCalled();
+    expect(putReceipt).not.toHaveBeenCalled();
+    expect(sendMessage).toHaveBeenCalledWith(
+      "t",
+      1,
+      expect.stringMatching(/waiting for a date/i),
+    );
+  });
+
+  it("extracts a voice note, archives it, and offers Confirm", async () => {
+    const ogg = Buffer.from([0x4f, 0x67, 0x67, 0x53]);
+    vi.spyOn(crypto, "randomUUID").mockReturnValue(
+      "11111111-1111-1111-1111-111111111111",
+    );
+    vi.mocked(downloadTelegramFile).mockResolvedValue({
+      bytes: ogg,
+      mimeType: "audio/ogg",
+    });
+    vi.mocked(putReceipt).mockResolvedValue(
+      "11111111-1111-1111-1111-111111111111.ogg",
+    );
+
+    await handler(
+      event({
+        update_id: 19,
+        message: {
+          chat: { id: 1 },
+          voice: { file_id: "voice-id", duration: 4 },
+          caption: "yesterday lunch",
+        },
+      }),
+    );
+
+    expect(voiceFileId).toHaveBeenCalledWith({
+      file_id: "voice-id",
+      duration: 4,
+    });
+    expect(downloadTelegramFile).toHaveBeenCalledWith("t", "voice-id");
+    expect(extractFromVoice).toHaveBeenCalledWith(
+      expect.objectContaining({
+        apiKey: "g",
+        mimeType: "audio/ogg",
+        caption: "yesterday lunch",
+      }),
+    );
+    expect(putReceipt).toHaveBeenCalledWith({
+      bucket: "finflow-receipts-test",
+      ingestionId: "11111111-1111-1111-1111-111111111111",
+      body: ogg,
+      contentType: "audio/ogg",
+    });
+    expect(insertPendingIngestion).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "11111111-1111-1111-1111-111111111111",
+        source: "voice",
+        mediaPath: "11111111-1111-1111-1111-111111111111.ogg",
+        telegramUpdateId: 19,
+        extraction: expect.objectContaining({
+          date: "2026-08-17",
+          date_source: "stated",
+        }),
+      }),
+    );
+    expect(sendMessage).toHaveBeenCalledWith(
+      "t",
+      1,
+      expect.stringContaining("Confirm to save"),
+      { confirm: "11111111-1111-1111-1111-111111111111" },
+    );
+    expect(extractFromText).not.toHaveBeenCalled();
+    expect(extractFromPhoto).not.toHaveBeenCalled();
+  });
+
+  it("defaults a missing voice date to today and still offers Confirm", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-18T16:00:00Z"));
+    vi.mocked(extractFromVoice).mockResolvedValue({ ...extraction, date: "" });
+    vi.mocked(downloadTelegramFile).mockResolvedValue({
+      bytes: Buffer.from([0x4f, 0x67, 0x67, 0x53]),
+      mimeType: "audio/ogg",
+    });
+    vi.mocked(putReceipt).mockResolvedValue(
+      "11111111-1111-1111-1111-111111111111.ogg",
+    );
+    vi.spyOn(crypto, "randomUUID").mockReturnValue(
+      "11111111-1111-1111-1111-111111111111",
+    );
+
+    await handler(
+      event({
+        update_id: 20,
+        message: {
+          chat: { id: 1 },
+          voice: { file_id: "voice-id" },
+        },
+      }),
+    );
+
+    expect(insertPendingIngestion).toHaveBeenCalledWith(
+      expect.objectContaining({
+        source: "voice",
+        extraction: expect.objectContaining({
+          date: "2026-08-18",
+          date_source: "today_default",
+        }),
+      }),
+    );
+    expect(sendMessage).toHaveBeenCalledWith(
+      "t",
+      1,
+      expect.stringMatching(/defaulted to today/i),
+      { confirm: "11111111-1111-1111-1111-111111111111" },
+    );
+    expect(reviewKeyboard).not.toHaveBeenCalledWith(
+      expect.anything(),
+      { confirm: false },
+    );
+  });
+
+  it("does not persist a voice note when checks fail", async () => {
+    vi.mocked(extractFromVoice).mockResolvedValue({
+      ...extraction,
+      amount: "99.00",
+    });
+    vi.mocked(downloadTelegramFile).mockResolvedValue({
+      bytes: Buffer.from([0x4f, 0x67, 0x67, 0x53]),
+      mimeType: "audio/ogg",
+    });
+
+    await handler(
+      event({
+        update_id: 21,
+        message: {
+          chat: { id: 1 },
+          voice: { file_id: "voice-id" },
+        },
+      }),
+    );
+
+    expect(putReceipt).not.toHaveBeenCalled();
+    expect(insertPendingIngestion).not.toHaveBeenCalled();
+    expect(sendMessage).toHaveBeenCalledWith(
+      "t",
+      1,
+      expect.stringContaining("✗"),
+    );
+    expect(vi.mocked(sendMessage).mock.calls[0].length).toBe(3);
+  });
+
+  it("does not start a new voice note while awaiting a date", async () => {
+    vi.mocked(findAwaitingDateIngestion).mockResolvedValue({
+      id: "ing-1",
+      extraction,
+    });
+
+    await handler(
+      event({
+        update_id: 22,
+        message: {
+          chat: { id: 1 },
+          voice: { file_id: "voice-id" },
+        },
+      }),
+    );
+
+    expect(extractFromVoice).not.toHaveBeenCalled();
     expect(putReceipt).not.toHaveBeenCalled();
     expect(sendMessage).toHaveBeenCalledWith(
       "t",

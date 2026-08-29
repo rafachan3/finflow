@@ -61,4 +61,25 @@ describe("putReceipt", () => {
     expect(command.input.Key).toBe(key);
     expect(command.input.ContentType).toBe("image/png");
   });
+
+  it("puts Ogg audio at {ingestionId}.ogg when contentType is audio/ogg", async () => {
+    send.mockResolvedValue({});
+    const body = Buffer.from([0x4f, 0x67, 0x67, 0x53]);
+
+    const key = await putReceipt({
+      bucket: "finflow-receipts-test",
+      ingestionId: "11111111-1111-1111-1111-111111111111",
+      body,
+      contentType: "audio/ogg",
+    });
+
+    expect(key).toBe("11111111-1111-1111-1111-111111111111.ogg");
+    const command = send.mock.calls[0][0] as { input: Record<string, unknown> };
+    expect(command.input).toEqual({
+      Bucket: "finflow-receipts-test",
+      Key: key,
+      Body: body,
+      ContentType: "audio/ogg",
+    });
+  });
 });
