@@ -219,6 +219,77 @@ describe("extractFromText", () => {
     expect(result.meta?.rules_sha256).toBeUndefined();
   });
 
+  it("keeps funded_by null when Gemini returns null", async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce({
+      ok: true,
+      json: async () =>
+        geminiJson({
+          ...extracted,
+          type: "income",
+          amount: "2000.00",
+          items: [],
+          income_source: "Salary",
+          merchant: null,
+          venue: null,
+          tags: [],
+          funded_by: null,
+        }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await extractFromText({
+      apiKey: "test-key",
+      text: "got paid 2000 salary",
+      taxonomy,
+      bucketRules: "unused",
+      today: "2026-08-17",
+    });
+
+    expect(result.funded_by).toBeNull();
+  });
+
+  it("asks Gemini for nullable funded_by, expense-only", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () =>
+        geminiJson({
+          ...extracted,
+          type: "income",
+          items: [],
+          income_source: "Salary",
+          funded_by: null,
+        }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await extractFromText({
+      apiKey: "test-key",
+      text: "got paid",
+      taxonomy,
+      bucketRules: "",
+      today: "2026-08-17",
+    });
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body as string) as {
+      systemInstruction: { parts: { text: string }[] };
+      generationConfig: {
+        responseSchema: {
+          properties: { funded_by: { nullable?: boolean } };
+          required: string[];
+        };
+      };
+    };
+    expect(body.generationConfig.responseSchema.properties.funded_by.nullable).toBe(
+      true,
+    );
+    expect(body.generationConfig.responseSchema.required).not.toContain(
+      "funded_by",
+    );
+    expect(body.systemInstruction.parts[0].text).toMatch(
+      /funded_by is who paid for an expense/i,
+    );
+  });
+
   it("sends the API key in a header, not the URL", async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,

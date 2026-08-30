@@ -34,7 +34,7 @@ export type Extraction = {
   merchant: string | null;
   venue: string | null;
   tags: string[];
-  funded_by: string;
+  funded_by: string | null;
   is_recurring: boolean;
   income_source: string | null;
   to_account: string | null;
@@ -274,8 +274,10 @@ export function validateExtraction(
     errors.push(`amount must be two-decimal, got ${extraction.amount}`);
   }
 
-  if (!hasName(taxonomy.fundingSources, extraction.funded_by)) {
-    errors.push(`unknown funding source: ${extraction.funded_by}`);
+  if (extraction.type === "expense") {
+    if (!hasName(taxonomy.fundingSources, extraction.funded_by)) {
+      errors.push(`unknown funding source: ${extraction.funded_by}`);
+    }
   }
 
   if (extraction.venue !== null && !hasName(taxonomy.venues, extraction.venue)) {
@@ -366,6 +368,14 @@ export function validateExtraction(
   return { ok: errors.length === 0, errors, warnings };
 }
 
+/** Confirm writes this name (or null) to transactions.funding_source_id. */
+export function fundingSourceToPersist(
+  type: TxType,
+  fundedBy: string | null,
+): string | null {
+  return type === "expense" ? fundedBy : null;
+}
+
 export function mergeBuckets(
   extraction: Extraction,
   buckets: { bucket: Bucket; why?: string }[],
@@ -399,9 +409,12 @@ export function formatPreview(
   if (extraction.merchant) lines.push(`Merchant: ${extraction.merchant}`);
   if (extraction.venue) lines.push(`Venue: ${extraction.venue}`);
   if (extraction.tags.length) lines.push(`Tags: ${extraction.tags.join(", ")}`);
-  lines.push(
-    `Funded by: ${extraction.funded_by} · Recurring: ${extraction.is_recurring ? "yes" : "no"}`,
-  );
+  const recurring = `Recurring: ${extraction.is_recurring ? "yes" : "no"}`;
+  if (extraction.type === "expense") {
+    lines.push(`Funded by: ${extraction.funded_by} · ${recurring}`);
+  } else {
+    lines.push(recurring);
+  }
   if (extraction.income_source) {
     lines.push(`Income source: ${extraction.income_source}`);
   }

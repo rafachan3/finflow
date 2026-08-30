@@ -1,6 +1,7 @@
 import { Pool, type PoolClient } from "pg";
 import { getConfig } from "./config.js";
 import {
+  fundingSourceToPersist,
   validateExtraction,
   type Extraction,
   type TaxonomySnapshot,
@@ -202,12 +203,19 @@ export async function confirmIngestion(
       );
     }
 
-    const fundingId = await lookupId(
-      client,
-      `SELECT id FROM funding_sources WHERE name = $1`,
-      [extraction.funded_by],
+    const fundingName = fundingSourceToPersist(
+      extraction.type,
+      extraction.funded_by,
     );
-    if (fundingId === null) {
+    const fundingId =
+      fundingName === null
+        ? null
+        : await lookupId(
+            client,
+            `SELECT id FROM funding_sources WHERE name = $1`,
+            [fundingName],
+          );
+    if (extraction.type === "expense" && fundingId === null) {
       throw new Error(`funding source not found: ${extraction.funded_by}`);
     }
 

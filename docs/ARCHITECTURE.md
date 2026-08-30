@@ -53,8 +53,9 @@ flowchart TD
 Text, receipt photos, and voice notes share the same confirm loop.
 Photos and voice download from Telegram, extract with Gemini (vision or
 audio), then archive to S3 only when the ingestion is persisted.
-PDF/document, category/amount Edit, multi-event messages, and
-expense-only funding_source remain later in Phase 3. Multi-event is N Confirm cards when one text, voice,
+PDF/document, category/amount Edit, and multi-event messages remain
+later in Phase 3. `funding_source_id` is expense-only (null on income
+and transfer). Multi-event is N Confirm cards when one text, voice,
 or photo caption contains 2+ independent headers, including a grocery
 breakdown plus an unrelated drink or income. A grocery trip alone is
 one transaction with lines on every channel. One Telegram update is
@@ -106,8 +107,8 @@ dbt models and the agent read it, so numbers agree everywhere.
 - The bot replies with the full proposed ledger row plus check results.
   Confirm / Discard / Fix date appear when checks pass. Text and voice
   with no date default to today and warn. Photos with no printed/caption
-  date persist without Confirm. Category/amount Edit, multi-event
-  messages, and expense-only funding_source are later.
+  date persist without Confirm. Category/amount Edit and multi-event
+  messages are later. Funded by appears on expense previews only.
 
 ### Storage — Supabase Postgres (rows) + AWS S3 (media)
 

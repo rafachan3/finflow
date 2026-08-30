@@ -37,7 +37,7 @@ erDiagram
   venues |o--o{ transactions : "bought at"
   income_sources |o--o{ transactions : "earned from"
   accounts |o--o{ transactions : "transferred to"
-  funding_sources ||--o{ transactions : "paid by"
+  funding_sources |o--o{ transactions : "paid by"
   transactions ||--o{ transaction_tags : ""
   tags ||--o{ transaction_tags : ""
   transactions |o--o{ ingestions : "confirmed from"
@@ -53,7 +53,7 @@ erDiagram
     smallint venue_id FK "nullable"
     smallint income_source_id FK "required if income"
     smallint to_account_id FK "required if transfer"
-    smallint funding_source_id FK
+    smallint funding_source_id FK "required if expense"
     boolean is_recurring
     text notes "nullable"
     timestamptz created_at
@@ -191,8 +191,9 @@ create table accounts (
   kind text not null check (kind in ('savings', 'investment'))
 );
 
--- Who paid. The tracked seed contains only 'self'; additional sources are
--- personal and live in the untracked overlay.
+-- Who paid for an expense. Null on income and transfer. The tracked seed
+-- contains only 'self'; additional sources are personal and live in the
+-- untracked overlay.
 create table funding_sources (
   id   smallint generated always as identity primary key,
   name text not null unique
@@ -216,12 +217,14 @@ create table transactions (
   venue_id          smallint references venues(id),
   income_source_id  smallint references income_sources(id),
   to_account_id     smallint references accounts(id),
-  funding_source_id smallint not null references funding_sources(id),
+  funding_source_id smallint references funding_sources(id),
   is_recurring      boolean not null default false,
   notes             text,
   created_at        timestamptz not null default now(),
   check (type <> 'income'   or income_source_id is not null),
-  check (type <> 'transfer' or to_account_id    is not null)
+  check (type <> 'transfer' or to_account_id    is not null),
+  check (type <> 'expense'  or funding_source_id is not null),
+  check (type =  'expense'  or funding_source_id is null)
 );
 create index on transactions (occurred_on);
 
@@ -325,9 +328,10 @@ amount:
 ```
 
 `income_source` is required when `type` is `income`; `to_account` when `type`
-is `transfer`. Expense lines include `bucket` only after the bucket
-specialist runs. Tags are transaction-level, not per line. `date_source` is
-`stated` (user, caption, or receipt), `today_default` (text with no date),
+is `transfer`. `funded_by` is required when `type` is `expense` and must be
+null on income and transfer. Expense lines include `bucket` only after the
+bucket specialist runs. Tags are transaction-level, not per line. `date_source`
+is `stated` (user, caption, or receipt), `today_default` (text with no date),
 `missing` (photo with no date — Confirm omitted), or `fix` (owner typed a
 date after Fix date).
 
@@ -352,6 +356,8 @@ bump when SSM rules change.
   the line amounts sum to `transactions.amount` (tax allocated
   proportionally at extraction). Income and transfer transactions have no
   lines. Enforced by application logic and dbt tests, not triggers.
+- `funding_source_id` is set on expenses and null on income and transfer
+  (check constraints).
 - An item's `item_type_id`, when set, must belong to the same category as
   its `subcategory_id` (dbt test).
 - `ingestions.telegram_update_id` is UNIQUE — webhook retries are harmless.
