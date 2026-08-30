@@ -2,7 +2,7 @@
 
 Living state of the project. Read this first; update it whenever work lands.
 
-**Last updated:** 2026-08-28
+**Last updated:** 2026-08-29
 **Current phase:** Phase 3 — Gemini extraction (see [ROADMAP.md](ROADMAP.md))
 
 ## Phase progress
@@ -12,7 +12,7 @@ Living state of the project. Read this first; update it whenever work lands.
 - [x] Phase 1 — Supabase project, schema migrations, Notion history import (2026-08-13)
 - [x] Taxonomy tweak — Hygiene + Beauty → Personal care (Health and wellness); buckets untouched (2026-08-13)
 - [x] Phase 2 — Telegram bot walking skeleton (text only, no LLM) (2026-08-17)
-- [ ] Phase 3 — Gemini extraction (text → photo → voice) — **3a + 3b phone-tested; 3c implemented, not phone-tested**
+- [ ] Phase 3 — Gemini extraction (text → photo → voice) — **3a + 3b + 3c phone-tested; Edit, multi-event, funding source remain**
 - [ ] Phase 4 — dbt semantic layer
 - [ ] Phase 5 — Grafana dashboards
 - [ ] Phase 6 — Claude analytics agent (subagents + Postgres MCP)
@@ -85,20 +85,29 @@ only. Largest size → Telegram `getFile` → Gemini vision (image + caption)
 Discard stay). A photo while `awaiting_date` is still waiting, not a new
 expense.
 
-Voice notes (3c, this branch): `message.voice` only (not `message.audio`
-or document). Caption goes to Gemini with the audio. Date policy matches
+Voice notes (3c, #14): `message.voice` only (not `message.audio` or
+document). Caption goes to Gemini with the audio. Date policy matches
 text: missing date defaults to today with a warning; Confirm stays.
 After checks, UUID → S3 `{id}.ogg` → `ingestions` `source=voice`.
-A voice note while `awaiting_date` is still waiting. PDF/document,
-category/amount Edit, multi-event messages, and expense-only
-funding_source remain later. Multi-event is 2+ independent headers
-in one update, including a grocery breakdown plus an unrelated
-expense or income in the same text, voice, or photo caption. The
-trip stays one expense with lines; the extra event is its own row.
-A grocery trip alone is already one expense with lines. One update
-is still one extraction until multi-event ships. Funding source
-stays NOT NULL on every row until that leftover; income previews
-still show Funded by: self.
+A voice note while `awaiting_date` is still waiting.
+
+Phone-tested 2026-08-29: one-header voice → Confirm wrote the ledger
+row; `ingestions` `source=voice`, `status=confirmed`, `media_path` =
+`{id}.ogg`, `transaction_id` set; that object is in the receipts
+bucket. Dateless voice showed the today warning with Confirm still
+offered. A voice note after Fix date was still waiting, not a new
+expense.
+
+PDF/document, category/amount Edit, multi-event messages, expense-only
+funding_source, and S3 key prefixes remain later. Multi-event is 2+
+independent headers in one update, including a grocery breakdown plus
+an unrelated expense or income in the same text, voice, or photo
+caption. The trip stays one expense with lines; the extra event is
+its own row. A grocery trip alone is already one expense with lines.
+One update is still one extraction until multi-event ships. Funding
+source stays NOT NULL on every row until that leftover; income
+previews still show Funded by: self. Media still lands at the bucket
+root as `{id}.{ext}`; source/month prefixes are a leftover.
 
 First photo after merge failed with no Telegram reply: the Supabase
 project was `INACTIVE` (paused). Pooler error
@@ -119,16 +128,11 @@ Dateless-receipt persist (no Confirm) is not yet phone-tested.
 
 ## Next concrete step
 
-Merge 3c, wait for `Deploy ingest Lambda` on `main`, then phone-test
-**one header per voice note**. A grocery trip spoken as several SKUs
-is one expense with lines (same shape as a receipt photo) and is a
-valid 3c check if Confirm writes the ledger and `media_path` matches
-an `.ogg` in S3. Groceries plus an unrelated drink, or income plus a
-transfer, is two headers; expected to fail or drop one event until
-the multi-event item — do not use those as the 3c check. Do not check
-ROADMAP 3c until Confirm + S3 `.ogg` pass.
-Optional leftover smoke: a receipt with no printed or caption date
-persists without Confirm.
+Expense-only `funding_source_id` (nullable + CHECK; preview hides
+Funded by except on expenses). Then category/amount Edit, then
+multi-event. Optional leftover: S3 keys `{source}/{yyyy-mm}/{id}.{ext}`
+in the existing bucket. Optional smoke: a receipt with no printed or
+caption date persists without Confirm.
 
 ## Open questions
 

@@ -85,11 +85,17 @@ skeleton everything else hangs on. Ship the smallest loop first.*
       merchant, date; image archived to S3, key in `ingestions.media_path`
       *(phone-tested 2026-08-28: Confirm wrote the ledger row; S3 object
       matches `ingestions.media_path`)*
-- [ ] 3c. Voice notes: Telegram OGG → Gemini audio input → same pipeline
-      *(implemented; leave unchecked until Confirm + S3 `.ogg`)*
+- [x] 3c. Voice notes: Telegram OGG → Gemini audio input → same pipeline
+      *(phone-tested 2026-08-29: Confirm wrote the ledger row; S3 `.ogg`
+      matches `ingestions.media_path`; dateless warning and still-waiting
+      on a follow-up voice both held)*
 - [x] Date HITL: text with no date defaults to today (warning); photo with
       no date blocks Confirm; Fix date → `ingestions.status = awaiting_date`
       *(phone-tested 2026-08-18)*
+- [ ] S3 media keys: one bucket, prefix `{source}/{yyyy-mm}/{id}.{ext}`
+      (persist month, America/Toronto). Existing flat `{id}.{ext}` keys
+      stay. Do not add a second bucket; do not rename
+      `finflow-receipts-*` (AWS has no rename). After 3c.
 - [ ] Funding source is expense-only: `funding_source_id` nullable;
       CHECK expense ⇒ not null, income/transfer ⇒ null. Backfill
       existing income and transfer rows to null. Confirm preview
@@ -158,4 +164,4 @@ with numbers matching the dashboards.
 - [ ] Secrets audit (git history clean), example `.env.example`
 - [ ] Cost check: one full month of AWS billing confirms the ingestion side is
       under $0.10 — record the actual figure in DECISIONS.md
-- [ ] Optional: Evidence.dev static report site on S3 + CloudFront
+- [ ] Evidence.dev static report site on S3 + CloudFront
