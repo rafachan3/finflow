@@ -263,8 +263,10 @@ function asItem(raw: unknown): Omit<ExtractionItem, "bucket" | "bucket_why"> {
 function asExtraction(raw: unknown): Extraction {
   const o = raw as Record<string, unknown>;
   const items = Array.isArray(o.items) ? o.items.map(asItem) : [];
+  const type = o.type as TxType;
+  const fundedBy = asString(o.funded_by);
   return {
-    type: o.type as TxType,
+    type,
     amount: String(o.amount ?? ""),
     currency: "CAD",
     date: String(o.date ?? ""),
@@ -272,7 +274,7 @@ function asExtraction(raw: unknown): Extraction {
     merchant: asString(o.merchant),
     venue: asString(o.venue),
     tags: Array.isArray(o.tags) ? o.tags.map(String) : [],
-    funded_by: asString(o.funded_by),
+    funded_by: type === "expense" ? (fundedBy ?? "self") : fundedBy,
     is_recurring: Boolean(o.is_recurring),
     income_source: asString(o.income_source),
     to_account: asString(o.to_account),
