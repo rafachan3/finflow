@@ -96,12 +96,14 @@ skeleton everything else hangs on. Ship the smallest loop first.*
       (persist month, America/Toronto). Existing flat `{id}.{ext}` keys
       stay. Do not add a second bucket; do not rename
       `finflow-receipts-*` (AWS has no rename).
-- [ ] Funding source is expense-only: `funding_source_id` nullable;
+- [x] Funding source is expense-only: `funding_source_id` nullable;
       CHECK expense ⇒ not null, income/transfer ⇒ null. Backfill
       existing income and transfer rows to null. Confirm preview
-      shows Funded by only on expenses. Migration and
-      DATA_MODEL.md in the same change. Transfers do
-      not get a “who funded this move” rule unless we add one later.
+      shows Funded by only on expenses. Migration 0007 and
+      DATA_MODEL.md. *(apply 0007 after Deploy ingest Lambda on
+      main; do not Confirm income in the gap)*
+      Transfers do not get a “who funded this move” rule unless we
+      add one later.
 - [ ] Edit flow: reply buttons let you fix category/amount before confirm
       (date-only Fix date already shipped)
 - [ ] Multi-event message: one text, voice, or photo+caption that
