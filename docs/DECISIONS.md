@@ -498,3 +498,82 @@ default today. A photo while `awaiting_date` is “still waiting.”
 **Ruled out:** PDF / document path; GetObject round-trip for vision;
 defaulting a dateless receipt to today; treating a photo as a new expense
 while a date reply is expected.
+
+---
+
+## 2026-08-28 — Phase 3c: Telegram voice notes, Gemini audio, S3 on persist
+
+Voice notes are Telegram **`message.voice`** only (Ogg Opus). Caption text
+goes to Gemini with the audio. `message.audio` (music files), video notes,
+and documents stay out of scope.
+
+Gemini sees Telegram file bytes, not S3. After checks, persistable notes
+get a UUID, `PutObject` `{uuid}.ogg`, then INSERT with that id,
+`source = 'voice'`, and `media_path` = the key. Failed checks do not
+write S3 or Postgres. Same receipts bucket and PutObject-only ingest
+role; still no `GetObject`.
+
+Date policy matches **text**, not photos: a missing spoken/caption date
+defaults to today (America/Toronto) with the existing warning. Confirm
+stays. Do not use send time. A voice note while `awaiting_date` is
+“still waiting.”
+
+**Ruled out:** `message.audio` / document path; blocking Confirm on a
+dateless voice note; a second S3 bucket; GetObject round-trip for
+extraction.
+
+---
+
+## 2026-08-28 — One Telegram update is one extraction until multi-event
+
+First voice-note phone attempt described two **independent headers**
+in one recording (income and a transfer). Gemini returned a single
+`income` with a line item; checks correctly blocked Confirm (`income
+must have no line items`) and dropped the transfer.
+
+**Same economic event, any channel.** One store trip described as a
+receipt photo, as prose, as a list, or as a voice note is one
+`transactions` row with `transaction_items` lines. The extractor
+schema already has `items[]`; text and voice are not a second data
+model. Do not split a grocery list into N Confirm cards.
+
+**Multi-event (later Phase 3, after 3c phone test and Edit)** is when
+one message contains 2+ independent headers. That includes mixing
+shapes: a grocery breakdown (one expense, several lines) **and** an
+unrelated event in the same text, voice note, or photo caption (a
+separate drink after the store; a resale booked as income; a
+paycheque and a transfer). The trip stays one header with lines; each
+other event is its own header. N pending ingestions, N Confirm cards.
+Must replace `ingestions.telegram_update_id` UNIQUE without losing
+webhook-retry idempotency.
+
+Phase 3c stays one update → one `ingestions` row. Until multi-event
+ships, send separate messages for distinct headers. A mixed
+income+transfer note, or groceries plus an unrelated drink, is not
+the 3c acceptance check. A single grocery trip in text or voice is
+in scope for 3a/3c (one Confirm, several lines).
+
+**Ruled out for 3c:** splitting one update into N ingestions; silently
+keeping one header and dropping the other; treating a same-trip
+item list as N transactions.
+
+---
+
+## 2026-08-29 — Funding source is expense-only
+
+`transactions.funding_source_id` is “who paid for this spend.” It does
+not apply to income (that is `income_source_id`) or to transfers
+(`to_account_id`). Requiring it on every row was a one-table leftover
+from Notion. A paycheck showing Funded by: self is the column being
+filled because it is NOT NULL, not a real meaning.
+
+**When it ships (Phase 3, after 3c phone test, before Edit):** nullable
+`funding_source_id`; check constraint that expenses have a funding
+source and income/transfer do not (`NULL`). Backfill existing
+income and transfer rows to `NULL`. Confirm insert and extraction
+validation match. Telegram preview omits Funded by except on
+expenses. `docs/DATA_MODEL.md` changes with the migration.
+
+**Ruled out:** inventing an employer-as-funder story; a transfer
+“who funded this move” field until there is a real use; doing this
+in the 3c voice PR.

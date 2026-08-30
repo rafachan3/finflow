@@ -86,11 +86,26 @@ skeleton everything else hangs on. Ship the smallest loop first.*
       *(phone-tested 2026-08-28: Confirm wrote the ledger row; S3 object
       matches `ingestions.media_path`)*
 - [ ] 3c. Voice notes: Telegram OGG → Gemini audio input → same pipeline
+      *(implemented; leave unchecked until Confirm + S3 `.ogg`)*
 - [x] Date HITL: text with no date defaults to today (warning); photo with
       no date blocks Confirm; Fix date → `ingestions.status = awaiting_date`
       *(phone-tested 2026-08-18)*
+- [ ] Funding source is expense-only: `funding_source_id` nullable;
+      CHECK expense ⇒ not null, income/transfer ⇒ null. Backfill
+      existing income and transfer rows to null. Confirm preview
+      shows Funded by only on expenses. After 3c phone test.
+      Migration and DATA_MODEL.md in the same change. Transfers do
+      not get a “who funded this move” rule unless we add one later.
 - [ ] Edit flow: reply buttons let you fix category/amount before confirm
       (date-only Fix date already shipped)
+- [ ] Multi-event message: one text, voice, or photo+caption that
+      describes 2+ independent ledger headers → N pending ingestions
+      and N Confirm cards. A grocery breakdown (several SKUs) plus an
+      unrelated drink or a separate income in the same message is two
+      headers: the trip stays one expense with lines; the extra event
+      is its own row. After 3c phone test and Edit. A grocery trip
+      alone is already one expense with lines on every channel. Until
+      then, send separate messages for distinct headers.
 - [x] Log Gemini token usage per request into `ingestions.extraction`,
       plus `meta` (model + sha256 of extractor, taxonomy, bucket prompt,
       and rules). No eval mart until Phase 4.

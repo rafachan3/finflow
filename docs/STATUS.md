@@ -12,7 +12,7 @@ Living state of the project. Read this first; update it whenever work lands.
 - [x] Phase 1 — Supabase project, schema migrations, Notion history import (2026-08-13)
 - [x] Taxonomy tweak — Hygiene + Beauty → Personal care (Health and wellness); buckets untouched (2026-08-13)
 - [x] Phase 2 — Telegram bot walking skeleton (text only, no LLM) (2026-08-17)
-- [ ] Phase 3 — Gemini extraction (text → photo → voice) — **3a + 3b phone-tested; voice (3c) next**
+- [ ] Phase 3 — Gemini extraction (text → photo → voice) — **3a + 3b phone-tested; 3c implemented, not phone-tested**
 - [ ] Phase 4 — dbt semantic layer
 - [ ] Phase 5 — Grafana dashboards
 - [ ] Phase 6 — Claude analytics agent (subagents + Postgres MCP)
@@ -83,17 +83,33 @@ only. Largest size → Telegram `getFile` → Gemini vision (image + caption)
 `RECEIPTS_BUCKET`. `Deploy ingest Lambda` on `main` passed (run
 33138236837). Dateless receipts persist without Confirm (Fix date /
 Discard stay). A photo while `awaiting_date` is still waiting, not a new
-expense. Voice and PDF/document remain later.
+expense.
+
+Voice notes (3c, this branch): `message.voice` only (not `message.audio`
+or document). Caption goes to Gemini with the audio. Date policy matches
+text: missing date defaults to today with a warning; Confirm stays.
+After checks, UUID → S3 `{id}.ogg` → `ingestions` `source=voice`.
+A voice note while `awaiting_date` is still waiting. PDF/document,
+category/amount Edit, multi-event messages, and expense-only
+funding_source remain later. Multi-event is 2+ independent headers
+in one update, including a grocery breakdown plus an unrelated
+expense or income in the same text, voice, or photo caption. The
+trip stays one expense with lines; the extra event is its own row.
+A grocery trip alone is already one expense with lines. One update
+is still one extraction until multi-event ships. Funding source
+stays NOT NULL on every row until that leftover; income previews
+still show Funded by: self.
 
 First photo after merge failed with no Telegram reply: the Supabase
 project was `INACTIVE` (paused). Pooler error
 `tenant/user postgres.<ref> not found` at `findAwaitingDateIngestion`;
-the handler returns 500 without sending a message. After restore, a dated grocery receipt photo extracted with correct
-totals, taxonomy, and buckets. Confirm (2026-08-28) wrote the
-`transactions` header and `transaction_items` lines. `ingestions`
-`source=photo`, `status=confirmed`, `media_path` = `{id}.jpg`; that
-object is in the receipts bucket. Merchant was not in lookup
-(`merchant_id` null). Receipt department labels are not stored.
+the handler returns 500 without sending a message. After restore, a
+dated grocery receipt photo extracted with correct totals, taxonomy,
+and buckets. Confirm (2026-08-28) wrote the `transactions` header and
+`transaction_items` lines. `ingestions` `source=photo`,
+`status=confirmed`, `media_path` = `{id}.jpg`; that object is in the
+receipts bucket. Merchant was not in lookup (`merchant_id` null).
+Receipt department labels are not stored.
 
 English item descriptions merged as #12: header and line names are
 ordinary English; brand names stay. The confirmed photo used that
@@ -103,9 +119,16 @@ Dateless-receipt persist (no Confirm) is not yet phone-tested.
 
 ## Next concrete step
 
-Phase 3c: voice notes (`message.voice` → Gemini audio → same confirm
-loop). Optional leftover smoke: a receipt with no printed or caption
-date persists without Confirm.
+Merge 3c, wait for `Deploy ingest Lambda` on `main`, then phone-test
+**one header per voice note**. A grocery trip spoken as several SKUs
+is one expense with lines (same shape as a receipt photo) and is a
+valid 3c check if Confirm writes the ledger and `media_path` matches
+an `.ogg` in S3. Groceries plus an unrelated drink, or income plus a
+transfer, is two headers; expected to fail or drop one event until
+the multi-event item — do not use those as the 3c check. Do not check
+ROADMAP 3c until Confirm + S3 `.ogg` pass.
+Optional leftover smoke: a receipt with no printed or caption date
+persists without Confirm.
 
 ## Open questions
 
