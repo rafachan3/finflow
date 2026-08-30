@@ -250,6 +250,40 @@ describe("validateExtraction", () => {
     );
     expect(withLines.ok).toBe(false);
   });
+
+  it("allows income with no funding source", () => {
+    const result = validateExtraction(
+      expense({
+        type: "income",
+        amount: "2000.00",
+        items: [],
+        income_source: "Salary",
+        merchant: null,
+        venue: null,
+        tags: [],
+        funded_by: null,
+      }),
+      taxonomy,
+    );
+    expect(result.ok).toBe(true);
+  });
+
+  it("allows transfer with no funding source", () => {
+    const result = validateExtraction(
+      expense({
+        type: "transfer",
+        amount: "50.00",
+        items: [],
+        to_account: "Emergency Fund",
+        merchant: null,
+        venue: null,
+        tags: [],
+        funded_by: null,
+      }),
+      taxonomy,
+    );
+    expect(result.ok).toBe(true);
+  });
 });
 
 describe("normalizeTaxonomyNames", () => {
@@ -319,5 +353,35 @@ describe("formatPreview", () => {
     const text = formatPreview(bad, checks);
     expect(text).toContain("✗");
     expect(text).not.toMatch(/Confirm to save/i);
+  });
+
+  it("omits Funded by on income even when extraction still has a leftover value", () => {
+    const pay = expense({
+      type: "income",
+      amount: "2000.00",
+      items: [],
+      income_source: "Salary",
+      merchant: null,
+      venue: null,
+      tags: [],
+    });
+    const text = formatPreview(pay, validateExtraction(pay, taxonomy));
+    expect(text).toContain("Income source: Salary");
+    expect(text).not.toMatch(/Funded by/i);
+  });
+
+  it("omits Funded by on transfer", () => {
+    const move = expense({
+      type: "transfer",
+      amount: "50.00",
+      items: [],
+      to_account: "Emergency Fund",
+      merchant: null,
+      venue: null,
+      tags: [],
+    });
+    const text = formatPreview(move, validateExtraction(move, taxonomy));
+    expect(text).toContain("To account: Emergency Fund");
+    expect(text).not.toMatch(/Funded by/i);
   });
 });
