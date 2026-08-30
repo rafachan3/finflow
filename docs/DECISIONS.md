@@ -537,7 +537,7 @@ receipt photo, as prose, as a list, or as a voice note is one
 schema already has `items[]`; text and voice are not a second data
 model. Do not split a grocery list into N Confirm cards.
 
-**Multi-event (later Phase 3, after 3c phone test and Edit)** is when
+**Multi-event (later Phase 3, after Edit)** is when
 one message contains 2+ independent headers. That includes mixing
 shapes: a grocery breakdown (one expense, several lines) **and** an
 unrelated event in the same text, voice note, or photo caption (a
@@ -567,7 +567,7 @@ not apply to income (that is `income_source_id`) or to transfers
 from Notion. A paycheck showing Funded by: self is the column being
 filled because it is NOT NULL, not a real meaning.
 
-**When it ships (Phase 3, after 3c phone test, before Edit):** nullable
+**When it ships (Phase 3, before Edit):** nullable
 `funding_source_id`; check constraint that expenses have a funding
 source and income/transfer do not (`NULL`). Backfill existing
 income and transfer rows to `NULL`. Confirm insert and extraction

@@ -95,12 +95,12 @@ skeleton everything else hangs on. Ship the smallest loop first.*
 - [ ] S3 media keys: one bucket, prefix `{source}/{yyyy-mm}/{id}.{ext}`
       (persist month, America/Toronto). Existing flat `{id}.{ext}` keys
       stay. Do not add a second bucket; do not rename
-      `finflow-receipts-*` (AWS has no rename). After 3c.
+      `finflow-receipts-*` (AWS has no rename).
 - [ ] Funding source is expense-only: `funding_source_id` nullable;
       CHECK expense ⇒ not null, income/transfer ⇒ null. Backfill
       existing income and transfer rows to null. Confirm preview
-      shows Funded by only on expenses. After 3c phone test.
-      Migration and DATA_MODEL.md in the same change. Transfers do
+      shows Funded by only on expenses. Migration and
+      DATA_MODEL.md in the same change. Transfers do
       not get a “who funded this move” rule unless we add one later.
 - [ ] Edit flow: reply buttons let you fix category/amount before confirm
       (date-only Fix date already shipped)
@@ -109,7 +109,7 @@ skeleton everything else hangs on. Ship the smallest loop first.*
       and N Confirm cards. A grocery breakdown (several SKUs) plus an
       unrelated drink or a separate income in the same message is two
       headers: the trip stays one expense with lines; the extra event
-      is its own row. After 3c phone test and Edit. A grocery trip
+      is its own row. After Edit. A grocery trip
       alone is already one expense with lines on every channel. Until
       then, send separate messages for distinct headers.
 - [x] Log Gemini token usage per request into `ingestions.extraction`,

@@ -109,7 +109,7 @@ dbt models and the agent read it, so numbers agree everywhere.
   date persist without Confirm. Category/amount Edit, multi-event
   messages, and expense-only funding_source are later.
 
-### Storage — Supabase Postgres (rows) + AWS S3 (images)
+### Storage — Supabase Postgres (rows) + AWS S3 (media)
 
 Storage is deliberately split. Postgres and object storage have different
 constraints here, and the free tiers that fit them are on different clouds.
