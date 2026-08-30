@@ -100,8 +100,9 @@ skeleton everything else hangs on. Ship the smallest loop first.*
       CHECK expense ⇒ not null, income/transfer ⇒ null. Backfill
       existing income and transfer rows to null. Confirm preview
       shows Funded by only on expenses. Migration 0007 and
-      DATA_MODEL.md. *(apply 0007 after Deploy ingest Lambda on
-      main; do not Confirm income in the gap)*
+      DATA_MODEL.md. *(applied 2026-08-30; phone-tested expense
+      Funded by: self, income/transfer omit Funded by and store
+      NULL; #18 defaults omitted expense funder to self)*
       Transfers do not get a “who funded this move” rule unless we
       add one later.
 - [ ] Edit flow: reply buttons let you fix category/amount before confirm

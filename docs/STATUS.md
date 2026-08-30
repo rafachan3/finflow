@@ -12,7 +12,7 @@ Living state of the project. Read this first; update it whenever work lands.
 - [x] Phase 1 — Supabase project, schema migrations, Notion history import (2026-08-13)
 - [x] Taxonomy tweak — Hygiene + Beauty → Personal care (Health and wellness); buckets untouched (2026-08-13)
 - [x] Phase 2 — Telegram bot walking skeleton (text only, no LLM) (2026-08-17)
-- [ ] Phase 3 — Gemini extraction (text → photo → voice) — **3a + 3b + 3c phone-tested; funding source implemented, not yet applied; Edit, multi-event remain**
+- [ ] Phase 3 — Gemini extraction (text → photo → voice) — **3a + 3b + 3c phone-tested; funding source applied; Edit, multi-event remain**
 - [ ] Phase 4 — dbt semantic layer
 - [ ] Phase 5 — Grafana dashboards
 - [ ] Phase 6 — Claude analytics agent (subagents + Postgres MCP)
@@ -98,13 +98,16 @@ bucket. Dateless voice showed the today warning with Confirm still
 offered. A voice note after Fix date was still waiting, not a new
 expense.
 
-Expense-only `funding_source_id` (this branch): nullable; CHECK expense
-⇒ not null, income/transfer ⇒ null. Confirm writes `NULL` for
-income/transfer (leftover Gemini `"self"` is dropped). Preview shows
-Funded by only on expenses. Gemini `funded_by` is nullable and
-expense-only in the prompt. Migration 0007 is in the repo; do not
-`supabase db push` until `Deploy ingest Lambda` on `main` has passed,
-then push immediately. Do not Confirm income or transfer in that gap.
+Expense-only `funding_source_id` (#17, applied 2026-08-30): nullable;
+CHECK expense ⇒ not null, income/transfer ⇒ null. Migration 0007
+applied after `Deploy ingest Lambda`; existing income/transfer rows
+backfilled to `NULL`. Confirm writes `NULL` for income/transfer.
+Preview shows Funded by only on expenses. Gemini `funded_by` is
+nullable; #18 defaults an omitted expense funder to `self`.
+Phone-tested: expense preview `Funded by: self` and Confirm writes a
+funding source; income and transfer previews omit Funded by and
+Confirm writes `funding_source_id` NULL. CHECKs and backfill counts
+match in production.
 
 PDF/document, category/amount Edit, multi-event messages, and S3 key
 prefixes remain later. Multi-event is 2+ independent headers in one
@@ -134,13 +137,9 @@ Dateless-receipt persist (no Confirm) is not yet phone-tested.
 
 ## Next concrete step
 
-Merge this branch, wait for `Deploy ingest Lambda` on `main`, then
-`supabase db push` (migration 0007). Optional smoke: an income
-preview omits Funded by; Confirm writes `funding_source_id` NULL.
-Then category/amount Edit, then multi-event. Optional leftover: S3
-keys `{source}/{yyyy-mm}/{id}.{ext}` in the existing bucket. Optional
-smoke: a receipt with no printed or caption date persists without
-Confirm.
+Category/amount Edit, then multi-event. Optional leftover: S3 keys
+`{source}/{yyyy-mm}/{id}.{ext}` in the existing bucket. Optional smoke:
+a receipt with no printed or caption date persists without Confirm.
 
 ## Open questions
 
