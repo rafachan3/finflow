@@ -537,7 +537,7 @@ receipt photo, as prose, as a list, or as a voice note is one
 schema already has `items[]`; text and voice are not a second data
 model. Do not split a grocery list into N Confirm cards.
 
-**Multi-event (later Phase 3, after 3c phone test and Edit)** is when
+**Multi-event (later Phase 3, after Edit)** is when
 one message contains 2+ independent headers. That includes mixing
 shapes: a grocery breakdown (one expense, several lines) **and** an
 unrelated event in the same text, voice note, or photo caption (a
@@ -567,7 +567,7 @@ not apply to income (that is `income_source_id`) or to transfers
 from Notion. A paycheck showing Funded by: self is the column being
 filled because it is NOT NULL, not a real meaning.
 
-**When it ships (Phase 3, after 3c phone test, before Edit):** nullable
+**When it ships (Phase 3, before Edit):** nullable
 `funding_source_id`; check constraint that expenses have a funding
 source and income/transfer do not (`NULL`). Backfill existing
 income and transfer rows to `NULL`. Confirm insert and extraction
@@ -577,3 +577,30 @@ expenses. `docs/DATA_MODEL.md` changes with the migration.
 **Ruled out:** inventing an employer-as-funder story; a transfer
 “who funded this move” field until there is a real use; doing this
 in the 3c voice PR.
+
+---
+
+## 2026-08-29 — One S3 bucket; prefixes later; do not rename
+
+Voice and photos share `finflow-receipts-<account_id>`. Objects sit at
+the root as `{uuid}.{ext}`. That is the 3c persist shape and it passed
+phone test. The name is slightly wrong now that `.ogg` lives there;
+the layout is slightly flat.
+
+**Keep one bucket.** A second bucket is extra IAM, lifecycle, Terraform,
+and env for the same ~$0.05/mo. S3 listing is prefix-based; split
+buckets do not buy isolation we need.
+
+**When prefixes ship:** `{source}/{yyyy-mm}/{uuid}.{ext}` where
+`source` is `photo` or `voice` and `yyyy-mm` is the persist month in
+America/Toronto (when the object was written, not `occurred_on`).
+`ingestions.media_path` stores the full key. Old flat keys stay;
+new writes use prefixes. Optional copy of existing objects is not
+required for correctness.
+
+**Do not rename the bucket.** AWS has no in-place rename; a new
+`finflow-media-*` plus copy is cosmetics with real Terraform/IAM/env
+churn. Keep `RECEIPTS_BUCKET`. Docs can say “ingest media.”
+
+**Ruled out:** a voice-only bucket; renaming `finflow-receipts-*`;
+partitioning by `occurred_on`.

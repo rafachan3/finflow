@@ -109,7 +109,7 @@ dbt models and the agent read it, so numbers agree everywhere.
   date persist without Confirm. Category/amount Edit, multi-event
   messages, and expense-only funding_source are later.
 
-### Storage — Supabase Postgres (rows) + AWS S3 (images)
+### Storage — Supabase Postgres (rows) + AWS S3 (media)
 
 Storage is deliberately split. Postgres and object storage have different
 constraints here, and the free tiers that fit them are on different clouds.
@@ -127,7 +127,8 @@ constraints here, and the free tiers that fit them are on different clouds.
   warm, and the nightly dbt Action acts as a heartbeat.
 
 **AWS S3** — receipt images and voice notes, key stored in
-`ingestions.media_path`.
+`ingestions.media_path`. The bucket is named `finflow-receipts-<account_id>`
+for history; it is the ingest media store, not photos-only.
 - ~$0.023–0.025/GB-month with no cap, versus Supabase Storage's 1 GB ceiling.
   At ~150 KB per Telegram-compressed photo, a few years of receipts is ~$0.05
   per month. The image-retention question disappears rather than being deferred.
@@ -135,8 +136,11 @@ constraints here, and the free tiers that fit them are on different clouds.
   TLS-only deny. The ingest role may `s3:PutObject` only. Extraction uses
   Telegram file bytes, so `GetObject` is still unused. Any future UI would
   use presigned URLs.
+- Keys are currently `{id}.jpg` / `.png` / `.ogg` at the bucket root.
+  Prefixes `{source}/{yyyy-mm}/{id}.{ext}` are a leftover (one bucket,
+  no second bucket, no AWS rename).
 - Lifecycle rule transitions objects to Glacier Instant Retrieval after 1 year
-  — receipts are written once and essentially never read again.
+  — media is written once and essentially never read again.
 
 ### Schema
 
