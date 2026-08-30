@@ -368,6 +368,14 @@ export function validateExtraction(
   return { ok: errors.length === 0, errors, warnings };
 }
 
+/** Confirm writes this name (or null) to transactions.funding_source_id. */
+export function fundingSourceToPersist(
+  type: TxType,
+  fundedBy: string | null,
+): string | null {
+  return type === "expense" ? fundedBy : null;
+}
+
 export function mergeBuckets(
   extraction: Extraction,
   buckets: { bucket: Bucket; why?: string }[],

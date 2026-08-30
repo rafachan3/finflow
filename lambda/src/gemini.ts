@@ -18,6 +18,9 @@ const ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${GEMI
 const ENGLISH_DESCRIPTIONS =
   "Header and line descriptions are ordinary English. Translate French and other languages from the receipt or message. Keep brand names. Do not add commentary.";
 
+const FUNDED_BY =
+  "funded_by is who paid for an expense. Set it only when type is expense. For income and transfer return null.";
+
 const EXTRACTOR_STATIC_PROMPT = [
   "You extract Canadian personal-finance transactions from a short text.",
   "Today is YYYY-MM-DD (America/Toronto). Currency is CAD.",
@@ -26,6 +29,7 @@ const EXTRACTOR_STATIC_PROMPT = [
   "category, subcategory, and item_type are separate fields. Never repeat the category inside subcategory or item_type. Example: category='Food and drink', subcategory='Takeout / Quick Service', item_type='Meals & Prepared Food'.",
   "Use Other … subcategories only when nothing more specific fits.",
   ENGLISH_DESCRIPTIONS,
+  FUNDED_BY,
   "date is YYYY-MM-DD only when the user stated a calendar date (including today, yesterday, or a month and day). If they did not, return an empty string. Never guess today's date.",
 ].join("\n");
 
@@ -37,6 +41,7 @@ const PHOTO_EXTRACTOR_STATIC_PROMPT = [
   "category, subcategory, and item_type are separate fields. Never repeat the category inside subcategory or item_type. Example: category='Food and drink', subcategory='Takeout / Quick Service', item_type='Meals & Prepared Food'.",
   "Use Other … subcategories only when nothing more specific fits.",
   ENGLISH_DESCRIPTIONS,
+  FUNDED_BY,
   "date is YYYY-MM-DD only when printed on the receipt or stated in the caption (including today, yesterday, or a month and day). If neither, return an empty string. Never guess today's date or the photo send time.",
 ].join("\n");
 
@@ -48,6 +53,7 @@ const VOICE_EXTRACTOR_STATIC_PROMPT = [
   "category, subcategory, and item_type are separate fields. Never repeat the category inside subcategory or item_type. Example: category='Food and drink', subcategory='Takeout / Quick Service', item_type='Meals & Prepared Food'.",
   "Use Other … subcategories only when nothing more specific fits.",
   ENGLISH_DESCRIPTIONS,
+  FUNDED_BY,
   "date is YYYY-MM-DD only when the user stated a calendar date in the recording or caption (including today, yesterday, or a month and day). If they did not, return an empty string. Never guess today's date or the voice send time.",
 ].join("\n");
 
@@ -107,7 +113,7 @@ const EXTRACTOR_SCHEMA = {
     merchant: { type: "STRING", nullable: true },
     venue: { type: "STRING", nullable: true },
     tags: { type: "ARRAY", items: { type: "STRING" } },
-    funded_by: { type: "STRING" },
+    funded_by: { type: "STRING", nullable: true },
     is_recurring: { type: "BOOLEAN" },
     income_source: { type: "STRING", nullable: true },
     to_account: { type: "STRING", nullable: true },
@@ -136,7 +142,6 @@ const EXTRACTOR_SCHEMA = {
     "merchant",
     "venue",
     "tags",
-    "funded_by",
     "is_recurring",
     "income_source",
     "to_account",
@@ -267,7 +272,7 @@ function asExtraction(raw: unknown): Extraction {
     merchant: asString(o.merchant),
     venue: asString(o.venue),
     tags: Array.isArray(o.tags) ? o.tags.map(String) : [],
-    funded_by: String(o.funded_by ?? "self"),
+    funded_by: asString(o.funded_by),
     is_recurring: Boolean(o.is_recurring),
     income_source: asString(o.income_source),
     to_account: asString(o.to_account),

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   applyDatePolicy,
   formatPreview,
+  fundingSourceToPersist,
   mergeBuckets,
   normalizeTaxonomyNames,
   parseCents,
@@ -383,5 +384,14 @@ describe("formatPreview", () => {
     const text = formatPreview(move, validateExtraction(move, taxonomy));
     expect(text).toContain("To account: Emergency Fund");
     expect(text).not.toMatch(/Funded by/i);
+  });
+});
+
+describe("fundingSourceToPersist", () => {
+  it("keeps the name on expenses and drops it otherwise", () => {
+    expect(fundingSourceToPersist("expense", "self")).toBe("self");
+    expect(fundingSourceToPersist("income", "self")).toBeNull();
+    expect(fundingSourceToPersist("transfer", "dad")).toBeNull();
+    expect(fundingSourceToPersist("income", null)).toBeNull();
   });
 });
