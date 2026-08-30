@@ -248,6 +248,36 @@ describe("extractFromText", () => {
     expect(result.funded_by).toBeNull();
   });
 
+  it("defaults expense funded_by to self when Gemini returns null", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () =>
+          geminiJson({
+            ...extracted,
+            funded_by: null,
+          }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () =>
+          geminiJson({ buckets: [{ bucket: "wants", why: "takeout" }] }),
+      });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await extractFromText({
+      apiKey: "test-key",
+      text: "12.50 lunch chipotle",
+      taxonomy,
+      bucketRules: "Takeout is wants.",
+      today: "2026-08-17",
+    });
+
+    expect(result.type).toBe("expense");
+    expect(result.funded_by).toBe("self");
+  });
+
   it("asks Gemini for nullable funded_by, expense-only", async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
