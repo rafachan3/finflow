@@ -116,20 +116,25 @@ export async function discardIngestion(
   const db = await getPool();
   const result = await db.query(
     `UPDATE ingestions SET status = 'discarded'
-     WHERE id = $1 AND status IN ('pending', 'awaiting_date')`,
+     WHERE id = $1 AND status IN ('pending', 'awaiting_date', 'awaiting_edit')`,
     [ingestionId],
   );
   return !result.rowCount ? "already_handled" : "discarded";
 }
 
-export async function findAwaitingDateIngestion(): Promise<{
+export async function findAwaitingIngestion(): Promise<{
   id: string;
   extraction: Extraction;
+  status: "awaiting_date" | "awaiting_edit";
 } | null> {
   const db = await getPool();
-  const result = await db.query<{ id: string; extraction: Extraction }>(
-    `SELECT id, extraction FROM ingestions
-     WHERE status = 'awaiting_date'
+  const result = await db.query<{
+    id: string;
+    extraction: Extraction;
+    status: "awaiting_date" | "awaiting_edit";
+  }>(
+    `SELECT id, extraction, status FROM ingestions
+     WHERE status IN ('awaiting_date', 'awaiting_edit')
      ORDER BY created_at DESC
      LIMIT 1`,
   );
@@ -157,6 +162,32 @@ export async function applyIngestionDate(
     `UPDATE ingestions
      SET extraction = $2::jsonb, status = 'pending'
      WHERE id = $1 AND status = 'awaiting_date'`,
+    [ingestionId, JSON.stringify(extraction)],
+  );
+  return Boolean(result.rowCount);
+}
+
+export async function setIngestionAwaitingEdit(
+  ingestionId: string,
+): Promise<boolean> {
+  const db = await getPool();
+  const result = await db.query(
+    `UPDATE ingestions SET status = 'awaiting_edit'
+     WHERE id = $1 AND status = 'pending'`,
+    [ingestionId],
+  );
+  return Boolean(result.rowCount);
+}
+
+export async function applyIngestionEdit(
+  ingestionId: string,
+  extraction: Extraction,
+): Promise<boolean> {
+  const db = await getPool();
+  const result = await db.query(
+    `UPDATE ingestions
+     SET extraction = $2::jsonb, status = 'pending'
+     WHERE id = $1 AND status = 'awaiting_edit'`,
     [ingestionId, JSON.stringify(extraction)],
   );
   return Boolean(result.rowCount);

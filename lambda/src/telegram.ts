@@ -72,15 +72,30 @@ export async function answerCallbackQuery(
 
 export function reviewKeyboard(
   ingestionId: string,
-  options: { confirm: boolean } = { confirm: true },
+  options: { confirm?: boolean; edit?: boolean } = {},
 ): object {
-  const row: { text: string; callback_data: string }[] = [];
-  if (options.confirm) {
-    row.push({ text: "Confirm", callback_data: `c:${ingestionId}` });
+  const confirm = options.confirm ?? true;
+  const edit = options.edit ?? true;
+  const first: { text: string; callback_data: string }[] = [];
+  if (confirm) {
+    first.push({ text: "Confirm", callback_data: `c:${ingestionId}` });
   }
-  row.push({ text: "Discard", callback_data: `d:${ingestionId}` });
-  row.push({ text: "Fix date", callback_data: `f:${ingestionId}` });
-  return { inline_keyboard: [row] };
+  first.push({ text: "Discard", callback_data: `d:${ingestionId}` });
+  const second: { text: string; callback_data: string }[] = [
+    { text: "Fix date", callback_data: `f:${ingestionId}` },
+  ];
+  if (edit) {
+    second.push({ text: "Edit", callback_data: `e:${ingestionId}` });
+  }
+  return { inline_keyboard: [first, second] };
+}
+
+export function discardKeyboard(ingestionId: string): object {
+  return {
+    inline_keyboard: [
+      [{ text: "Discard", callback_data: `d:${ingestionId}` }],
+    ],
+  };
 }
 
 export function confirmDiscardKeyboard(ingestionId: string): object {
