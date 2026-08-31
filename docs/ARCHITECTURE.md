@@ -40,7 +40,7 @@ flowchart TD
     BK -->|"buckets"| LM
     LM -->|"2 · validate + persist pending"| RAW
     LM -->|"archive media on persist"| S3
-    LM -->|"3 · preview: Confirm / Discard / Fix date"| TG
+    LM -->|"3 · preview: Confirm / Discard / Fix date / Edit"| TG
     RAW ==>|"human presses Confirm"| TX
     TX -->|"nightly GitHub Action"| STG
     STG --> MRT
@@ -53,8 +53,9 @@ flowchart TD
 Text, receipt photos, and voice notes share the same confirm loop.
 Photos and voice download from Telegram, extract with Gemini (vision or
 audio), then archive to S3 only when the ingestion is persisted.
-PDF/document, category/amount Edit, and multi-event messages remain
-later in Phase 3. `funding_source_id` is expense-only (null on income
+**Edit** patches the stored extraction from a freeform correction (no
+media re-download). PDF/document and multi-event messages remain later
+in Phase 3. `funding_source_id` is expense-only (null on income
 and transfer). Multi-event is N Confirm cards when one text, voice,
 or photo caption contains 2+ independent headers, including a grocery
 breakdown plus an unrelated drink or income. A grocery trip alone is
@@ -105,9 +106,10 @@ dbt models and the agent read it, so numbers agree everywhere.
   DATA_MODEL.md. Line amounts (tax allocated proportionally) must sum to the
   header; that check is **code** (integer cents), not another model.
 - The bot replies with the full proposed ledger row plus check results.
-  Confirm / Discard / Fix date appear when checks pass. Text and voice
-  with no date default to today and warn. Photos with no printed/caption
-  date persist without Confirm. Category/amount Edit and multi-event
+  Confirm / Discard / Fix date / Edit appear when checks pass. Text and
+  voice with no date default to today and warn. Photos with no
+  printed/caption date persist without Confirm. Edit sets
+  `awaiting_edit`; the next text patches the stored JSON. Multi-event
   messages are later. Funded by appears on expense previews only.
 
 ### Storage — Supabase Postgres (rows) + AWS S3 (media)

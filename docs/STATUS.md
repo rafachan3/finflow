@@ -12,7 +12,7 @@ Living state of the project. Read this first; update it whenever work lands.
 - [x] Phase 1 — Supabase project, schema migrations, Notion history import (2026-08-13)
 - [x] Taxonomy tweak — Hygiene + Beauty → Personal care (Health and wellness); buckets untouched (2026-08-13)
 - [x] Phase 2 — Telegram bot walking skeleton (text only, no LLM) (2026-08-17)
-- [ ] Phase 3 — Gemini extraction (text → photo → voice) — **3a + 3b + 3c phone-tested; funding source applied; Edit, multi-event remain**
+- [ ] Phase 3 — Gemini extraction (text → photo → voice) — **3a + 3b + 3c phone-tested; funding source applied; Edit coded, not phone-tested; multi-event remains**
 - [ ] Phase 4 — dbt semantic layer
 - [ ] Phase 5 — Grafana dashboards
 - [ ] Phase 6 — Claude analytics agent (subagents + Postgres MCP)
@@ -70,7 +70,7 @@ Date HITL (2026-08-18, #7): text with no date → today + warning; Fix date →
 date). Phone-tested: default-today Chipotle, Fix date → yesterday wrote
 `occurred_on` 2026-08-17, `12.50 coffee` while waiting did not create a
 transaction. Extraction `meta` hashes stored per row. Migration 0006
-applied. Category/amount Edit stays later.
+applied.
 
 S3 receipts bucket applied (2026-08-20, #9): `finflow-receipts-<account_id>`
 in `ca-central-1`, Block Public Access, SSE-S3, Glacier IR at 1 year, ingest
@@ -109,18 +109,30 @@ funding source; income and transfer previews omit Funded by and
 Confirm writes `funding_source_id` NULL. CHECKs and backfill counts
 match in production.
 
-PDF/document, category/amount Edit, multi-event messages, and S3 key
-prefixes remain later. Multi-event is 2+ independent headers in one
-update, including a grocery breakdown plus an unrelated expense or
-income in the same text, voice, or photo caption. The trip stays one
-expense with lines; the extra event is its own row. A grocery trip
-alone is already one expense with lines. One update is still one
-extraction until multi-event ships. Media still lands at the bucket
-root as `{id}.{ext}`; source/month prefixes are a leftover.
+Edit HITL (2026-08-30, branch `feat/ingest-edit-flow`): Confirm card
+gains **Edit** (`e:<uuid>`). Confirm / Discard on the first row, Fix
+date / Edit on the second. Dateless photos still omit Confirm; Edit
+stays. Edit sets `ingestions.status` to `awaiting_edit` (migration
+0008). Next text is a freeform correction; Gemini patches the stored
+extraction (no photo/voice re-download) then the bucket specialist.
+Checks fail → stay waiting. Checks pass → `pending` and a new preview.
+A photo or voice while waiting is still waiting. Discard works from
+`awaiting_edit`. One outstanding wait at a time
+(`awaiting_date` or `awaiting_edit`). Not phone-tested; 0008 not
+applied; Lambda not deployed from this branch.
+
+PDF/document, multi-event messages, and S3 key prefixes remain later.
+Multi-event is 2+ independent headers in one update, including a
+grocery breakdown plus an unrelated expense or income in the same
+text, voice, or photo caption. The trip stays one expense with lines;
+the extra event is its own row. A grocery trip alone is already one
+expense with lines. One update is still one extraction until
+multi-event ships. Media still lands at the bucket root as
+`{id}.{ext}`; source/month prefixes are a leftover.
 
 First photo after merge failed with no Telegram reply: the Supabase
 project was `INACTIVE` (paused). Pooler error
-`tenant/user postgres.<ref> not found` at `findAwaitingDateIngestion`;
+`tenant/user postgres.<ref> not found` at `findAwaitingIngestion`;
 the handler returns 500 without sending a message. After restore, a
 dated grocery receipt photo extracted with correct totals, taxonomy,
 and buckets. Confirm (2026-08-28) wrote the `transactions` header and
@@ -137,7 +149,8 @@ Dateless-receipt persist (no Confirm) is not yet phone-tested.
 
 ## Next concrete step
 
-Category/amount Edit, then multi-event. Optional leftover: S3 keys
+Apply migration 0008, merge/deploy Edit, phone-test (amount, category,
+still-waiting photo). Then multi-event. Optional leftover: S3 keys
 `{source}/{yyyy-mm}/{id}.{ext}` in the existing bucket. Optional smoke:
 a receipt with no printed or caption date persists without Confirm.
 

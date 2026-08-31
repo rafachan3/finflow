@@ -105,8 +105,11 @@ skeleton everything else hangs on. Ship the smallest loop first.*
       NULL; #18 defaults omitted expense funder to self)*
       Transfers do not get a “who funded this move” rule unless we
       add one later.
-- [ ] Edit flow: reply buttons let you fix category/amount before confirm
-      (date-only Fix date already shipped)
+- [x] Edit flow: **Edit** button → `awaiting_edit`; next text is a
+      freeform correction; Gemini patches the stored extraction (no
+      media re-download). Amount, category, and line-level fixes. Fix
+      date stays the dedicated date path. Migration 0008.
+      *(unit-tested 2026-08-30; phone test after 0008 + deploy)*
 - [ ] Multi-event message: one text, voice, or photo+caption that
       describes 2+ independent ledger headers → N pending ingestions
       and N Confirm cards. A grocery breakdown (several SKUs) plus an
