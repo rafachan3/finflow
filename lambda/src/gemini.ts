@@ -57,6 +57,20 @@ const VOICE_EXTRACTOR_STATIC_PROMPT = [
   "date is YYYY-MM-DD only when the user stated a calendar date in the recording or caption (including today, yesterday, or a month and day). If they did not, return an empty string. Never guess today's date or the voice send time.",
 ].join("\n");
 
+const PATCH_EXTRACTOR_STATIC_PROMPT = [
+  "You apply a correction to an already extracted Canadian personal-finance transaction.",
+  "Today is YYYY-MM-DD (America/Toronto). Currency is CAD.",
+  "The user message is the current extraction as JSON, then the correction.",
+  "Keep every field the correction does not change.",
+  "Keep date unless the correction changes the calendar date. Never guess today's date.",
+  "Amounts are strings with exactly two decimal places. Line amounts include tax and MUST sum to the header amount.",
+  "Do not assign needs/wants. Item types must belong to the same category as the subcategory.",
+  "category, subcategory, and item_type are separate fields. Never repeat the category inside subcategory or item_type. Example: category='Food and drink', subcategory='Takeout / Quick Service', item_type='Meals & Prepared Food'.",
+  "Use Other … subcategories only when nothing more specific fits.",
+  ENGLISH_DESCRIPTIONS,
+  FUNDED_BY,
+].join("\n");
+
 const BUCKET_STATIC_PROMPT = [
   "You assign needs or wants to each expense line.",
   "Apply these rules. They override default_bucket hints.",
@@ -401,6 +415,57 @@ export async function extractFromPhoto(args: {
       },
     ],
   });
+}
+
+function extractionForPatch(current: Extraction): unknown {
+  return {
+    type: current.type,
+    amount: current.amount,
+    currency: current.currency,
+    date: current.date,
+    description: current.description,
+    merchant: current.merchant,
+    venue: current.venue,
+    tags: current.tags,
+    funded_by: current.funded_by,
+    is_recurring: current.is_recurring,
+    income_source: current.income_source,
+    to_account: current.to_account,
+    items: current.items.map((item) => ({
+      description: item.description,
+      amount: item.amount,
+      category: item.category,
+      subcategory: item.subcategory,
+      item_type: item.item_type,
+    })),
+    confidence: current.confidence,
+  };
+}
+
+export async function patchExtraction(args: {
+  apiKey: string;
+  current: Extraction;
+  correction: string;
+  taxonomy: TaxonomySnapshot;
+  bucketRules: string;
+  today: string;
+}): Promise<Extraction> {
+  const patched = await extractFromUserParts({
+    apiKey: args.apiKey,
+    taxonomy: args.taxonomy,
+    bucketRules: args.bucketRules,
+    today: args.today,
+    extractorStatic: PATCH_EXTRACTOR_STATIC_PROMPT,
+    userParts: [
+      { text: JSON.stringify(extractionForPatch(args.current)) },
+      { text: args.correction },
+    ],
+  });
+  patched.date_source =
+    patched.date === args.current.date
+      ? args.current.date_source
+      : "fix";
+  return patched;
 }
 
 export async function extractFromVoice(args: {
