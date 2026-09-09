@@ -81,7 +81,7 @@ erDiagram
     jsonb raw_payload
     text media_path "nullable — S3 key"
     jsonb extraction "nullable — LLM output"
-    text status "pending | awaiting_date | confirmed | discarded"
+    text status "pending | awaiting_date | awaiting_edit | confirmed | discarded"
     uuid transaction_id FK "nullable until confirmed"
     timestamptz created_at
   }
@@ -258,7 +258,7 @@ create table ingestions (
   media_path         text,                        -- S3 object key
   extraction         jsonb,                       -- LLM structured output
   status             text not null default 'pending'
-                     check (status in ('pending','awaiting_date','confirmed','discarded')),
+                     check (status in ('pending','awaiting_date','awaiting_edit','confirmed','discarded')),
   transaction_id     uuid references transactions(id),
   created_at         timestamptz not null default now()
 );

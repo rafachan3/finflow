@@ -12,19 +12,23 @@ vi.mock("../src/db.js", () => ({
   discardIngestion: vi.fn(),
   insertPendingIngestion: vi.fn(),
   loadTaxonomy: vi.fn(),
-  findAwaitingDateIngestion: vi.fn(),
+  findAwaitingIngestion: vi.fn(),
   setIngestionAwaitingDate: vi.fn(),
   applyIngestionDate: vi.fn(),
+  setIngestionAwaitingEdit: vi.fn(),
+  applyIngestionEdit: vi.fn(),
 }));
 vi.mock("../src/gemini.js", () => ({
   extractFromText: vi.fn(),
   extractFromPhoto: vi.fn(),
   extractFromVoice: vi.fn(),
+  patchExtraction: vi.fn(),
 }));
 vi.mock("../src/telegram.js", () => ({
   answerCallbackQuery: vi.fn(),
   confirmDiscardKeyboard: vi.fn((id: string) => ({ confirm: id })),
   reviewKeyboard: vi.fn((id: string) => ({ confirm: id })),
+  discardKeyboard: vi.fn((id: string) => ({ discard: id })),
   sendMessage: vi.fn(),
   downloadTelegramFile: vi.fn(),
   largestPhotoFileId: vi.fn(() => "file-big"),
@@ -37,13 +41,21 @@ vi.mock("../src/s3.js", () => ({
 import { getConfig } from "../src/config.js";
 import {
   applyIngestionDate,
-  findAwaitingDateIngestion,
+  applyIngestionEdit,
+  findAwaitingIngestion,
   insertPendingIngestion,
   loadTaxonomy,
   setIngestionAwaitingDate,
+  setIngestionAwaitingEdit,
 } from "../src/db.js";
-import { extractFromPhoto, extractFromText, extractFromVoice } from "../src/gemini.js";
 import {
+  extractFromPhoto,
+  extractFromText,
+  extractFromVoice,
+  patchExtraction,
+} from "../src/gemini.js";
+import {
+  discardKeyboard,
   downloadTelegramFile,
   reviewKeyboard,
   sendMessage,
@@ -125,7 +137,7 @@ beforeEach(() => {
   vi.mocked(extractFromPhoto).mockResolvedValue(extraction);
   vi.mocked(extractFromVoice).mockResolvedValue(extraction);
   vi.mocked(insertPendingIngestion).mockResolvedValue({ id: "ing-1" });
-  vi.mocked(findAwaitingDateIngestion).mockResolvedValue(null);
+  vi.mocked(findAwaitingIngestion).mockResolvedValue(null);
   vi.mocked(downloadTelegramFile).mockResolvedValue({
     bytes: Buffer.from([0xff, 0xd8, 0xff]),
     mimeType: "image/jpeg",
@@ -255,6 +267,10 @@ describe("handler", () => {
     expect(setIngestionAwaitingDate).toHaveBeenCalledWith(
       "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
     );
+    expect(reviewKeyboard).toHaveBeenCalledWith(
+      "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+      { confirm: false, edit: false },
+    );
     expect(sendMessage).toHaveBeenCalledWith(
       "t",
       1,
@@ -266,8 +282,9 @@ describe("handler", () => {
   it("applies a date reply while awaiting and does not start a new extraction", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-08-18T16:00:00Z"));
-    vi.mocked(findAwaitingDateIngestion).mockResolvedValue({
+    vi.mocked(findAwaitingIngestion).mockResolvedValue({
       id: "ing-1",
+      status: "awaiting_date",
       extraction: {
         ...extraction,
         date: "2026-08-18",
@@ -297,8 +314,9 @@ describe("handler", () => {
   });
 
   it("does not treat a new expense as a date while awaiting_date", async () => {
-    vi.mocked(findAwaitingDateIngestion).mockResolvedValue({
+    vi.mocked(findAwaitingIngestion).mockResolvedValue({
       id: "ing-1",
+      status: "awaiting_date",
       extraction,
     });
 
@@ -397,8 +415,9 @@ describe("handler", () => {
   });
 
   it("does not start a new photo while awaiting a date", async () => {
-    vi.mocked(findAwaitingDateIngestion).mockResolvedValue({
+    vi.mocked(findAwaitingIngestion).mockResolvedValue({
       id: "ing-1",
+      status: "awaiting_date",
       extraction,
     });
 
@@ -562,8 +581,9 @@ describe("handler", () => {
   });
 
   it("does not start a new voice note while awaiting a date", async () => {
-    vi.mocked(findAwaitingDateIngestion).mockResolvedValue({
+    vi.mocked(findAwaitingIngestion).mockResolvedValue({
       id: "ing-1",
+      status: "awaiting_date",
       extraction,
     });
 
@@ -583,6 +603,127 @@ describe("handler", () => {
       "t",
       1,
       expect.stringMatching(/waiting for a date/i),
+    );
+  });
+
+  it("asks for a correction on Edit and does not confirm", async () => {
+    vi.mocked(setIngestionAwaitingEdit).mockResolvedValue(true);
+
+    await handler(
+      event({
+        update_id: 23,
+        callback_query: {
+          id: "cb2",
+          data: "e:aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+          message: { chat: { id: 1 } },
+        },
+      }),
+    );
+
+    expect(setIngestionAwaitingEdit).toHaveBeenCalledWith(
+      "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+    );
+    expect(discardKeyboard).toHaveBeenCalledWith(
+      "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+    );
+    expect(sendMessage).toHaveBeenCalledWith(
+      "t",
+      1,
+      expect.stringMatching(/correction/i),
+      { discard: "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee" },
+    );
+  });
+
+  it("applies a correction while awaiting_edit and does not start a new extraction", async () => {
+    const patched = {
+      ...extraction,
+      amount: "14.50",
+      items: [{ ...extraction.items[0], amount: "14.50" }],
+    };
+    vi.mocked(findAwaitingIngestion).mockResolvedValue({
+      id: "ing-1",
+      status: "awaiting_edit",
+      extraction,
+    });
+    vi.mocked(patchExtraction).mockResolvedValue(patched);
+    vi.mocked(applyIngestionEdit).mockResolvedValue(true);
+
+    await handler(
+      event({
+        update_id: 24,
+        message: { chat: { id: 1 }, text: "14.50" },
+      }),
+    );
+
+    expect(extractFromText).not.toHaveBeenCalled();
+    expect(patchExtraction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        apiKey: "g",
+        current: extraction,
+        correction: "14.50",
+        bucketRules: "Takeout is wants.",
+      }),
+    );
+    expect(applyIngestionEdit).toHaveBeenCalledWith("ing-1", patched);
+    expect(sendMessage).toHaveBeenCalledWith(
+      "t",
+      1,
+      expect.stringContaining("14.50"),
+      { confirm: "ing-1" },
+    );
+  });
+
+  it("does not apply a correction that fails checks", async () => {
+    vi.mocked(findAwaitingIngestion).mockResolvedValue({
+      id: "ing-1",
+      status: "awaiting_edit",
+      extraction,
+    });
+    vi.mocked(patchExtraction).mockResolvedValue({
+      ...extraction,
+      amount: "99.00",
+    });
+
+    await handler(
+      event({
+        update_id: 25,
+        message: { chat: { id: 1 }, text: "99" },
+      }),
+    );
+
+    expect(applyIngestionEdit).not.toHaveBeenCalled();
+    expect(sendMessage).toHaveBeenCalledWith(
+      "t",
+      1,
+      expect.stringContaining("✗"),
+    );
+    expect(vi.mocked(sendMessage).mock.calls[0].length).toBe(3);
+  });
+
+  it("does not start a new photo while awaiting_edit", async () => {
+    vi.mocked(findAwaitingIngestion).mockResolvedValue({
+      id: "ing-1",
+      status: "awaiting_edit",
+      extraction,
+    });
+
+    await handler(
+      event({
+        update_id: 26,
+        message: {
+          chat: { id: 1 },
+          photo: [{ file_id: "file-big" }],
+        },
+      }),
+    );
+
+    expect(extractFromPhoto).not.toHaveBeenCalled();
+    expect(putReceipt).not.toHaveBeenCalled();
+    expect(patchExtraction).not.toHaveBeenCalled();
+    expect(sendMessage).toHaveBeenCalledWith(
+      "t",
+      1,
+      expect.stringMatching(/waiting for a correction/i),
     );
   });
 });

@@ -1,9 +1,60 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  discardKeyboard,
   downloadTelegramFile,
   largestPhotoFileId,
+  reviewKeyboard,
   voiceFileId,
 } from "../src/telegram.js";
+
+describe("reviewKeyboard", () => {
+  const id = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
+
+  it("puts Confirm and Discard on the first row and Fix date and Edit on the second", () => {
+    expect(reviewKeyboard(id)).toEqual({
+      inline_keyboard: [
+        [
+          { text: "Confirm", callback_data: `c:${id}` },
+          { text: "Discard", callback_data: `d:${id}` },
+        ],
+        [
+          { text: "Fix date", callback_data: `f:${id}` },
+          { text: "Edit", callback_data: `e:${id}` },
+        ],
+      ],
+    });
+  });
+
+  it("omits Confirm but keeps Edit when confirm is false", () => {
+    expect(reviewKeyboard(id, { confirm: false })).toEqual({
+      inline_keyboard: [
+        [{ text: "Discard", callback_data: `d:${id}` }],
+        [
+          { text: "Fix date", callback_data: `f:${id}` },
+          { text: "Edit", callback_data: `e:${id}` },
+        ],
+      ],
+    });
+  });
+
+  it("omits Edit when edit is false", () => {
+    expect(reviewKeyboard(id, { confirm: false, edit: false })).toEqual({
+      inline_keyboard: [
+        [{ text: "Discard", callback_data: `d:${id}` }],
+        [{ text: "Fix date", callback_data: `f:${id}` }],
+      ],
+    });
+  });
+});
+
+describe("discardKeyboard", () => {
+  it("is Discard only", () => {
+    const id = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
+    expect(discardKeyboard(id)).toEqual({
+      inline_keyboard: [[{ text: "Discard", callback_data: `d:${id}` }]],
+    });
+  });
+});
 
 describe("largestPhotoFileId", () => {
   it("picks the photo size with the greatest file_size", () => {

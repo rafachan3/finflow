@@ -604,3 +604,35 @@ churn. Keep `RECEIPTS_BUCKET`. Docs can say “ingest media.”
 
 **Ruled out:** a voice-only bucket; renaming `finflow-receipts-*`;
 partitioning by `occurred_on`.
+
+---
+
+## 2026-08-30 — Edit is one HITL: freeform correction, Gemini patch
+
+Confirm already had Fix date. Category and amount still needed a path
+before Confirm, including a wrong line on a grocery receipt. Separate
+Fix amount / Fix category buttons break down on multi-line receipts
+(which line? does the header scale?). A category picker is 11×54
+Telegram buttons.
+
+**One Edit button.** Sets `ingestions.status` to `awaiting_edit`
+(migration 0008). Next text is the correction, not a new expense.
+Gemini sees the stored extraction (no `usage`/`meta`/line buckets)
+plus the owner text, same structured schema as the extractor, then
+the existing bucket specialist. Photo and voice bytes are not
+re-downloaded. Keep fields the correction does not mention. Keep
+`date` unless they change it (`date_source` becomes `fix` only then).
+Do not re-run the today-default date policy.
+
+Keyboard: Confirm / Discard, then Fix date / Edit. Dateless photos
+omit Confirm; Edit stays. While waiting for a date, hide Edit. While
+waiting for a correction, Discard only. One outstanding wait:
+`awaiting_date` or `awaiting_edit`. A photo or voice while waiting is
+still waiting. Failed checks stay `awaiting_edit`. Passed checks
+write the extraction and return to `pending`. Missing-date-only still
+applies without Confirm, same as a dateless receipt.
+
+**Ruled out:** Fix amount and Fix category as two date-like buttons;
+an inline category/subcategory picker; re-fetching media; treating
+Edit as a new extraction; a full line-item editor.
+

@@ -5,12 +5,14 @@ import type {
 import { getConfig } from "./config.js";
 import {
   applyIngestionDate,
+  applyIngestionEdit,
   confirmIngestion,
   discardIngestion,
-  findAwaitingDateIngestion,
+  findAwaitingIngestion,
   insertPendingIngestion,
   loadTaxonomy,
   setIngestionAwaitingDate,
+  setIngestionAwaitingEdit,
 } from "./db.js";
 import {
   applyDatePolicy,
@@ -21,11 +23,12 @@ import {
   validateExtraction,
   type Extraction,
 } from "./extraction.js";
-import { extractFromPhoto, extractFromText, extractFromVoice } from "./gemini.js";
+import { extractFromPhoto, extractFromText, extractFromVoice, patchExtraction } from "./gemini.js";
 import { putReceipt } from "./s3.js";
 import {
   answerCallbackQuery,
   confirmDiscardKeyboard,
+  discardKeyboard,
   downloadTelegramFile,
   largestPhotoFileId,
   reviewKeyboard,
@@ -54,12 +57,16 @@ type TelegramUpdate = {
 };
 
 const CALLBACK_RE =
-  /^([cdf]):([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i;
+  /^([cdfe]):([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i;
 
 const ASK_DATE =
   "Send the date as YYYY-MM-DD, Aug 10, or yesterday.";
 const WAITING_DATE =
   "Still waiting for a date for the previous item. Send YYYY-MM-DD, Aug 10, or yesterday — or tap Discard.";
+const ASK_EDIT =
+  "Send the correction — amount, category, a line, whatever is wrong.";
+const WAITING_EDIT =
+  "Still waiting for a correction for the previous item. Send the change — or tap Discard.";
 
 function ok(body: string): APIGatewayProxyResultV2 {
   return { statusCode: 200, body };
@@ -110,7 +117,7 @@ function withDatePolicy(
   };
 }
 
-function photoPersistable(extraction: Extraction, checks: { ok: boolean; errors: string[] }): {
+function previewOffer(extraction: Extraction, checks: { ok: boolean; errors: string[] }): {
   persist: boolean;
   confirm: boolean;
 } {
@@ -165,6 +172,55 @@ async function handleAwaitingDate(
   return ok("ok");
 }
 
+async function handleAwaitingEdit(
+  text: string,
+  chatId: number,
+  config: Awaited<ReturnType<typeof getConfig>>,
+  awaiting: { id: string; extraction: Extraction },
+): Promise<APIGatewayProxyResultV2> {
+  try {
+    const today = todayToronto();
+    const taxonomy = await loadTaxonomy();
+    const extraction = await patchExtraction({
+      apiKey: config.geminiApiKey,
+      current: awaiting.extraction,
+      correction: text,
+      taxonomy,
+      bucketRules: config.bucketRules,
+      today,
+    });
+    const checks = validateExtraction(extraction, taxonomy);
+    const preview = formatPreview(extraction, checks);
+    const offer = previewOffer(extraction, checks);
+    if (!offer.persist) {
+      await sendMessage(config.botToken, chatId, preview);
+      return ok("ok");
+    }
+
+    const applied = await applyIngestionEdit(awaiting.id, extraction);
+    if (!applied) {
+      await sendMessage(config.botToken, chatId, "Already handled.");
+      return ok("ok");
+    }
+
+    await sendMessage(
+      config.botToken,
+      chatId,
+      preview,
+      reviewKeyboard(awaiting.id, { confirm: offer.confirm }),
+    );
+    return ok("ok");
+  } catch (err) {
+    console.error("edit extract error", err);
+    await sendMessage(
+      config.botToken,
+      chatId,
+      "Couldn't apply that. Try again.",
+    );
+    return ok("ok");
+  }
+}
+
 async function handlePhoto(
   update: TelegramUpdate,
   config: Awaited<ReturnType<typeof getConfig>>,
@@ -195,7 +251,7 @@ async function handlePhoto(
     );
     const checks = validateExtraction(extraction, taxonomy);
     const preview = formatPreview(extraction, checks);
-    const offer = photoPersistable(extraction, checks);
+    const offer = previewOffer(extraction, checks);
     if (!offer.persist) {
       await sendMessage(config.botToken, message.chat.id, preview);
       return ok("ok");
@@ -319,12 +375,22 @@ async function handleMessage(
     return ok("ignored");
   }
 
-  const awaiting = await findAwaitingDateIngestion();
+  const awaiting = await findAwaitingIngestion();
   if (awaiting) {
+    const waiting =
+      awaiting.status === "awaiting_edit" ? WAITING_EDIT : WAITING_DATE;
     const text = message.text?.trim();
     if (!text) {
-      await sendMessage(config.botToken, message.chat.id, WAITING_DATE);
+      await sendMessage(config.botToken, message.chat.id, waiting);
       return ok("ok");
+    }
+    if (awaiting.status === "awaiting_edit") {
+      return await handleAwaitingEdit(
+        text,
+        message.chat.id,
+        config,
+        awaiting,
+      );
     }
     return await handleAwaitingDate(
       text,
@@ -430,7 +496,22 @@ async function handleCallback(
         botToken,
         chatId,
         ASK_DATE,
-        reviewKeyboard(ingestionId, { confirm: false }),
+        reviewKeyboard(ingestionId, { confirm: false, edit: false }),
+      );
+    } else {
+      await sendMessage(botToken, chatId, ack);
+    }
+    return ok("ok");
+  } else if (action === "e") {
+    const started = await setIngestionAwaitingEdit(ingestionId);
+    ack = started ? "Send the correction." : "Already handled.";
+    await answerCallbackQuery(botToken, cb.id, ack);
+    if (started) {
+      await sendMessage(
+        botToken,
+        chatId,
+        ASK_EDIT,
+        discardKeyboard(ingestionId),
       );
     } else {
       await sendMessage(botToken, chatId, ack);
