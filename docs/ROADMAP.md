@@ -109,7 +109,8 @@ skeleton everything else hangs on. Ship the smallest loop first.*
       freeform correction; Gemini patches the stored extraction (no
       media re-download). Amount, category, and line-level fixes. Fix
       date stays the dedicated date path. Migration 0008.
-      *(unit-tested 2026-08-30; phone test after 0008 + deploy)*
+      *(applied; phone-tested 2026-09-08: amount, category, still-waiting
+      photo; #19)*
 - [ ] Multi-event message: one text, voice, or photo+caption that
       describes 2+ independent ledger headers → N pending ingestions
       and N Confirm cards. A grocery breakdown (several SKUs) plus an

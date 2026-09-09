@@ -2,7 +2,7 @@
 
 Living state of the project. Read this first; update it whenever work lands.
 
-**Last updated:** 2026-08-30
+**Last updated:** 2026-09-08
 **Current phase:** Phase 3 — Gemini extraction (see [ROADMAP.md](ROADMAP.md))
 
 ## Phase progress
@@ -12,7 +12,7 @@ Living state of the project. Read this first; update it whenever work lands.
 - [x] Phase 1 — Supabase project, schema migrations, Notion history import (2026-08-13)
 - [x] Taxonomy tweak — Hygiene + Beauty → Personal care (Health and wellness); buckets untouched (2026-08-13)
 - [x] Phase 2 — Telegram bot walking skeleton (text only, no LLM) (2026-08-17)
-- [ ] Phase 3 — Gemini extraction (text → photo → voice) — **3a + 3b + 3c phone-tested; funding source applied; Edit coded, not phone-tested; multi-event remains**
+- [ ] Phase 3 — Gemini extraction (text → photo → voice) — **3a + 3b + 3c phone-tested; funding source applied; Edit phone-tested; multi-event remains**
 - [ ] Phase 4 — dbt semantic layer
 - [ ] Phase 5 — Grafana dashboards
 - [ ] Phase 6 — Claude analytics agent (subagents + Postgres MCP)
@@ -109,17 +109,17 @@ funding source; income and transfer previews omit Funded by and
 Confirm writes `funding_source_id` NULL. CHECKs and backfill counts
 match in production.
 
-Edit HITL (2026-08-30, branch `feat/ingest-edit-flow`): Confirm card
-gains **Edit** (`e:<uuid>`). Confirm / Discard on the first row, Fix
-date / Edit on the second. Dateless photos still omit Confirm; Edit
-stays. Edit sets `ingestions.status` to `awaiting_edit` (migration
-0008). Next text is a freeform correction; Gemini patches the stored
-extraction (no photo/voice re-download) then the bucket specialist.
-Checks fail → stay waiting. Checks pass → `pending` and a new preview.
-A photo or voice while waiting is still waiting. Discard works from
-`awaiting_edit`. One outstanding wait at a time
-(`awaiting_date` or `awaiting_edit`). Not phone-tested; 0008 not
-applied; Lambda not deployed from this branch.
+Edit HITL (merged as #19, 2026-09-08): Confirm card gains **Edit**
+(`e:<uuid>`). Confirm / Discard on the first row, Fix date / Edit on
+the second. Dateless photos still omit Confirm; Edit stays. Edit sets
+`ingestions.status` to `awaiting_edit` (migration 0008, applied). Next
+text is a freeform correction; Gemini patches the stored extraction
+(no photo/voice re-download) then the bucket specialist. Checks fail
+→ stay waiting. Checks pass → `pending` and a new preview. A photo or
+voice while waiting is still waiting. Discard works from
+`awaiting_edit`. One outstanding wait at a time (`awaiting_date` or
+`awaiting_edit`). Phone-tested 2026-09-08: amount, category, and a
+photo while still waiting all held.
 
 PDF/document, multi-event messages, and S3 key prefixes remain later.
 Multi-event is 2+ independent headers in one update, including a
@@ -149,8 +149,7 @@ Dateless-receipt persist (no Confirm) is not yet phone-tested.
 
 ## Next concrete step
 
-Apply migration 0008, merge/deploy Edit, phone-test (amount, category,
-still-waiting photo). Then multi-event. Optional leftover: S3 keys
+Multi-event. Optional leftover: S3 keys
 `{source}/{yyyy-mm}/{id}.{ext}` in the existing bucket. Optional smoke:
 a receipt with no printed or caption date persists without Confirm.
 
