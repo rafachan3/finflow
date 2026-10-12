@@ -38,6 +38,8 @@ export type Extraction = {
   is_recurring: boolean;
   income_source: string | null;
   to_account: string | null;
+  /** Owner's stated why/circumstance; absent on rows extracted before notes. */
+  notes?: string | null;
   items: ExtractionItem[];
   confidence: number;
   usage?: { extractor?: TokenUsage; bucket?: TokenUsage };

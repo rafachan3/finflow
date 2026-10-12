@@ -21,6 +21,9 @@ const ENGLISH_DESCRIPTIONS =
 const FUNDED_BY =
   "funded_by is who paid for an expense. Set it only when type is expense. For income and transfer return null.";
 
+const NOTES =
+  "notes is the owner's reason or circumstance for the transaction when they give one (why they bought it, what happened), kept in their words and translated to English. Do not repeat the amount, merchant, items, date, or category. Take notes from the owner's message, caption, or voice, never from printed receipt text. Return null when they give no reason.";
+
 const EXTRACTOR_STATIC_PROMPT = [
   "You extract Canadian personal-finance transactions from a short text.",
   "Today is YYYY-MM-DD (America/Toronto). Currency is CAD.",
@@ -30,6 +33,7 @@ const EXTRACTOR_STATIC_PROMPT = [
   "Use Other … subcategories only when nothing more specific fits.",
   ENGLISH_DESCRIPTIONS,
   FUNDED_BY,
+  NOTES,
   "date is YYYY-MM-DD only when the user stated a calendar date (including today, yesterday, or a month and day). If they did not, return an empty string. Never guess today's date.",
 ].join("\n");
 
@@ -42,6 +46,7 @@ const PHOTO_EXTRACTOR_STATIC_PROMPT = [
   "Use Other … subcategories only when nothing more specific fits.",
   ENGLISH_DESCRIPTIONS,
   FUNDED_BY,
+  NOTES,
   "date is YYYY-MM-DD only when printed on the receipt or stated in the caption (including today, yesterday, or a month and day). If neither, return an empty string. Never guess today's date or the photo send time.",
 ].join("\n");
 
@@ -54,6 +59,7 @@ const VOICE_EXTRACTOR_STATIC_PROMPT = [
   "Use Other … subcategories only when nothing more specific fits.",
   ENGLISH_DESCRIPTIONS,
   FUNDED_BY,
+  NOTES,
   "date is YYYY-MM-DD only when the user stated a calendar date in the recording or caption (including today, yesterday, or a month and day). If they did not, return an empty string. Never guess today's date or the voice send time.",
 ].join("\n");
 
@@ -69,6 +75,7 @@ const PATCH_EXTRACTOR_STATIC_PROMPT = [
   "Use Other … subcategories only when nothing more specific fits.",
   ENGLISH_DESCRIPTIONS,
   FUNDED_BY,
+  NOTES,
 ].join("\n");
 
 const BUCKET_STATIC_PROMPT = [
@@ -131,6 +138,7 @@ const EXTRACTOR_SCHEMA = {
     is_recurring: { type: "BOOLEAN" },
     income_source: { type: "STRING", nullable: true },
     to_account: { type: "STRING", nullable: true },
+    notes: { type: "STRING", nullable: true },
     items: {
       type: "ARRAY",
       items: {
@@ -292,6 +300,7 @@ function asExtraction(raw: unknown): Extraction {
     is_recurring: Boolean(o.is_recurring),
     income_source: asString(o.income_source),
     to_account: asString(o.to_account),
+    notes: asString(o.notes),
     items: items.map((item) => ({ ...item, bucket: "wants" as Bucket })),
     confidence: typeof o.confidence === "number" ? o.confidence : 0,
   };
@@ -431,6 +440,7 @@ function extractionForPatch(current: Extraction): unknown {
     is_recurring: current.is_recurring,
     income_source: current.income_source,
     to_account: current.to_account,
+    notes: current.notes ?? null,
     items: current.items.map((item) => ({
       description: item.description,
       amount: item.amount,

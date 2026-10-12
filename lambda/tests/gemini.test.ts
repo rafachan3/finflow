@@ -325,6 +325,72 @@ describe("extractFromText", () => {
     );
   });
 
+  it("asks Gemini for a nullable note in the owner's words", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () =>
+          geminiJson({ ...extracted, notes: "too lazy to cook" }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () =>
+          geminiJson({ buckets: [{ bucket: "wants", why: "takeout" }] }),
+      });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await extractFromText({
+      apiKey: "test-key",
+      text: "13.50 indian on uber eats, too lazy to cook",
+      taxonomy,
+      bucketRules: "Takeout is wants.",
+      today: "2026-08-17",
+    });
+
+    expect(result.notes).toBe("too lazy to cook");
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body as string) as {
+      systemInstruction: { parts: { text: string }[] };
+      generationConfig: {
+        responseSchema: {
+          properties: { notes: { nullable?: boolean } };
+          required: string[];
+        };
+      };
+    };
+    expect(body.generationConfig.responseSchema.properties.notes.nullable).toBe(
+      true,
+    );
+    expect(body.generationConfig.responseSchema.required).not.toContain("notes");
+    expect(body.systemInstruction.parts[0].text).toMatch(/notes is the owner's reason/i);
+    expect(body.systemInstruction.parts[0].text).toMatch(/never from printed receipt text/i);
+  });
+
+  it("returns null notes when Gemini omits or empties them", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => geminiJson({ ...extracted, notes: "" }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () =>
+          geminiJson({ buckets: [{ bucket: "wants", why: "takeout" }] }),
+      });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await extractFromText({
+      apiKey: "test-key",
+      text: "12.50 lunch chipotle",
+      taxonomy,
+      bucketRules: "Takeout is wants.",
+      today: "2026-08-17",
+    });
+
+    expect(result.notes).toBeNull();
+  });
+
   it("sends the API key in a header, not the URL", async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
@@ -668,5 +734,36 @@ describe("patchExtraction", () => {
 
     expect(result.date).toBe("2026-08-16");
     expect(result.date_source).toBe("fix");
+  });
+
+  it("sends the current note so a correction can keep or change it", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () =>
+          geminiJson({ ...extracted, notes: "overslept, couldn't pack lunch" }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () =>
+          geminiJson({ buckets: [{ bucket: "wants", why: "takeout" }] }),
+      });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await patchExtraction({
+      apiKey: "test-key",
+      current: { ...current, notes: "overslept" },
+      correction: "add that I couldn't pack lunch",
+      taxonomy,
+      bucketRules: "Takeout is wants.",
+      today: "2026-08-30",
+    });
+
+    const blob = JSON.stringify(
+      JSON.parse(fetchMock.mock.calls[0][1].body as string).contents,
+    );
+    expect(blob).toContain("overslept");
+    expect(result.notes).toBe("overslept, couldn't pack lunch");
   });
 });
