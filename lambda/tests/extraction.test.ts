@@ -357,6 +357,25 @@ describe("formatPreview", () => {
     expect(formatPreview(expense(), validateExtraction(expense(), taxonomy))).not.toMatch(/Note:/);
   });
 
+  it("flags a card that a Lite model read, and only then", () => {
+    const meta = {
+      model: "gemini-3.6-flash",
+      extractor_sha256: "a",
+      taxonomy_sha256: "b",
+    };
+    const render = (m: Extraction["meta"]) => {
+      const e = expense({ meta: m });
+      return formatPreview(e, validateExtraction(e, taxonomy));
+    };
+
+    expect(render(meta)).not.toMatch(/lighter model/i);
+    expect(render({ ...meta, bucket_model: "gemini-3.5-flash" })).not.toMatch(/lighter model/i);
+    expect(render({ ...meta, model: "gemini-3.5-flash-lite" })).toMatch(
+      /! read by a lighter model while Gemini was busy — check categories and buckets/,
+    );
+    expect(render({ ...meta, bucket_model: "gemini-3.5-flash-lite" })).toMatch(/lighter model/i);
+  });
+
   it("omits a confirm hint when checks fail", () => {
     const bad = expense({ amount: "99.00" });
     const checks = validateExtraction(bad, taxonomy);

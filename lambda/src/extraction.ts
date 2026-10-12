@@ -453,6 +453,13 @@ export function formatPreview(
   for (const w of checks.warnings) {
     lines.push(`! ${w}`);
   }
+  // Lite is the overload fallback: totals hold, classification wobbles.
+  const models = [extraction.meta?.model, extraction.meta?.bucket_model];
+  if (models.some((m) => m?.includes("-lite"))) {
+    lines.push(
+      "! read by a lighter model while Gemini was busy — check categories and buckets",
+    );
+  }
   for (const e of checks.errors) {
     lines.push(`✗ ${e}`);
   }
