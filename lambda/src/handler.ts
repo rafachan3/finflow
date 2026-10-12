@@ -294,10 +294,16 @@ async function offerEvents(args: {
   for (const [index, o] of offers.entries()) {
     const preview = formatPreview(o.extraction, o.checks, { index, count: offers.length });
     const savedId = savedIds.get(o);
-    if (savedId) {
-      await sendMessage(args.config.botToken, chatId, preview, reviewKeyboard(savedId, { confirm: o.offer.confirm }));
-    } else {
-      await sendMessage(args.config.botToken, chatId, preview);
+    try {
+      if (savedId) {
+        await sendMessage(args.config.botToken, chatId, preview, reviewKeyboard(savedId, { confirm: o.offer.confirm }));
+      } else {
+        await sendMessage(args.config.botToken, chatId, preview);
+      }
+    } catch (err) {
+      // Rows are saved: a "Couldn't parse" reply would make the owner resend and duplicate them.
+      if (persisted.length === 0) throw err;
+      console.error("card send error", err);
     }
   }
   return ok("ok");

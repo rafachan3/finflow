@@ -926,4 +926,32 @@ describe("multi-event messages", () => {
     expect(sendMessage).toHaveBeenCalledWith("t", 1, "Couldn't parse that. Try again in a sentence.");
     expect(insertPendingIngestions).not.toHaveBeenCalled();
   });
+
+  it("keeps sending cards and does not report a parse failure when a card send fails after saving", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.mocked(extractFromText).mockResolvedValue([extraction, pharmacy]);
+    vi.mocked(sendMessage).mockRejectedValueOnce(new Error("telegram 502"));
+
+    const res = await handler(event({ update_id: 56, message: { chat: { id: 1 }, text: "two" } }));
+
+    expect(insertPendingIngestions).toHaveBeenCalledTimes(1);
+    expect(sendMessage).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(sendMessage).mock.calls.some((c) => /Couldn't/.test(String(c[2])))).toBe(false);
+    expect(res).toMatchObject({ body: "ok" });
+    expect(errorSpy).toHaveBeenCalledWith("card send error", expect.any(Error));
+  });
+
+  it("still reports a failure when nothing was saved and the preview send fails", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.mocked(extractFromText).mockResolvedValue([
+      { ...extraction, amount: "99.00" },
+      { ...pharmacy, amount: "99.00" },
+    ]);
+    vi.mocked(sendMessage).mockRejectedValueOnce(new Error("telegram 502"));
+
+    await handler(event({ update_id: 57, message: { chat: { id: 1 }, text: "two" } }));
+
+    expect(insertPendingIngestions).not.toHaveBeenCalled();
+    expect(vi.mocked(sendMessage).mock.calls[1]).toEqual(["t", 1, "Couldn't parse that. Try again in a sentence."]);
+  });
 });
