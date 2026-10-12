@@ -12,7 +12,7 @@ Living state of the project. Read this first; update it whenever work lands.
 - [x] Phase 1 — Supabase project, schema migrations, Notion history import (2026-08-13)
 - [x] Taxonomy tweak — Hygiene + Beauty → Personal care (Health and wellness); buckets untouched (2026-08-13)
 - [x] Phase 2 — Telegram bot walking skeleton (text only, no LLM) (2026-08-17)
-- [ ] Phase 3 — Gemini extraction (text → photo → voice) — **3a + 3b + 3c phone-tested; funding source applied; Edit phone-tested; context notes + multi-event remain**
+- [ ] Phase 3 — Gemini extraction (text → photo → voice) — **3a + 3b + 3c phone-tested; funding source applied; Edit phone-tested; context notes merged, not yet phone-tested; multi-event remains**
 - [ ] Phase 3.5 — Ingestion follow-ons (item tags, duplicate warning, merchant commands)
 - [ ] Phase 4 — dbt semantic layer + MetricFlow
 - [ ] Phase 4.5 — Proactive nudges (recurring reminders, merchant recommendations)
@@ -128,6 +128,23 @@ close Phase 3; new Phases 3.5 and 4.5; Telegram albums parked. The
 deploy workflow now also runs tests + bundle on PRs (AWS steps
 push-only). A personal name in a test fixture was replaced.
 
+Context notes (merged as #23, deployed 2026-10-12): Gemini extracts `notes`, the owner's
+reason or circumstance in their words (translated to English), from
+the message, caption, or voice and never from receipt text. The card
+shows `Note: …` under the description; Confirm writes
+`transactions.notes` (column since 0001, no migration). Edit can
+change it. Rows extracted before notes write NULL. First `db.ts`
+test (pg mock on the transactions insert). Not yet phone-tested.
+
+Gemini overload (2026-10-12): every logged error since 2026-09-30
+(8 in ~28 interactions) was `Gemini HTTP 503` "high demand" from
+`gemini-3.6-flash`; one attempt meant one 503 reached the owner as
+"Couldn't read that receipt". `generateJson` now retries 500/503/504
+twice (2s, 5s) and logs `Gemini HTTP <status>; retry <n>`; 429 and
+other 4xx are not retried. If a 5xx still survives, the reply says
+Gemini is overloaded instead of blaming the input. A fallback model
+is the next step only if CloudWatch shows retries not rescuing.
+
 PDF/document, multi-event messages, and S3 key prefixes remain later.
 Multi-event is 2+ independent headers in one update, including a
 grocery breakdown plus an unrelated expense or income in the same
@@ -156,7 +173,11 @@ Dateless-receipt persist (no Confirm) is not yet phone-tested.
 
 ## Next concrete step
 
-Context notes (`transactions.notes`), then multi-event. Optional leftover: S3 keys
+After the Gemini retry PR merges and `Deploy ingest Lambda` is green:
+phone-test notes (text with a reason → `Note:` line and `transactions.notes`
+filled; text without one → no line; photo caption reason, not receipt
+text; Edit changes the note). Record the result in the multi-event
+PR, then multi-event. Optional leftover: S3 keys
 `{source}/{yyyy-mm}/{id}.{ext}` in the existing bucket. Optional smoke:
 a receipt with no printed or caption date persists without Confirm.
 
@@ -178,3 +199,7 @@ a receipt with no printed or caption date persists without Confirm.
 - AWS fails open on cost; keep the Phase 0 `Project=finflow` budget active and
   activate the `Project` cost allocation tag in Billing when it appears.
 - One Advanced SSM parameter is $0.05/month (`/finflow/bucket-rules`).
+- Gemini free tier sheds load with HTTP 503 at peak demand. Retries
+  absorb short spikes; a sustained outage still fails the message
+  (the owner resends). Count `retry` log lines before adding a
+  fallback model.

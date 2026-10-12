@@ -68,6 +68,16 @@ const ASK_EDIT =
 const WAITING_EDIT =
   "Still waiting for a correction for the previous item. Send the change — or tap Discard.";
 
+const GEMINI_OVERLOADED =
+  "Gemini is overloaded right now. Send it again in a minute.";
+
+/** Server overload that survived generateJson's retries is not the owner's input. */
+function failureReply(err: unknown, fallback: string): string {
+  return err instanceof Error && /^Gemini HTTP 50[034]\b/.test(err.message)
+    ? GEMINI_OVERLOADED
+    : fallback;
+}
+
 function ok(body: string): APIGatewayProxyResultV2 {
   return { statusCode: 200, body };
 }
@@ -215,7 +225,7 @@ async function handleAwaitingEdit(
     await sendMessage(
       config.botToken,
       chatId,
-      "Couldn't apply that. Try again.",
+      failureReply(err, "Couldn't apply that. Try again."),
     );
     return ok("ok");
   }
@@ -288,7 +298,7 @@ async function handlePhoto(
     await sendMessage(
       config.botToken,
       message.chat.id,
-      "Couldn't read that receipt. Try again.",
+      failureReply(err, "Couldn't read that receipt. Try again."),
     );
     return ok("ok");
   }
@@ -360,7 +370,7 @@ async function handleVoice(
     await sendMessage(
       config.botToken,
       message.chat.id,
-      "Couldn't parse that voice note. Try again.",
+      failureReply(err, "Couldn't parse that voice note. Try again."),
     );
     return ok("ok");
   }
@@ -457,7 +467,7 @@ async function handleMessage(
     await sendMessage(
       config.botToken,
       message.chat.id,
-      "Couldn't parse that. Try again in a sentence.",
+      failureReply(err, "Couldn't parse that. Try again in a sentence."),
     );
     return ok("ok");
   }

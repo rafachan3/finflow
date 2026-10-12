@@ -15,6 +15,10 @@ export const GEMINI_MODEL = "gemini-3.6-flash";
 
 const ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
 
+// Server-side overload is transient; 429 (quota) and 4xx are not worth a retry.
+const RETRYABLE_STATUS = new Set([500, 503, 504]);
+const RETRY_DELAYS_MS = [2000, 5000];
+
 const ENGLISH_DESCRIPTIONS =
   "Header and line descriptions are ordinary English. Translate French and other languages from the receipt or message. Keep brand names. Do not add commentary.";
 
@@ -206,7 +210,7 @@ async function generateJson(args: {
   userParts: GeminiUserPart[];
   schema: object;
 }): Promise<{ data: unknown; usage: TokenUsage }> {
-  const res = await fetch(ENDPOINT, {
+  const request = {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -220,8 +224,19 @@ async function generateJson(args: {
         responseSchema: args.schema,
       },
     }),
-  });
-  const body = (await res.json()) as GeminiResponse;
+  };
+  let res: Response;
+  let body: GeminiResponse;
+  for (let attempt = 0; ; attempt++) {
+    res = await fetch(ENDPOINT, request);
+    // Overload responses are not always JSON.
+    body = (await res.json().catch(() => ({}))) as GeminiResponse;
+    if (res.ok || !RETRYABLE_STATUS.has(res.status) || attempt >= RETRY_DELAYS_MS.length) {
+      break;
+    }
+    console.warn(`Gemini HTTP ${res.status}; retry ${attempt + 1}`);
+    await new Promise((resolve) => setTimeout(resolve, RETRY_DELAYS_MS[attempt]));
+  }
   if (!res.ok) {
     throw new Error(
       `Gemini HTTP ${res.status}${body.error?.message ? `: ${body.error.message}` : ""}`,
