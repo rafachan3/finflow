@@ -636,3 +636,71 @@ applies without Confirm, same as a dateless receipt.
 an inline category/subcategory picker; re-fetching media; treating
 Edit as a new extraction; a full line-item editor.
 
+
+## 2026-10-12 — Post-Phase-3 scope: order, new phases, one parked item
+
+New owner asks after Edit: context notes, two merchants in one
+message, item-level tags, duplicate detection, merchant management
+and recommendations, recurring-expense reminders, MetricFlow, and
+several receipts in one send.
+
+**Order.** Notes, then multi-event (closes Phase 3; two merchants in
+one message *is* multi-event). Phase 3.5: item-level tags, duplicate
+warning, Telegram merchant commands. Phase 4 gains MetricFlow. Phase
+4.5: recurring reminders and merchant recommendations. Then Phase 5.
+
+- Notes first: `transactions.notes` already exists and nothing writes
+  it; every day without it is context lost for the agent layer.
+- Item tags before Phase 4: they change the grain of tag spend, and
+  marts built on header tags would be rebuilt.
+- Reminders and recommendations share a scheduler and need history
+  (marts), so they follow Phase 4. Recommendations are a frequency
+  count over confirmed transactions, not an LLM call.
+- MetricFlow uses the local `mf` CLI only. The hosted Semantic Layer
+  APIs are dbt Cloud (paid), so Grafana keeps reading marts and a test
+  keeps the two in agreement.
+
+**Parked:** Telegram albums (several receipts in one send). Owner
+decision: revisit only if needed. See ROADMAP.md "Parked".
+
+**Ruled out:** folding the new items into Phase 3 (it has been "almost
+done" since August; scope creep is the risk); an LLM for merchant
+frequency.
+
+## 2026-10-12 — No microservice split of the ingest Lambda
+
+Asked whether the system should be split into microservices instead
+of a monolith. It already is split by deployable and responsibility:
+ingest Lambda (webhook), Postgres, dbt in Actions, Grafana, the agent
+layer. Inside the ingest Lambda, modules split by concern (`telegram`,
+`gemini`, `extraction`, `db`, `s3`, `handler`).
+
+Splitting text/photo/voice/callbacks into separate functions would
+need a router in front of Telegram's single webhook URL, more IAM,
+more deploy paths, and more cold starts, while every piece still
+shares the `ingestions` state machine in one database — a distributed
+monolith, for one user at a few messages a day.
+
+**Rule:** a new function only where the trigger or failure mode
+differs. The Phase 4.5 scheduler is its own Lambda (cron, not
+webhook). If `handler.ts` keeps growing, split it into flow modules
+inside the same function when that code is next touched.
+
+**Ruled out:** one Lambda per input type or per button; an API
+gateway/router service; a queue between webhook and extraction
+(Telegram retries already give at-least-once, and the update id is
+the idempotency key).
+
+## 2026-10-12 — Repo hygiene: PR tests, status in feature PRs, fix-forward
+
+- `Deploy ingest Lambda` also runs on `pull_request` (same paths):
+  `npm ci`, test, bundle. The AWS steps run only on push to `main`.
+  Not a required check: with path filters, PRs that skip `lambda/`
+  would wait forever on it.
+- STATUS.md updates ride the next feature PR instead of standalone
+  `docs:` PRs (18 of the first ~38 commits on `main` were docs-only).
+  Post-merge results (phone tests) are recorded in the next PR.
+- A personal name in a test fixture was replaced going forward.
+  History was not rewritten: GitHub keeps PR refs a force-push cannot
+  touch, so a rewrite costs every SHA since then and still leaves it
+  visible.
