@@ -727,3 +727,57 @@ describe("handler", () => {
     );
   });
 });
+
+describe("extraction failures", () => {
+  const overloaded = new Error("Gemini HTTP 503: high demand");
+
+  beforeEach(() => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+  });
+
+  it("tells the owner Gemini is overloaded when text extraction gets a 503", async () => {
+    vi.mocked(extractFromText).mockRejectedValueOnce(overloaded);
+
+    await handler(
+      event({ update_id: 40, message: { chat: { id: 1 }, text: "12.50 lunch" } }),
+    );
+
+    expect(sendMessage).toHaveBeenCalledWith(
+      "t",
+      1,
+      expect.stringMatching(/Gemini is overloaded/i),
+    );
+    expect(insertPendingIngestion).not.toHaveBeenCalled();
+  });
+
+  it("says the same for a receipt photo", async () => {
+    vi.mocked(extractFromPhoto).mockRejectedValueOnce(overloaded);
+
+    await handler(
+      event({
+        update_id: 41,
+        message: { chat: { id: 1 }, photo: [{ file_id: "file-big" }] },
+      }),
+    );
+
+    expect(sendMessage).toHaveBeenCalledWith(
+      "t",
+      1,
+      expect.stringMatching(/Gemini is overloaded/i),
+    );
+  });
+
+  it("keeps the input-specific message for other failures", async () => {
+    vi.mocked(extractFromText).mockRejectedValueOnce(new Error("bad JSON"));
+
+    await handler(
+      event({ update_id: 42, message: { chat: { id: 1 }, text: "12.50 lunch" } }),
+    );
+
+    expect(sendMessage).toHaveBeenCalledWith(
+      "t",
+      1,
+      "Couldn't parse that. Try again in a sentence.",
+    );
+  });
+});
