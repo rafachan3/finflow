@@ -504,19 +504,34 @@ describe("extractFromText", () => {
       expect([0, 1, 2].map((i) => modelOf(fetchMock, i))).toEqual([
         "gemini-3.6-flash",
         "gemini-3.5-flash",
-        "gemini-3.5-flash",
+        "gemini-3.5-flash-lite",
       ]);
       expect("error" in result && result.error.message).toMatch(/Gemini HTTP 503/);
     });
 
-    it("does not retry a 429 quota error", async () => {
-      const fetchMock = vi.fn().mockResolvedValue(overloaded(429));
+    it("moves to the next model on a 429, since free-tier quota is per model", async () => {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce(overloaded(503))
+        .mockResolvedValueOnce(overloaded(429))
+        .mockResolvedValueOnce({ ok: true, json: async () => geminiJson(incomeJson) });
+      vi.stubGlobal("fetch", fetchMock);
+
+      const result = await run();
+
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+      expect(modelOf(fetchMock, 2)).toBe("gemini-3.5-flash-lite");
+      expect("value" in result && result.value.meta?.model).toBe("gemini-3.5-flash-lite");
+    });
+
+    it("does not retry a bad request", async () => {
+      const fetchMock = vi.fn().mockResolvedValue(overloaded(400));
       vi.stubGlobal("fetch", fetchMock);
 
       const result = await run();
 
       expect(fetchMock).toHaveBeenCalledTimes(1);
-      expect("error" in result && result.error.message).toMatch(/Gemini HTTP 429/);
+      expect("error" in result && result.error.message).toMatch(/Gemini HTTP 400/);
     });
   });
 
