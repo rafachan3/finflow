@@ -94,10 +94,23 @@ export type PendingIngestion = {
 export async function insertPendingIngestions(
   rows: PendingIngestion[],
 ): Promise<{ id: string }[] | "duplicate"> {
+  if (rows.length === 0) return [];
   const db = await getPool();
   const client = await db.connect();
   try {
     await client.query("BEGIN");
+    // A retry re-runs Gemini and may save different event indexes, which the
+    // unique key alone won't catch: serialise per update, then skip if saved.
+    const updateId = rows[0].telegramUpdateId;
+    await client.query("SELECT pg_advisory_xact_lock($1::bigint)", [updateId]);
+    const seen = await client.query(
+      "SELECT 1 FROM ingestions WHERE telegram_update_id = $1 LIMIT 1",
+      [updateId],
+    );
+    if (seen.rowCount) {
+      await client.query("ROLLBACK");
+      return "duplicate";
+    }
     const ids: { id: string }[] = [];
     for (const row of rows) {
       const result = await client.query<{ id: string }>(

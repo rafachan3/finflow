@@ -102,7 +102,11 @@ describe("insertPendingIngestions", () => {
 
     expect(result).toEqual([{ id: row(0).id }, { id: row(1).id }]);
     const sqls = query.mock.calls.map(([sql]) => String(sql).split(/\s/)[0]);
-    expect(sqls).toEqual(["BEGIN", "INSERT", "INSERT", "COMMIT"]);
+    expect(sqls).toEqual(["BEGIN", "SELECT", "SELECT", "INSERT", "INSERT", "COMMIT"]);
+    expect(String(query.mock.calls[1][0])).toMatch(/pg_advisory_xact_lock/);
+    expect(query.mock.calls[1][1]).toEqual([77]);
+    expect(String(query.mock.calls[2][0])).toMatch(/FROM ingestions WHERE telegram_update_id/);
+    expect(query.mock.calls[2][1]).toEqual([77]);
     const inserts = query.mock.calls.filter(([sql]) => String(sql).startsWith("INSERT"));
     expect(String(inserts[0][0])).toMatch(/event_index/);
     expect(inserts.map(([, params]) => (params as unknown[])[3])).toEqual([0, 1]);
@@ -118,6 +122,24 @@ describe("insertPendingIngestions", () => {
 
     await expect(insertPendingIngestions([row(0), row(1)])).resolves.toBe("duplicate");
     const sqls = query.mock.calls.map(([sql]) => String(sql).split(/\s/)[0]);
-    expect(sqls).toEqual(["BEGIN", "INSERT", "ROLLBACK"]);
+    expect(sqls).toEqual(["BEGIN", "SELECT", "SELECT", "INSERT", "ROLLBACK"]);
+  });
+
+  it("returns duplicate without inserting when the update already has rows", async () => {
+    query.mockImplementation(async (sql: string) =>
+      String(sql).includes("FROM ingestions WHERE telegram_update_id")
+        ? { rowCount: 1, rows: [{ "?column?": 1 }] }
+        : { rowCount: 0, rows: [] },
+    );
+
+    await expect(insertPendingIngestions([row(0)])).resolves.toBe("duplicate");
+    const sqls = query.mock.calls.map(([sql]) => String(sql).split(/\s/)[0]);
+    expect(sqls).toEqual(["BEGIN", "SELECT", "SELECT", "ROLLBACK"]);
+    expect(sqls).not.toContain("INSERT");
+  });
+
+  it("returns an empty list without a transaction for no rows", async () => {
+    await expect(insertPendingIngestions([])).resolves.toEqual([]);
+    expect(query).not.toHaveBeenCalled();
   });
 });
