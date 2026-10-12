@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   extractFromPhoto,
   extractFromText,
@@ -389,6 +389,98 @@ describe("extractFromText", () => {
     });
 
     expect(result.notes).toBeNull();
+  });
+
+  describe("transient Gemini errors", () => {
+    const incomeJson = {
+      ...extracted,
+      type: "income",
+      amount: "2000.00",
+      items: [],
+      income_source: "Salary",
+      funded_by: null,
+    };
+    const overloaded = (status = 503) => ({
+      ok: false,
+      status,
+      json: async () => ({ error: { message: "high demand" } }),
+    });
+    const run = async () => {
+      const p = extractFromText({
+        apiKey: "test-key",
+        text: "got paid",
+        taxonomy,
+        bucketRules: "",
+        today: "2026-08-17",
+      });
+      const settled = p.then(
+        (value) => ({ value }),
+        (error: Error) => ({ error }),
+      );
+      await vi.runAllTimersAsync();
+      return settled;
+    };
+
+    beforeEach(() => {
+      vi.useFakeTimers();
+      vi.spyOn(console, "warn").mockImplementation(() => {});
+    });
+    afterEach(() => {
+      vi.useRealTimers();
+      vi.restoreAllMocks();
+    });
+
+    it("retries a 503 and succeeds on the next attempt", async () => {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce(overloaded())
+        .mockResolvedValueOnce({ ok: true, json: async () => geminiJson(incomeJson) });
+      vi.stubGlobal("fetch", fetchMock);
+
+      const result = await run();
+
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect("value" in result && result.value.amount).toBe("2000.00");
+    });
+
+    it("retries a non-JSON 503 body too", async () => {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 503,
+          json: async () => {
+            throw new SyntaxError("Unexpected token <");
+          },
+        })
+        .mockResolvedValueOnce({ ok: true, json: async () => geminiJson(incomeJson) });
+      vi.stubGlobal("fetch", fetchMock);
+
+      const result = await run();
+
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect("value" in result).toBe(true);
+    });
+
+    it("gives up after three attempts with the HTTP status in the error", async () => {
+      const fetchMock = vi.fn().mockResolvedValue(overloaded(503));
+      vi.stubGlobal("fetch", fetchMock);
+
+      const result = await run();
+
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+      expect("error" in result && result.error.message).toMatch(/Gemini HTTP 503/);
+    });
+
+    it("does not retry a 429 quota error", async () => {
+      const fetchMock = vi.fn().mockResolvedValue(overloaded(429));
+      vi.stubGlobal("fetch", fetchMock);
+
+      const result = await run();
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect("error" in result && result.error.message).toMatch(/Gemini HTTP 429/);
+    });
   });
 
   it("sends the API key in a header, not the URL", async () => {
