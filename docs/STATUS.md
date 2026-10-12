@@ -12,7 +12,7 @@ Living state of the project. Read this first; update it whenever work lands.
 - [x] Phase 1 — Supabase project, schema migrations, Notion history import (2026-08-13)
 - [x] Taxonomy tweak — Hygiene + Beauty → Personal care (Health and wellness); buckets untouched (2026-08-13)
 - [x] Phase 2 — Telegram bot walking skeleton (text only, no LLM) (2026-08-17)
-- [ ] Phase 3 — Gemini extraction (text → photo → voice) — **3a + 3b + 3c phone-tested; funding source applied; Edit phone-tested; context notes merged, not yet phone-tested; multi-event remains**
+- [ ] Phase 3 — Gemini extraction (text → photo → voice) — **3a + 3b + 3c phone-tested; funding source applied; Edit phone-tested; context notes phone-tested; multi-event remains**
 - [ ] Phase 3.5 — Ingestion follow-ons (item tags, duplicate warning, merchant commands)
 - [ ] Phase 4 — dbt semantic layer + MetricFlow
 - [ ] Phase 4.5 — Proactive nudges (recurring reminders, merchant recommendations)
@@ -134,7 +134,11 @@ the message, caption, or voice and never from receipt text. The card
 shows `Note: …` under the description; Confirm writes
 `transactions.notes` (column since 0001, no migration). Edit can
 change it. Rows extracted before notes write NULL. First `db.ts`
-test (pg mock on the transactions insert). Not yet phone-tested.
+test (pg mock on the transactions insert). Phone-tested 2026-10-12:
+text with a reason and voice saved the owner's words; text and a
+receipt without a reason saved NULL (no note invented from receipt
+text); a caption reason became the note; a note added through Edit
+was saved. Notes are verbatim, typos included.
 
 Gemini overload (2026-10-12): every logged error since 2026-09-30
 (8 in ~28 interactions) was `Gemini HTTP 503` "high demand" from
@@ -159,7 +163,8 @@ wobbly categories. Third attempt is now Lite; 429 moves to the next
 model (quota is per model). Cards Lite produced show "! read by a
 lighter model while Gemini was busy — check categories and buckets".
 Owner decision: if receipts still fail after this, move ingestion to
-the paid tier.
+the paid tier. Merged as #26; the receipt that had failed went
+through after deploy.
 
 PDF/document, multi-event messages, and S3 key prefixes remain later.
 Multi-event is 2+ independent headers in one update, including a
@@ -189,11 +194,8 @@ Dateless-receipt persist (no Confirm) is not yet phone-tested.
 
 ## Next concrete step
 
-After the Lite fallback PR merges and `Deploy ingest Lambda` is green:
-phone-test notes (text with a reason → `Note:` line and `transactions.notes`
-filled; text without one → no line; photo caption reason, not receipt
-text; Edit changes the note). Record the result in the multi-event
-PR, then multi-event. Optional leftover: S3 keys
+Multi-event design (migration 0009: one Telegram update → N
+ingestions), then implementation. Optional leftover: S3 keys
 `{source}/{yyyy-mm}/{id}.{ext}` in the existing bucket. Optional smoke:
 a receipt with no printed or caption date persists without Confirm.
 
