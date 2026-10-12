@@ -142,8 +142,14 @@ Gemini overload (2026-10-12): every logged error since 2026-09-30
 "Couldn't read that receipt". `generateJson` now retries 500/503/504
 twice (2s, 5s) and logs `Gemini HTTP <status>; retry <n>`; 429 and
 other 4xx are not retried. If a 5xx still survives, the reply says
-Gemini is overloaded instead of blaming the input. A fallback model
-is the next step only if CloudWatch shows retries not rescuing.
+Gemini is overloaded instead of blaming the input (merged as #24).
+The first receipt after that deploy still failed: three 3.6 attempts
+over ~15s, all 503. A probe of five models showed 3.7/3.8 slow or
+overloaded and `gemini-3.5-flash` fast and available, so retries now
+move to the fallback: 3.6, then 3.5 after 2s and 5s. `meta.model`
+records the model that answered the extraction; `meta.bucket_model`
+the bucket step's. Log line: `Gemini HTTP <status> on <model>; retry
+<n> on <model>`. DECISIONS.md 2026-10-12.
 
 PDF/document, multi-event messages, and S3 key prefixes remain later.
 Multi-event is 2+ independent headers in one update, including a
@@ -173,7 +179,7 @@ Dateless-receipt persist (no Confirm) is not yet phone-tested.
 
 ## Next concrete step
 
-After the Gemini retry PR merges and `Deploy ingest Lambda` is green:
+After the Gemini fallback PR merges and `Deploy ingest Lambda` is green:
 phone-test notes (text with a reason → `Note:` line and `transactions.notes`
 filled; text without one → no line; photo caption reason, not receipt
 text; Edit changes the note). Record the result in the multi-event
@@ -195,11 +201,13 @@ a receipt with no printed or caption date persists without Confirm.
   Action should keep it warm once Phase 4 exists; until then, restore from
   the dashboard after a gap.
 - Gemini free-tier quotas and model names change. Pinned to `gemini-3.6-flash`
-  (DECISIONS.md 2026-08-17); `gemini-2.5-flash` rejected new keys with HTTP 404.
+  with `gemini-3.5-flash` as fallback (DECISIONS.md 2026-08-17, 2026-10-12);
+  `gemini-2.5-flash` rejected new keys with HTTP 404. When Google retires 3.5,
+  the fallback 404s and overload fails as before.
 - AWS fails open on cost; keep the Phase 0 `Project=finflow` budget active and
   activate the `Project` cost allocation tag in Billing when it appears.
 - One Advanced SSM parameter is $0.05/month (`/finflow/bucket-rules`).
-- Gemini free tier sheds load with HTTP 503 at peak demand. Retries
-  absorb short spikes; a sustained outage still fails the message
-  (the owner resends). Count `retry` log lines before adding a
-  fallback model.
+- Gemini free tier sheds load with HTTP 503 at peak demand. The 3.5
+  fallback covers 3.6 overload; both overloaded at once still fails the
+  message (the owner resends). `ingestions.extraction->'meta'->>'model'`
+  shows how often the fallback answered.

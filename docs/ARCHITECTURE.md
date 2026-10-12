@@ -97,7 +97,12 @@ dbt models and the agent read it, so numbers agree everywhere.
 ### Extraction — Gemini Flash (free tier)
 - Handles images (receipts) and audio (voice notes) natively — one API for all
   three input types. Free-tier quota comfortably covers personal volume
-  (a handful of requests/day). Model pinned: `gemini-3.6-flash`.
+  (a handful of requests/day). Model pinned: `gemini-3.6-flash`, with
+  `gemini-3.5-flash` as the overload fallback (500/503/504 only).
+- Privacy cost of the free tier: Google may use unpaid-tier inputs to
+  improve its products, and human reviewers may read them. Receipt
+  photos, voice notes, and messages go there. Accepted under the
+  no-paid-ingestion constraint.
 - Two sequential structured-output calls in the Lambda, not one prompt:
   **extractor** (facts + taxonomy, including `item_type`) then **bucket
   specialist** (personal rules from SSM). Item type is not a third call.
