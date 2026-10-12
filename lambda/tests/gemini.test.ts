@@ -378,7 +378,7 @@ describe("extractFromPhoto", () => {
       apiKey: "test-key",
       image: jpeg,
       mimeType: "image/jpeg",
-      caption: "yesterday with Sofya",
+      caption: "yesterday with a friend",
       taxonomy,
       bucketRules: "Takeout is wants.",
       today: "2026-08-17",
@@ -397,7 +397,7 @@ describe("extractFromPhoto", () => {
       mimeType: "image/jpeg",
       data: jpeg.toString("base64"),
     });
-    expect(parts.some((p) => p.text?.includes("yesterday with Sofya"))).toBe(
+    expect(parts.some((p) => p.text?.includes("yesterday with a friend"))).toBe(
       true,
     );
     expect(first.systemInstruction.parts[0].text).toMatch(/receipt/i);
