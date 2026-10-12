@@ -55,6 +55,7 @@ import {
   patchExtraction,
 } from "../src/gemini.js";
 import {
+  answerCallbackQuery,
   discardKeyboard,
   downloadTelegramFile,
   reviewKeyboard,
@@ -253,7 +254,7 @@ describe("handler", () => {
   });
 
   it("asks for a date on Fix date and does not confirm", async () => {
-    vi.mocked(setIngestionAwaitingDate).mockResolvedValue(true);
+    vi.mocked(setIngestionAwaitingDate).mockResolvedValue("started");
 
     await handler(
       event({
@@ -278,6 +279,32 @@ describe("handler", () => {
       1,
       expect.stringMatching(/send the date/i),
       { confirm: "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee" },
+    );
+  });
+
+  it.each([
+    ["Fix date", "f", setIngestionAwaitingDate],
+    ["Edit", "e", setIngestionAwaitingEdit],
+  ])("%s while another card is waiting replies busy and sends no keyboard", async (_n, action, setter) => {
+    vi.mocked(setter).mockResolvedValue("busy");
+
+    await handler(
+      event({
+        update_id: 14,
+        callback_query: {
+          id: "cb3",
+          data: `${action}:aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee`,
+          message: { chat: { id: 1 } },
+        },
+      }),
+    );
+
+    expect(answerCallbackQuery).toHaveBeenCalledWith("t", "cb3", "Finish the waiting card first.");
+    expect(sendMessage).toHaveBeenCalledTimes(1);
+    expect(sendMessage).toHaveBeenCalledWith(
+      "t",
+      1,
+      "Another card is waiting for a date or correction. Send it, or tap Discard on that card, then try again.",
     );
   });
 
@@ -617,7 +644,7 @@ describe("handler", () => {
   });
 
   it("asks for a correction on Edit and does not confirm", async () => {
-    vi.mocked(setIngestionAwaitingEdit).mockResolvedValue(true);
+    vi.mocked(setIngestionAwaitingEdit).mockResolvedValue("started");
 
     await handler(
       event({

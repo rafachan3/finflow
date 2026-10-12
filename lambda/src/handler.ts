@@ -70,6 +70,9 @@ const ASK_EDIT =
 const WAITING_EDIT =
   "Still waiting for a correction for the previous item. Send the change — or tap Discard.";
 
+const BUSY_WAITING =
+  "Another card is waiting for a date or correction. Send it, or tap Discard on that card, then try again.";
+
 const GEMINI_OVERLOADED =
   "Gemini is overloaded right now. Send it again in a minute.";
 
@@ -82,6 +85,16 @@ function failureReply(err: unknown, fallback: string): string {
 
 function ok(body: string): APIGatewayProxyResultV2 {
   return { statusCode: 200, body };
+}
+
+async function busyWaiting(
+  botToken: string,
+  callbackId: string,
+  chatId: number,
+): Promise<APIGatewayProxyResultV2> {
+  await answerCallbackQuery(botToken, callbackId, "Finish the waiting card first.");
+  await sendMessage(botToken, chatId, BUSY_WAITING);
+  return ok("ok");
 }
 
 function unauthorized(): APIGatewayProxyResultV2 {
@@ -451,9 +464,10 @@ async function handleCallback(
     ack = result === "confirmed" ? "Saved." : "Already handled.";
   } else if (action === "f") {
     const started = await setIngestionAwaitingDate(ingestionId);
-    ack = started ? "Send the date." : "Already handled.";
+    if (started === "busy") return busyWaiting(botToken, cb.id, chatId);
+    ack = started === "started" ? "Send the date." : "Already handled.";
     await answerCallbackQuery(botToken, cb.id, ack);
-    if (started) {
+    if (started === "started") {
       await sendMessage(
         botToken,
         chatId,
@@ -466,9 +480,10 @@ async function handleCallback(
     return ok("ok");
   } else if (action === "e") {
     const started = await setIngestionAwaitingEdit(ingestionId);
-    ack = started ? "Send the correction." : "Already handled.";
+    if (started === "busy") return busyWaiting(botToken, cb.id, chatId);
+    ack = started === "started" ? "Send the correction." : "Already handled.";
     await answerCallbackQuery(botToken, cb.id, ack);
-    if (started) {
+    if (started === "started") {
       await sendMessage(
         botToken,
         chatId,
