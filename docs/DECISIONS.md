@@ -757,3 +757,34 @@ when it happens.
 **Ruled out (for now):** an async "busy, retrying later" queue (new
 infra for a problem the paid tier also solves); Lite as primary
 (classification wobble on every card, not just busy ones).
+
+## 2026-10-12 — Multi-event: one ingestions row per event
+
+One message can describe several separate purchases ("3 at Dollarama
+and 5 at Pharmaprix"). Owner choices: split by place (one event per
+merchant or place; the same place or no place stays one expense with
+lines; income and transfers are always separate), and separate cards
+only, labelled "(i of n)", with no "Confirm all".
+
+Each event is its own `ingestions` row. Migration 0009 adds
+`event_index smallint not null default 0` and replaces the unique on
+`telegram_update_id` with unique `(telegram_update_id, event_index)`.
+All rows for an update insert in one transaction. Gemini returns
+`{events}` in the text, photo, and voice extractors; Edit keeps the
+single-object schema. One bucket call covers every line of every event:
+one extractor call and at most one bucket call per message, regardless
+of event count. Token usage is recorded on the first saved event only,
+so a later eval mart does not double count.
+
+**Retry fix.** A webhook retry re-runs Gemini and can return a
+different set of events, so it can save indexes the first attempt did
+not; the composite unique alone misses that. The batch insert now takes
+`pg_advisory_xact_lock(telegram_update_id)` inside its transaction and
+returns "duplicate" if any row for that update exists. The composite
+unique stays as a backstop. One Telegram update is saved at most once.
+
+**Ruled out:** one row holding an events array (callbacks and the
+awaiting state would need an event index); an `ingestion_events` child
+table (touches every DB function for a few KB saved); splitting a card
+through Edit (to split, Discard and resend); "Confirm all"; one
+bucket call per event (free-tier quota).

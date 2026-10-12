@@ -365,6 +365,8 @@ bump when SSM rules change.
 - An item's `item_type_id`, when set, must belong to the same category as
   its `subcategory_id` (dbt test).
 - `(ingestions.telegram_update_id, event_index)` is UNIQUE. One Telegram
-  update yields one row per ledger event, inserted in one transaction, so
-  a webhook retry inserts nothing.
+  update yields one row per ledger event, inserted in one transaction that
+  takes a per-update advisory lock and skips the update if any row for it
+  already exists, so a webhook retry inserts nothing. The composite unique
+  is the backstop.
 - Migrations are never edited after merge; correct forward with a new one.
