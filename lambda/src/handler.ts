@@ -9,7 +9,7 @@ import {
   confirmIngestion,
   discardIngestion,
   findAwaitingIngestion,
-  insertPendingIngestion,
+  insertPendingIngestions,
   loadTaxonomy,
   setIngestionAwaitingDate,
   setIngestionAwaitingEdit,
@@ -274,14 +274,17 @@ async function handlePhoto(
       body: file.bytes,
       contentType: file.mimeType,
     });
-    const inserted = await insertPendingIngestion({
-      id,
-      source: "photo",
-      mediaPath,
-      telegramUpdateId: update.update_id,
-      rawPayload: update,
-      extraction,
-    });
+    const inserted = await insertPendingIngestions([
+      {
+        id,
+        source: "photo",
+        mediaPath,
+        telegramUpdateId: update.update_id,
+        eventIndex: 0,
+        rawPayload: update,
+        extraction,
+      },
+    ]);
     if (inserted === "duplicate") {
       return ok("duplicate");
     }
@@ -346,14 +349,17 @@ async function handleVoice(
       body: file.bytes,
       contentType: file.mimeType,
     });
-    const inserted = await insertPendingIngestion({
-      id,
-      source: "voice",
-      mediaPath,
-      telegramUpdateId: update.update_id,
-      rawPayload: update,
-      extraction,
-    });
+    const inserted = await insertPendingIngestions([
+      {
+        id,
+        source: "voice",
+        mediaPath,
+        telegramUpdateId: update.update_id,
+        eventIndex: 0,
+        rawPayload: update,
+        extraction,
+      },
+    ]);
     if (inserted === "duplicate") {
       return ok("duplicate");
     }
@@ -446,11 +452,17 @@ async function handleMessage(
       return ok("ok");
     }
 
-    const inserted = await insertPendingIngestion({
-      telegramUpdateId: update.update_id,
-      rawPayload: update,
-      extraction,
-    });
+    const inserted = await insertPendingIngestions([
+      {
+        id: crypto.randomUUID(),
+        source: "text",
+        mediaPath: null,
+        telegramUpdateId: update.update_id,
+        eventIndex: 0,
+        rawPayload: update,
+        extraction,
+      },
+    ]);
     if (inserted === "duplicate") {
       return ok("duplicate");
     }
@@ -459,7 +471,7 @@ async function handleMessage(
       config.botToken,
       message.chat.id,
       preview,
-      confirmDiscardKeyboard(inserted.id),
+      confirmDiscardKeyboard(inserted[0].id),
     );
     return ok("ok");
   } catch (err) {

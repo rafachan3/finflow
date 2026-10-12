@@ -10,7 +10,7 @@ vi.mock("../src/config.js", () => ({
 vi.mock("../src/db.js", () => ({
   confirmIngestion: vi.fn(),
   discardIngestion: vi.fn(),
-  insertPendingIngestion: vi.fn(),
+  insertPendingIngestions: vi.fn(),
   loadTaxonomy: vi.fn(),
   findAwaitingIngestion: vi.fn(),
   setIngestionAwaitingDate: vi.fn(),
@@ -43,7 +43,7 @@ import {
   applyIngestionDate,
   applyIngestionEdit,
   findAwaitingIngestion,
-  insertPendingIngestion,
+  insertPendingIngestions,
   loadTaxonomy,
   setIngestionAwaitingDate,
   setIngestionAwaitingEdit,
@@ -136,7 +136,7 @@ beforeEach(() => {
   vi.mocked(extractFromText).mockResolvedValue(extraction);
   vi.mocked(extractFromPhoto).mockResolvedValue(extraction);
   vi.mocked(extractFromVoice).mockResolvedValue(extraction);
-  vi.mocked(insertPendingIngestion).mockResolvedValue({ id: "ing-1" });
+  vi.mocked(insertPendingIngestions).mockResolvedValue([{ id: "ing-1" }]);
   vi.mocked(findAwaitingIngestion).mockResolvedValue(null);
   vi.mocked(downloadTelegramFile).mockResolvedValue({
     bytes: Buffer.from([0xff, 0xd8, 0xff]),
@@ -182,15 +182,16 @@ describe("handler", () => {
         bucketRules: "Takeout is wants.",
       }),
     );
-    expect(insertPendingIngestion).toHaveBeenCalledWith(
+    expect(insertPendingIngestions).toHaveBeenCalledWith([
       expect.objectContaining({
         telegramUpdateId: 9,
+        eventIndex: 0,
         extraction: expect.objectContaining({
           date: "2026-08-17",
           date_source: "stated",
         }),
       }),
-    );
+    ]);
     expect(sendMessage).toHaveBeenCalledWith(
       "t",
       1,
@@ -212,7 +213,7 @@ describe("handler", () => {
       }),
     );
 
-    expect(insertPendingIngestion).not.toHaveBeenCalled();
+    expect(insertPendingIngestions).not.toHaveBeenCalled();
     expect(sendMessage).toHaveBeenCalledWith(
       "t",
       1,
@@ -234,14 +235,14 @@ describe("handler", () => {
       }),
     );
 
-    expect(insertPendingIngestion).toHaveBeenCalledWith(
+    expect(insertPendingIngestions).toHaveBeenCalledWith([
       expect.objectContaining({
         extraction: expect.objectContaining({
           date: "2026-08-18",
           date_source: "today_default",
         }),
       }),
-    );
+    ]);
     expect(sendMessage).toHaveBeenCalledWith(
       "t",
       1,
@@ -366,7 +367,7 @@ describe("handler", () => {
       body: Buffer.from([0xff, 0xd8, 0xff]),
       contentType: "image/jpeg",
     });
-    expect(insertPendingIngestion).toHaveBeenCalledWith(
+    expect(insertPendingIngestions).toHaveBeenCalledWith([
       expect.objectContaining({
         id: "11111111-1111-1111-1111-111111111111",
         source: "photo",
@@ -377,7 +378,7 @@ describe("handler", () => {
           date_source: "stated",
         }),
       }),
-    );
+    ]);
     expect(reviewKeyboard).toHaveBeenCalledWith(
       "11111111-1111-1111-1111-111111111111",
       { confirm: true },
@@ -401,7 +402,7 @@ describe("handler", () => {
       }),
     );
 
-    expect(insertPendingIngestion).toHaveBeenCalled();
+    expect(insertPendingIngestions).toHaveBeenCalled();
     expect(reviewKeyboard).toHaveBeenCalledWith(
       "11111111-1111-1111-1111-111111111111",
       { confirm: false },
@@ -482,7 +483,7 @@ describe("handler", () => {
       body: ogg,
       contentType: "audio/ogg",
     });
-    expect(insertPendingIngestion).toHaveBeenCalledWith(
+    expect(insertPendingIngestions).toHaveBeenCalledWith([
       expect.objectContaining({
         id: "11111111-1111-1111-1111-111111111111",
         source: "voice",
@@ -493,7 +494,7 @@ describe("handler", () => {
           date_source: "stated",
         }),
       }),
-    );
+    ]);
     expect(sendMessage).toHaveBeenCalledWith(
       "t",
       1,
@@ -529,7 +530,7 @@ describe("handler", () => {
       }),
     );
 
-    expect(insertPendingIngestion).toHaveBeenCalledWith(
+    expect(insertPendingIngestions).toHaveBeenCalledWith([
       expect.objectContaining({
         source: "voice",
         extraction: expect.objectContaining({
@@ -537,7 +538,7 @@ describe("handler", () => {
           date_source: "today_default",
         }),
       }),
-    );
+    ]);
     expect(sendMessage).toHaveBeenCalledWith(
       "t",
       1,
@@ -571,7 +572,7 @@ describe("handler", () => {
     );
 
     expect(putReceipt).not.toHaveBeenCalled();
-    expect(insertPendingIngestion).not.toHaveBeenCalled();
+    expect(insertPendingIngestions).not.toHaveBeenCalled();
     expect(sendMessage).toHaveBeenCalledWith(
       "t",
       1,
@@ -747,7 +748,7 @@ describe("extraction failures", () => {
       1,
       expect.stringMatching(/Gemini is overloaded/i),
     );
-    expect(insertPendingIngestion).not.toHaveBeenCalled();
+    expect(insertPendingIngestions).not.toHaveBeenCalled();
   });
 
   it("says the same for a receipt photo", async () => {

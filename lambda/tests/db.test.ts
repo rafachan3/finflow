@@ -12,7 +12,7 @@ vi.mock("pg", () => ({
   })),
 }));
 
-const { confirmIngestion } = await import("../src/db.js");
+const { confirmIngestion, insertPendingIngestions } = await import("../src/db.js");
 
 const income: Extraction = {
   type: "income",
@@ -77,5 +77,47 @@ describe("confirmIngestion", () => {
     await confirmIngestion("ing");
 
     expect(insertParams().at(-1)).toBeNull();
+  });
+});
+
+describe("insertPendingIngestions", () => {
+  const row = (eventIndex: number) => ({
+    id: `00000000-0000-0000-0000-00000000000${eventIndex}`,
+    source: "text" as const,
+    mediaPath: null,
+    telegramUpdateId: 77,
+    eventIndex,
+    rawPayload: { update_id: 77 },
+    extraction: income,
+  });
+
+  it("inserts every row with its event_index inside one transaction", async () => {
+    query.mockImplementation(async (sql: string, params?: unknown[]) =>
+      String(sql).startsWith("INSERT INTO ingestions")
+        ? { rowCount: 1, rows: [{ id: params?.[0] }] }
+        : { rowCount: 0, rows: [] },
+    );
+
+    const result = await insertPendingIngestions([row(0), row(1)]);
+
+    expect(result).toEqual([{ id: row(0).id }, { id: row(1).id }]);
+    const sqls = query.mock.calls.map(([sql]) => String(sql).split(/\s/)[0]);
+    expect(sqls).toEqual(["BEGIN", "INSERT", "INSERT", "COMMIT"]);
+    const inserts = query.mock.calls.filter(([sql]) => String(sql).startsWith("INSERT"));
+    expect(String(inserts[0][0])).toMatch(/event_index/);
+    expect(inserts.map(([, params]) => (params as unknown[])[3])).toEqual([0, 1]);
+  });
+
+  it("rolls back and reports a duplicate when a retry hits the unique key", async () => {
+    query.mockImplementation(async (sql: string) => {
+      if (String(sql).startsWith("INSERT")) {
+        throw Object.assign(new Error("dup"), { code: "23505" });
+      }
+      return { rowCount: 0, rows: [] };
+    });
+
+    await expect(insertPendingIngestions([row(0), row(1)])).resolves.toBe("duplicate");
+    const sqls = query.mock.calls.map(([sql]) => String(sql).split(/\s/)[0]);
+    expect(sqls).toEqual(["BEGIN", "INSERT", "ROLLBACK"]);
   });
 });

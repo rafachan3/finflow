@@ -80,33 +80,50 @@ export async function loadTaxonomy(
   };
 }
 
-export async function insertPendingIngestion(args: {
-  id?: string;
-  source?: "text" | "photo" | "voice";
-  mediaPath?: string | null;
+export type PendingIngestion = {
+  id: string;
+  source: "text" | "photo" | "voice";
+  mediaPath: string | null;
   telegramUpdateId: number;
+  eventIndex: number;
   rawPayload: unknown;
   extraction: Extraction;
-}): Promise<{ id: string } | "duplicate"> {
+};
+
+/** All events of one update land together or not at all (retries → duplicate). */
+export async function insertPendingIngestions(
+  rows: PendingIngestion[],
+): Promise<{ id: string }[] | "duplicate"> {
   const db = await getPool();
+  const client = await db.connect();
   try {
-    const result = await db.query<{ id: string }>(
-      `INSERT INTO ingestions (id, source, telegram_update_id, raw_payload, extraction, status, media_path)
-       VALUES (COALESCE($1::uuid, gen_random_uuid()), $2, $3, $4::jsonb, $5::jsonb, 'pending', $6)
-       RETURNING id`,
-      [
-        args.id ?? null,
-        args.source ?? "text",
-        args.telegramUpdateId,
-        JSON.stringify(args.rawPayload),
-        JSON.stringify(args.extraction),
-        args.mediaPath ?? null,
-      ],
-    );
-    return { id: result.rows[0].id };
+    await client.query("BEGIN");
+    const ids: { id: string }[] = [];
+    for (const row of rows) {
+      const result = await client.query<{ id: string }>(
+        `INSERT INTO ingestions (id, source, telegram_update_id, event_index, raw_payload, extraction, status, media_path)
+         VALUES ($1::uuid, $2, $3, $4, $5::jsonb, $6::jsonb, 'pending', $7)
+         RETURNING id`,
+        [
+          row.id,
+          row.source,
+          row.telegramUpdateId,
+          row.eventIndex,
+          JSON.stringify(row.rawPayload),
+          JSON.stringify(row.extraction),
+          row.mediaPath,
+        ],
+      );
+      ids.push({ id: result.rows[0].id });
+    }
+    await client.query("COMMIT");
+    return ids;
   } catch (err) {
+    await client.query("ROLLBACK").catch(() => {});
     if (isUniqueViolation(err)) return "duplicate";
     throw err;
+  } finally {
+    client.release();
   }
 }
 
