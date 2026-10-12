@@ -110,6 +110,7 @@ describe("extractFromText", () => {
     expect(result.usage?.extractor).toEqual({ input: 100, output: 40 });
     expect(result.usage?.bucket).toEqual({ input: 50, output: 10 });
     expect(result.meta?.model).toBe("gemini-3.6-flash");
+    expect(result.meta?.bucket_model).toBe("gemini-3.6-flash");
     expect(result.meta?.extractor_sha256).toMatch(/^[0-9a-f]{64}$/);
     expect(result.meta?.taxonomy_sha256).toMatch(/^[0-9a-f]{64}$/);
     expect(result.meta?.bucket_sha256).toMatch(/^[0-9a-f]{64}$/);
@@ -430,7 +431,10 @@ describe("extractFromText", () => {
       vi.restoreAllMocks();
     });
 
-    it("retries a 503 and succeeds on the next attempt", async () => {
+    const modelOf = (fetchMock: ReturnType<typeof vi.fn>, call: number) =>
+      String(fetchMock.mock.calls[call][0]).match(/models\/([^:]+):/)?.[1];
+
+    it("retries a 503 on the fallback model and records which model answered", async () => {
       const fetchMock = vi
         .fn()
         .mockResolvedValueOnce(overloaded())
@@ -440,7 +444,35 @@ describe("extractFromText", () => {
       const result = await run();
 
       expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(modelOf(fetchMock, 0)).toBe("gemini-3.6-flash");
+      expect(modelOf(fetchMock, 1)).toBe("gemini-3.5-flash");
       expect("value" in result && result.value.amount).toBe("2000.00");
+      expect("value" in result && result.value.meta?.model).toBe("gemini-3.5-flash");
+    });
+
+    it("records the bucket step's model separately when only it falls back", async () => {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce({ ok: true, json: async () => geminiJson(extracted) })
+        .mockResolvedValueOnce(overloaded())
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => geminiJson({ buckets: [{ bucket: "wants", why: "takeout" }] }),
+        });
+      vi.stubGlobal("fetch", fetchMock);
+
+      const p = extractFromText({
+        apiKey: "test-key",
+        text: "12.50 lunch chipotle",
+        taxonomy,
+        bucketRules: "Takeout is wants.",
+        today: "2026-08-17",
+      });
+      await vi.runAllTimersAsync();
+      const result = await p;
+
+      expect(result.meta?.model).toBe("gemini-3.6-flash");
+      expect(result.meta?.bucket_model).toBe("gemini-3.5-flash");
     });
 
     it("retries a non-JSON 503 body too", async () => {
@@ -469,6 +501,11 @@ describe("extractFromText", () => {
       const result = await run();
 
       expect(fetchMock).toHaveBeenCalledTimes(3);
+      expect([0, 1, 2].map((i) => modelOf(fetchMock, i))).toEqual([
+        "gemini-3.6-flash",
+        "gemini-3.5-flash",
+        "gemini-3.5-flash",
+      ]);
       expect("error" in result && result.error.message).toMatch(/Gemini HTTP 503/);
     });
 

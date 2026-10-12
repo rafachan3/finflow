@@ -19,6 +19,8 @@ export type ExtractionMeta = {
   extractor_sha256: string;
   taxonomy_sha256: string;
   bucket_sha256?: string;
+  /** Set when the bucket step ran; may differ from model after a fallback. */
+  bucket_model?: string;
   rules_sha256?: string;
 };
 

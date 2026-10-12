@@ -704,3 +704,30 @@ the idempotency key).
   History was not rewritten: GitHub keeps PR refs a force-push cannot
   touch, so a rewrite costs every SHA since then and still leaves it
   visible.
+
+## 2026-10-12 — Gemini overload: retry on a fallback model
+
+Every logged bot error since 2026-09-30 was `Gemini HTTP 503` "high
+demand" from `gemini-3.6-flash`. Single attempt → the owner saw
+"Couldn't read that receipt". #24 added retries on the same model
+(2s, 5s); the first receipt after deploy still failed all three
+attempts over ~15s. Overload on one model lasts longer than seconds,
+and each 503 itself took 3–6s.
+
+Probe of five models with the owner's free-tier key, two rounds 20s
+apart ("reply with OK"): 3.6 and 3.5-flash ~1s both rounds; 3.7 took
+8–15s; 3.8 took 13s then 503'd; 3.5-flash-lite ~0.4s.
+
+**Attempts:** `gemini-3.6-flash`, then `gemini-3.5-flash` after 2s and
+after 5s, on 500/503/504 only. 429 and other 4xx fail at once. Primary
+stays 3.6 (phone-tested on receipts since August). `meta.model`
+records the model that answered the extraction and `meta.bucket_model`
+the bucket step's, so fallback use is queryable.
+
+**Ruled out:** moving the primary to 3.7/3.8 (the newest models are the
+most contended on free tier); Flash-Lite as fallback (fastest, but the
+weakest on dense receipts — a fallback should be the closest
+substitute); the `gemini-flash-latest` alias (moves silently, breaks
+reproducibility); more same-model retries (adds waiting, and a photo
+makes two Gemini calls inside a 60s Lambda timeout); the paid tier
+(no paid API in ingestion).
