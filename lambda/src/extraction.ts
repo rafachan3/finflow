@@ -408,6 +408,7 @@ export function formatPreview(
     `${title} · ${extraction.date} · ${extraction.currency} ${extraction.amount}`,
   );
   lines.push(extraction.description);
+  if (extraction.notes) lines.push(`Note: ${extraction.notes}`);
   if (extraction.merchant) lines.push(`Merchant: ${extraction.merchant}`);
   if (extraction.venue) lines.push(`Venue: ${extraction.venue}`);
   if (extraction.tags.length) lines.push(`Tags: ${extraction.tags.join(", ")}`);
