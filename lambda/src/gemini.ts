@@ -12,12 +12,22 @@ import {
 } from "./extraction.js";
 
 export const GEMINI_MODEL = "gemini-3.6-flash";
+// Previous Flash: same family, less contended when the current one sheds load.
+export const GEMINI_FALLBACK_MODEL = "gemini-3.5-flash";
 
-const ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
+function endpoint(model: string): string {
+  return `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+}
 
 // Server-side overload is transient; 429 (quota) and 4xx are not worth a retry.
+// Overload on one model tends to last longer than seconds, so retries move to
+// the fallback instead of waiting on the same model.
 const RETRYABLE_STATUS = new Set([500, 503, 504]);
-const RETRY_DELAYS_MS = [2000, 5000];
+const ATTEMPTS = [
+  { model: GEMINI_MODEL, delayMs: 0 },
+  { model: GEMINI_FALLBACK_MODEL, delayMs: 2000 },
+  { model: GEMINI_FALLBACK_MODEL, delayMs: 5000 },
+];
 
 const ENGLISH_DESCRIPTIONS =
   "Header and line descriptions are ordinary English. Translate French and other languages from the receipt or message. Keep brand names. Do not add commentary.";
@@ -103,18 +113,20 @@ function extractorSystem(
 }
 
 function promptMeta(
+  model: string,
   taxonomy: TaxonomySnapshot,
-  bucket?: { prompt: string; rules: string },
+  bucket?: { prompt: string; rules: string; model: string },
   extractorStatic: string = EXTRACTOR_STATIC_PROMPT,
 ): ExtractionMeta {
   const meta: ExtractionMeta = {
-    model: GEMINI_MODEL,
+    model,
     extractor_sha256: sha256Hex(extractorStatic),
     taxonomy_sha256: sha256Hex(taxonomyPrompt(taxonomy)),
   };
   if (bucket) {
     meta.bucket_sha256 = sha256Hex(bucket.prompt);
     meta.rules_sha256 = sha256Hex(bucket.rules);
+    meta.bucket_model = bucket.model;
   }
   return meta;
 }
@@ -209,7 +221,7 @@ async function generateJson(args: {
   system: string;
   userParts: GeminiUserPart[];
   schema: object;
-}): Promise<{ data: unknown; usage: TokenUsage }> {
+}): Promise<{ data: unknown; usage: TokenUsage; model: string }> {
   const request = {
     method: "POST",
     headers: {
@@ -227,15 +239,20 @@ async function generateJson(args: {
   };
   let res: Response;
   let body: GeminiResponse;
+  let model = ATTEMPTS[0].model;
   for (let attempt = 0; ; attempt++) {
-    res = await fetch(ENDPOINT, request);
+    res = await fetch(endpoint(model), request);
     // Overload responses are not always JSON.
     body = (await res.json().catch(() => ({}))) as GeminiResponse;
-    if (res.ok || !RETRYABLE_STATUS.has(res.status) || attempt >= RETRY_DELAYS_MS.length) {
+    const next = ATTEMPTS[attempt + 1];
+    if (res.ok || !RETRYABLE_STATUS.has(res.status) || !next) {
       break;
     }
-    console.warn(`Gemini HTTP ${res.status}; retry ${attempt + 1}`);
-    await new Promise((resolve) => setTimeout(resolve, RETRY_DELAYS_MS[attempt]));
+    console.warn(
+      `Gemini HTTP ${res.status} on ${model}; retry ${attempt + 1} on ${next.model}`,
+    );
+    await new Promise((resolve) => setTimeout(resolve, next.delayMs));
+    model = next.model;
   }
   if (!res.ok) {
     throw new Error(
@@ -247,6 +264,7 @@ async function generateJson(args: {
     throw new Error("Gemini returned no JSON text");
   }
   return {
+    model,
     data: JSON.parse(text) as unknown,
     usage: {
       input: body.usageMetadata?.promptTokenCount ?? 0,
@@ -341,7 +359,12 @@ async function extractFromUserParts(args: {
     args.taxonomy,
   );
   extraction.usage = { extractor: extractor.usage };
-  extraction.meta = promptMeta(args.taxonomy, undefined, args.extractorStatic);
+  extraction.meta = promptMeta(
+    extractor.model,
+    args.taxonomy,
+    undefined,
+    args.extractorStatic,
+  );
 
   if (extraction.type !== "expense" || extraction.items.length === 0) {
     return extraction;
@@ -384,10 +407,12 @@ async function extractFromUserParts(args: {
     bucket: bucketRes.usage,
   };
   merged.meta = promptMeta(
+    extractor.model,
     args.taxonomy,
     {
       prompt: BUCKET_STATIC_PROMPT,
       rules,
+      model: bucketRes.model,
     },
     args.extractorStatic,
   );
