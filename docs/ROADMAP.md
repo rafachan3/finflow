@@ -118,7 +118,14 @@ skeleton everything else hangs on. Ship the smallest loop first.*
       headers: the trip stays one expense with lines; the extra event
       is its own row. After Edit. A grocery trip
       alone is already one expense with lines on every channel. Until
-      then, send separate messages for distinct headers.
+      then, send separate messages for distinct headers. Covers two
+      merchants in one message ("$3 at the dollar store and $5 at the
+      pharmacy" → two cards).
+- [ ] Context notes: the *why* behind a purchase ("too lazy to cook",
+      "overslept, couldn't pack lunch") extracted in the owner's words
+      into the existing `transactions.notes`, shown on the card,
+      written on Confirm. Free text for agents; no reason taxonomy.
+      Before multi-event.
 - [x] Log Gemini token usage per request into `ingestions.extraction`,
       plus `meta` (model + sha256 of extractor, taxonomy, bucket prompt,
       and rules). No eval mart until Phase 4.
@@ -126,6 +133,25 @@ skeleton everything else hangs on. Ship the smallest loop first.*
 **Done when:** photo of a real receipt and a voice note each produce a correct
 confirmed transaction with ≤1 manual correction on average, and the image is
 retrievable from S3 at the key recorded in `ingestions.media_path`.
+
+## Phase 3.5 — Ingestion follow-ons (≈2 evenings)
+
+Settled before Phase 4 so the dbt models are built on the final grain.
+
+- [ ] Item-level tags: a caption like "this one was for <person>" tags
+      that line only; whole-message context still tags every line.
+      Tags move from the header to the line grain (migration +
+      DATA_MODEL.md).
+- [ ] Duplicate warning: the preview flags a likely duplicate (same
+      amount within a few days, or the same Telegram photo
+      `file_unique_id`). Warning only — Confirm stays.
+- [ ] Merchant commands in Telegram: add and delete a merchant from the
+      phone.
+
+**Done when:** a receipt whose caption tags one item writes that tag on
+that line only; re-sending a confirmed receipt shows the duplicate
+warning; a merchant added from Telegram is used by the next extraction,
+and a deleted one is not.
 
 ## Phase 4 — Semantic layer (≈2 evenings)
 
@@ -135,9 +161,32 @@ retrievable from S3 at the key recorded in `ingestions.media_path`.
       spend, savings rate, needs/wants ratio, fixed base burn)
 - [ ] GitHub Action: nightly `dbt build` + tests (not_null, accepted_values,
       relationships)
+- [ ] MetricFlow (local `mf` CLI, dbt-core): semantic models + metrics in
+      YAML are the executable form of SEMANTIC_LAYER.md. Grafana still
+      reads marts (the hosted Semantic Layer APIs are dbt Cloud only), so
+      one test compares `mf query` against the marts.
 
-**Done when:** `dbt build` is green in CI and marts match hand-written SQL for
-one sample month.
+**Done when:** `dbt build` is green in CI, marts match hand-written SQL for
+one sample month, and `mf query` matches the marts for every metric in
+SEMANTIC_LAYER.md.
+
+## Phase 4.5 — Proactive nudges (≈2–3 evenings)
+
+The bot speaks first. A separate scheduled Lambda (EventBridge
+Scheduler, free tier), not a new path in the webhook handler.
+
+- [ ] Recurring-expense reminders: a declared list of recurring
+      expenses; one Telegram nudge before the expected date and one
+      after it only if nothing matching was logged.
+- [ ] Merchant recommendations: unmatched merchant names counted from
+      confirmed transactions (a dbt model, not an LLM); past a frequency
+      threshold the bot offers to track it. Accept → insert the merchant
+      and backfill `merchant_id` on past matching transactions.
+
+**Done when:** a declared recurring expense produces the before-nudge and,
+when it goes unlogged, the after-nudge; a frequent untracked merchant gets
+a recommendation, and accepting it creates the merchant and backfills its
+past transactions.
 
 ## Phase 5 — Dashboards (≈1–2 evenings)
 
@@ -172,3 +221,13 @@ with numbers matching the dashboards.
 - [ ] Cost check: one full month of AWS billing confirms the ingestion side is
       under $0.10 — record the actual figure in DECISIONS.md
 - [ ] Evidence.dev static report site on S3 + CloudFront
+
+## Parked (maybe)
+
+Not scheduled. Revisit only when the need is felt in daily use.
+
+- Several receipts in one send (Telegram album). Each photo arrives as
+  its own webhook update and a single album caption is attached to one
+  photo, so it needs a short buffer (e.g. an SQS delay queue) and one
+  Gemini call over all images and captions. Spike Telegram's album
+  delivery to the Function URL before designing it.

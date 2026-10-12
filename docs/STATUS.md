@@ -2,7 +2,7 @@
 
 Living state of the project. Read this first; update it whenever work lands.
 
-**Last updated:** 2026-09-08
+**Last updated:** 2026-10-12
 **Current phase:** Phase 3 — Gemini extraction (see [ROADMAP.md](ROADMAP.md))
 
 ## Phase progress
@@ -12,8 +12,10 @@ Living state of the project. Read this first; update it whenever work lands.
 - [x] Phase 1 — Supabase project, schema migrations, Notion history import (2026-08-13)
 - [x] Taxonomy tweak — Hygiene + Beauty → Personal care (Health and wellness); buckets untouched (2026-08-13)
 - [x] Phase 2 — Telegram bot walking skeleton (text only, no LLM) (2026-08-17)
-- [ ] Phase 3 — Gemini extraction (text → photo → voice) — **3a + 3b + 3c phone-tested; funding source applied; Edit phone-tested; multi-event remains**
-- [ ] Phase 4 — dbt semantic layer
+- [ ] Phase 3 — Gemini extraction (text → photo → voice) — **3a + 3b + 3c phone-tested; funding source applied; Edit phone-tested; context notes + multi-event remain**
+- [ ] Phase 3.5 — Ingestion follow-ons (item tags, duplicate warning, merchant commands)
+- [ ] Phase 4 — dbt semantic layer + MetricFlow
+- [ ] Phase 4.5 — Proactive nudges (recurring reminders, merchant recommendations)
 - [ ] Phase 5 — Grafana dashboards
 - [ ] Phase 6 — Claude analytics agent (subagents + Postgres MCP)
 - [ ] Phase 7 — Open-source polish
@@ -121,6 +123,11 @@ voice while waiting is still waiting. Discard works from
 `awaiting_edit`). Phone-tested 2026-09-08: amount, category, and a
 photo while still waiting all held.
 
+Scope set 2026-10-12 (DECISIONS.md): context notes and multi-event
+close Phase 3; new Phases 3.5 and 4.5; Telegram albums parked. The
+deploy workflow now also runs tests + bundle on PRs (AWS steps
+push-only). A personal name in a test fixture was replaced.
+
 PDF/document, multi-event messages, and S3 key prefixes remain later.
 Multi-event is 2+ independent headers in one update, including a
 grocery breakdown plus an unrelated expense or income in the same
@@ -149,7 +156,7 @@ Dateless-receipt persist (no Confirm) is not yet phone-tested.
 
 ## Next concrete step
 
-Multi-event. Optional leftover: S3 keys
+Context notes (`transactions.notes`), then multi-event. Optional leftover: S3 keys
 `{source}/{yyyy-mm}/{id}.{ext}` in the existing bucket. Optional smoke:
 a receipt with no printed or caption date persists without Confirm.
 
