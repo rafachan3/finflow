@@ -348,6 +348,18 @@ describe("formatPreview", () => {
     expect(text).toMatch(/✓.*27\.60/);
   });
 
+  it("labels the header (i of n) only when a message has several events", () => {
+    const e = expense();
+    const checks = validateExtraction(e, taxonomy);
+    expect(formatPreview(e, checks, { index: 1, count: 2 }).split("\n")[0]).toBe(
+      "Expense · 2026-08-17 · CAD 27.60 (2 of 2)",
+    );
+    expect(formatPreview(e, checks, { index: 0, count: 1 }).split("\n")[0]).toBe(
+      "Expense · 2026-08-17 · CAD 27.60",
+    );
+    expect(formatPreview(e, checks).split("\n")[0]).toBe("Expense · 2026-08-17 · CAD 27.60");
+  });
+
   it("shows the note under the description, and no Note line without one", () => {
     const noted = expense({ notes: "too lazy to cook" });
     const text = formatPreview(noted, validateExtraction(noted, taxonomy));

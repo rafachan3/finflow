@@ -402,12 +402,17 @@ export function mergeBuckets(
 export function formatPreview(
   extraction: Extraction,
   checks: CheckResult,
+  position?: { index: number; count: number },
 ): string {
   const lines: string[] = [];
   const title =
     extraction.type.charAt(0).toUpperCase() + extraction.type.slice(1);
+  const label =
+    position && position.count > 1
+      ? ` (${position.index + 1} of ${position.count})`
+      : "";
   lines.push(
-    `${title} · ${extraction.date} · ${extraction.currency} ${extraction.amount}`,
+    `${title} · ${extraction.date} · ${extraction.currency} ${extraction.amount}${label}`,
   );
   lines.push(extraction.description);
   if (extraction.notes) lines.push(`Note: ${extraction.notes}`);
