@@ -731,3 +731,29 @@ substitute); the `gemini-flash-latest` alias (moves silently, breaks
 reproducibility); more same-model retries (adds waiting, and a photo
 makes two Gemini calls inside a 60s Lambda timeout); the paid tier
 (no paid API in ingestion).
+
+## 2026-10-12 — Flash-Lite as last fallback; paid tier if it fails
+
+The next two receipts after the 3.5 fallback deployed also failed:
+3.6 and 3.5 both 503'd. Replaying the bot's real receipt request
+(153 KB: image, prompt, schema) twice per model: 3.6 503 both times;
+3.5 503 then 429; `gemini-3.5-flash-lite` 200 both times in ~1.7s
+with the right total, line sum, merchant, date, and no invented note,
+but different subcategories each run. A tiny text probe minutes
+earlier passed on 3.6: free tier sheds heavy requests first.
+
+**Attempts:** `gemini-3.6-flash` → `gemini-3.5-flash` (2s) →
+`gemini-3.5-flash-lite` (2s), on 429/500/503/504. 429 now moves on:
+free-tier quota is per model, so the earlier "429 fails at once" only
+held while every retry hit the same model. Other 4xx still fail at
+once. Cards whose `meta.model` or `meta.bucket_model` is a Lite model
+warn to check categories and buckets; Confirm stays.
+
+**Owner decision:** if receipts still fail with Lite in the chain, move
+ingestion to the paid Gemini tier. That relaxes the "no paid API in
+ingestion" constraint and gets its own DECISIONS entry and cost check
+when it happens.
+
+**Ruled out (for now):** an async "busy, retrying later" queue (new
+infra for a problem the paid tier also solves); Lite as primary
+(classification wobble on every card, not just busy ones).

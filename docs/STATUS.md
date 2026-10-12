@@ -149,7 +149,17 @@ overloaded and `gemini-3.5-flash` fast and available, so retries now
 move to the fallback: 3.6, then 3.5 after 2s and 5s. `meta.model`
 records the model that answered the extraction; `meta.bucket_model`
 the bucket step's. Log line: `Gemini HTTP <status> on <model>; retry
-<n> on <model>`. DECISIONS.md 2026-10-12.
+<n> on <model>`. DECISIONS.md 2026-10-12. Merged as #25.
+
+The next two receipts after #25 still failed: 3.5 was shedding too.
+Replaying the bot's real 153 KB receipt request showed both Flash
+models returning 503 (and 3.5 a 429) while tiny text requests passed,
+and `gemini-3.5-flash-lite` returning correct totals in ~1.7s with
+wobbly categories. Third attempt is now Lite; 429 moves to the next
+model (quota is per model). Cards Lite produced show "! read by a
+lighter model while Gemini was busy — check categories and buckets".
+Owner decision: if receipts still fail after this, move ingestion to
+the paid tier.
 
 PDF/document, multi-event messages, and S3 key prefixes remain later.
 Multi-event is 2+ independent headers in one update, including a
@@ -179,7 +189,7 @@ Dateless-receipt persist (no Confirm) is not yet phone-tested.
 
 ## Next concrete step
 
-After the Gemini fallback PR merges and `Deploy ingest Lambda` is green:
+After the Lite fallback PR merges and `Deploy ingest Lambda` is green:
 phone-test notes (text with a reason → `Note:` line and `transactions.notes`
 filled; text without one → no line; photo caption reason, not receipt
 text; Edit changes the note). Record the result in the multi-event
@@ -201,13 +211,17 @@ a receipt with no printed or caption date persists without Confirm.
   Action should keep it warm once Phase 4 exists; until then, restore from
   the dashboard after a gap.
 - Gemini free-tier quotas and model names change. Pinned to `gemini-3.6-flash`
-  with `gemini-3.5-flash` as fallback (DECISIONS.md 2026-08-17, 2026-10-12);
-  `gemini-2.5-flash` rejected new keys with HTTP 404. When Google retires 3.5,
-  the fallback 404s and overload fails as before.
+  with `gemini-3.5-flash` and `gemini-3.5-flash-lite` as fallbacks (DECISIONS.md
+  2026-08-17, 2026-10-12); `gemini-2.5-flash` rejected new keys with HTTP 404.
+  A retired fallback 404s, and 404 is not retried: the chain stops there.
 - AWS fails open on cost; keep the Phase 0 `Project=finflow` budget active and
   activate the `Project` cost allocation tag in Billing when it appears.
 - One Advanced SSM parameter is $0.05/month (`/finflow/bucket-rules`).
-- Gemini free tier sheds load with HTTP 503 at peak demand. The 3.5
-  fallback covers 3.6 overload; both overloaded at once still fails the
-  message (the owner resends). `ingestions.extraction->'meta'->>'model'`
-  shows how often the fallback answered.
+- Gemini free tier sheds receipt-sized requests first at peak demand.
+  Fallbacks 3.5 then Lite; all three failing still fails the message
+  (the owner resends). If that keeps happening, the owner moves
+  ingestion to the paid tier (DECISIONS.md 2026-10-12).
+  `ingestions.extraction->'meta'->>'model'` shows which model answered.
+- All three models ending on 429 replies with the generic "Couldn't
+  read…" message, not the overload one: a daily quota would make "send
+  it again in a minute" wrong.
