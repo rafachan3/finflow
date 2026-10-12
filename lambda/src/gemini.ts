@@ -14,19 +14,22 @@ import {
 export const GEMINI_MODEL = "gemini-3.6-flash";
 // Previous Flash: same family, less contended when the current one sheds load.
 export const GEMINI_FALLBACK_MODEL = "gemini-3.5-flash";
+// Last resort when both Flash models shed receipt-sized requests. Totals hold
+// up; categories wobble, so the card flags extractions it produced.
+export const GEMINI_LITE_MODEL = "gemini-3.5-flash-lite";
 
 function endpoint(model: string): string {
   return `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
 }
 
-// Server-side overload is transient; 429 (quota) and 4xx are not worth a retry.
-// Overload on one model tends to last longer than seconds, so retries move to
-// the fallback instead of waiting on the same model.
-const RETRYABLE_STATUS = new Set([500, 503, 504]);
+// Overload (5xx) on one model tends to last longer than seconds, and free-tier
+// quota (429) is per model, so each retry moves to the next model. Other 4xx
+// mean the request itself is wrong and fail at once.
+const RETRYABLE_STATUS = new Set([429, 500, 503, 504]);
 const ATTEMPTS = [
   { model: GEMINI_MODEL, delayMs: 0 },
   { model: GEMINI_FALLBACK_MODEL, delayMs: 2000 },
-  { model: GEMINI_FALLBACK_MODEL, delayMs: 5000 },
+  { model: GEMINI_LITE_MODEL, delayMs: 2000 },
 ];
 
 const ENGLISH_DESCRIPTIONS =

@@ -98,7 +98,8 @@ dbt models and the agent read it, so numbers agree everywhere.
 - Handles images (receipts) and audio (voice notes) natively — one API for all
   three input types. Free-tier quota comfortably covers personal volume
   (a handful of requests/day). Model pinned: `gemini-3.6-flash`, with
-  `gemini-3.5-flash` as the overload fallback (500/503/504 only).
+  `gemini-3.5-flash` then `gemini-3.5-flash-lite` as overload/quota
+  fallbacks (429/500/503/504). Cards Lite produced carry a warning.
 - Privacy cost of the free tier: Google may use unpaid-tier inputs to
   improve its products, and human reviewers may read them. Receipt
   photos, voice notes, and messages go there. Accepted under the
