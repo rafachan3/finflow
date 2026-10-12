@@ -348,6 +348,15 @@ describe("formatPreview", () => {
     expect(text).toMatch(/✓.*27\.60/);
   });
 
+  it("shows the note under the description, and no Note line without one", () => {
+    const noted = expense({ notes: "too lazy to cook" });
+    const text = formatPreview(noted, validateExtraction(noted, taxonomy));
+    const lines = text.split("\n");
+    expect(lines[2]).toBe("Note: too lazy to cook");
+
+    expect(formatPreview(expense(), validateExtraction(expense(), taxonomy))).not.toMatch(/Note:/);
+  });
+
   it("omits a confirm hint when checks fail", () => {
     const bad = expense({ amount: "99.00" });
     const checks = validateExtraction(bad, taxonomy);
