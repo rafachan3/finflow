@@ -290,8 +290,8 @@ export async function confirmIngestion(
       `INSERT INTO transactions (
          occurred_on, type, amount, currency, description,
          merchant_id, venue_id, income_source_id, to_account_id,
-         funding_source_id, is_recurring
-       ) VALUES ($1, $2, $3, 'CAD', $4, $5, $6, $7, $8, $9, $10)
+         funding_source_id, is_recurring, notes
+       ) VALUES ($1, $2, $3, 'CAD', $4, $5, $6, $7, $8, $9, $10, $11)
        RETURNING id`,
       [
         extraction.date,
@@ -304,6 +304,7 @@ export async function confirmIngestion(
         toAccountId,
         fundingId,
         extraction.is_recurring,
+        extraction.notes ?? null,
       ],
     );
     const transactionId = tx.rows[0].id;
