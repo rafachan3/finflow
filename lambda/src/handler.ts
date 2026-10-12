@@ -11,6 +11,7 @@ import {
   findAwaitingIngestion,
   insertPendingIngestions,
   loadTaxonomy,
+  type PendingIngestion,
   setIngestionAwaitingDate,
   setIngestionAwaitingEdit,
 } from "./db.js";
@@ -22,6 +23,7 @@ import {
   parseDateReply,
   validateExtraction,
   type Extraction,
+  type TaxonomySnapshot,
 } from "./extraction.js";
 import { extractFromPhoto, extractFromText, extractFromVoice, patchExtraction } from "./gemini.js";
 import { putReceipt } from "./s3.js";
@@ -231,6 +233,63 @@ async function handleAwaitingEdit(
   }
 }
 
+/** Check, persist, and present every event of one message, in order. */
+async function offerEvents(args: {
+  update: TelegramUpdate;
+  config: Awaited<ReturnType<typeof getConfig>>;
+  source: "text" | "photo" | "voice";
+  events: Extraction[];
+  taxonomy: TaxonomySnapshot;
+  media?: { bytes: Buffer; mimeType: string };
+}): Promise<APIGatewayProxyResultV2> {
+  const chatId = args.update.message!.chat.id;
+  const usage = args.events.find((e) => e.usage)?.usage;
+  const offers = args.events.map((extraction) => {
+    const checks = validateExtraction(extraction, args.taxonomy);
+    return { extraction, checks, offer: previewOffer(extraction, checks), id: crypto.randomUUID() };
+  });
+  const persisted = offers.filter((o) => o.offer.persist);
+  const savedIds = new Map<(typeof offers)[number], string>();
+
+  if (persisted.length > 0) {
+    const mediaPath = args.media
+      ? await putReceipt({
+          bucket: args.config.receiptsBucket,
+          ingestionId: persisted[0].id,
+          body: args.media.bytes,
+          contentType: args.media.mimeType,
+        })
+      : null;
+    const rows: PendingIngestion[] = persisted.map((o, k) => ({
+      id: o.id,
+      source: args.source,
+      mediaPath,
+      telegramUpdateId: args.update.update_id,
+      eventIndex: offers.indexOf(o),
+      rawPayload: args.update,
+      // Usage belongs to the shared calls: record it once, on the first saved event.
+      extraction: { ...o.extraction, usage: k === 0 ? usage : undefined },
+    }));
+    const inserted = await insertPendingIngestions(rows);
+    if (inserted === "duplicate") {
+      return ok("duplicate");
+    }
+    // Buttons carry the id the database returned, as before.
+    persisted.forEach((o, k) => savedIds.set(o, inserted[k].id));
+  }
+
+  for (const [index, o] of offers.entries()) {
+    const preview = formatPreview(o.extraction, o.checks, { index, count: offers.length });
+    const savedId = savedIds.get(o);
+    if (savedId) {
+      await sendMessage(args.config.botToken, chatId, preview, reviewKeyboard(savedId, { confirm: o.offer.confirm }));
+    } else {
+      await sendMessage(args.config.botToken, chatId, preview);
+    }
+  }
+  return ok("ok");
+}
+
 async function handlePhoto(
   update: TelegramUpdate,
   config: Awaited<ReturnType<typeof getConfig>>,
@@ -243,59 +302,18 @@ async function handlePhoto(
     );
     const today = todayToronto();
     const taxonomy = await loadTaxonomy();
-    const extraction = withDatePolicy(
-      normalizeTaxonomyNames(
-        await extractFromPhoto({
-          apiKey: config.geminiApiKey,
-          image: file.bytes,
-          mimeType: file.mimeType,
-          caption: message.caption ?? "",
-          taxonomy,
-          bucketRules: config.bucketRules,
-          today,
-        }),
+    const events = (
+      await extractFromPhoto({
+        apiKey: config.geminiApiKey,
+        image: file.bytes,
+        mimeType: file.mimeType,
+        caption: message.caption ?? "",
         taxonomy,
-      ),
-      today,
-      "photo",
-    );
-    const checks = validateExtraction(extraction, taxonomy);
-    const preview = formatPreview(extraction, checks);
-    const offer = previewOffer(extraction, checks);
-    if (!offer.persist) {
-      await sendMessage(config.botToken, message.chat.id, preview);
-      return ok("ok");
-    }
-
-    const id = crypto.randomUUID();
-    const mediaPath = await putReceipt({
-      bucket: config.receiptsBucket,
-      ingestionId: id,
-      body: file.bytes,
-      contentType: file.mimeType,
-    });
-    const inserted = await insertPendingIngestions([
-      {
-        id,
-        source: "photo",
-        mediaPath,
-        telegramUpdateId: update.update_id,
-        eventIndex: 0,
-        rawPayload: update,
-        extraction,
-      },
-    ]);
-    if (inserted === "duplicate") {
-      return ok("duplicate");
-    }
-
-    await sendMessage(
-      config.botToken,
-      message.chat.id,
-      preview,
-      reviewKeyboard(id, { confirm: offer.confirm }),
-    );
-    return ok("ok");
+        bucketRules: config.bucketRules,
+        today,
+      })
+    ).map((e) => withDatePolicy(normalizeTaxonomyNames(e, taxonomy), today, "photo"));
+    return await offerEvents({ update, config, source: "photo", events, taxonomy, media: file });
   } catch (err) {
     console.error("photo extract error", err);
     await sendMessage(
@@ -319,58 +337,18 @@ async function handleVoice(
     );
     const today = todayToronto();
     const taxonomy = await loadTaxonomy();
-    const extraction = withDatePolicy(
-      normalizeTaxonomyNames(
-        await extractFromVoice({
-          apiKey: config.geminiApiKey,
-          audio: file.bytes,
-          mimeType: file.mimeType,
-          caption: message.caption ?? "",
-          taxonomy,
-          bucketRules: config.bucketRules,
-          today,
-        }),
+    const events = (
+      await extractFromVoice({
+        apiKey: config.geminiApiKey,
+        audio: file.bytes,
+        mimeType: file.mimeType,
+        caption: message.caption ?? "",
         taxonomy,
-      ),
-      today,
-      "voice",
-    );
-    const checks = validateExtraction(extraction, taxonomy);
-    const preview = formatPreview(extraction, checks);
-    if (!checks.ok) {
-      await sendMessage(config.botToken, message.chat.id, preview);
-      return ok("ok");
-    }
-
-    const id = crypto.randomUUID();
-    const mediaPath = await putReceipt({
-      bucket: config.receiptsBucket,
-      ingestionId: id,
-      body: file.bytes,
-      contentType: file.mimeType,
-    });
-    const inserted = await insertPendingIngestions([
-      {
-        id,
-        source: "voice",
-        mediaPath,
-        telegramUpdateId: update.update_id,
-        eventIndex: 0,
-        rawPayload: update,
-        extraction,
-      },
-    ]);
-    if (inserted === "duplicate") {
-      return ok("duplicate");
-    }
-
-    await sendMessage(
-      config.botToken,
-      message.chat.id,
-      preview,
-      confirmDiscardKeyboard(id),
-    );
-    return ok("ok");
+        bucketRules: config.bucketRules,
+        today,
+      })
+    ).map((e) => withDatePolicy(normalizeTaxonomyNames(e, taxonomy), today, "voice"));
+    return await offerEvents({ update, config, source: "voice", events, taxonomy, media: file });
   } catch (err) {
     console.error("voice extract error", err);
     await sendMessage(
@@ -432,48 +410,10 @@ async function handleMessage(
   try {
     const today = todayToronto();
     const taxonomy = await loadTaxonomy();
-    const extraction = withDatePolicy(
-      normalizeTaxonomyNames(
-        await extractFromText({
-          apiKey: config.geminiApiKey,
-          text,
-          taxonomy,
-          bucketRules: config.bucketRules,
-          today,
-        }),
-        taxonomy,
-      ),
-      today,
-    );
-    const checks = validateExtraction(extraction, taxonomy);
-    const preview = formatPreview(extraction, checks);
-    if (!checks.ok) {
-      await sendMessage(config.botToken, message.chat.id, preview);
-      return ok("ok");
-    }
-
-    const inserted = await insertPendingIngestions([
-      {
-        id: crypto.randomUUID(),
-        source: "text",
-        mediaPath: null,
-        telegramUpdateId: update.update_id,
-        eventIndex: 0,
-        rawPayload: update,
-        extraction,
-      },
-    ]);
-    if (inserted === "duplicate") {
-      return ok("duplicate");
-    }
-
-    await sendMessage(
-      config.botToken,
-      message.chat.id,
-      preview,
-      confirmDiscardKeyboard(inserted[0].id),
-    );
-    return ok("ok");
+    const events = (
+      await extractFromText({ apiKey: config.geminiApiKey, text, taxonomy, bucketRules: config.bucketRules, today })
+    ).map((e) => withDatePolicy(normalizeTaxonomyNames(e, taxonomy), today));
+    return await offerEvents({ update, config, source: "text", events, taxonomy });
   } catch (err) {
     console.error("extract error", err);
     await sendMessage(

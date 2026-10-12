@@ -41,6 +41,9 @@ const FUNDED_BY =
 const NOTES =
   "notes is the owner's reason or circumstance for the transaction when they give one (why they bought it, what happened), kept in their words and translated to English. Do not repeat the amount, merchant, items, date, or category. Take notes from the owner's message, caption, or voice, never from printed receipt text. Return null when they give no reason.";
 
+const SPLIT_EVENTS =
+  "Return events: one event per separate transaction, in the order the owner mentioned them. Split by place: one event per merchant or place. Amounts at the same place, or with no place given, are one expense with several items. Income and transfers are always their own event. A receipt photo is one event; the caption may add others. A date or funder stated once applies to every event unless an event states its own. notes and tags belong to the event they describe.";
+
 const EXTRACTOR_STATIC_PROMPT = [
   "You extract Canadian personal-finance transactions from a short text.",
   "Today is YYYY-MM-DD (America/Toronto). Currency is CAD.",
@@ -51,6 +54,7 @@ const EXTRACTOR_STATIC_PROMPT = [
   ENGLISH_DESCRIPTIONS,
   FUNDED_BY,
   NOTES,
+  SPLIT_EVENTS,
   "date is YYYY-MM-DD only when the user stated a calendar date (including today, yesterday, or a month and day). If they did not, return an empty string. Never guess today's date.",
 ].join("\n");
 
@@ -64,6 +68,7 @@ const PHOTO_EXTRACTOR_STATIC_PROMPT = [
   ENGLISH_DESCRIPTIONS,
   FUNDED_BY,
   NOTES,
+  SPLIT_EVENTS,
   "date is YYYY-MM-DD only when printed on the receipt or stated in the caption (including today, yesterday, or a month and day). If neither, return an empty string. Never guess today's date or the photo send time.",
 ].join("\n");
 
@@ -77,6 +82,7 @@ const VOICE_EXTRACTOR_STATIC_PROMPT = [
   ENGLISH_DESCRIPTIONS,
   FUNDED_BY,
   NOTES,
+  SPLIT_EVENTS,
   "date is YYYY-MM-DD only when the user stated a calendar date in the recording or caption (including today, yesterday, or a month and day). If they did not, return an empty string. Never guess today's date or the voice send time.",
 ].join("\n");
 
@@ -189,6 +195,14 @@ const EXTRACTOR_SCHEMA = {
     "items",
     "confidence",
   ],
+};
+
+const EVENTS_SCHEMA = {
+  type: "OBJECT",
+  properties: {
+    events: { type: "ARRAY", items: EXTRACTOR_SCHEMA },
+  },
+  required: ["events"],
 };
 
 const BUCKET_SCHEMA = {
@@ -342,84 +356,105 @@ function asExtraction(raw: unknown): Extraction {
   };
 }
 
-async function extractFromUserParts(args: {
+const NO_RULES =
+  "No personal rules. Use subcategory default_bucket hints. If null or context is missing, assign wants.";
+
+/** One bucket call for every expense line of every event; split back by position. */
+async function assignBuckets(args: {
   apiKey: string;
-  taxonomy: TaxonomySnapshot;
   bucketRules: string;
-  today: string;
-  extractorStatic: string;
-  userParts: GeminiUserPart[];
-}): Promise<Extraction> {
-  const extractor = await generateJson({
-    apiKey: args.apiKey,
-    schema: EXTRACTOR_SCHEMA,
-    system: extractorSystem(args.today, args.taxonomy, args.extractorStatic),
-    userParts: args.userParts,
-  });
-
-  const extraction = normalizeTaxonomyNames(
-    asExtraction(extractor.data),
-    args.taxonomy,
+  events: Extraction[];
+}): Promise<{ events: Extraction[]; usage: TokenUsage; model: string; rules: string } | null> {
+  const lines = args.events.flatMap((event, eventIndex) =>
+    event.type === "expense" ? event.items.map((item) => ({ event, eventIndex, item })) : [],
   );
-  extraction.usage = { extractor: extractor.usage };
-  extraction.meta = promptMeta(
-    extractor.model,
-    args.taxonomy,
-    undefined,
-    args.extractorStatic,
-  );
+  if (lines.length === 0) return null;
 
-  if (extraction.type !== "expense" || extraction.items.length === 0) {
-    return extraction;
-  }
-
-  const rules =
-    args.bucketRules.trim() ||
-    "No personal rules. Use subcategory default_bucket hints. If null or context is missing, assign wants.";
-
-  const bucketRes = await generateJson({
+  const rules = args.bucketRules.trim() || NO_RULES;
+  const res = await generateJson({
     apiKey: args.apiKey,
     schema: BUCKET_SCHEMA,
     system: [BUCKET_STATIC_PROMPT, rules].join("\n\n"),
     userParts: [
       {
         text: JSON.stringify(
-          extraction.items.map((item, index) => ({
+          lines.map(({ event, eventIndex, item }, index) => ({
             index,
+            event: eventIndex,
             description: item.description,
             amount: item.amount,
             category: item.category,
             subcategory: item.subcategory,
             item_type: item.item_type,
-            tags: extraction.tags,
-            merchant: extraction.merchant,
-            venue: extraction.venue,
+            tags: event.tags,
+            merchant: event.merchant,
+            venue: event.venue,
           })),
         ),
       },
     ],
   });
+  const buckets = (res.data as { buckets?: { bucket: Bucket; why?: string }[] }).buckets ?? [];
+  if (buckets.length !== lines.length) {
+    throw new Error(`bucket count ${buckets.length} != line count ${lines.length}`);
+  }
+  let next = 0;
+  const events = args.events.map((event) => {
+    if (event.type !== "expense" || event.items.length === 0) return event;
+    const slice = buckets.slice(next, next + event.items.length);
+    next += event.items.length;
+    return mergeBuckets(event, slice);
+  });
+  return { events, usage: res.usage, model: res.model, rules };
+}
 
-  const parsed = bucketRes.data as {
-    buckets?: { bucket: Bucket; why?: string }[];
-  };
-  const buckets = parsed.buckets ?? [];
-  const merged = mergeBuckets(extraction, buckets);
-  merged.usage = {
-    extractor: extractor.usage,
-    bucket: bucketRes.usage,
-  };
-  merged.meta = promptMeta(
-    extractor.model,
+/** Buckets, meta on every event, usage on event 0 only (the calls are shared). */
+async function finishEvents(args: {
+  apiKey: string;
+  taxonomy: TaxonomySnapshot;
+  bucketRules: string;
+  extractorStatic: string;
+  extractor: { usage: TokenUsage; model: string };
+  events: Extraction[];
+}): Promise<Extraction[]> {
+  const bucketed = await assignBuckets(args);
+  const meta = promptMeta(
+    args.extractor.model,
     args.taxonomy,
-    {
-      prompt: BUCKET_STATIC_PROMPT,
-      rules,
-      model: bucketRes.model,
-    },
+    bucketed ? { prompt: BUCKET_STATIC_PROMPT, rules: bucketed.rules, model: bucketed.model } : undefined,
     args.extractorStatic,
   );
-  return merged;
+  const usage = bucketed
+    ? { extractor: args.extractor.usage, bucket: bucketed.usage }
+    : { extractor: args.extractor.usage };
+  return (bucketed?.events ?? args.events).map((event, i) => ({
+    ...event,
+    meta,
+    usage: i === 0 ? usage : undefined,
+  }));
+}
+
+async function extractEvents(args: {
+  apiKey: string;
+  taxonomy: TaxonomySnapshot;
+  bucketRules: string;
+  today: string;
+  extractorStatic: string;
+  userParts: GeminiUserPart[];
+}): Promise<Extraction[]> {
+  const extractor = await generateJson({
+    apiKey: args.apiKey,
+    schema: EVENTS_SCHEMA,
+    system: extractorSystem(args.today, args.taxonomy, args.extractorStatic),
+    userParts: args.userParts,
+  });
+  const raw = (extractor.data as { events?: unknown[] }).events ?? [];
+  if (raw.length === 0) throw new Error("Gemini returned no events");
+  return finishEvents({
+    ...args,
+    extractor,
+    events: raw.map((e) => normalizeTaxonomyNames(asExtraction(e), args.taxonomy)),
+  });
 }
 
 export async function extractFromText(args: {
@@ -428,8 +463,8 @@ export async function extractFromText(args: {
   taxonomy: TaxonomySnapshot;
   bucketRules: string;
   today: string;
-}): Promise<Extraction> {
-  return extractFromUserParts({
+}): Promise<Extraction[]> {
+  return extractEvents({
     apiKey: args.apiKey,
     taxonomy: args.taxonomy,
     bucketRules: args.bucketRules,
@@ -447,9 +482,9 @@ export async function extractFromPhoto(args: {
   taxonomy: TaxonomySnapshot;
   bucketRules: string;
   today: string;
-}): Promise<Extraction> {
+}): Promise<Extraction[]> {
   const caption = args.caption.trim();
-  return extractFromUserParts({
+  return extractEvents({
     apiKey: args.apiKey,
     taxonomy: args.taxonomy,
     bucketRules: args.bucketRules,
@@ -463,7 +498,7 @@ export async function extractFromPhoto(args: {
         },
       },
       {
-        text: caption || "Extract the transaction from this receipt.",
+        text: caption || "Extract the transactions from this receipt.",
       },
     ],
   });
@@ -503,16 +538,22 @@ export async function patchExtraction(args: {
   bucketRules: string;
   today: string;
 }): Promise<Extraction> {
-  const patched = await extractFromUserParts({
+  const extractor = await generateJson({
     apiKey: args.apiKey,
-    taxonomy: args.taxonomy,
-    bucketRules: args.bucketRules,
-    today: args.today,
-    extractorStatic: PATCH_EXTRACTOR_STATIC_PROMPT,
+    schema: EXTRACTOR_SCHEMA,
+    system: extractorSystem(args.today, args.taxonomy, PATCH_EXTRACTOR_STATIC_PROMPT),
     userParts: [
       { text: JSON.stringify(extractionForPatch(args.current)) },
       { text: args.correction },
     ],
+  });
+  const [patched] = await finishEvents({
+    apiKey: args.apiKey,
+    taxonomy: args.taxonomy,
+    bucketRules: args.bucketRules,
+    extractorStatic: PATCH_EXTRACTOR_STATIC_PROMPT,
+    extractor,
+    events: [normalizeTaxonomyNames(asExtraction(extractor.data), args.taxonomy)],
   });
   patched.date_source =
     patched.date === args.current.date
@@ -529,9 +570,9 @@ export async function extractFromVoice(args: {
   taxonomy: TaxonomySnapshot;
   bucketRules: string;
   today: string;
-}): Promise<Extraction> {
+}): Promise<Extraction[]> {
   const caption = args.caption.trim();
-  return extractFromUserParts({
+  return extractEvents({
     apiKey: args.apiKey,
     taxonomy: args.taxonomy,
     bucketRules: args.bucketRules,
@@ -545,7 +586,7 @@ export async function extractFromVoice(args: {
         },
       },
       {
-        text: caption || "Extract the transaction from this voice note.",
+        text: caption || "Extract the transactions from this voice note.",
       },
     ],
   });
