@@ -37,6 +37,8 @@ function geminiJson(payload: unknown, input = 10, output = 5) {
   };
 }
 
+const events = (...e: unknown[]) => ({ events: e });
+
 const extracted = {
   type: "expense",
   amount: "12.50",
@@ -72,7 +74,7 @@ describe("extractFromText", () => {
       .fn()
       .mockResolvedValueOnce({
         ok: true,
-        json: async () => geminiJson(extracted, 100, 40),
+        json: async () => geminiJson(events(extracted), 100, 40),
       })
       .mockResolvedValueOnce({
         ok: true,
@@ -85,7 +87,7 @@ describe("extractFromText", () => {
       });
     vi.stubGlobal("fetch", fetchMock);
 
-    const result = await extractFromText({
+    const [result] = await extractFromText({
       apiKey: "test-key",
       text: "12.50 lunch chipotle",
       taxonomy,
@@ -96,8 +98,10 @@ describe("extractFromText", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
     const firstBody = JSON.parse(
       fetchMock.mock.calls[0][1].body as string,
-    ) as { generationConfig: { responseSchema: { properties: { items: { items: { properties: Record<string, unknown> } } } } } };
-    expect(firstBody.generationConfig.responseSchema.properties.items.items.properties.bucket).toBeUndefined();
+    ) as { generationConfig: { responseSchema: { properties: { events: { items: { properties: { items: { items: { properties: Record<string, unknown> } } } } } } } } };
+    expect(
+      firstBody.generationConfig.responseSchema.properties.events.items.properties.items.items.properties.bucket,
+    ).toBeUndefined();
 
     const secondUser = JSON.parse(fetchMock.mock.calls[1][1].body as string) as {
       contents: { parts: { text: string }[] }[];
@@ -142,7 +146,7 @@ describe("extractFromText", () => {
         .fn()
         .mockResolvedValueOnce({
           ok: true,
-          json: async () => geminiJson(extracted, 100, 40),
+          json: async () => geminiJson(events(extracted), 100, 40),
         })
         .mockResolvedValueOnce({
           ok: true,
@@ -163,13 +167,14 @@ describe("extractFromText", () => {
       }>,
     ) => {
       vi.stubGlobal("fetch", fetchMock);
-      return extractFromText({
+      const [result] = await extractFromText({
         apiKey: "test-key",
         text: "12.50 lunch chipotle",
         taxonomy: extra.taxonomy ?? taxonomy,
         bucketRules: extra.bucketRules ?? "Takeout is wants.",
         today: extra.today ?? "2026-08-17",
       });
+      return result;
     };
 
     const a = await run(mockPair(), { today: "2026-08-17" });
@@ -194,7 +199,7 @@ describe("extractFromText", () => {
     const fetchMock = vi.fn().mockResolvedValueOnce({
       ok: true,
       json: async () =>
-        geminiJson({
+        geminiJson(events({
           ...extracted,
           type: "income",
           amount: "2000.00",
@@ -203,11 +208,11 @@ describe("extractFromText", () => {
           merchant: null,
           venue: null,
           tags: [],
-        }),
+        })),
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    const result = await extractFromText({
+    const [result] = await extractFromText({
       apiKey: "test-key",
       text: "got paid 2000 salary",
       taxonomy,
@@ -229,7 +234,7 @@ describe("extractFromText", () => {
     const fetchMock = vi.fn().mockResolvedValueOnce({
       ok: true,
       json: async () =>
-        geminiJson({
+        geminiJson(events({
           ...extracted,
           type: "income",
           amount: "2000.00",
@@ -239,11 +244,11 @@ describe("extractFromText", () => {
           venue: null,
           tags: [],
           funded_by: null,
-        }),
+        })),
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    const result = await extractFromText({
+    const [result] = await extractFromText({
       apiKey: "test-key",
       text: "got paid 2000 salary",
       taxonomy,
@@ -260,10 +265,10 @@ describe("extractFromText", () => {
       .mockResolvedValueOnce({
         ok: true,
         json: async () =>
-          geminiJson({
+          geminiJson(events({
             ...extracted,
             funded_by: null,
-          }),
+          })),
       })
       .mockResolvedValueOnce({
         ok: true,
@@ -272,7 +277,7 @@ describe("extractFromText", () => {
       });
     vi.stubGlobal("fetch", fetchMock);
 
-    const result = await extractFromText({
+    const [result] = await extractFromText({
       apiKey: "test-key",
       text: "12.50 lunch chipotle",
       taxonomy,
@@ -288,13 +293,13 @@ describe("extractFromText", () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
       json: async () =>
-        geminiJson({
+        geminiJson(events({
           ...extracted,
           type: "income",
           items: [],
           income_source: "Salary",
           funded_by: null,
-        }),
+        })),
     });
     vi.stubGlobal("fetch", fetchMock);
 
@@ -310,15 +315,16 @@ describe("extractFromText", () => {
       systemInstruction: { parts: { text: string }[] };
       generationConfig: {
         responseSchema: {
-          properties: { funded_by: { nullable?: boolean } };
-          required: string[];
+          properties: {
+            events: { items: { properties: { funded_by: { nullable?: boolean } }; required: string[] } };
+          };
         };
       };
     };
-    expect(body.generationConfig.responseSchema.properties.funded_by.nullable).toBe(
+    expect(body.generationConfig.responseSchema.properties.events.items.properties.funded_by.nullable).toBe(
       true,
     );
-    expect(body.generationConfig.responseSchema.required).not.toContain(
+    expect(body.generationConfig.responseSchema.properties.events.items.required).not.toContain(
       "funded_by",
     );
     expect(body.systemInstruction.parts[0].text).toMatch(
@@ -332,7 +338,7 @@ describe("extractFromText", () => {
       .mockResolvedValueOnce({
         ok: true,
         json: async () =>
-          geminiJson({ ...extracted, notes: "too lazy to cook" }),
+          geminiJson(events({ ...extracted, notes: "too lazy to cook" })),
       })
       .mockResolvedValueOnce({
         ok: true,
@@ -341,7 +347,7 @@ describe("extractFromText", () => {
       });
     vi.stubGlobal("fetch", fetchMock);
 
-    const result = await extractFromText({
+    const [result] = await extractFromText({
       apiKey: "test-key",
       text: "13.50 indian on uber eats, too lazy to cook",
       taxonomy,
@@ -354,15 +360,16 @@ describe("extractFromText", () => {
       systemInstruction: { parts: { text: string }[] };
       generationConfig: {
         responseSchema: {
-          properties: { notes: { nullable?: boolean } };
-          required: string[];
+          properties: {
+            events: { items: { properties: { notes: { nullable?: boolean } }; required: string[] } };
+          };
         };
       };
     };
-    expect(body.generationConfig.responseSchema.properties.notes.nullable).toBe(
+    expect(body.generationConfig.responseSchema.properties.events.items.properties.notes.nullable).toBe(
       true,
     );
-    expect(body.generationConfig.responseSchema.required).not.toContain("notes");
+    expect(body.generationConfig.responseSchema.properties.events.items.required).not.toContain("notes");
     expect(body.systemInstruction.parts[0].text).toMatch(/notes is the owner's reason/i);
     expect(body.systemInstruction.parts[0].text).toMatch(/never from printed receipt text/i);
   });
@@ -372,7 +379,7 @@ describe("extractFromText", () => {
       .fn()
       .mockResolvedValueOnce({
         ok: true,
-        json: async () => geminiJson({ ...extracted, notes: "" }),
+        json: async () => geminiJson(events({ ...extracted, notes: "" })),
       })
       .mockResolvedValueOnce({
         ok: true,
@@ -381,7 +388,7 @@ describe("extractFromText", () => {
       });
     vi.stubGlobal("fetch", fetchMock);
 
-    const result = await extractFromText({
+    const [result] = await extractFromText({
       apiKey: "test-key",
       text: "12.50 lunch chipotle",
       taxonomy,
@@ -415,7 +422,7 @@ describe("extractFromText", () => {
         today: "2026-08-17",
       });
       const settled = p.then(
-        (value) => ({ value }),
+        (value) => ({ value: value[0] }),
         (error: Error) => ({ error }),
       );
       await vi.runAllTimersAsync();
@@ -438,7 +445,7 @@ describe("extractFromText", () => {
       const fetchMock = vi
         .fn()
         .mockResolvedValueOnce(overloaded())
-        .mockResolvedValueOnce({ ok: true, json: async () => geminiJson(incomeJson) });
+        .mockResolvedValueOnce({ ok: true, json: async () => geminiJson(events(incomeJson)) });
       vi.stubGlobal("fetch", fetchMock);
 
       const result = await run();
@@ -453,7 +460,7 @@ describe("extractFromText", () => {
     it("records the bucket step's model separately when only it falls back", async () => {
       const fetchMock = vi
         .fn()
-        .mockResolvedValueOnce({ ok: true, json: async () => geminiJson(extracted) })
+        .mockResolvedValueOnce({ ok: true, json: async () => geminiJson(events(extracted)) })
         .mockResolvedValueOnce(overloaded())
         .mockResolvedValueOnce({
           ok: true,
@@ -469,7 +476,7 @@ describe("extractFromText", () => {
         today: "2026-08-17",
       });
       await vi.runAllTimersAsync();
-      const result = await p;
+      const [result] = await p;
 
       expect(result.meta?.model).toBe("gemini-3.6-flash");
       expect(result.meta?.bucket_model).toBe("gemini-3.5-flash");
@@ -485,7 +492,7 @@ describe("extractFromText", () => {
             throw new SyntaxError("Unexpected token <");
           },
         })
-        .mockResolvedValueOnce({ ok: true, json: async () => geminiJson(incomeJson) });
+        .mockResolvedValueOnce({ ok: true, json: async () => geminiJson(events(incomeJson)) });
       vi.stubGlobal("fetch", fetchMock);
 
       const result = await run();
@@ -514,7 +521,7 @@ describe("extractFromText", () => {
         .fn()
         .mockResolvedValueOnce(overloaded(503))
         .mockResolvedValueOnce(overloaded(429))
-        .mockResolvedValueOnce({ ok: true, json: async () => geminiJson(incomeJson) });
+        .mockResolvedValueOnce({ ok: true, json: async () => geminiJson(events(incomeJson)) });
       vi.stubGlobal("fetch", fetchMock);
 
       const result = await run();
@@ -539,12 +546,12 @@ describe("extractFromText", () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
       json: async () =>
-        geminiJson({
+        geminiJson(events({
           ...extracted,
           type: "income",
           items: [],
           income_source: "Salary",
-        }),
+        })),
     });
     vi.stubGlobal("fetch", fetchMock);
 
@@ -571,7 +578,7 @@ describe("extractFromPhoto", () => {
       .fn()
       .mockResolvedValueOnce({
         ok: true,
-        json: async () => geminiJson(extracted, 100, 40),
+        json: async () => geminiJson(events(extracted), 100, 40),
       })
       .mockResolvedValueOnce({
         ok: true,
@@ -584,7 +591,7 @@ describe("extractFromPhoto", () => {
       });
     vi.stubGlobal("fetch", fetchMock);
 
-    const result = await extractFromPhoto({
+    const [result] = await extractFromPhoto({
       apiKey: "test-key",
       image: jpeg,
       mimeType: "image/jpeg",
@@ -632,12 +639,12 @@ describe("extractFromPhoto", () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
       json: async () =>
-        geminiJson({
+        geminiJson(events({
           ...extracted,
           type: "income",
           items: [],
           income_source: "Salary",
-        }),
+        })),
     });
     vi.stubGlobal("fetch", fetchMock);
 
@@ -666,7 +673,7 @@ describe("extractFromVoice", () => {
       .fn()
       .mockResolvedValueOnce({
         ok: true,
-        json: async () => geminiJson(extracted, 100, 40),
+        json: async () => geminiJson(events(extracted), 100, 40),
       })
       .mockResolvedValueOnce({
         ok: true,
@@ -679,7 +686,7 @@ describe("extractFromVoice", () => {
       });
     vi.stubGlobal("fetch", fetchMock);
 
-    const result = await extractFromVoice({
+    const [result] = await extractFromVoice({
       apiKey: "test-key",
       audio: ogg,
       mimeType: "audio/ogg",
@@ -706,7 +713,7 @@ describe("extractFromVoice", () => {
     expect(first.systemInstruction.parts[0].text).toMatch(/voice note/i);
     expect(first.systemInstruction.parts[0].text).toMatch(/never guess/i);
     expect(first.systemInstruction.parts[0].text).toMatch(/empty string/i);
-    expect(first.systemInstruction.parts[0].text).not.toMatch(/receipt photo/i);
+    expect(first.systemInstruction.parts[0].text).not.toMatch(/from a receipt photo/i);
     expect(first.systemInstruction.parts[0].text).toMatch(/ordinary English/i);
     expect(first.systemInstruction.parts[0].text).toMatch(/Translate French/i);
     expect(first.systemInstruction.parts[0].text).toMatch(/Keep brand names/i);
@@ -726,12 +733,12 @@ describe("extractFromVoice", () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
       json: async () =>
-        geminiJson({
+        geminiJson(events({
           ...extracted,
           type: "income",
           items: [],
           income_source: "Salary",
-        }),
+        })),
     });
     vi.stubGlobal("fetch", fetchMock);
 
@@ -814,6 +821,7 @@ describe("patchExtraction", () => {
     expect(first.systemInstruction.parts[0].text).toMatch(/correction/i);
     expect(first.systemInstruction.parts[0].text).toMatch(/Keep every field/i);
     expect(first.systemInstruction.parts[0].text).not.toMatch(/receipt photo/i);
+    expect(first.systemInstruction.parts[0].text).not.toMatch(/one event per merchant or place/i);
 
     const second = JSON.parse(fetchMock.mock.calls[1][1].body as string) as {
       contents: { parts: { text?: string; inlineData?: unknown }[] }[];
@@ -909,5 +917,82 @@ describe("patchExtraction", () => {
     );
     expect(blob).toContain("overslept");
     expect(result.notes).toBe("overslept, couldn't pack lunch");
+  });
+});
+
+describe("multi-event extraction", () => {
+  const pharmacy = {
+    ...extracted,
+    amount: "5.00",
+    description: "pharmacy items",
+    merchant: null,
+    venue: null,
+    tags: [],
+    notes: "needed cold medicine",
+    items: [{ ...extracted.items[0], description: "cold medicine", amount: "5.00" }],
+  };
+
+  it("returns one extraction per event, with one shared bucket call", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => geminiJson(events(extracted, pharmacy), 120, 60) })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () =>
+          geminiJson({ buckets: [{ bucket: "wants", why: "takeout" }, { bucket: "needs", why: "medicine" }] }, 30, 6),
+      });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await extractFromText({
+      apiKey: "test-key",
+      text: "12.50 chipotle and 5 at the pharmacy for cold medicine",
+      taxonomy,
+      bucketRules: "Takeout is wants.",
+      today: "2026-08-17",
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(result.map((e) => e.amount)).toEqual(["12.50", "5.00"]);
+    expect(result[0].items[0].bucket).toBe("wants");
+    expect(result[1].items[0].bucket).toBe("needs");
+    expect(result[1].notes).toBe("needed cold medicine");
+    const bucketText = JSON.parse(fetchMock.mock.calls[1][1].body as string).contents[0].parts[0].text;
+    expect(bucketText).toContain("burrito");
+    expect(bucketText).toContain("cold medicine");
+    expect(result[0].usage).toEqual({ extractor: { input: 120, output: 60 }, bucket: { input: 30, output: 6 } });
+    expect(result[1].usage).toBeUndefined();
+    expect(result[1].meta).toEqual(result[0].meta);
+  });
+
+  it("asks for an events array and states the split rule in text, photo, and voice prompts only", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => geminiJson(events({ ...extracted, type: "income", items: [], income_source: "Salary" })),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    await extractFromText({ apiKey: "k", text: "got paid", taxonomy, bucketRules: "", today: "2026-08-17" });
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body as string);
+    expect(body.generationConfig.responseSchema.properties.events.type).toBe("ARRAY");
+    expect(body.systemInstruction.parts[0].text).toMatch(/one event per merchant or place/i);
+  });
+
+  it("throws when Gemini returns no events", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => geminiJson(events()) }));
+    await expect(
+      extractFromText({ apiKey: "k", text: "hm", taxonomy, bucketRules: "", today: "2026-08-17" }),
+    ).rejects.toThrow("Gemini returned no events");
+  });
+
+  it("fails the message when buckets do not cover every line", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce({ ok: true, json: async () => geminiJson(events(extracted, pharmacy)) })
+        .mockResolvedValueOnce({ ok: true, json: async () => geminiJson({ buckets: [{ bucket: "wants", why: "x" }] }) }),
+    );
+    await expect(
+      extractFromText({ apiKey: "k", text: "two", taxonomy, bucketRules: "", today: "2026-08-17" }),
+    ).rejects.toThrow(/bucket count 1 != line count 2/);
   });
 });

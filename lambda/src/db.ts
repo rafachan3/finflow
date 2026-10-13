@@ -80,33 +80,63 @@ export async function loadTaxonomy(
   };
 }
 
-export async function insertPendingIngestion(args: {
-  id?: string;
-  source?: "text" | "photo" | "voice";
-  mediaPath?: string | null;
+export type PendingIngestion = {
+  id: string;
+  source: "text" | "photo" | "voice";
+  mediaPath: string | null;
   telegramUpdateId: number;
+  eventIndex: number;
   rawPayload: unknown;
   extraction: Extraction;
-}): Promise<{ id: string } | "duplicate"> {
+};
+
+/** All events of one update land together or not at all (retries → duplicate). */
+export async function insertPendingIngestions(
+  rows: PendingIngestion[],
+): Promise<{ id: string }[] | "duplicate"> {
+  if (rows.length === 0) return [];
   const db = await getPool();
+  const client = await db.connect();
   try {
-    const result = await db.query<{ id: string }>(
-      `INSERT INTO ingestions (id, source, telegram_update_id, raw_payload, extraction, status, media_path)
-       VALUES (COALESCE($1::uuid, gen_random_uuid()), $2, $3, $4::jsonb, $5::jsonb, 'pending', $6)
-       RETURNING id`,
-      [
-        args.id ?? null,
-        args.source ?? "text",
-        args.telegramUpdateId,
-        JSON.stringify(args.rawPayload),
-        JSON.stringify(args.extraction),
-        args.mediaPath ?? null,
-      ],
+    await client.query("BEGIN");
+    // A retry re-runs Gemini and may save different event indexes, which the
+    // unique key alone won't catch: serialise per update, then skip if saved.
+    const updateId = rows[0].telegramUpdateId;
+    await client.query("SELECT pg_advisory_xact_lock($1::bigint)", [updateId]);
+    const seen = await client.query(
+      "SELECT 1 FROM ingestions WHERE telegram_update_id = $1 LIMIT 1",
+      [updateId],
     );
-    return { id: result.rows[0].id };
+    if (seen.rowCount) {
+      await client.query("ROLLBACK");
+      return "duplicate";
+    }
+    const ids: { id: string }[] = [];
+    for (const row of rows) {
+      const result = await client.query<{ id: string }>(
+        `INSERT INTO ingestions (id, source, telegram_update_id, event_index, raw_payload, extraction, status, media_path)
+         VALUES ($1::uuid, $2, $3, $4, $5::jsonb, $6::jsonb, 'pending', $7)
+         RETURNING id`,
+        [
+          row.id,
+          row.source,
+          row.telegramUpdateId,
+          row.eventIndex,
+          JSON.stringify(row.rawPayload),
+          JSON.stringify(row.extraction),
+          row.mediaPath,
+        ],
+      );
+      ids.push({ id: result.rows[0].id });
+    }
+    await client.query("COMMIT");
+    return ids;
   } catch (err) {
+    await client.query("ROLLBACK").catch(() => {});
     if (isUniqueViolation(err)) return "duplicate";
     throw err;
+  } finally {
+    client.release();
   }
 }
 
@@ -141,16 +171,33 @@ export async function findAwaitingIngestion(): Promise<{
   return result.rows[0] ?? null;
 }
 
-export async function setIngestionAwaitingDate(
+export type AwaitStart = "started" | "already_handled" | "busy";
+
+/** One outstanding wait: a reply is routed to the single waiting row. */
+async function startAwaiting(
   ingestionId: string,
-): Promise<boolean> {
+  status: "awaiting_date" | "awaiting_edit",
+): Promise<AwaitStart> {
   const db = await getPool();
-  const result = await db.query(
-    `UPDATE ingestions SET status = 'awaiting_date'
-     WHERE id = $1 AND status = 'pending'`,
+  const other = await db.query(
+    `SELECT 1 FROM ingestions
+     WHERE status IN ('awaiting_date', 'awaiting_edit') AND id <> $1
+     LIMIT 1`,
     [ingestionId],
   );
-  return Boolean(result.rowCount);
+  if (other.rowCount) return "busy";
+  const result = await db.query(
+    `UPDATE ingestions SET status = $2
+     WHERE id = $1 AND status = 'pending'`,
+    [ingestionId, status],
+  );
+  return result.rowCount ? "started" : "already_handled";
+}
+
+export async function setIngestionAwaitingDate(
+  ingestionId: string,
+): Promise<AwaitStart> {
+  return startAwaiting(ingestionId, "awaiting_date");
 }
 
 export async function applyIngestionDate(
@@ -169,14 +216,8 @@ export async function applyIngestionDate(
 
 export async function setIngestionAwaitingEdit(
   ingestionId: string,
-): Promise<boolean> {
-  const db = await getPool();
-  const result = await db.query(
-    `UPDATE ingestions SET status = 'awaiting_edit'
-     WHERE id = $1 AND status = 'pending'`,
-    [ingestionId],
-  );
-  return Boolean(result.rowCount);
+): Promise<AwaitStart> {
+  return startAwaiting(ingestionId, "awaiting_edit");
 }
 
 export async function applyIngestionEdit(

@@ -10,7 +10,7 @@ vi.mock("../src/config.js", () => ({
 vi.mock("../src/db.js", () => ({
   confirmIngestion: vi.fn(),
   discardIngestion: vi.fn(),
-  insertPendingIngestion: vi.fn(),
+  insertPendingIngestions: vi.fn(),
   loadTaxonomy: vi.fn(),
   findAwaitingIngestion: vi.fn(),
   setIngestionAwaitingDate: vi.fn(),
@@ -43,7 +43,7 @@ import {
   applyIngestionDate,
   applyIngestionEdit,
   findAwaitingIngestion,
-  insertPendingIngestion,
+  insertPendingIngestions,
   loadTaxonomy,
   setIngestionAwaitingDate,
   setIngestionAwaitingEdit,
@@ -55,6 +55,7 @@ import {
   patchExtraction,
 } from "../src/gemini.js";
 import {
+  answerCallbackQuery,
   discardKeyboard,
   downloadTelegramFile,
   reviewKeyboard,
@@ -133,10 +134,10 @@ beforeEach(() => {
     receiptsBucket: "finflow-receipts-test",
   });
   vi.mocked(loadTaxonomy).mockResolvedValue(taxonomy);
-  vi.mocked(extractFromText).mockResolvedValue(extraction);
-  vi.mocked(extractFromPhoto).mockResolvedValue(extraction);
-  vi.mocked(extractFromVoice).mockResolvedValue(extraction);
-  vi.mocked(insertPendingIngestion).mockResolvedValue({ id: "ing-1" });
+  vi.mocked(extractFromText).mockResolvedValue([extraction]);
+  vi.mocked(extractFromPhoto).mockResolvedValue([extraction]);
+  vi.mocked(extractFromVoice).mockResolvedValue([extraction]);
+  vi.mocked(insertPendingIngestions).mockResolvedValue([{ id: "ing-1" }]);
   vi.mocked(findAwaitingIngestion).mockResolvedValue(null);
   vi.mocked(downloadTelegramFile).mockResolvedValue({
     bytes: Buffer.from([0xff, 0xd8, 0xff]),
@@ -182,28 +183,30 @@ describe("handler", () => {
         bucketRules: "Takeout is wants.",
       }),
     );
-    expect(insertPendingIngestion).toHaveBeenCalledWith(
+    expect(insertPendingIngestions).toHaveBeenCalledWith([
       expect.objectContaining({
         telegramUpdateId: 9,
+        eventIndex: 0,
         extraction: expect.objectContaining({
           date: "2026-08-17",
           date_source: "stated",
         }),
       }),
-    );
+    ]);
     expect(sendMessage).toHaveBeenCalledWith(
       "t",
       1,
       expect.stringContaining("Confirm to save"),
       { confirm: "ing-1" },
     );
+    expect(String(vi.mocked(sendMessage).mock.calls[0][2]).split("\n")[0]).not.toMatch(/of 1\)/);
   });
 
   it("does not persist or offer Confirm when checks fail", async () => {
-    vi.mocked(extractFromText).mockResolvedValue({
+    vi.mocked(extractFromText).mockResolvedValue([{
       ...extraction,
       amount: "99.00",
-    });
+    }]);
 
     await handler(
       event({
@@ -212,7 +215,7 @@ describe("handler", () => {
       }),
     );
 
-    expect(insertPendingIngestion).not.toHaveBeenCalled();
+    expect(insertPendingIngestions).not.toHaveBeenCalled();
     expect(sendMessage).toHaveBeenCalledWith(
       "t",
       1,
@@ -225,7 +228,7 @@ describe("handler", () => {
   it("defaults a missing Gemini date to today and warns", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-08-18T16:00:00Z"));
-    vi.mocked(extractFromText).mockResolvedValue({ ...extraction, date: "" });
+    vi.mocked(extractFromText).mockResolvedValue([{ ...extraction, date: "" }]);
 
     await handler(
       event({
@@ -234,14 +237,14 @@ describe("handler", () => {
       }),
     );
 
-    expect(insertPendingIngestion).toHaveBeenCalledWith(
+    expect(insertPendingIngestions).toHaveBeenCalledWith([
       expect.objectContaining({
         extraction: expect.objectContaining({
           date: "2026-08-18",
           date_source: "today_default",
         }),
       }),
-    );
+    ]);
     expect(sendMessage).toHaveBeenCalledWith(
       "t",
       1,
@@ -251,7 +254,7 @@ describe("handler", () => {
   });
 
   it("asks for a date on Fix date and does not confirm", async () => {
-    vi.mocked(setIngestionAwaitingDate).mockResolvedValue(true);
+    vi.mocked(setIngestionAwaitingDate).mockResolvedValue("started");
 
     await handler(
       event({
@@ -276,6 +279,32 @@ describe("handler", () => {
       1,
       expect.stringMatching(/send the date/i),
       { confirm: "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee" },
+    );
+  });
+
+  it.each([
+    ["Fix date", "f", setIngestionAwaitingDate],
+    ["Edit", "e", setIngestionAwaitingEdit],
+  ])("%s while another card is waiting replies busy and sends no keyboard", async (_n, action, setter) => {
+    vi.mocked(setter).mockResolvedValue("busy");
+
+    await handler(
+      event({
+        update_id: 14,
+        callback_query: {
+          id: "cb3",
+          data: `${action}:aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee`,
+          message: { chat: { id: 1 } },
+        },
+      }),
+    );
+
+    expect(answerCallbackQuery).toHaveBeenCalledWith("t", "cb3", "Finish the waiting card first.");
+    expect(sendMessage).toHaveBeenCalledTimes(1);
+    expect(sendMessage).toHaveBeenCalledWith(
+      "t",
+      1,
+      "Another card is waiting for a date or correction. Send it, or tap Discard on that card, then try again.",
     );
   });
 
@@ -340,6 +369,8 @@ describe("handler", () => {
     vi.spyOn(crypto, "randomUUID").mockReturnValue(
       "11111111-1111-1111-1111-111111111111",
     );
+    // The database returns the id it was given; buttons carry that id.
+    vi.mocked(insertPendingIngestions).mockImplementation(async (rows) => rows.map((r) => ({ id: r.id })));
 
     await handler(
       event({
@@ -366,7 +397,7 @@ describe("handler", () => {
       body: Buffer.from([0xff, 0xd8, 0xff]),
       contentType: "image/jpeg",
     });
-    expect(insertPendingIngestion).toHaveBeenCalledWith(
+    expect(insertPendingIngestions).toHaveBeenCalledWith([
       expect.objectContaining({
         id: "11111111-1111-1111-1111-111111111111",
         source: "photo",
@@ -377,7 +408,7 @@ describe("handler", () => {
           date_source: "stated",
         }),
       }),
-    );
+    ]);
     expect(reviewKeyboard).toHaveBeenCalledWith(
       "11111111-1111-1111-1111-111111111111",
       { confirm: true },
@@ -389,7 +420,9 @@ describe("handler", () => {
     vi.spyOn(crypto, "randomUUID").mockReturnValue(
       "11111111-1111-1111-1111-111111111111",
     );
-    vi.mocked(extractFromPhoto).mockResolvedValue({ ...extraction, date: "" });
+    // The database returns the id it was given; buttons carry that id.
+    vi.mocked(insertPendingIngestions).mockImplementation(async (rows) => rows.map((r) => ({ id: r.id })));
+    vi.mocked(extractFromPhoto).mockResolvedValue([{ ...extraction, date: "" }]);
 
     await handler(
       event({
@@ -401,7 +434,7 @@ describe("handler", () => {
       }),
     );
 
-    expect(insertPendingIngestion).toHaveBeenCalled();
+    expect(insertPendingIngestions).toHaveBeenCalled();
     expect(reviewKeyboard).toHaveBeenCalledWith(
       "11111111-1111-1111-1111-111111111111",
       { confirm: false },
@@ -445,6 +478,8 @@ describe("handler", () => {
     vi.spyOn(crypto, "randomUUID").mockReturnValue(
       "11111111-1111-1111-1111-111111111111",
     );
+    // The database returns the id it was given; buttons carry that id.
+    vi.mocked(insertPendingIngestions).mockImplementation(async (rows) => rows.map((r) => ({ id: r.id })));
     vi.mocked(downloadTelegramFile).mockResolvedValue({
       bytes: ogg,
       mimeType: "audio/ogg",
@@ -482,7 +517,7 @@ describe("handler", () => {
       body: ogg,
       contentType: "audio/ogg",
     });
-    expect(insertPendingIngestion).toHaveBeenCalledWith(
+    expect(insertPendingIngestions).toHaveBeenCalledWith([
       expect.objectContaining({
         id: "11111111-1111-1111-1111-111111111111",
         source: "voice",
@@ -493,7 +528,7 @@ describe("handler", () => {
           date_source: "stated",
         }),
       }),
-    );
+    ]);
     expect(sendMessage).toHaveBeenCalledWith(
       "t",
       1,
@@ -507,7 +542,7 @@ describe("handler", () => {
   it("defaults a missing voice date to today and still offers Confirm", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-08-18T16:00:00Z"));
-    vi.mocked(extractFromVoice).mockResolvedValue({ ...extraction, date: "" });
+    vi.mocked(extractFromVoice).mockResolvedValue([{ ...extraction, date: "" }]);
     vi.mocked(downloadTelegramFile).mockResolvedValue({
       bytes: Buffer.from([0x4f, 0x67, 0x67, 0x53]),
       mimeType: "audio/ogg",
@@ -518,6 +553,8 @@ describe("handler", () => {
     vi.spyOn(crypto, "randomUUID").mockReturnValue(
       "11111111-1111-1111-1111-111111111111",
     );
+    // The database returns the id it was given; buttons carry that id.
+    vi.mocked(insertPendingIngestions).mockImplementation(async (rows) => rows.map((r) => ({ id: r.id })));
 
     await handler(
       event({
@@ -529,7 +566,7 @@ describe("handler", () => {
       }),
     );
 
-    expect(insertPendingIngestion).toHaveBeenCalledWith(
+    expect(insertPendingIngestions).toHaveBeenCalledWith([
       expect.objectContaining({
         source: "voice",
         extraction: expect.objectContaining({
@@ -537,7 +574,7 @@ describe("handler", () => {
           date_source: "today_default",
         }),
       }),
-    );
+    ]);
     expect(sendMessage).toHaveBeenCalledWith(
       "t",
       1,
@@ -551,10 +588,10 @@ describe("handler", () => {
   });
 
   it("does not persist a voice note when checks fail", async () => {
-    vi.mocked(extractFromVoice).mockResolvedValue({
+    vi.mocked(extractFromVoice).mockResolvedValue([{
       ...extraction,
       amount: "99.00",
-    });
+    }]);
     vi.mocked(downloadTelegramFile).mockResolvedValue({
       bytes: Buffer.from([0x4f, 0x67, 0x67, 0x53]),
       mimeType: "audio/ogg",
@@ -571,7 +608,7 @@ describe("handler", () => {
     );
 
     expect(putReceipt).not.toHaveBeenCalled();
-    expect(insertPendingIngestion).not.toHaveBeenCalled();
+    expect(insertPendingIngestions).not.toHaveBeenCalled();
     expect(sendMessage).toHaveBeenCalledWith(
       "t",
       1,
@@ -607,7 +644,7 @@ describe("handler", () => {
   });
 
   it("asks for a correction on Edit and does not confirm", async () => {
-    vi.mocked(setIngestionAwaitingEdit).mockResolvedValue(true);
+    vi.mocked(setIngestionAwaitingEdit).mockResolvedValue("started");
 
     await handler(
       event({
@@ -747,7 +784,7 @@ describe("extraction failures", () => {
       1,
       expect.stringMatching(/Gemini is overloaded/i),
     );
-    expect(insertPendingIngestion).not.toHaveBeenCalled();
+    expect(insertPendingIngestions).not.toHaveBeenCalled();
   });
 
   it("says the same for a receipt photo", async () => {
@@ -779,5 +816,142 @@ describe("extraction failures", () => {
       1,
       "Couldn't parse that. Try again in a sentence.",
     );
+  });
+});
+
+describe("multi-event messages", () => {
+  const pharmacy: Extraction = {
+    ...extraction,
+    amount: "5.00",
+    description: "pharmacy items",
+    merchant: null,
+    venue: null,
+    tags: [],
+    items: [{ ...extraction.items[0], description: "cold medicine", amount: "5.00", bucket: "needs" }],
+  };
+
+  beforeEach(() => {
+    vi.mocked(insertPendingIngestions).mockImplementation(async (rows) => rows.map((r) => ({ id: r.id })));
+  });
+
+  it("inserts two events in one batch and sends two labelled cards in order", async () => {
+    vi.mocked(extractFromText).mockResolvedValue([
+      { ...extraction, usage: { extractor: { input: 1, output: 1 } } },
+      pharmacy,
+    ]);
+
+    await handler(event({ update_id: 50, message: { chat: { id: 1 }, text: "3 at A and 5 at B" } }));
+
+    expect(insertPendingIngestions).toHaveBeenCalledTimes(1);
+    const rows = vi.mocked(insertPendingIngestions).mock.calls[0][0];
+    expect(rows.map((r) => r.eventIndex)).toEqual([0, 1]);
+    expect(rows.every((r) => r.telegramUpdateId === 50)).toBe(true);
+    const texts = vi.mocked(sendMessage).mock.calls.map((c) => String(c[2]).split("\n")[0]);
+    expect(texts).toEqual([
+      "Expense · 2026-08-17 · CAD 12.50 (1 of 2)",
+      "Expense · 2026-08-17 · CAD 5.00 (2 of 2)",
+    ]);
+    expect(vi.mocked(sendMessage).mock.calls.every((c) => c[3])).toBe(true);
+  });
+
+  it("persists the valid event, previews the invalid one without buttons, and moves usage", async () => {
+    vi.mocked(extractFromText).mockResolvedValue([
+      { ...extraction, amount: "99.00", usage: { extractor: { input: 7, output: 3 } } },
+      pharmacy,
+    ]);
+
+    await handler(event({ update_id: 51, message: { chat: { id: 1 }, text: "two" } }));
+
+    const rows = vi.mocked(insertPendingIngestions).mock.calls[0][0];
+    expect(rows).toHaveLength(1);
+    expect(rows[0].eventIndex).toBe(1);
+    expect(rows[0].extraction.usage).toEqual({ extractor: { input: 7, output: 3 } });
+    const calls = vi.mocked(sendMessage).mock.calls;
+    expect(calls).toHaveLength(2);
+    expect(calls[0][3]).toBeUndefined();
+    expect(String(calls[0][2])).toContain("✗");
+    expect(calls[1][3]).toBeDefined();
+  });
+
+  it("uploads a photo once, keyed by the first persisted event, shared by both rows", async () => {
+    vi.spyOn(crypto, "randomUUID")
+      .mockReturnValueOnce("11111111-1111-1111-1111-111111111111")
+      .mockReturnValueOnce("22222222-2222-2222-2222-222222222222");
+    vi.mocked(extractFromPhoto).mockResolvedValue([extraction, pharmacy]);
+
+    await handler(
+      event({ update_id: 52, message: { chat: { id: 1 }, photo: [{ file_id: "file-big" }], caption: "also 5 at B" } }),
+    );
+
+    expect(putReceipt).toHaveBeenCalledTimes(1);
+    expect(putReceipt).toHaveBeenCalledWith(
+      expect.objectContaining({ ingestionId: "11111111-1111-1111-1111-111111111111" }),
+    );
+    const rows = vi.mocked(insertPendingIngestions).mock.calls[0][0];
+    expect(rows.map((r) => r.mediaPath)).toEqual([
+      "11111111-1111-1111-1111-111111111111.jpg",
+      "11111111-1111-1111-1111-111111111111.jpg",
+    ]);
+  });
+
+  it("uploads nothing and inserts nothing when every event fails checks", async () => {
+    vi.mocked(extractFromPhoto).mockResolvedValue([
+      { ...extraction, amount: "99.00" },
+      { ...pharmacy, amount: "99.00" },
+    ]);
+
+    await handler(event({ update_id: 53, message: { chat: { id: 1 }, photo: [{ file_id: "file-big" }] } }));
+
+    expect(putReceipt).not.toHaveBeenCalled();
+    expect(insertPendingIngestions).not.toHaveBeenCalled();
+    expect(vi.mocked(sendMessage).mock.calls.map((c) => c[3])).toEqual([undefined, undefined]);
+  });
+
+  it("sends no cards when the batch is a webhook retry", async () => {
+    vi.mocked(insertPendingIngestions).mockResolvedValue("duplicate");
+    vi.mocked(extractFromText).mockResolvedValue([extraction, pharmacy]);
+
+    const res = await handler(event({ update_id: 54, message: { chat: { id: 1 }, text: "two" } }));
+
+    expect(sendMessage).not.toHaveBeenCalled();
+    expect(res).toMatchObject({ body: "duplicate" });
+  });
+
+  it("replies with the parse failure when Gemini returns no events", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.mocked(extractFromText).mockRejectedValue(new Error("Gemini returned no events"));
+
+    await handler(event({ update_id: 55, message: { chat: { id: 1 }, text: "hm" } }));
+
+    expect(sendMessage).toHaveBeenCalledWith("t", 1, "Couldn't parse that. Try again in a sentence.");
+    expect(insertPendingIngestions).not.toHaveBeenCalled();
+  });
+
+  it("keeps sending cards and does not report a parse failure when a card send fails after saving", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.mocked(extractFromText).mockResolvedValue([extraction, pharmacy]);
+    vi.mocked(sendMessage).mockRejectedValueOnce(new Error("telegram 502"));
+
+    const res = await handler(event({ update_id: 56, message: { chat: { id: 1 }, text: "two" } }));
+
+    expect(insertPendingIngestions).toHaveBeenCalledTimes(1);
+    expect(sendMessage).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(sendMessage).mock.calls.some((c) => /Couldn't/.test(String(c[2])))).toBe(false);
+    expect(res).toMatchObject({ body: "ok" });
+    expect(errorSpy).toHaveBeenCalledWith("card send error", expect.any(Error));
+  });
+
+  it("still reports a failure when nothing was saved and the preview send fails", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.mocked(extractFromText).mockResolvedValue([
+      { ...extraction, amount: "99.00" },
+      { ...pharmacy, amount: "99.00" },
+    ]);
+    vi.mocked(sendMessage).mockRejectedValueOnce(new Error("telegram 502"));
+
+    await handler(event({ update_id: 57, message: { chat: { id: 1 }, text: "two" } }));
+
+    expect(insertPendingIngestions).not.toHaveBeenCalled();
+    expect(vi.mocked(sendMessage).mock.calls[1]).toEqual(["t", 1, "Couldn't parse that. Try again in a sentence."]);
   });
 });

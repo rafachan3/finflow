@@ -117,15 +117,18 @@ skeleton everything else hangs on. Ship the smallest loop first.*
       unrelated drink or a separate income in the same message is two
       headers: the trip stays one expense with lines; the extra event
       is its own row. After Edit. A grocery trip
-      alone is already one expense with lines on every channel. Until
-      then, send separate messages for distinct headers. Covers two
+      alone is already one expense with lines on every channel. Covers two
       merchants in one message ("$3 at the dollar store and $5 at the
       pharmacy" → two cards).
-- [ ] Context notes: the *why* behind a purchase ("too lazy to cook",
+      *(merged, pending phone test; migration 0009; DECISIONS.md
+      2026-10-12)*
+- [x] Context notes: the *why* behind a purchase ("too lazy to cook",
       "overslept, couldn't pack lunch") extracted in the owner's words
       into the existing `transactions.notes`, shown on the card,
       written on Confirm. Free text for agents; no reason taxonomy.
-      Before multi-event.
+      Before multi-event. *(phone-tested 2026-10-12: text with and
+      without a reason, receipt with and without a caption, Edit,
+      voice; #23)*
 - [x] Log Gemini token usage per request into `ingestions.extraction`,
       plus `meta` (model + sha256 of extractor, taxonomy, bucket prompt,
       and rules). No eval mart until Phase 4.

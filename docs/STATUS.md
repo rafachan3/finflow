@@ -12,7 +12,7 @@ Living state of the project. Read this first; update it whenever work lands.
 - [x] Phase 1 — Supabase project, schema migrations, Notion history import (2026-08-13)
 - [x] Taxonomy tweak — Hygiene + Beauty → Personal care (Health and wellness); buckets untouched (2026-08-13)
 - [x] Phase 2 — Telegram bot walking skeleton (text only, no LLM) (2026-08-17)
-- [ ] Phase 3 — Gemini extraction (text → photo → voice) — **3a + 3b + 3c phone-tested; funding source applied; Edit phone-tested; context notes merged, not yet phone-tested; multi-event remains**
+- [ ] Phase 3 — Gemini extraction (text → photo → voice) — **3a + 3b + 3c phone-tested; funding source applied; Edit phone-tested; context notes phone-tested; multi-event merged, pending phone test**
 - [ ] Phase 3.5 — Ingestion follow-ons (item tags, duplicate warning, merchant commands)
 - [ ] Phase 4 — dbt semantic layer + MetricFlow
 - [ ] Phase 4.5 — Proactive nudges (recurring reminders, merchant recommendations)
@@ -134,7 +134,11 @@ the message, caption, or voice and never from receipt text. The card
 shows `Note: …` under the description; Confirm writes
 `transactions.notes` (column since 0001, no migration). Edit can
 change it. Rows extracted before notes write NULL. First `db.ts`
-test (pg mock on the transactions insert). Not yet phone-tested.
+test (pg mock on the transactions insert). Phone-tested 2026-10-12:
+text with a reason and voice saved the owner's words; text and a
+receipt without a reason saved NULL (no note invented from receipt
+text); a caption reason became the note; a note added through Edit
+was saved. Notes are verbatim, typos included.
 
 Gemini overload (2026-10-12): every logged error since 2026-09-30
 (8 in ~28 interactions) was `Gemini HTTP 503` "high demand" from
@@ -159,16 +163,11 @@ wobbly categories. Third attempt is now Lite; 429 moves to the next
 model (quota is per model). Cards Lite produced show "! read by a
 lighter model while Gemini was busy — check categories and buckets".
 Owner decision: if receipts still fail after this, move ingestion to
-the paid tier.
+the paid tier. Merged as #26; the receipt that had failed went
+through after deploy.
 
-PDF/document, multi-event messages, and S3 key prefixes remain later.
-Multi-event is 2+ independent headers in one update, including a
-grocery breakdown plus an unrelated expense or income in the same
-text, voice, or photo caption. The trip stays one expense with lines;
-the extra event is its own row. A grocery trip alone is already one
-expense with lines. One update is still one extraction until
-multi-event ships. Media still lands at the bucket root as
-`{id}.{ext}`; source/month prefixes are a leftover.
+PDF/document and S3 key prefixes remain later. Media still lands at
+the bucket root as `{id}.{ext}`; source/month prefixes are a leftover.
 
 First photo after merge failed with no Telegram reply: the Supabase
 project was `INACTIVE` (paused). Pooler error
@@ -187,13 +186,38 @@ prompt (an earlier discarded send had kept the receipt language).
 
 Dateless-receipt persist (no Confirm) is not yet phone-tested.
 
+Multi-event (2026-10-12, branch `feat/multi-event`; migration 0009
+applied and verified): one text, photo, or voice message can become
+several purchases, each its own `ingestions` row and card labelled
+"(i of n)", confirmed independently; no "Confirm all". Split by place;
+the same or no place stays one expense with lines; income and
+transfers are always separate. Gemini returns `{events}` (split rule in
+the text, photo, and voice prompts only); one bucket call covers all
+lines; usage is stored on the first saved event. `event_index` default
+0, unique `(telegram_update_id, event_index)`; the 66 existing rows are
+event 0. A per-update advisory lock stops a retry from saving a second
+set (DECISIONS.md 2026-10-12). Only one card waits for a date or
+correction at a time: Fix date or Edit on another card gets "Finish the
+waiting card first." A card send that fails after the rows are saved is
+logged and the other cards still go out, with no false "Couldn't
+parse" reply.
+
 ## Next concrete step
 
-After the Lite fallback PR merges and `Deploy ingest Lambda` is green:
-phone-test notes (text with a reason → `Note:` line and `transactions.notes`
-filled; text without one → no line; photo caption reason, not receipt
-text; Edit changes the note). Record the result in the multi-event
-PR, then multi-event. Optional leftover: S3 keys
+Deploy `feat/multi-event` (0009 is already applied) and phone-test
+multi-event; Phase 3 then closes and Phase 3.5 starts.
+
+| Send | Expect |
+|---|---|
+| `3 at Dollarama and 5 at Pharmaprix` | 2 cards |
+| `milk 4 and bread 3 at Maxi` | 1 card, 2 lines |
+| `12 lunch and 4 coffee` | 1 card, 2 lines |
+| `groceries at Maxi 40, and got paid 200 salary` | expense + income cards |
+| receipt + caption `also 5 at Pharmaprix` | 2 cards, one S3 object |
+| Confirm card 2 while card 1 waits for Fix date | works |
+| Fix date on card 2 while card 1 waits | "Finish the waiting card first." |
+
+Optional leftover: S3 keys
 `{source}/{yyyy-mm}/{id}.{ext}` in the existing bucket. Optional smoke:
 a receipt with no printed or caption date persists without Confirm.
 
@@ -225,3 +249,7 @@ a receipt with no printed or caption date persists without Confirm.
 - All three models ending on 429 replies with the generic "Couldn't
   read…" message, not the overload one: a daily quota would make "send
   it again in a minute" wrong.
+- Multi-event gaps: a failed send of card 2 leaves that row pending
+  without a card (logged as `card send error`; no reply to the owner); a retried photo/voice still uploads an extra S3 object
+  before the insert decides; migration 0009 is forward-only once any
+  update has `event_index > 0`.

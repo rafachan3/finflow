@@ -77,7 +77,8 @@ erDiagram
   ingestions {
     uuid id PK
     text source "photo | voice | text"
-    bigint telegram_update_id UK
+    bigint telegram_update_id "UK with event_index"
+    smallint event_index "0..n-1 within one update"
     jsonb raw_payload
     text media_path "nullable — S3 key"
     jsonb extraction "nullable — LLM output"
@@ -253,7 +254,9 @@ create table transaction_tags (
 create table ingestions (
   id                 uuid primary key default gen_random_uuid(),
   source             text not null check (source in ('photo','voice','text')),
-  telegram_update_id bigint not null unique,      -- idempotent webhook retries
+  telegram_update_id bigint not null,             -- one update → 1..n rows
+  event_index        smallint not null default 0  -- order within the update
+                     check (event_index >= 0),
   raw_payload        jsonb not null,              -- full Telegram update
   media_path         text,                        -- S3 object key
   extraction         jsonb,                       -- LLM structured output
@@ -261,6 +264,7 @@ create table ingestions (
                      check (status in ('pending','awaiting_date','awaiting_edit','confirmed','discarded')),
   transaction_id     uuid references transactions(id),
   created_at         timestamptz not null default now()
+  ,unique (telegram_update_id, event_index)       -- idempotent webhook retries
 );
 ```
 
@@ -360,5 +364,9 @@ bump when SSM rules change.
   (check constraints).
 - An item's `item_type_id`, when set, must belong to the same category as
   its `subcategory_id` (dbt test).
-- `ingestions.telegram_update_id` is UNIQUE — webhook retries are harmless.
+- `(ingestions.telegram_update_id, event_index)` is UNIQUE. One Telegram
+  update yields one row per ledger event, inserted in one transaction that
+  takes a per-update advisory lock and skips the update if any row for it
+  already exists, so a webhook retry inserts nothing. The composite unique
+  is the backstop.
 - Migrations are never edited after merge; correct forward with a new one.

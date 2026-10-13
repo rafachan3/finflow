@@ -54,13 +54,14 @@ Text, receipt photos, and voice notes share the same confirm loop.
 Photos and voice download from Telegram, extract with Gemini (vision or
 audio), then archive to S3 only when the ingestion is persisted.
 **Edit** patches the stored extraction from a freeform correction (no
-media re-download). PDF/document and multi-event messages remain later
-in Phase 3. `funding_source_id` is expense-only (null on income
-and transfer). Multi-event is N Confirm cards when one text, voice,
-or photo caption contains 2+ independent headers, including a grocery
-breakdown plus an unrelated drink or income. A grocery trip alone is
-one transaction with lines on every channel. One Telegram update is
-still one extraction.
+media re-download). PDF/document remains later in Phase 3.
+`funding_source_id` is expense-only (null on income and transfer).
+Multi-event: one text, voice, or photo caption with 2+ independent
+headers (split by place; income and transfers always separate) becomes
+one `ingestions` row and one Confirm card per event, labelled "(i of n)".
+A grocery trip alone is one transaction with lines on every channel.
+One Telegram update is one extractor call and at most one bucket call,
+however many events.
 
 `docs/SEMANTIC_LAYER.md` is the metric contract for the marts layer: both the
 dbt models and the agent read it, so numbers agree everywhere.
@@ -81,8 +82,13 @@ dbt models and the agent read it, so numbers agree everywhere.
   download media first; S3 archive happens only on persist (UUID, then
   PutObject, then INSERT). All state lives in Postgres, so it stays
   stateless.
-- Idempotency: `ingestions.telegram_update_id` is UNIQUE; Telegram retries
-  webhooks, and the unique constraint makes retries harmless.
+- Idempotency: one Telegram update may yield several `ingestions` rows
+  (one per event), unique on `(telegram_update_id, event_index)`. Telegram
+  retries webhooks, and a retry re-runs Gemini, which can return a
+  different set of events, so the unique alone is not enough: the batch
+  insert takes `pg_advisory_xact_lock(telegram_update_id)` inside its
+  transaction and reports "duplicate" if any row for that update exists.
+  The composite unique is the backstop.
 - Secrets (Telegram bot token, webhook secret token, chat-ID allowlist, Gemini
   key, Supabase connection string) live in **SSM Parameter Store** as
   `SecureString`, read at cold start. Parameter Store's standard tier is free;
@@ -115,8 +121,8 @@ dbt models and the agent read it, so numbers agree everywhere.
   Confirm / Discard / Fix date / Edit appear when checks pass. Text and
   voice with no date default to today and warn. Photos with no
   printed/caption date persist without Confirm. Edit sets
-  `awaiting_edit`; the next text patches the stored JSON. Multi-event
-  messages are later. Funded by appears on expense previews only.
+  `awaiting_edit`; the next text patches the stored JSON. A message with
+  several events gets one such reply per event. Funded by appears on expense previews only.
 
 ### Storage — Supabase Postgres (rows) + AWS S3 (media)
 
