@@ -196,7 +196,11 @@ the text, photo, and voice prompts only); one bucket call covers all
 lines; usage is stored on the first saved event. `event_index` default
 0, unique `(telegram_update_id, event_index)`; the 66 existing rows are
 event 0. A per-update advisory lock stops a retry from saving a second
-set (DECISIONS.md 2026-10-12).
+set (DECISIONS.md 2026-10-12). Only one card waits for a date or
+correction at a time: Fix date or Edit on another card gets "Finish the
+waiting card first." A card send that fails after the rows are saved is
+logged and the other cards still go out, with no false "Couldn't
+parse" reply.
 
 ## Next concrete step
 
@@ -211,6 +215,7 @@ multi-event; Phase 3 then closes and Phase 3.5 starts.
 | `groceries at Maxi 40, and got paid 200 salary` | expense + income cards |
 | receipt + caption `also 5 at Pharmaprix` | 2 cards, one S3 object |
 | Confirm card 2 while card 1 waits for Fix date | works |
+| Fix date on card 2 while card 1 waits | "Finish the waiting card first." |
 
 Optional leftover: S3 keys
 `{source}/{yyyy-mm}/{id}.{ext}` in the existing bucket. Optional smoke:
@@ -245,6 +250,6 @@ a receipt with no printed or caption date persists without Confirm.
   read…" message, not the overload one: a daily quota would make "send
   it again in a minute" wrong.
 - Multi-event gaps: a failed send of card 2 leaves that row pending
-  without a card; a retried photo/voice still uploads an extra S3 object
+  without a card (logged as `card send error`; no reply to the owner); a retried photo/voice still uploads an extra S3 object
   before the insert decides; migration 0009 is forward-only once any
   update has `event_index > 0`.
