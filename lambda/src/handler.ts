@@ -116,7 +116,7 @@ function headerSecret(event: APIGatewayProxyEventV2): string | undefined {
   );
 }
 
-function todayToronto(now = new Date()): string {
+export function todayToronto(now = new Date()): string {
   return new Intl.DateTimeFormat("en-CA", {
     timeZone: "America/Toronto",
     year: "numeric",
@@ -125,7 +125,7 @@ function todayToronto(now = new Date()): string {
   }).format(now);
 }
 
-function withDatePolicy(
+export function withDatePolicy(
   extraction: Extraction,
   today: string,
   channel: "text" | "photo" | "voice" = "text",

@@ -3,13 +3,18 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
 import { loadTaxonomy } from "../src/db.js";
-import type { Extraction, TaxonomySnapshot } from "../src/extraction.js";
+import {
+  normalizeTaxonomyNames,
+  type Extraction,
+  type TaxonomySnapshot,
+} from "../src/extraction.js";
 import {
   extractFromPhoto,
   extractFromText,
   extractFromVoice,
   patchExtraction,
 } from "../src/gemini.js";
+import { todayToronto, withDatePolicy } from "../src/handler.js";
 import { mimeTypeForPath } from "../src/telegram.js";
 import { testDbUrl } from "../tests/integration/env.js";
 import { allGoldens, golden, type Golden, type GoldenInput } from "../tests/golden/golden.js";
@@ -44,7 +49,7 @@ function args() {
     taxonomy,
     // Personal rules never leave SSM; the bot's no-rules fallback applies.
     bucketRules: "",
-    today: new Date().toLocaleDateString("en-CA", { timeZone: "America/Toronto" }),
+    today: todayToronto(),
   };
 }
 
@@ -66,9 +71,12 @@ function extract(input: Exclude<GoldenInput, { kind: "edit" }>): Promise<Extract
 async function liveAnswer(g: Golden): Promise<Answer> {
   const { input } = g;
   if (input.kind !== "edit") return captureAnswer(() => extract(input));
-  // An edit corrects what the base message extracts live, as in the bot.
+  // An edit corrects what the base message extracts live, after the date
+  // policy the bot applies before it stores the extraction an Edit patches.
   const base = golden(input.base).input as Exclude<GoldenInput, { kind: "edit" }>;
-  const [current] = await extract(base);
+  const [current] = (await extract(base)).map((e) =>
+    withDatePolicy(normalizeTaxonomyNames(e, taxonomy), todayToronto(), base.kind),
+  );
   return captureAnswer(() =>
     patchExtraction({ ...args(), current, correction: input.correction }),
   );
