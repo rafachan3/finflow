@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   captureAnswer,
+  geminiFetch,
   isRelevant,
   outageWaiter,
   recordedFile,
@@ -113,27 +114,41 @@ describe("outageWaiter", () => {
 });
 
 describe("retryOnce", () => {
+  afterEach(() => vi.restoreAllMocks());
+
   it("passes on the first clean answer without a second call", async () => {
     const attempt = vi.fn(async () => [] as string[]);
-    expect(await retryOnce(attempt)).toEqual([]);
+    expect(await retryOnce("case", attempt)).toEqual({ problems: [], attempts: 1 });
     expect(attempt).toHaveBeenCalledTimes(1);
   });
 
-  it("accepts a clean second answer", async () => {
+  it("accepts a clean second answer, warning about the first", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const answers = [["event 0: 2 lines != 1"], []];
-    expect(await retryOnce(async () => answers.shift()!)).toEqual([]);
+    expect(await retryOnce("two-stores", async () => answers.shift()!)).toEqual({
+      problems: [],
+      attempts: 2,
+    });
+    expect(warn).toHaveBeenCalledWith(
+      "two-stores: attempt 1 failed (event 0: 2 lines != 1); retrying",
+    );
   });
 
   it("fails with the second answer's problems when both miss", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
     const answers = [["first"], ["second"]];
-    expect(await retryOnce(async () => answers.shift()!)).toEqual(["second"]);
+    expect(await retryOnce("case", async () => answers.shift()!)).toEqual({
+      problems: ["second"],
+      attempts: 2,
+    });
   });
 
   it("turns a thrown error into a problem and retries", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
     const attempt = vi.fn(async (): Promise<string[]> => {
       throw new Error("Gemini returned no events");
     });
-    expect(await retryOnce(attempt)).toEqual(["Gemini returned no events"]);
+    expect((await retryOnce("case", attempt)).problems).toEqual(["Gemini returned no events"]);
     expect(attempt).toHaveBeenCalledTimes(2);
   });
 });
@@ -199,7 +214,7 @@ describe("captureAnswer", () => {
       }
     });
 
-    expect(raw).toEqual({ events: ["extract"] });
+    expect(raw).toEqual({ raw: { events: ["extract"] }, model: "m" });
     // The production code still reads every body.
     expect(bodies).toHaveLength(3);
     expect(globalThis.fetch).toBe(fake);
@@ -213,5 +228,24 @@ describe("captureAnswer", () => {
       }),
     ).rejects.toThrow("boom");
     expect(globalThis.fetch).toBe(before);
+  });
+});
+
+describe("geminiFetch", () => {
+  afterEach(() => vi.restoreAllMocks());
+  const url =
+    "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent";
+
+  it("passes the request through untouched and logs model and status", async () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    const res = new Response("{}", { status: 503 });
+    const seen: unknown[] = [];
+    const wrapped = geminiFetch(async (...args) => (seen.push(...args), res));
+    const init = { method: "POST", body: '{"exact":1}' };
+
+    expect(await wrapped(url, init)).toBe(res);
+    expect(seen[0]).toBe(url);
+    expect(seen[1]).toBe(init);
+    expect(log).toHaveBeenCalledWith("gemini-3.6-flash: HTTP 503");
   });
 });

@@ -13,7 +13,15 @@ import {
 import { mimeTypeForPath } from "../src/telegram.js";
 import { testDbUrl } from "../tests/integration/env.js";
 import { allGoldens, golden, type Golden, type GoldenInput } from "../tests/golden/golden.js";
-import { captureAnswer, outageWaiter, problems, recordedFile, retryOnce } from "./harness.js";
+import {
+  captureAnswer,
+  geminiFetch,
+  outageWaiter,
+  problems,
+  recordedFile,
+  retryOnce,
+  type Answer,
+} from "./harness.js";
 
 const GOLDEN_DIR = new URL("../tests/golden/", import.meta.url);
 const RECORD = process.env.EVAL_RECORD === "1";
@@ -49,8 +57,8 @@ function extract(input: Exclude<GoldenInput, { kind: "edit" }>): Promise<Extract
     : extractFromVoice({ ...media, audio: bytes });
 }
 
-/** Gemini's raw answer, the shape a golden records. */
-async function liveAnswer(g: Golden): Promise<unknown> {
+/** Gemini's raw answer (the shape a golden records) and the model that gave it. */
+async function liveAnswer(g: Golden): Promise<Answer> {
   const { input } = g;
   if (input.kind !== "edit") return captureAnswer(() => extract(input));
   // An edit corrects what the base message extracts live, as in the bot.
@@ -62,25 +70,31 @@ async function liveAnswer(g: Golden): Promise<unknown> {
 }
 
 describe.skipIf(inject("evalSkip"))("live Gemini", () => {
+  const realFetch = globalThis.fetch;
+
   beforeAll(async () => {
+    globalThis.fetch = geminiFetch(realFetch);
     db = new Client({ connectionString: testDbUrl() });
     await db.connect();
     taxonomy = await loadTaxonomy(db);
   });
 
   afterAll(async () => {
+    globalThis.fetch = realFetch;
     await db?.end();
   });
 
   it.each(allGoldens().map((g) => [g.file, g.name, g] as const))("%s: %s", async (_file, _name, g) => {
-    let answer: unknown;
-    const found = await retryOnce(async () => {
+    let answer: Answer | undefined;
+    const { problems: found, attempts } = await retryOnce(g.file, async () => {
+      answer = undefined;
       answer = await waitForGemini(() => liveAnswer(g));
-      return problems(g, answer);
+      return problems(g, answer.raw);
     });
+    console.log(`${g.file}: ${attempts} attempt(s), answered by ${answer?.model ?? "no model"}`);
     if (RECORD && found.length === 0) {
       const file = new URL(`${g.file}.json`, GOLDEN_DIR);
-      const next = recordedFile(readFileSync(file, "utf8"), answer);
+      const next = recordedFile(readFileSync(file, "utf8"), answer!.raw);
       if (next) writeFileSync(file, next);
     }
     expect(found).toEqual([]);

@@ -64,17 +64,37 @@ export function outageWaiter(opts: {
 }
 
 /** A case gets two tries; the second answer (or error) is the verdict. */
-export async function retryOnce(attempt: () => Promise<string[]>): Promise<string[]> {
+export async function retryOnce(
+  name: string,
+  attempt: () => Promise<string[]>,
+): Promise<{ problems: string[]; attempts: number }> {
   let problems: string[] = [];
-  for (let i = 0; i < 2; i++) {
+  for (let attempts = 1; ; attempts++) {
     try {
       problems = await attempt();
     } catch (err) {
       problems = [(err as Error).message];
     }
-    if (problems.length === 0) return [];
+    if (problems.length === 0 || attempts === 2) return { problems, attempts };
+    console.warn(`${name}: attempt 1 failed (${problems.join("; ")}); retrying`);
   }
-  return problems;
+}
+
+function modelOf(input: Parameters<typeof fetch>[0]): string {
+  const url = input instanceof Request ? input.url : String(input);
+  return /\/models\/([^:/]+):/.exec(url)?.[1] ?? url;
+}
+
+/**
+ * The eval's fetch: logs the model and status of every Gemini response.
+ * Requests go to `realFetch` exactly as production built them.
+ */
+export function geminiFetch(realFetch: typeof fetch): typeof fetch {
+  return async (input, init) => {
+    const res = await realFetch(input, init);
+    console.log(`${modelOf(input)}: HTTP ${res.status}`);
+    return res;
+  };
 }
 
 /** Problems with a live answer against a golden's `expect`; empty when it fits. */
@@ -89,16 +109,21 @@ export function recordedFile(text: string, raw: unknown): string | null {
   return `${JSON.stringify({ ...g, recorded: raw }, null, 2)}\n`;
 }
 
+export type Answer = { raw: unknown; model: string | undefined };
+
 /**
- * Runs `call` and returns the JSON of the first successful Gemini answer:
- * the extractor's, before any bucket call. That is what goldens record.
+ * Runs `call` and returns the JSON of the first successful Gemini answer
+ * and the model that gave it: the extractor's, before any bucket call.
+ * That is what goldens record.
  */
-export async function captureAnswer(call: () => Promise<unknown>): Promise<unknown> {
+export async function captureAnswer(call: () => Promise<unknown>): Promise<Answer> {
   const realFetch = globalThis.fetch;
   let first: Promise<unknown> | undefined;
+  let model: string | undefined;
   globalThis.fetch = async (...args) => {
     const res = await realFetch(...args);
     if (res.ok && !first) {
+      model = modelOf(args[0]);
       first = res
         .clone()
         .json()
@@ -111,5 +136,5 @@ export async function captureAnswer(call: () => Promise<unknown>): Promise<unkno
   } finally {
     globalThis.fetch = realFetch;
   }
-  return first;
+  return { raw: await first, model };
 }
