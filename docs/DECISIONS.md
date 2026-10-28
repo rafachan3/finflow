@@ -1025,6 +1025,22 @@ flipping untouched lines; the Edit case now checks for that).
 
 ---
 
+## 2026-10-28 — Needs/wants accuracy truth is the Notion import only
+
+`npm run eval:buckets` scores the bucket call against expenses that no
+ingestion was confirmed into: the Notion import, where the owner chose
+every `Bucket` by hand. Bot-created rows carry Gemini's bucket with only a
+Confirm on top, so scoring against them measures the model against itself.
+The check connects as `finflow_readonly` over TLS verified against
+Supabase's public root CA (`supabase/prod-ca-2021.crt`), and runs only on
+the owner's machine.
+
+**Ruled out:** bot-confirmed rows as truth (self-agreement); running it in
+CI (personal rows and rules would reach a public runner); unverified TLS
+to the pooler.
+
+---
+
 ## 2026-10-28 — Notes get a light copy-edit, not a rewrite
 
 Owner ruling on #27. Gemini fixes spelling, typos, punctuation and grammar
