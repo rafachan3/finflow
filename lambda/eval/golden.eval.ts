@@ -20,7 +20,13 @@ import {
 import { todayToronto, withDatePolicy } from "../src/handler.js";
 import { mimeTypeForPath } from "../src/telegram.js";
 import { testDbUrl } from "../tests/integration/env.js";
-import { allGoldens, golden, type Golden, type GoldenInput } from "../tests/golden/golden.js";
+import {
+  allGoldens,
+  bucketRules,
+  golden,
+  type Golden,
+  type GoldenInput,
+} from "../tests/golden/golden.js";
 import {
   captureAnswer,
   geminiFetch,
@@ -50,21 +56,25 @@ const MIN_GAP_MS = 13_000;
 let db: Client;
 let taxonomy: TaxonomySnapshot;
 
-function args() {
+/**
+ * Personal rules never leave SSM. A case runs with the bot's no-rules
+ * fallback, or opts into a synthetic ruleset, which goes where production
+ * sends `config.bucketRules`.
+ */
+function args(g: Golden) {
   return {
     apiKey: process.env.GEMINI_EVAL_API_KEY!,
     taxonomy,
-    // Personal rules never leave SSM; the bot's no-rules fallback applies.
-    bucketRules: "",
+    bucketRules: bucketRules(g),
     today: todayToronto(),
   };
 }
 
 /** The production call for a message the owner sends (edits excluded). */
-function extract(input: Exclude<GoldenInput, { kind: "edit" }>): Promise<Extraction[]> {
-  if (input.kind === "text") return extractFromText({ ...args(), text: input.text });
+function extract(g: Golden, input: Exclude<GoldenInput, { kind: "edit" }>): Promise<Extraction[]> {
+  if (input.kind === "text") return extractFromText({ ...args(g), text: input.text });
   const media = {
-    ...args(),
+    ...args(g),
     caption: input.caption,
     mimeType: mimeTypeForPath(input.media),
   };
@@ -77,15 +87,17 @@ function extract(input: Exclude<GoldenInput, { kind: "edit" }>): Promise<Extract
 /** Gemini's raw answer (the shape a golden records) and the model that gave it. */
 async function liveAnswer(g: Golden): Promise<Answer> {
   const { input } = g;
-  if (input.kind !== "edit") return captureAnswer(() => extract(input));
+  if (input.kind !== "edit") return captureAnswer(() => extract(g, input));
   // An edit corrects what the base message extracts live, after the date
   // policy the bot applies before it stores the extraction an Edit patches.
+  // Production sends one ruleset to both calls; golden.test.ts checks an
+  // edit names the same rules as its base.
   const base = golden(input.base).input as Exclude<GoldenInput, { kind: "edit" }>;
-  const [current] = (await extract(base)).map((e) =>
+  const [current] = (await extract(g, base)).map((e) =>
     withDatePolicy(normalizeTaxonomyNames(e, taxonomy), todayToronto(), base.kind),
   );
   return captureAnswer(() =>
-    patchExtraction({ ...args(), current, correction: input.correction }),
+    patchExtraction({ ...args(g), current, correction: input.correction }),
   );
 }
 

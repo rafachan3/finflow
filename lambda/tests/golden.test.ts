@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { allGoldens, golden, mismatches, recordedEvents } from "./golden/golden.js";
+import {
+  allGoldens,
+  bucketRules,
+  golden,
+  mismatches,
+  recordedEvents,
+  type ExpectedEvent,
+} from "./golden/golden.js";
 
 describe("golden files", () => {
   it.each(allGoldens().map((g) => [g.file, g] as const))(
@@ -44,5 +51,36 @@ describe("mismatches", () => {
     expect(
       mismatches([{ ...first, amount: "9.00" }], [two.expect.events[0]]),
     ).toEqual(["event 0: lines sum 3.00 != 9.00"]);
+  });
+
+  it("reports each line whose bucket differs from the expected one", () => {
+    const event = {
+      type: "expense",
+      amount: "3.00",
+      items: [
+        { description: "Milk", amount: "1.00", bucket: "needs" },
+        { description: "Chips", amount: "1.00", bucket: "needs" },
+        { description: "Soda", amount: "1.00" },
+      ],
+    };
+    const want: ExpectedEvent = { type: "expense", lines: 3, buckets: ["needs", "wants", "wants"] };
+    expect(mismatches([event], [want])).toEqual([
+      "event 0: line 1 (Chips) bucket needs != wants",
+      "event 0: line 2 (Soda) bucket undefined != wants",
+    ]);
+  });
+});
+
+describe("bucketRules", () => {
+  it("is empty unless a case opts into a ruleset file", () => {
+    expect(bucketRules(golden("text-with-note"))).toBe("");
+    expect(bucketRules({ rules: "bucket-rules.synthetic.md" })).toMatch(/^Synthetic/);
+  });
+
+  it("an edit uses the same rules as its base, as production does", () => {
+    for (const g of allGoldens()) {
+      if (g.input.kind !== "edit") continue;
+      expect(g.rules).toBe(golden(g.input.base).rules);
+    }
   });
 });
