@@ -324,7 +324,7 @@ export const ledger = {
   },
   items() {
     return sql<{ description: string; bucket: string }>(
-      `select description, bucket::text from transaction_items order by id`,
+      `select description, bucket::text from transaction_items order by description`,
     );
   },
 };

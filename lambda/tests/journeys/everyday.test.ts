@@ -40,8 +40,23 @@ describe("logging one purchase", () => {
     await chat.tap(card, "Confirm");
     expect(chat.acks()).toEqual(["Saved."]);
     expect(await ledger.transactions()).toMatchObject([
-      { date: "2026-10-25", amount: "14.00", notes: "was too tired to pack lunch", funder: "self" },
+      {
+        date: "2026-10-25",
+        amount: "14.00",
+        notes: "was too tired to pack lunch",
+        funder: "self",
+        merchant: null,
+      },
     ]);
+    expect(await ledger.items()).toMatchObject([{ description: "Sub", bucket: "wants" }]);
+  });
+
+  it("a merchant from the lookup is linked, and one outside it is left unattached", async () => {
+    const recorded = golden("text-with-note").recorded as { events: { merchant: string }[] };
+    gemini.extract = { events: [{ ...recorded.events[0], merchant: "Acme Mart" }] };
+    await chat.text("14 lunch at Acme Mart on Oct 25");
+    await chat.tap(chat.last(), "Confirm");
+    expect(await ledger.transactions()).toMatchObject([{ merchant: "Acme Mart" }]);
   });
 
   it("tapping Confirm twice saves once and says it was already handled", async () => {
