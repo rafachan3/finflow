@@ -1,0 +1,66 @@
+{
+  "name": "a purchase and a paycheque become two entries",
+  "input": {
+    "kind": "text",
+    "text": "groceries at Maxi 40, and got paid 200 salary"
+  },
+  "expect": {
+    "events": [
+      {
+        "type": "expense",
+        "lines": 1,
+        "merchant": true
+      },
+      {
+        "type": "income",
+        "lines": 0
+      }
+    ]
+  },
+  "recorded": {
+    "events": [
+      {
+        "type": "expense",
+        "amount": "40.00",
+        "currency": "CAD",
+        "date": "",
+        "description": "Groceries at Maxi",
+        "merchant": "Maxi",
+        "venue": "Supermarket",
+        "tags": [],
+        "funded_by": null,
+        "is_recurring": false,
+        "income_source": null,
+        "to_account": null,
+        "notes": null,
+        "items": [
+          {
+            "description": "Groceries",
+            "amount": "40.00",
+            "category": "Food and drink",
+            "subcategory": "Groceries",
+            "item_type": "Ingredients & Staples"
+          }
+        ],
+        "confidence": 0.9
+      },
+      {
+        "type": "income",
+        "amount": "200.00",
+        "currency": "CAD",
+        "date": "",
+        "description": "Salary",
+        "merchant": null,
+        "venue": null,
+        "tags": [],
+        "funded_by": null,
+        "is_recurring": false,
+        "income_source": "Salary",
+        "to_account": null,
+        "notes": null,
+        "items": [],
+        "confidence": 0.9
+      }
+    ]
+  }
+}

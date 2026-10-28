@@ -1,0 +1,46 @@
+{
+  "name": "someone else paying is recorded as the funder",
+  "input": {
+    "kind": "text",
+    "text": "20 dinner at Mandy's on Oct 24, my family paid"
+  },
+  "expect": {
+    "events": [
+      {
+        "type": "expense",
+        "lines": 1,
+        "funder": "family",
+        "date": true
+      }
+    ]
+  },
+  "recorded": {
+    "events": [
+      {
+        "type": "expense",
+        "amount": "20.00",
+        "currency": "CAD",
+        "date": "2026-10-24",
+        "description": "Dinner at Mandy's",
+        "merchant": "Mandy's",
+        "venue": null,
+        "tags": [],
+        "funded_by": "family",
+        "is_recurring": false,
+        "income_source": null,
+        "to_account": null,
+        "notes": null,
+        "items": [
+          {
+            "description": "Dinner",
+            "amount": "20.00",
+            "category": "Food and drink",
+            "subcategory": "Restaurants",
+            "item_type": "Meals & Prepared Food"
+          }
+        ],
+        "confidence": 0.9
+      }
+    ]
+  }
+}

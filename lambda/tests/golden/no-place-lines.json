@@ -1,0 +1,52 @@
+{
+  "name": "two items with no place stay one purchase with two lines",
+  "input": {
+    "kind": "text",
+    "text": "12 lunch and 4 coffee"
+  },
+  "expect": {
+    "events": [
+      {
+        "type": "expense",
+        "lines": 2,
+        "merchant": false
+      }
+    ]
+  },
+  "recorded": {
+    "events": [
+      {
+        "type": "expense",
+        "amount": "16.00",
+        "currency": "CAD",
+        "date": "",
+        "description": "Lunch and coffee",
+        "merchant": null,
+        "venue": null,
+        "tags": [],
+        "funded_by": null,
+        "is_recurring": false,
+        "income_source": null,
+        "to_account": null,
+        "notes": null,
+        "items": [
+          {
+            "description": "Lunch",
+            "amount": "12.00",
+            "category": "Food and drink",
+            "subcategory": "Takeout / Quick Service",
+            "item_type": "Meals & Prepared Food"
+          },
+          {
+            "description": "Coffee",
+            "amount": "4.00",
+            "category": "Food and drink",
+            "subcategory": "Takeout / Quick Service",
+            "item_type": "Non-Alcoholic Beverages"
+          }
+        ],
+        "confidence": 0.9
+      }
+    ]
+  }
+}

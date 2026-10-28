@@ -1,0 +1,47 @@
+{
+  "name": "a voice note becomes one purchase",
+  "input": {
+    "kind": "voice",
+    "caption": "",
+    "media": "note.ogg"
+  },
+  "expect": {
+    "events": [
+      {
+        "type": "expense",
+        "lines": 1,
+        "merchant": true,
+        "date": false
+      }
+    ]
+  },
+  "recorded": {
+    "events": [
+      {
+        "type": "expense",
+        "amount": "3.25",
+        "currency": "CAD",
+        "date": "",
+        "description": "Coffee at Tim Hortons",
+        "merchant": "Tim Hortons",
+        "venue": "Coffee Shop",
+        "tags": [],
+        "funded_by": null,
+        "is_recurring": false,
+        "income_source": null,
+        "to_account": null,
+        "notes": null,
+        "items": [
+          {
+            "description": "Coffee",
+            "amount": "3.25",
+            "category": "Food and drink",
+            "subcategory": "Takeout / Quick Service",
+            "item_type": "Non-Alcoholic Beverages"
+          }
+        ],
+        "confidence": 0.9
+      }
+    ]
+  }
+}

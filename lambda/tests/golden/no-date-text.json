@@ -1,0 +1,46 @@
+{
+  "name": "a purchase with no date leaves the date empty",
+  "input": {
+    "kind": "text",
+    "text": "4.50 coffee"
+  },
+  "expect": {
+    "events": [
+      {
+        "type": "expense",
+        "lines": 1,
+        "date": false,
+        "note": false
+      }
+    ]
+  },
+  "recorded": {
+    "events": [
+      {
+        "type": "expense",
+        "amount": "4.50",
+        "currency": "CAD",
+        "date": "",
+        "description": "Coffee",
+        "merchant": null,
+        "venue": null,
+        "tags": [],
+        "funded_by": null,
+        "is_recurring": false,
+        "income_source": null,
+        "to_account": null,
+        "notes": null,
+        "items": [
+          {
+            "description": "Coffee",
+            "amount": "4.50",
+            "category": "Food and drink",
+            "subcategory": "Takeout / Quick Service",
+            "item_type": "Non-Alcoholic Beverages"
+          }
+        ],
+        "confidence": 0.9
+      }
+    ]
+  }
+}
