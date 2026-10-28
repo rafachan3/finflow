@@ -147,9 +147,10 @@ merge. Replaces manual phone tests; no test touches production
       an empty database; every `db.ts` path runs against real SQL
 - [x] Journeys: the real handler against the throwaway database, a fake
       Telegram API and fake S3, with Gemini replayed from golden files
-- [ ] Eval: golden cases against live Gemini; a failure blocks the PR
+- [x] Eval: golden cases against live Gemini; a failure blocks the PR
 - [ ] Enforcement: `docs/TESTING.md` behaviour inventory checked in CI,
-      coverage floor, required checks on `main`
+      coverage floor (done), required checks on `main` (owner runs the
+      branch-protection command)
 - [ ] Post-deploy smoke: a wrong-secret request to the deployed Lambda
       returns 401
 

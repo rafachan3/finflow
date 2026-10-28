@@ -13,34 +13,28 @@ useJourneys();
 const ALL_MODELS = ["gemini-3.6-flash", "gemini-3.5-flash", "gemini-3.5-flash-lite"];
 
 describe("when something goes wrong", () => {
-  it(
-    "Gemini overloaded on every model: the bot says so and saves nothing",
-    { timeout: 15_000 },
-    async () => {
-      gemini.extract = golden("text-with-note").recorded;
-      gemini.overloaded = new Set(ALL_MODELS);
-      await chat.text("14 lunch at Sandwich Shop");
+  it("Gemini overloaded on every model: the bot says so and saves nothing", async () => {
+    gemini.extract = golden("text-with-note").recorded;
+    gemini.overloaded = new Set(ALL_MODELS);
+    await chat.text("14 lunch at Sandwich Shop");
 
-      expect(chat.last().text).toBe("Gemini is overloaded right now. Send it again in a minute.");
-      expect(gemini.calls.map((c) => c.model)).toEqual(ALL_MODELS);
-      expect(await ledger.ingestions()).toEqual([]);
-    },
-  );
+    expect(chat.last().text).toBe("Gemini is overloaded right now. Send it again in a minute.");
+    expect(gemini.calls.map((c) => c.model)).toEqual(ALL_MODELS);
+    expect(gemini.delays).toEqual([2000, 2000]);
+    expect(await ledger.ingestions()).toEqual([]);
+  });
 
-  it(
-    "only the lighter model answered: the card says to check categories and buckets",
-    { timeout: 15_000 },
-    async () => {
-      gemini.extract = golden("text-with-note").recorded;
-      gemini.overloaded = new Set(ALL_MODELS.slice(0, 2));
-      await chat.text("14 lunch at Sandwich Shop on Oct 25, was too tired to pack lunch");
+  it("only the lighter model answered: the card says to check categories and buckets", async () => {
+    gemini.extract = golden("text-with-note").recorded;
+    gemini.overloaded = new Set(ALL_MODELS.slice(0, 2));
+    await chat.text("14 lunch at Sandwich Shop on Oct 25, was too tired to pack lunch");
 
-      expect(chat.last().text).toContain(
-        "! read by a lighter model while Gemini was busy — check categories and buckets",
-      );
-      expect(chat.last().buttons.map((b) => b.text)).toContain("Confirm");
-    },
-  );
+    expect(chat.last().text).toContain(
+      "! read by a lighter model while Gemini was busy — check categories and buckets",
+    );
+    expect(chat.last().buttons.map((b) => b.text)).toContain("Confirm");
+    expect(gemini.delays).toEqual([2000, 2000]);
+  });
 
   it("Gemini finds no purchase: the bot asks to try again in a sentence", async () => {
     gemini.extract = { events: [] };

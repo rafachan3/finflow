@@ -19,8 +19,15 @@ if (!process.env.TEST_DATABASE_URL) {
 
 export default defineConfig({
   test: {
+    // `npm run test:coverage`. The floor is measured on unit plus integration
+    // plus journeys (needs TEST_DATABASE_URL); raise it, never lower it.
+    coverage: {
+      provider: "v8",
+      include: ["src/**"],
+      thresholds: { lines: 90, statements: 90, branches: 84, functions: 98 },
+    },
     projects: [
-      { test: { name: "unit", include: ["tests/*.test.ts"] } },
+      { test: { name: "unit", include: ["tests/*.test.{ts,mjs}"] } },
       ...(process.env.TEST_DATABASE_URL ? [integration] : []),
     ],
   },

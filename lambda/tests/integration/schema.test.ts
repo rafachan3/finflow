@@ -18,13 +18,15 @@ const SALARY = "(select id from income_sources where name = 'Salary')";
 
 describe("migrations", () => {
   it("leave ingestions unique per update and event", async () => {
-    const rows = await sql<{ conname: string }>(
-      `select conname from pg_constraint
-       where conrelid = 'ingestions'::regclass and contype = 'u'`,
+    const rows = await sql<{ columns: string[] }>(
+      `select array_agg(a.attname::text order by k.ord) as columns
+       from pg_constraint c
+       cross join unnest(c.conkey) with ordinality as k(attnum, ord)
+       join pg_attribute a on a.attrelid = c.conrelid and a.attnum = k.attnum
+       where c.conrelid = 'ingestions'::regclass and c.contype = 'u'
+       group by c.oid`,
     );
-    expect(rows.map((r) => r.conname)).toEqual([
-      "ingestions_telegram_update_id_event_index_key",
-    ]);
+    expect(rows).toContainEqual({ columns: ["telegram_update_id", "event_index"] });
   });
 
   it("store money as numeric(12,2)", async () => {
@@ -108,12 +110,24 @@ describe("constraints", () => {
 });
 
 describe("finflow_readonly", () => {
-  it("can read every table but write none", async () => {
+  it("can read every public table and write none of them", async () => {
+    const tables = await sql<{ name: string; can_read: boolean; can_write: boolean }>(
+      `select c.relname::text as name,
+              has_table_privilege('finflow_readonly', c.oid, 'select') as can_read,
+              has_table_privilege('finflow_readonly', c.oid, 'insert, update, delete, truncate') as can_write
+       from pg_class c join pg_namespace n on n.oid = c.relnamespace
+       where n.nspname = 'public' and c.relkind = 'r'
+       order by c.relname`,
+    );
+    expect(tables.length).toBeGreaterThan(0);
+    expect(tables.filter((t) => !t.can_read).map((t) => t.name)).toEqual([]);
+    expect(tables.filter((t) => t.can_write).map((t) => t.name)).toEqual([]);
+  });
+
+  it("is refused a write when it tries one", async () => {
     await withClient(async (client) => {
       await client.query("SET ROLE finflow_readonly");
-      await expect(
-        client.query("select count(*) from transactions"),
-      ).resolves.toBeDefined();
+      await expect(client.query("select count(*) from transactions")).resolves.toBeDefined();
       await expect(
         client.query("insert into tags (name) values ('x')"),
       ).rejects.toMatchObject({ code: "42501" });
