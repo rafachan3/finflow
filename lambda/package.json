@@ -4,6 +4,10 @@
   "type": "module",
   "scripts": {
     "test": "vitest run",
+    "test:unit": "vitest run --project unit",
+    "test:integration": "vitest run --project integration",
+    "db:up": "docker run -d --rm --name finflow-test-db -e POSTGRES_PASSWORD=postgres -p 127.0.0.1:54329:5432 postgres:17",
+    "db:down": "docker stop finflow-test-db",
     "build": "tsc --noEmit",
     "bundle": "esbuild src/handler.ts --bundle --platform=node --target=node22 --outfile=dist/index.js --format=cjs"
   },

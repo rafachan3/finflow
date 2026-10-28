@@ -788,3 +788,37 @@ awaiting state would need an event index); an `ingestion_events` child
 table (touches every DB function for a few KB saved); splitting a card
 through Edit (to split, Discard and resend); "Confirm all"; one
 bucket call per event (free-tier quota).
+
+---
+
+## 2026-10-28 — Automated regression suite replaces phone tests
+
+The owner will not run manual phone tests again: every behaviour gets an
+automated test, a PR that breaks one cannot merge, and no test touches
+production.
+
+Layers: unit (existing), integration and journeys against a throwaway
+`postgres:17`, a live-Gemini eval over shared golden files, an inventory
+check plus coverage floor, and a post-deploy smoke check that sends a
+wrong secret and expects 401. Unit, integration, eval and inventory become
+required checks on `main`.
+
+- The eval blocks merges. This reverses the earlier "report, don't block"
+  pick: only live Gemini can prove the split and extraction behaviour, and
+  the owner wants no manual step. A Gemini outage holds PRs until it
+  recovers (the job waits and retries for up to 20 minutes).
+- The eval sends exactly the production request. Production sets no
+  temperature, and a test-only setting would test a different bot.
+- Phase 3's multi-event phone test is replaced by its journeys and golden
+  cases.
+- Test databases must be on `localhost`; the harness refuses any other
+  host.
+- Integration files run in one vitest worker: they share one database and
+  truncate it per test, and `fileParallelism` is ignored inside a project.
+
+**Ruled out:** Supabase CLI local stack (about 1 GB image and a second tool
+version, while the migrations use no Supabase-only feature);
+Testcontainers (a dependency for one container); PGlite (single
+connection, so it cannot test the advisory lock); a staging environment
+or automatic rollback (a second Supabase project or a Lambda alias;
+revisit if a smoke failure ever ships).

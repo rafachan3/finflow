@@ -12,7 +12,8 @@ Living state of the project. Read this first; update it whenever work lands.
 - [x] Phase 1 — Supabase project, schema migrations, Notion history import (2026-08-13)
 - [x] Taxonomy tweak — Hygiene + Beauty → Personal care (Health and wellness); buckets untouched (2026-08-13)
 - [x] Phase 2 — Telegram bot walking skeleton (text only, no LLM) (2026-08-17)
-- [ ] Phase 3 — Gemini extraction (text → photo → voice) — **3a + 3b + 3c phone-tested; funding source applied; Edit phone-tested; context notes phone-tested; multi-event merged, pending phone test**
+- [ ] Phase 3 — Gemini extraction (text → photo → voice) — **3a + 3b + 3c phone-tested; funding source applied; Edit phone-tested; context notes phone-tested; multi-event merged (#28), accepted by Phase 3.6 journeys**
+- [ ] Phase 3.6 — Regression test suite — **in progress: integration tests on a throwaway Postgres done (PR 1)**
 - [ ] Phase 3.5 — Ingestion follow-ons (item tags, duplicate warning, merchant commands)
 - [ ] Phase 4 — dbt semantic layer + MetricFlow
 - [ ] Phase 4.5 — Proactive nudges (recurring reminders, merchant recommendations)
@@ -202,20 +203,21 @@ waiting card first." A card send that fails after the rows are saved is
 logged and the other cards still go out, with no false "Couldn't
 parse" reply.
 
+Regression suite (Phase 3.6, 2026-10-28; DECISIONS.md): `lambda/tests/`
+splits into a `unit` vitest project (mocks, no database) and an
+`integration` project that recreates a `finflow_test` database on a
+local `postgres:17`, applies every migration plus
+`seed.personal.example.sql`, and runs every `db.ts` path against real
+SQL, including two connections racing on one update. The harness
+refuses any host but `localhost`. `.github/workflows/ci.yml` runs both
+on every PR; the deploy workflow now runs on push to main only.
+
 ## Next concrete step
 
-Deploy `feat/multi-event` (0009 is already applied) and phone-test
-multi-event; Phase 3 then closes and Phase 3.5 starts.
-
-| Send | Expect |
-|---|---|
-| `3 at Dollarama and 5 at Pharmaprix` | 2 cards |
-| `milk 4 and bread 3 at Maxi` | 1 card, 2 lines |
-| `12 lunch and 4 coffee` | 1 card, 2 lines |
-| `groceries at Maxi 40, and got paid 200 salary` | expense + income cards |
-| receipt + caption `also 5 at Pharmaprix` | 2 cards, one S3 object |
-| Confirm card 2 while card 1 waits for Fix date | works |
-| Fix date on card 2 while card 1 waits | "Finish the waiting card first." |
+Phase 3.6 PR 2: journeys. The real handler runs against the throwaway
+database, with an MSW fake Telegram, an S3 mock, and Gemini replayed from
+golden files. The multi-event phone-test rows become journeys there;
+Phase 3 closes when they pass.
 
 Optional leftover: S3 keys
 `{source}/{yyyy-mm}/{id}.{ext}` in the existing bucket. Optional smoke:

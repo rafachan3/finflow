@@ -6,11 +6,6 @@ on:
     paths:
       - "lambda/**"
       - ".github/workflows/deploy-ingest.yml"
-  # PRs run test + bundle only; the AWS steps below are push-to-main only.
-  pull_request:
-    paths:
-      - "lambda/**"
-      - ".github/workflows/deploy-ingest.yml"
 
 permissions:
   id-token: write
@@ -35,13 +30,11 @@ jobs:
       - name: Zip bundle
         run: (cd dist && zip -j ../ingest.zip index.js)
       - name: Configure AWS credentials (OIDC)
-        if: github.event_name == 'push'
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_INGEST_DEPLOY_ROLE_ARN }}
           aws-region: ca-central-1
       - name: Update function code
-        if: github.event_name == 'push'
         run: |
           aws lambda update-function-code \
             --function-name finflow-ingest \

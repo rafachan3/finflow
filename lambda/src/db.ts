@@ -17,6 +17,13 @@ async function getPool(): Promise<Pool> {
   return pool;
 }
 
+/** Ends the pool; the next query opens a new one. */
+export async function closePool(): Promise<void> {
+  const open = pool;
+  pool = undefined;
+  await open?.end();
+}
+
 function isUniqueViolation(err: unknown): boolean {
   return (
     typeof err === "object" &&
