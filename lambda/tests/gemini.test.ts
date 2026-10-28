@@ -59,6 +59,8 @@ const extracted = {
       category: "Food and drink",
       subcategory: "Takeout / Quick Service",
       item_type: "Meals & Prepared Food",
+      bucket_why: "takeout",
+      bucket: "wants",
     },
   ],
   confidence: 0.8,
@@ -69,22 +71,11 @@ afterEach(() => {
 });
 
 describe("extractFromText", () => {
-  it("calls extractor then bucket specialist and merges buckets", async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => geminiJson(events(extracted), 100, 40),
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () =>
-          geminiJson(
-            { buckets: [{ bucket: "wants", why: "takeout" }] },
-            50,
-            10,
-          ),
-      });
+  it("makes one call that returns buckets, with the rules after the taxonomy", async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce({
+      ok: true,
+      json: async () => geminiJson(events(extracted), 100, 40),
+    });
     vi.stubGlobal("fetch", fetchMock);
 
     const [result] = await extractFromText({
@@ -95,68 +86,126 @@ describe("extractFromText", () => {
       today: "2026-08-17",
     });
 
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-    const firstBody = JSON.parse(
-      fetchMock.mock.calls[0][1].body as string,
-    ) as { generationConfig: { responseSchema: { properties: { events: { items: { properties: { items: { items: { properties: Record<string, unknown> } } } } } } } } };
-    expect(
-      firstBody.generationConfig.responseSchema.properties.events.items.properties.items.items.properties.bucket,
-    ).toBeUndefined();
-
-    const secondUser = JSON.parse(fetchMock.mock.calls[1][1].body as string) as {
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body as string) as {
+      systemInstruction: { parts: { text: string }[] };
       contents: { parts: { text: string }[] }[];
     };
-    expect(secondUser.contents[0].parts[0].text).toContain("burrito");
-    expect(secondUser.contents[0].parts[0].text).not.toContain("12.50 lunch chipotle");
+    const system = body.systemInstruction.parts[0].text;
+    expect(system).not.toMatch(/Do not assign needs\/wants/);
+    expect(system).toMatch(/bucket_why/);
+    expect(system.indexOf("Subcategories:")).toBeGreaterThan(-1);
+    expect(system.indexOf("Needs/wants rules:\nTakeout is wants.")).toBeGreaterThan(
+      system.indexOf("Subcategories:"),
+    );
+    expect(JSON.stringify(body.contents)).not.toContain("Takeout is wants.");
 
     expect(result.items[0].bucket).toBe("wants");
     expect(result.items[0].bucket_why).toBe("takeout");
-    expect(result.usage?.extractor).toEqual({ input: 100, output: 40 });
-    expect(result.usage?.bucket).toEqual({ input: 50, output: 10 });
+    expect(result.usage).toEqual({ extractor: { input: 100, output: 40 } });
     expect(result.meta?.model).toBe("gemini-3.6-flash");
-    expect(result.meta?.bucket_model).toBe("gemini-3.6-flash");
+    expect(result.meta?.bucket_model).toBeUndefined();
+    expect(result.meta?.bucket_sha256).toBeUndefined();
     expect(result.meta?.extractor_sha256).toMatch(/^[0-9a-f]{64}$/);
     expect(result.meta?.taxonomy_sha256).toMatch(/^[0-9a-f]{64}$/);
-    expect(result.meta?.bucket_sha256).toMatch(/^[0-9a-f]{64}$/);
     expect(result.meta?.rules_sha256).toMatch(/^[0-9a-f]{64}$/);
 
-    const firstSystem = JSON.parse(
-      fetchMock.mock.calls[0][1].body as string,
-    ) as { systemInstruction: { parts: { text: string }[] } };
-    expect(firstSystem.systemInstruction.parts[0].text).toMatch(
-      /empty string/i,
+    expect(system).toMatch(/empty string/i);
+    expect(system).toMatch(/never guess/i);
+    expect(system).toMatch(/ordinary English/i);
+    expect(system).toMatch(/Translate French/i);
+    expect(system).toMatch(/Keep brand names/i);
+  });
+
+  it("reads needs from the item and maps anything else to wants", async () => {
+    const odd = { ...extracted.items[0], bucket: "maybe", bucket_why: "" };
+    const need = { ...extracted.items[0], bucket: "needs", bucket_why: "medicine" };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValueOnce({
+        ok: true,
+        json: async () => geminiJson(events({ ...extracted, amount: "25.00", items: [need, odd] })),
+      }),
     );
-    expect(firstSystem.systemInstruction.parts[0].text).toMatch(
-      /never guess/i,
-    );
-    expect(firstSystem.systemInstruction.parts[0].text).toMatch(
-      /ordinary English/i,
-    );
-    expect(firstSystem.systemInstruction.parts[0].text).toMatch(
-      /Translate French/i,
-    );
-    expect(firstSystem.systemInstruction.parts[0].text).toMatch(
-      /Keep brand names/i,
-    );
+
+    const [result] = await extractFromText({
+      apiKey: "test-key",
+      text: "two",
+      taxonomy,
+      bucketRules: "",
+      today: "2026-08-17",
+    });
+
+    expect(result.items.map((i) => i.bucket)).toEqual(["needs", "wants"]);
+    expect(result.items[0].bucket_why).toBe("medicine");
+  });
+
+  it("asks for bucket_why then bucket last on every item", async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce({
+      ok: true,
+      json: async () => geminiJson(events(extracted)),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await extractFromText({
+      apiKey: "test-key",
+      text: "12.50 lunch chipotle",
+      taxonomy,
+      bucketRules: "",
+      today: "2026-08-17",
+    });
+
+    const item = JSON.parse(fetchMock.mock.calls[0][1].body as string).generationConfig
+      .responseSchema.properties.events.items.properties.items.items as {
+      properties: Record<string, { enum?: string[] }>;
+      required: string[];
+      propertyOrdering: string[];
+    };
+    expect(item.properties.bucket.enum).toEqual(["needs", "wants"]);
+    expect(item.required).toEqual(expect.arrayContaining(["bucket", "bucket_why"]));
+    expect(item.propertyOrdering).toEqual(Object.keys(item.properties));
+    expect(item.propertyOrdering.slice(-2)).toEqual(["bucket_why", "bucket"]);
+  });
+
+  it("never logs the system prompt, so the rules stay out of CloudWatch", async () => {
+    vi.useFakeTimers();
+    const logged: unknown[] = [];
+    for (const level of ["log", "info", "warn", "error", "debug"] as const) {
+      vi.spyOn(console, level).mockImplementation((...a: unknown[]) => {
+        logged.push(...a);
+      });
+    }
+    try {
+      vi.stubGlobal(
+        "fetch",
+        vi
+          .fn()
+          .mockResolvedValueOnce({ ok: false, status: 503, json: async () => ({}) })
+          .mockResolvedValueOnce({ ok: true, json: async () => geminiJson(events(extracted)) }),
+      );
+      const p = extractFromText({
+        apiKey: "test-key",
+        text: "12.50 lunch chipotle",
+        taxonomy,
+        bucketRules: "Secret rule: takeout is wants.",
+        today: "2026-08-17",
+      });
+      await vi.runAllTimersAsync();
+      await p;
+      expect(logged.length).toBeGreaterThan(0);
+      expect(JSON.stringify(logged.map(String))).not.toMatch(/Secret rule|Needs\/wants rules/);
+    } finally {
+      vi.useRealTimers();
+      vi.restoreAllMocks();
+    }
   });
 
   it("hashes prompt text, not today's date, and splits taxonomy from rules", async () => {
     const mockPair = () =>
-      vi
-        .fn()
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => geminiJson(events(extracted), 100, 40),
-        })
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () =>
-            geminiJson(
-              { buckets: [{ bucket: "wants", why: "takeout" }] },
-              50,
-              10,
-            ),
-        });
+      vi.fn().mockResolvedValueOnce({
+        ok: true,
+        json: async () => geminiJson(events(extracted), 100, 40),
+      });
 
     const run = async (
       fetchMock: ReturnType<typeof vi.fn>,
@@ -195,40 +244,28 @@ describe("extractFromText", () => {
     expect(a.meta?.extractor_sha256).toBe(d.meta?.extractor_sha256);
   });
 
-  it("sends each line's default_bucket hint when there are no rules to apply", async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => geminiJson(events(extracted)),
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () =>
-          geminiJson({ buckets: [{ bucket: "wants", why: "hint" }] }),
-      });
+  it("falls back to the subcategory hints in the same prompt when there are no rules", async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce({
+      ok: true,
+      json: async () => geminiJson(events(extracted)),
+    });
     vi.stubGlobal("fetch", fetchMock);
 
     await extractFromText({
       apiKey: "test-key",
       text: "12.50 lunch chipotle",
       taxonomy,
-      bucketRules: "",
+      bucketRules: "  ",
       today: "2026-08-17",
     });
 
-    const bucketBody = JSON.parse(fetchMock.mock.calls[1][1].body as string) as {
-      systemInstruction: { parts: { text: string }[] };
-      contents: { parts: { text: string }[] }[];
-    };
-    expect(bucketBody.systemInstruction.parts[0].text).toMatch(/default_bucket hints/);
-    const [line] = JSON.parse(bucketBody.contents[0].parts[0].text) as {
-      default_bucket: string | null;
-    }[];
-    expect(line.default_bucket).toBe("wants");
+    const system = JSON.parse(fetchMock.mock.calls[0][1].body as string)
+      .systemInstruction.parts[0].text as string;
+    expect(system).toContain("- Food and drink / Takeout / Quick Service (hint wants)");
+    expect(system).toMatch(/Needs\/wants rules:\nNo personal rules\. Use each subcategory's default_bucket hint/);
   });
 
-  it("skips the bucket call for income", async () => {
+  it("makes one call for income and ignores its bucket", async () => {
     const fetchMock = vi.fn().mockResolvedValueOnce({
       ok: true,
       json: async () =>
@@ -260,7 +297,7 @@ describe("extractFromText", () => {
     expect(result.meta?.extractor_sha256).toMatch(/^[0-9a-f]{64}$/);
     expect(result.meta?.taxonomy_sha256).toMatch(/^[0-9a-f]{64}$/);
     expect(result.meta?.bucket_sha256).toBeUndefined();
-    expect(result.meta?.rules_sha256).toBeUndefined();
+    expect(result.meta?.rules_sha256).toMatch(/^[0-9a-f]{64}$/);
   });
 
   it("keeps funded_by null when Gemini returns null", async () => {
@@ -302,11 +339,6 @@ describe("extractFromText", () => {
             ...extracted,
             funded_by: null,
           })),
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () =>
-          geminiJson({ buckets: [{ bucket: "wants", why: "takeout" }] }),
       });
     vi.stubGlobal("fetch", fetchMock);
 
@@ -372,11 +404,6 @@ describe("extractFromText", () => {
         ok: true,
         json: async () =>
           geminiJson(events({ ...extracted, notes: "too lazy to cook" })),
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () =>
-          geminiJson({ buckets: [{ bucket: "wants", why: "takeout" }] }),
       });
     vi.stubGlobal("fetch", fetchMock);
 
@@ -413,11 +440,6 @@ describe("extractFromText", () => {
       .mockResolvedValueOnce({
         ok: true,
         json: async () => geminiJson(events({ ...extracted, notes: "" })),
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () =>
-          geminiJson({ buckets: [{ bucket: "wants", why: "takeout" }] }),
       });
     vi.stubGlobal("fetch", fetchMock);
 
@@ -488,31 +510,6 @@ describe("extractFromText", () => {
       expect(modelOf(fetchMock, 1)).toBe("gemini-3.5-flash");
       expect("value" in result && result.value.amount).toBe("2000.00");
       expect("value" in result && result.value.meta?.model).toBe("gemini-3.5-flash");
-    });
-
-    it("records the bucket step's model separately when only it falls back", async () => {
-      const fetchMock = vi
-        .fn()
-        .mockResolvedValueOnce({ ok: true, json: async () => geminiJson(events(extracted)) })
-        .mockResolvedValueOnce(overloaded())
-        .mockResolvedValueOnce({
-          ok: true,
-          json: async () => geminiJson({ buckets: [{ bucket: "wants", why: "takeout" }] }),
-        });
-      vi.stubGlobal("fetch", fetchMock);
-
-      const p = extractFromText({
-        apiKey: "test-key",
-        text: "12.50 lunch chipotle",
-        taxonomy,
-        bucketRules: "Takeout is wants.",
-        today: "2026-08-17",
-      });
-      await vi.runAllTimersAsync();
-      const [result] = await p;
-
-      expect(result.meta?.model).toBe("gemini-3.6-flash");
-      expect(result.meta?.bucket_model).toBe("gemini-3.5-flash");
     });
 
     it("retries a non-JSON 503 body too", async () => {
@@ -605,22 +602,13 @@ describe("extractFromText", () => {
 });
 
 describe("extractFromPhoto", () => {
-  it("sends JPEG inline data plus caption, then the bucket specialist without the image", async () => {
+  it("sends JPEG inline data plus caption once, with the rules in the system instruction", async () => {
     const jpeg = Buffer.from([0xff, 0xd8, 0xff]);
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce({
         ok: true,
         json: async () => geminiJson(events(extracted), 100, 40),
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () =>
-          geminiJson(
-            { buckets: [{ bucket: "wants", why: "takeout" }] },
-            50,
-            10,
-          ),
       });
     vi.stubGlobal("fetch", fetchMock);
 
@@ -634,7 +622,7 @@ describe("extractFromPhoto", () => {
       today: "2026-08-17",
     });
 
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
     const first = JSON.parse(fetchMock.mock.calls[0][1].body as string) as {
       systemInstruction: { parts: { text: string }[] };
       contents: {
@@ -656,12 +644,9 @@ describe("extractFromPhoto", () => {
     expect(first.systemInstruction.parts[0].text).toMatch(/ordinary English/i);
     expect(first.systemInstruction.parts[0].text).toMatch(/Translate French/i);
     expect(first.systemInstruction.parts[0].text).toMatch(/Keep brand names/i);
-
-    const second = JSON.parse(fetchMock.mock.calls[1][1].body as string) as {
-      contents: { parts: { text?: string; inlineData?: unknown }[] }[];
-    };
-    expect(JSON.stringify(second.contents)).not.toContain(
-      jpeg.toString("base64"),
+    expect(parts.filter((p) => p.inlineData)).toHaveLength(1);
+    expect(first.systemInstruction.parts[0].text).toContain(
+      "Needs/wants rules:\nTakeout is wants.",
     );
     expect(result.items[0].bucket).toBe("wants");
     expect(result.meta?.extractor_sha256).toMatch(/^[0-9a-f]{64}$/);
@@ -700,22 +685,13 @@ describe("extractFromPhoto", () => {
 });
 
 describe("extractFromVoice", () => {
-  it("sends Ogg inline data plus caption, then the bucket specialist without the audio", async () => {
+  it("sends Ogg inline data plus caption once, with the rules in the system instruction", async () => {
     const ogg = Buffer.from([0x4f, 0x67, 0x67, 0x53]);
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce({
         ok: true,
         json: async () => geminiJson(events(extracted), 100, 40),
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () =>
-          geminiJson(
-            { buckets: [{ bucket: "wants", why: "takeout" }] },
-            50,
-            10,
-          ),
       });
     vi.stubGlobal("fetch", fetchMock);
 
@@ -729,7 +705,7 @@ describe("extractFromVoice", () => {
       today: "2026-08-17",
     });
 
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
     const first = JSON.parse(fetchMock.mock.calls[0][1].body as string) as {
       systemInstruction: { parts: { text: string }[] };
       contents: {
@@ -750,12 +726,9 @@ describe("extractFromVoice", () => {
     expect(first.systemInstruction.parts[0].text).toMatch(/ordinary English/i);
     expect(first.systemInstruction.parts[0].text).toMatch(/Translate French/i);
     expect(first.systemInstruction.parts[0].text).toMatch(/Keep brand names/i);
-
-    const second = JSON.parse(fetchMock.mock.calls[1][1].body as string) as {
-      contents: { parts: { text?: string; inlineData?: unknown }[] }[];
-    };
-    expect(JSON.stringify(second.contents)).not.toContain(
-      ogg.toString("base64"),
+    expect(parts.filter((p) => p.inlineData)).toHaveLength(1);
+    expect(first.systemInstruction.parts[0].text).toContain(
+      "Needs/wants rules:\nTakeout is wants.",
     );
     expect(result.items[0].bucket).toBe("wants");
     expect(result.meta?.extractor_sha256).toMatch(/^[0-9a-f]{64}$/);
@@ -965,15 +938,12 @@ describe("multi-event extraction", () => {
     items: [{ ...extracted.items[0], description: "cold medicine", amount: "5.00" }],
   };
 
-  it("returns one extraction per event, with one shared bucket call", async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce({ ok: true, json: async () => geminiJson(events(extracted, pharmacy), 120, 60) })
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () =>
-          geminiJson({ buckets: [{ bucket: "wants", why: "takeout" }, { bucket: "needs", why: "medicine" }] }, 30, 6),
-      });
+  it("returns one extraction per event from one call", async () => {
+    const medicine = { ...pharmacy.items[0], bucket: "needs", bucket_why: "medicine" };
+    const fetchMock = vi.fn().mockResolvedValueOnce({
+      ok: true,
+      json: async () => geminiJson(events(extracted, { ...pharmacy, items: [medicine] }), 120, 60),
+    });
     vi.stubGlobal("fetch", fetchMock);
 
     const result = await extractFromText({
@@ -984,15 +954,13 @@ describe("multi-event extraction", () => {
       today: "2026-08-17",
     });
 
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(result.map((e) => e.amount)).toEqual(["12.50", "5.00"]);
     expect(result[0].items[0].bucket).toBe("wants");
     expect(result[1].items[0].bucket).toBe("needs");
+    expect(result[1].items[0].bucket_why).toBe("medicine");
     expect(result[1].notes).toBe("needed cold medicine");
-    const bucketText = JSON.parse(fetchMock.mock.calls[1][1].body as string).contents[0].parts[0].text;
-    expect(bucketText).toContain("burrito");
-    expect(bucketText).toContain("cold medicine");
-    expect(result[0].usage).toEqual({ extractor: { input: 120, output: 60 }, bucket: { input: 30, output: 6 } });
+    expect(result[0].usage).toEqual({ extractor: { input: 120, output: 60 } });
     expect(result[1].usage).toBeUndefined();
     expect(result[1].meta).toEqual(result[0].meta);
   });
@@ -1016,16 +984,4 @@ describe("multi-event extraction", () => {
     ).rejects.toThrow("Gemini returned no events");
   });
 
-  it("fails the message when buckets do not cover every line", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi
-        .fn()
-        .mockResolvedValueOnce({ ok: true, json: async () => geminiJson(events(extracted, pharmacy)) })
-        .mockResolvedValueOnce({ ok: true, json: async () => geminiJson({ buckets: [{ bucket: "wants", why: "x" }] }) }),
-    );
-    await expect(
-      extractFromText({ apiKey: "k", text: "two", taxonomy, bucketRules: "", today: "2026-08-17" }),
-    ).rejects.toThrow(/bucket count 1 != line count 2/);
-  });
 });

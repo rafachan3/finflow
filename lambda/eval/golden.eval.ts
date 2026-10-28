@@ -43,8 +43,8 @@ const rows: CaseRow[] = [];
 // every model in production's fallback chain is out of it.
 const waitForGemini = outageWaiter({ budgetMs: 20 * 60_000, everyMs: 2 * 60_000, sleep });
 
-// Each case sends an extractor and a bucket call back to back. 13 s apart
-// keeps the run under a 5-requests-per-minute free-tier limit.
+// Each case sends one request (edit-amount sends two: base, then patch).
+// 13 s apart keeps the run under a 5-requests-per-minute free-tier limit.
 const MIN_GAP_MS = 13_000;
 
 let db: Client;

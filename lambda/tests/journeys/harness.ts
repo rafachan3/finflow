@@ -69,7 +69,7 @@ export function takeTelegramRejections(): string[] {
 
 type GeminiCall = { model: string; kind: "extract" | "patch" | "bucket" };
 
-/** Scripted Gemini: set `extract` / `patch` per journey; buckets answer themselves. */
+/** Scripted Gemini: set `extract` / `patch` per journey; Edit's bucket call answers itself. */
 export const gemini = {
   calls: [] as GeminiCall[],
   extract: undefined as unknown,
