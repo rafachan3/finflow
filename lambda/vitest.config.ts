@@ -5,8 +5,9 @@ const integration = {
     name: "integration",
     include: ["tests/integration/**/*.test.ts"],
     globalSetup: ["tests/integration/global-setup.ts"],
-    // Files share one database and truncate it per test.
-    fileParallelism: false,
+    // Files share one database and truncate it per test, so one worker
+    // runs them in turn (fileParallelism is ignored inside a project).
+    poolOptions: { forks: { singleFork: true } },
   },
 };
 
