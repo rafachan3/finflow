@@ -130,7 +130,7 @@ export function voiceFileId(voice: unknown): string {
   return id;
 }
 
-function mimeTypeForPath(filePath: string): string {
+export function mimeTypeForPath(filePath: string): string {
   const lower = filePath.toLowerCase();
   if (lower.endsWith(".png")) return "image/png";
   if (lower.endsWith(".oga") || lower.endsWith(".ogg")) return "audio/ogg";
