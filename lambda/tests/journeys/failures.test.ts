@@ -19,7 +19,7 @@ describe("when something goes wrong", () => {
     async () => {
       gemini.extract = golden("text-with-note").recorded;
       gemini.overloaded = new Set(ALL_MODELS);
-      await chat.text("14 lunch at Subway");
+      await chat.text("14 lunch at Sandwich Shop");
 
       expect(chat.last().text).toBe("Gemini is overloaded right now. Send it again in a minute.");
       expect(gemini.calls.map((c) => c.model)).toEqual(ALL_MODELS);
@@ -33,7 +33,7 @@ describe("when something goes wrong", () => {
     async () => {
       gemini.extract = golden("text-with-note").recorded;
       gemini.overloaded = new Set(ALL_MODELS.slice(0, 2));
-      await chat.text("14 lunch at Subway on Oct 25, was too tired to pack lunch");
+      await chat.text("14 lunch at Sandwich Shop on Oct 25, was too tired to pack lunch");
 
       expect(chat.last().text).toContain(
         "! read by a lighter model while Gemini was busy — check categories and buckets",
@@ -46,6 +46,7 @@ describe("when something goes wrong", () => {
     gemini.extract = { events: [] };
     await chat.text("hello");
 
+    expect(gemini.calls).toEqual([{ model: "gemini-3.6-flash", kind: "extract" }]);
     expect(chat.last().text).toBe("Couldn't parse that. Try again in a sentence.");
     expect(await ledger.ingestions()).toEqual([]);
   });
@@ -53,7 +54,7 @@ describe("when something goes wrong", () => {
   it("a card that fails to send after saving does not stop the next card or blame the message", async () => {
     gemini.extract = golden("two-stores").recorded;
     chat.failNextSends(1);
-    await chat.text("3 at Dollarama and 5 at Pharmaprix");
+    await chat.text("3 at Dollar Corner and 5 at Corner Pharmacy");
 
     const received = chat.replies();
     expect(received).toHaveLength(1);

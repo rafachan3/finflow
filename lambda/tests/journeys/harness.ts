@@ -3,13 +3,14 @@ import type { APIGatewayProxyEventV2 } from "aws-lambda";
 import { mockClient } from "aws-sdk-client-mock";
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
-import { afterAll, beforeAll, beforeEach } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, expect } from "vitest";
 import { closeHelpers, resetData, sql } from "../integration/db-helpers.js";
 import { testDbUrl } from "../integration/env.js";
 
 /**
  * The deployed handler, end to end, with every outside service faked:
- * Telegram and Gemini through MSW (any other request fails the test), S3
+ * Telegram and Gemini through MSW (any other request, or a payload the real
+ * Telegram would refuse, fails the journey), S3
  * through aws-sdk-client-mock, Postgres as the throwaway test database.
  */
 
@@ -32,7 +33,39 @@ export function journeyConfig() {
 
 type Sent = { method: string; body: Record<string, unknown>; failed: boolean };
 
-const telegram = { sent: [] as Sent[], failSends: 0, filePath: "" };
+const telegram = { sent: [] as Sent[], failSends: 0, filePath: "", rejected: [] as string[] };
+
+type Button = { text?: string; callback_data?: string };
+
+/** The Bot API limits the real Telegram enforces with HTTP 400. */
+function telegramViolation(method: string, body: Record<string, unknown>): string | null {
+  if (method === "sendMessage") {
+    const text = typeof body.text === "string" ? body.text : "";
+    if (text.length < 1 || text.length > 4096) return "sendMessage: text must be 1-4096 characters";
+    const markup = body.reply_markup as { inline_keyboard?: Button[][] } | undefined;
+    for (const button of (markup?.inline_keyboard ?? []).flat()) {
+      const bytes = Buffer.byteLength(button.callback_data ?? "", "utf8");
+      if (bytes < 1 || bytes > 64) return "sendMessage: button callback_data must be 1-64 bytes";
+      if (!button.text) return "sendMessage: button text must not be empty";
+    }
+  }
+  if (method === "answerCallbackQuery" && typeof body.text === "string" && body.text.length > 200) {
+    return "answerCallbackQuery: text must be at most 200 characters";
+  }
+  return null;
+}
+
+/** Requests no fake handles: blocked, and any left over fail the journey. */
+const stray: string[] = [];
+
+export function takeStrayRequests(): string[] {
+  return stray.splice(0);
+}
+
+/** Payloads the real Telegram would refuse; any left over fail the journey. */
+export function takeTelegramRejections(): string[] {
+  return telegram.rejected.splice(0);
+}
 
 type GeminiCall = { model: string; kind: "extract" | "patch" | "bucket" };
 
@@ -60,6 +93,12 @@ const server = setupServer(
   http.post("https://api.telegram.org/:bot/:method", async ({ request, params }) => {
     const method = String(params.method);
     const body = (await request.json()) as Record<string, unknown>;
+    const violation = telegramViolation(method, body);
+    if (violation) {
+      telegram.rejected.push(violation);
+      telegram.sent.push({ method, body, failed: true });
+      return HttpResponse.json({ ok: false, description: `Bad Request: ${violation}` }, { status: 400 });
+    }
     const failed = method === "sendMessage" && telegram.failSends > 0;
     if (failed) telegram.failSends--;
     telegram.sent.push({ method, body, failed });
@@ -111,8 +150,23 @@ export function uploads() {
 
 /** Registers the fakes and a clean database for every journey in the file. */
 export function useJourneys(): void {
-  beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
+  beforeAll(() =>
+    server.listen({
+      onUnhandledRequest: (request, print) => {
+        stray.push(`${request.method} ${request.url}`);
+        print.error();
+        // Logging alone lets the request through to the real network.
+        throw new Error(`blocked unhandled request ${request.method} ${request.url}`);
+      },
+    }),
+  );
+  afterEach(() => {
+    expect(takeStrayRequests(), "requests no fake handles").toEqual([]);
+    expect(takeTelegramRejections(), "payloads Telegram would refuse").toEqual([]);
+  });
   beforeEach(async () => {
+    stray.length = 0;
+    telegram.rejected = [];
     telegram.sent = [];
     telegram.failSends = 0;
     gemini.calls = [];
