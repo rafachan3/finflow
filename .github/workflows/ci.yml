@@ -55,3 +55,43 @@ jobs:
           cache-dependency-path: lambda/package-lock.json
       - run: npm ci
       - run: npm run test:integration
+
+  # Live Gemini over the golden cases. Always reports; calls Gemini only
+  # when the diff touches a path in lambda/eval/harness.ts (RELEVANT).
+  eval:
+    runs-on: ubuntu-latest
+    # Cases plus up to 20 minutes waiting out a Gemini outage.
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
+      EVAL_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+    defaults:
+      run:
+        working-directory: lambda
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The relevance check diffs against the base commit.
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: lambda/package-lock.json
+      - run: npm ci
+      # Only this step sees the key, not checkout or npm ci's install scripts.
+      - run: npm run eval
+        env:
+          GEMINI_EVAL_API_KEY: ${{ secrets.GEMINI_EVAL_API_KEY }}

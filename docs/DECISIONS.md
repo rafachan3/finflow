@@ -843,3 +843,82 @@ row even when the transaction has no merchant.
 
 **Ruled out:** auto-creating merchant rows on save. To add a merchant on
 purpose, use the Telegram merchant commands planned for Phase 3.5.
+
+---
+
+## 2026-10-28 — Live eval: what triggers it and what it sends
+
+The `eval` job calls Gemini only when the PR changes `lambda/src/`,
+`lambda/tests/golden/`, `lambda/eval/`, `supabase/migrations/`,
+`supabase/seed.personal.example.sql` (the seed shapes the taxonomy in the
+prompt), the integration `global-setup.ts` and `env.ts` that load that
+taxonomy, `lambda/package.json` or its lockfile, or `ci.yml`. Docs and
+other workflow changes do not trigger it. Without a usable
+base commit it runs every case.
+
+- Bucket rules are empty, so the bucket call uses the bot's no-rules
+  fallback: personal rules never leave SSM, and `expect` does not judge
+  needs/wants.
+- The 20-minute outage wait is one budget for the whole run, not per
+  case, so a long outage fails the job in about 20 minutes.
+- Gemini requests start at least 13 s apart (the free tier allows about
+  5 a minute, and each case sends an extractor and a bucket call), at
+  the cost of about 6 minutes per full run. The spacing lives in the
+  eval's fetch wrapper, so the request bytes stay production's.
+- A 429 whose `quotaId` is per-day marks that model out for the rest of
+  the run: the 429 goes back to production, which moves down its fallback
+  chain, and later requests to that model get the same 429 without a
+  call. The run fails at once only when every model in the chain is out
+  for the day (it resets at midnight Pacific, not within the 20-minute
+  budget). Per-minute 429s and 5xx still wait.
+- The job summary lists each case's attempts, answering model and
+  result, and counts primary against fallback answers. A fallback answer
+  is reported, not failed.
+- `npm run eval` wraps vitest in `eval/run.mjs` because vitest rejects an
+  unknown `--record` flag.
+
+**Ruled out:** a temperature override or a forked prompt for the eval;
+ffmpeg for the voice clip (`afconvert` encodes Opus, a stdlib script
+writes the Ogg pages).
+
+## 2026-10-28 — Live eval quota budget
+
+Facts, read 2026-10-28 from
+<https://ai.google.dev/gemini-api/docs/rate-limits>,
+<https://ai.google.dev/gemini-api/docs/deprecations> and
+<https://ai.google.dev/gemini-api/docs/models/gemini-3.5-flash>:
+
+- Limits are per project, not per key; RPD resets at midnight Pacific.
+- The docs no longer publish per-model free-tier RPM/RPD numbers. They
+  point to AI Studio (<https://aistudio.google.com/rate-limit>) and say
+  the limits are not guaranteed. The eval now logs `limit=` from a 429's
+  `quotaValue`, which is the number Gemini itself enforces.
+- `gemini-3.5-flash` (production's first fallback) was deprecated
+  2026-05-19 and its requests are routed to `gemini-3.6-flash`.
+  `gemini-3.6-flash` and `gemini-3.5-flash-lite` were deprecated
+  2026-07-21, no shutdown date. Its daily quota is still counted under
+  its own id (CI run 40742233785).
+
+Counts from the code: a bot message is one extractor call plus one
+bucket call when it has an expense line (income or transfer only: one
+call); an Edit adds two more. A full eval run is at least 25 successful
+requests (10 expense cases x 2, transfer x 1, edit-amount x 4), more when
+a model answers 503 and the chain falls through, and up to double with
+retries. Gemini's own 429s (`quotaValue`, CI run 40750690681) put the
+free-tier daily limit at 20 requests for both `gemini-3.6-flash` and
+`gemini-3.5-flash`. 503s seem to count: the eval project spent
+`gemini-3.5-flash`'s 20 on 8 logged requests plus the earlier run's.
+`gemini-3.5-flash-lite` then answered all 12 cases (about 25 requests)
+without a 429; its limit is not yet known.
+
+**So:** a full run (25+ requests) exceeds one model's daily 20, and one
+free project gets at most about one full run a day, mostly on the
+fallbacks. Five to 15 bot messages is 10 to 30 requests a day on the
+production project. The low end fits `gemini-3.6-flash`'s 20; above
+about 10 expense messages the bot falls to `gemini-3.5-flash-lite`
+(`gemini-3.5-flash` is routed to `gemini-3.6-flash` anyway).
+
+**Proposed, not built:** skip the eval when a hash of the `RELEVANT` files
+matches the last green eval on the same PR (an `actions/cache` key on that
+hash, saved only on success). Production's request is unchanged.
+

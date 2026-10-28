@@ -13,7 +13,7 @@ Living state of the project. Read this first; update it whenever work lands.
 - [x] Taxonomy tweak — Hygiene + Beauty → Personal care (Health and wellness); buckets untouched (2026-08-13)
 - [x] Phase 2 — Telegram bot walking skeleton (text only, no LLM) (2026-08-17)
 - [x] Phase 3 — Gemini extraction (text → photo → voice) — **3a + 3b + 3c phone-tested; funding source applied; Edit phone-tested; context notes phone-tested; multi-event accepted by the Phase 3.6 journeys** (2026-10-28; the S3 key prefix stays an optional leftover)
-- [ ] Phase 3.6 — Regression test suite — **in progress: integration tests (#32) and chat journeys done**
+- [ ] Phase 3.6 — Regression test suite — **in progress: integration tests (#32) and chat journeys (#33) done; live eval in review, waiting on the `GEMINI_EVAL_API_KEY` secret**
 - [ ] Phase 3.5 — Ingestion follow-ons (item tags, duplicate warning, merchant commands)
 - [ ] Phase 4 — dbt semantic layer + MetricFlow
 - [ ] Phase 4.5 — Proactive nudges (recurring reminders, merchant recommendations)
@@ -220,12 +220,38 @@ from `lambda/tests/golden/*.json`; the bucket call answers `wants` by
 itself. The journeys cover every row of the retired phone-test table plus
 everyday logging, Edit, owner-only access and failures.
 
+Live eval (`lambda/eval/`, `npm run eval`): every golden case goes through
+the production `extractFromText` / `extractFromPhoto` / `extractFromVoice`
+/ `patchExtraction` with the taxonomy loaded from the throwaway database,
+no bucket rules (the bot's no-rules fallback), and the eval's own key.
+Gemini's first answer is checked against the case's `expect`; a miss gets
+one retry. Requests start at least 13 s apart, and each response logs its
+model and status (a 429 also its `quotaId` and `retryDelay`). When every
+model answers 5xx or a per-minute 429 the run waits 2 minutes and tries
+again, for at most 20 minutes per run. A per-day 429 takes that model out
+of the run and production's chain moves on; the run fails at once only
+when every model is out for the day. The job summary tables each case's
+answering model.
+`--record` rewrites a golden's
+`recorded` only when the live answer satisfies `expect`. The CI `eval` job
+always reports: with no change to a path in `RELEVANT`
+(`lambda/eval/harness.ts`: source, goldens, eval, migrations, example
+seed, the integration DB setup, `lambda/package*.json`, `ci.yml`)
+since the base commit it passes without calling Gemini; otherwise a
+missing secret fails it with one line. Golden media are synthetic: SVG
+receipts rendered with `rsvg-convert`, and a macOS `say` clip encoded as
+Opus by `afconvert` and wrapped in Ogg by `caf2ogg.py`.
+
 ## Next concrete step
 
-Phase 3.6 PR 3: the live Gemini eval over the golden files. It needs a
-second Gemini API key in its own Google AI Studio project, stored as the
-`GEMINI_EVAL_API_KEY` Actions secret. A synthetic receipt image and a
-generated voice clip will be added for the photo and voice cases.
+Owner: create a Google AI Studio project and API key just for the eval
+and add it as the `GEMINI_EVAL_API_KEY` Actions secret. Then re-run the
+eval PR's `eval` job; it must pass before that PR merges. If a live answer
+legitimately differs from a recording, `npm run eval -- --record` with the
+key exported refreshes the goldens it satisfies.
+
+After that: Phase 3.6 PR 4 (enforcement: `docs/TESTING.md` inventory,
+coverage floor, required checks on `main`).
 
 Optional leftover: S3 keys `{source}/{yyyy-mm}/{id}.{ext}` in the existing
 bucket.
