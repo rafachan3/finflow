@@ -849,9 +849,11 @@ purpose, use the Telegram merchant commands planned for Phase 3.5.
 ## 2026-10-28 — Live eval: what triggers it and what it sends
 
 The `eval` job calls Gemini only when the PR changes `lambda/src/`,
-`lambda/tests/golden/`, `lambda/eval/`, `supabase/migrations/` or
+`lambda/tests/golden/`, `lambda/eval/`, `supabase/migrations/`,
 `supabase/seed.personal.example.sql` (the seed shapes the taxonomy in the
-prompt). Workflow and docs changes do not trigger it. Without a usable
+prompt), the integration `global-setup.ts` and `env.ts` that load that
+taxonomy, `lambda/package.json` or its lockfile, or `ci.yml`. Docs and
+other workflow changes do not trigger it. Without a usable
 base commit it runs every case.
 
 - Bucket rules are empty, so the bucket call uses the bot's no-rules

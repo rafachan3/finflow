@@ -1,15 +1,21 @@
 import { mismatches, recordedEvents, type Golden } from "../tests/golden/golden.js";
 
 /**
- * Paths that change what Gemini is asked (code, prompts, taxonomy seed) or
- * how its answer is judged (goldens, this harness). Repo-relative.
+ * Paths that change what Gemini is asked (code, prompts, taxonomy seed and
+ * the setup that loads it, dependencies) or how its answer is judged
+ * (goldens, this harness, the CI job that runs it). Repo-relative.
  */
 const RELEVANT = [
   "lambda/src/",
   "lambda/tests/golden/",
   "lambda/eval/",
+  "lambda/tests/integration/global-setup.ts",
+  "lambda/tests/integration/env.ts",
+  "lambda/package.json",
+  "lambda/package-lock.json",
   "supabase/migrations/",
   "supabase/seed.personal.example.sql",
+  ".github/workflows/ci.yml",
 ];
 
 export function isRelevant(paths: string[]): boolean {

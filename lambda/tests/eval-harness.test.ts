@@ -18,18 +18,24 @@ describe("isRelevant", () => {
     "lambda/eval/harness.ts",
     "supabase/migrations/0009_new.sql",
     "supabase/seed.personal.example.sql",
+    "lambda/tests/integration/global-setup.ts",
+    "lambda/tests/integration/env.ts",
+    "lambda/package.json",
+    "lambda/package-lock.json",
+    ".github/workflows/ci.yml",
   ])("%s changes what Gemini is asked or how it is judged", (path) => {
     expect(isRelevant(["README.md", path])).toBe(true);
   });
 
-  it("ignores docs, journeys, infra and workflows", () => {
+  it("ignores docs, journeys, infra and other workflows", () => {
     expect(
       isRelevant([
         "docs/STATUS.md",
         "lambda/tests/journeys/edit.test.ts",
         "lambda/tests/golden.test.ts",
+        "lambda/tests/integration/db.test.ts",
         "infra/main.tf",
-        ".github/workflows/ci.yml",
+        ".github/workflows/deploy-ingest.yml",
         "lambda/src-old/x.ts",
       ]),
     ).toBe(false);

@@ -231,8 +231,9 @@ model answers 5xx or a per-minute 429 the run waits 2 minutes and tries
 again, for at most 20 minutes per run; a per-day 429 fails it at once.
 `--record` rewrites a golden's
 `recorded` only when the live answer satisfies `expect`. The CI `eval` job
-always reports: with no change under `lambda/src/`, `lambda/tests/golden/`,
-`lambda/eval/`, `supabase/migrations/` or `seed.personal.example.sql`
+always reports: with no change to a path in `RELEVANT`
+(`lambda/eval/harness.ts`: source, goldens, eval, migrations, example
+seed, the integration DB setup, `lambda/package*.json`, `ci.yml`)
 since the base commit it passes without calling Gemini; otherwise a
 missing secret fails it with one line. Golden media are synthetic: SVG
 receipts rendered with `rsvg-convert`, and a macOS `say` clip encoded as
