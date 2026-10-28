@@ -169,6 +169,7 @@ describe("only the owner can use the bot", () => {
     const result = await chat.tap(chat.last(), "Confirm", STRANGER);
 
     expect(result.body).toBe("ignored");
+    expect(chat.acks()).toEqual([]);
     expect(await ledger.transactions()).toEqual([]);
   });
 
