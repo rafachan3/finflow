@@ -255,10 +255,15 @@ describe("geminiFetch", () => {
   }
 
   function wrap(realFetch: typeof fetch, clock = fakeClock()) {
-    return geminiFetch(realFetch, { minGapMs: 13_000, now: clock.now, sleep: clock.sleep });
+    return geminiFetch(realFetch, {
+      models: ["gemini-3.6-flash", "gemini-3.5-flash", "gemini-3.5-flash-lite"],
+      minGapMs: 13_000,
+      now: clock.now,
+      sleep: clock.sleep,
+    });
   }
 
-  function quota429(quotaId: string): Response {
+  function quota429(quotaId: string, quotaValue?: string): Response {
     return new Response(
       JSON.stringify({
         error: {
@@ -267,7 +272,7 @@ describe("geminiFetch", () => {
           details: [
             {
               "@type": "type.googleapis.com/google.rpc.QuotaFailure",
-              violations: [{ quotaId }],
+              violations: [{ quotaId, quotaValue }],
             },
             { "@type": "type.googleapis.com/google.rpc.RetryInfo", retryDelay: "41s" },
           ],
@@ -317,16 +322,40 @@ describe("geminiFetch", () => {
     expect((await res.json()).error.code).toBe(429);
   });
 
-  it("fails fast on a per-day quota, and on every request after it", async () => {
-    vi.spyOn(console, "log").mockImplementation(() => {});
-    const realFetch = vi.fn(async () =>
-      quota429("GenerateRequestsPerDayPerProjectPerModel-FreeTier"),
+  const urlOf = (model: string) => url.replace("gemini-3.6-flash", model);
+  const perDay = () => quota429("GenerateRequestsPerDayPerProjectPerModel-FreeTier", "20");
+
+  it("returns a per-day 429 so the chain moves on, then skips that model without calling it", async () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    const clock = fakeClock();
+    const realFetch = vi.fn(async (input: Parameters<typeof fetch>[0]) =>
+      String(input).includes("gemini-3.6-flash") ? perDay() : new Response("{}"),
     );
+    const wrapped = wrap(realFetch, clock);
+
+    expect((await wrapped(url)).status).toBe(429);
+    expect(log).toHaveBeenCalledWith(
+      "gemini-3.6-flash: 429 quotaId=GenerateRequestsPerDayPerProjectPerModel-FreeTier retryDelay=41s limit=20",
+    );
+    clock.tick(60_000);
+    const skipped = await wrapped(url);
+    expect(skipped.status).toBe(429);
+    expect((await skipped.json()).error.message).toMatch(/daily quota/);
+    expect(clock.slept).toEqual([]);
+    expect((await wrapped(urlOf("gemini-3.5-flash"))).status).toBe(200);
+    expect(realFetch.mock.calls.map(([u]) => u)).toEqual([url, urlOf("gemini-3.5-flash")]);
+  });
+
+  it("fails fast only once every model in the chain is out for the day", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    const realFetch = vi.fn(async () => perDay());
     const wrapped = wrap(realFetch);
 
-    const daily = /daily quota.*gemini-3\.6-flash.*PerDay/;
+    expect((await wrapped(url)).status).toBe(429);
+    expect((await wrapped(urlOf("gemini-3.5-flash"))).status).toBe(429);
+    const daily = /every model.*gemini-3\.5-flash-lite.*midnight Pacific/;
+    await expect(wrapped(urlOf("gemini-3.5-flash-lite"))).rejects.toThrow(daily);
     await expect(wrapped(url)).rejects.toThrow(daily);
-    await expect(wrapped(url)).rejects.toThrow(daily);
-    expect(realFetch).toHaveBeenCalledTimes(1);
+    expect(realFetch).toHaveBeenCalledTimes(3);
   });
 });

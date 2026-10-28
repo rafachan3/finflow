@@ -41,8 +41,9 @@ export function shouldRun(
 }
 
 // gemini.ts throws this only after every model in its fallback chain
-// answered with a retryable status. A 429 here is per-minute: geminiFetch
-// throws its own error on a per-day one first.
+// answered with a retryable status. Some may be out for the day, but
+// geminiFetch throws its own error when all of them are, so at least one
+// model here was overloaded or out of per-minute quota.
 const OUTAGE = /^Gemini HTTP (429|500|503|504)\b/;
 
 /**
@@ -92,7 +93,10 @@ function modelOf(input: Parameters<typeof fetch>[0]): string {
   return /\/models\/([^:/]+):/.exec(url)?.[1] ?? url;
 }
 
-type QuotaDetail = { violations?: { quotaId?: string }[]; retryDelay?: string };
+type QuotaDetail = {
+  violations?: { quotaId?: string; quotaValue?: string }[];
+  retryDelay?: string;
+};
 
 /**
  * The eval's fetch: spaces Gemini requests `minGapMs` apart (start to
@@ -100,36 +104,56 @@ type QuotaDetail = { violations?: { quotaId?: string }[]; retryDelay?: string };
  * `realFetch` exactly as production built them.
  *
  * A 429 logs its quotaId and retryDelay. A per-day quota will not come back
- * within the run, so it throws at once, and every later request throws too,
- * instead of spending the outage budget.
+ * within the run, so that model is out for the rest of it: its 429 goes back
+ * to production, which moves to the next model in `models` (its fallback
+ * chain), and later requests to it get the same 429 without a call. Once
+ * every model in `models` is out, every request throws instead of spending
+ * the outage budget.
  */
 export function geminiFetch(
   realFetch: typeof fetch,
-  opts: { minGapMs: number; now: () => number; sleep: (ms: number) => Promise<void> },
+  opts: {
+    models: string[];
+    minGapMs: number;
+    now: () => number;
+    sleep: (ms: number) => Promise<void>;
+  },
 ): typeof fetch {
   let last = -Infinity;
-  let daily: Error | undefined;
+  const outForDay = new Map<string, string>();
+  const allOut = () =>
+    new Error(
+      `Gemini daily quota exhausted on every model (${[...outForDay].map(([m, q]) => `${m}: ${q}`).join(", ")}); it resets at midnight Pacific. Stopping instead of waiting.`,
+    );
   return async (input, init) => {
-    if (daily) throw daily;
+    const model = modelOf(input);
+    if (opts.models.every((m) => outForDay.has(m))) throw allOut();
+    if (outForDay.has(model)) {
+      const why = `daily quota exhausted earlier in this run (${outForDay.get(model)})`;
+      console.log(`${model}: skipped, ${why}`);
+      const body = { error: { code: 429, message: `${model}: ${why}` } };
+      return new Response(JSON.stringify(body), { status: 429 });
+    }
     const wait = last + opts.minGapMs - opts.now();
     if (wait > 0) await opts.sleep(wait);
     last = opts.now();
     const res = await realFetch(input, init);
-    const model = modelOf(input);
     console.log(`${model}: HTTP ${res.status}`);
     if (res.status !== 429) return res;
 
     const body = await res.clone().json().catch(() => ({}));
     const details: QuotaDetail[] = body?.error?.details ?? [];
-    const ids = details.flatMap((d) => d.violations ?? []).map((v) => v.quotaId ?? "?");
+    const violations = details.flatMap((d) => d.violations ?? []);
+    const ids = violations.map((v) => v.quotaId ?? "?");
+    const limit = violations.find((v) => v.quotaValue)?.quotaValue;
     const delay = details.find((d) => d.retryDelay)?.retryDelay ?? "?";
     const quotaId = ids.join(",") || "?";
-    console.log(`${model}: 429 quotaId=${quotaId} retryDelay=${delay}`);
+    console.log(
+      `${model}: 429 quotaId=${quotaId} retryDelay=${delay}${limit ? ` limit=${limit}` : ""}`,
+    );
     if (ids.some((id) => /PerDay/i.test(id))) {
-      daily = new Error(
-        `Gemini daily quota exhausted on ${model} (${quotaId}); it resets at midnight Pacific. Stopping instead of waiting.`,
-      );
-      throw daily;
+      outForDay.set(model, quotaId);
+      if (opts.models.every((m) => outForDay.has(m))) throw allOut();
     }
     return res;
   };
