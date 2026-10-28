@@ -17,6 +17,8 @@ export type ExpectedEvent = {
   date?: boolean;
   note?: boolean;
   funder?: string;
+  /** Each line's bucket, in order. Only meaningful with `rules`. */
+  buckets?: ("needs" | "wants")[];
 };
 
 export type Golden = {
@@ -24,6 +26,8 @@ export type Golden = {
   name: string;
   input: GoldenInput;
   expect: { events: ExpectedEvent[] };
+  /** A ruleset file in this directory, sent where production sends the owner's rules. */
+  rules?: string;
   recorded: unknown;
 };
 
@@ -34,7 +38,7 @@ export type RawEvent = {
   merchant?: unknown;
   notes?: unknown;
   funded_by?: unknown;
-  items?: { amount?: unknown }[];
+  items?: { amount?: unknown; description?: unknown; bucket?: unknown }[];
 };
 
 const DIR = new URL("./", import.meta.url);
@@ -49,6 +53,11 @@ export function allGoldens(): Golden[] {
     .filter((f) => f.endsWith(".json"))
     .sort()
     .map((f) => golden(f.slice(0, -".json".length)));
+}
+
+/** The needs/wants rules a case runs with; empty means the bot's no-rules fallback. */
+export function bucketRules(g: Pick<Golden, "rules">): string {
+  return g.rules ? readFileSync(new URL(g.rules, DIR), "utf8") : "";
 }
 
 /** An edit records one extraction; every other case records `{ events }`. */
@@ -89,6 +98,16 @@ export function mismatches(events: RawEvent[], expected: ExpectedEvent[]): strin
     }
     if (want.funder !== undefined && got.funded_by !== want.funder) {
       out.push(`${at}: funder ${String(got.funded_by)} != ${want.funder}`);
+    }
+    if (want.buckets !== undefined && items.length === want.lines) {
+      want.buckets.forEach((bucket, j) => {
+        const line = items[j];
+        if (line.bucket !== bucket) {
+          out.push(
+            `${at}: line ${j} (${String(line.description)}) bucket ${String(line.bucket)} != ${bucket}`,
+          );
+        }
+      });
     }
     if (got.type === "expense" && items.length === want.lines && items.length > 0) {
       const sum = items.reduce((s, item) => s + cents(item.amount), 0);

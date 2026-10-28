@@ -1003,6 +1003,28 @@ run on PR builds too, or need an `if` on every step).
 
 ---
 
+## 2026-10-28 — Bucket rule-following is checked by the eval, not the phone
+
+The owner does not run manual phone tests. The phone check planned after
+the single extraction call (rules overruling a hint, an Edit saying "that
+one is a need") is now four live eval cases under a fictional ruleset,
+`lambda/tests/golden/bucket-rules.synthetic.md`, plus one journey for the
+Edit through Confirm. The eval sends the ruleset through the same
+`bucketRules` argument production fills from SSM, so the request shape
+matches a real message.
+
+**Risk accepted:** the eval proves the prompt follows a ruleset, not the
+owner's. A rule phrased unlike the synthetic ones could still be misread;
+the card and Edit stay the net.
+
+**Ruled out:** running the eval with the real rules (they would leave SSM
+for a CI secret, and `--record` would write `bucket_why` text quoting
+them into public goldens); a code guard that copies
+untouched lines' buckets after an Edit (still only if Edits are seen
+flipping untouched lines; the Edit case now checks for that).
+
+---
+
 ## 2026-10-28 — Needs/wants accuracy truth is the Notion import only
 
 `npm run eval:buckets` scores the bucket call against expenses that no

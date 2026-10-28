@@ -223,7 +223,8 @@ everyday logging, Edit, owner-only access and failures.
 Live eval (`lambda/eval/`, `npm run eval`): every golden case goes through
 the production `extractFromText` / `extractFromPhoto` / `extractFromVoice`
 / `patchExtraction` with the taxonomy loaded from the throwaway database,
-no bucket rules (the bot's no-rules fallback), and the eval's own key.
+no bucket rules (the bot's no-rules fallback) unless the case names a
+ruleset, and the eval's own key.
 Gemini's first answer is checked against the case's `expect`; a miss gets
 one retry. Requests start at least 13 s apart, and each response logs its
 model and status (a 429 also its `quotaId` and `retryDelay`). When every
@@ -264,6 +265,21 @@ that does not exist. The `inventory` CI job runs that check and
 workflow now runs after a successful CI run on `main`. Journeys wait out no
 real retry delay: `retryWait.sleep` in `gemini.ts` is the test seam.
 
+Bucket rule-following is automated instead of phone-checked (2026-10-28;
+DECISIONS.md). Four `rules-*` goldens run under
+`lambda/tests/golden/bucket-rules.synthetic.md`, a fictional ruleset the
+eval sends where production sends `config.bucketRules`. Each lists the
+bucket every line must get: a rule overruling the Taxis and rideshares
+wants hint, a receipt split between needs and wants, a bill no rule
+covers (its needs hint applies), and an Edit that calls one receipt line
+a need and keeps the other two. A journey replays that Edit through
+Confirm. A full eval run is 18 requests when every case passes first
+time; `golden.test.ts` fails if the cases would need more than 20.
+Two prompt fixes came with them, after Flash-Lite failed `voice-note` and
+retried `transfer` on `main`: each extractor prompt now says a named
+business is the merchant even when it is not in the Merchants list, and
+the bucket line no longer asks for lines on income and transfers.
+
 Needs/wants accuracy check (2026-10-28; TESTING.md): `npm run
 eval:buckets` replays a seeded sample of the Notion-imported expenses
 (owner-set buckets) through `extractFromText` with the private rules and
@@ -275,12 +291,6 @@ through `finflow_readonly` only; local only, never in CI.
 Owner: add `GEMINI_EVAL_API_KEY=<eval key>` to the gitignored `.env` in the
 main checkout, then run `npm --prefix lambda run eval:buckets` for a
 baseline agreement figure.
-
-Owner phone check of the single call with the real rules: log 3 to 5
-real expenses, including one where the rules overrule the subcategory
-hint, plus one Edit that says "that one is a need". Check each card's
-bucket and reason. If an Edit flips the bucket on a line it did not
-touch, add a code guard (DECISIONS.md 2026-10-28).
 
 Owner: create a Google AI Studio project and API key just for the eval
 and add it as the `GEMINI_EVAL_API_KEY` Actions secret. Then re-run the
