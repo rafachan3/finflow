@@ -55,6 +55,7 @@ free tier (1M req/month) is perpetual, not a 12-month trial.
 | `docs/DATA_MODEL.md` | Full DDL, Notion → Postgres mapping | Schema changes (with the migration) |
 | `docs/TAXONOMY.md` | Category/subcategory/item-type contract, classification rules | Taxonomy changes (with the seed migration) |
 | `docs/SEMANTIC_LAYER.md` | Canonical metric definitions *(created in Phase 4)* | A metric is added or redefined |
+| `docs/TESTING.md` | Behaviour inventory (behaviour → guarding tests), how to run each test layer, eval key setup | A behaviour is added or changed |
 | `docs/DECISIONS.md` | Dated log of decisions and what they ruled out | A decision is made or reversed |
 
 Keep this file short. New long-form knowledge goes in `docs/` and gets a row in
@@ -67,6 +68,10 @@ the table above — not appended here.
 - `docs/DATA_MODEL.md` and the migrations must agree. Change both in one commit.
 - dbt models must match `docs/SEMANTIC_LAYER.md`. That file is the contract;
   if a model disagrees with it, the model is wrong.
+- A bot behaviour and its guard ship together: the PR that adds or changes
+  one adds its `docs/TESTING.md` row, a journey in `lambda/tests/journeys/`,
+  and a golden case when Gemini's answer is part of it. The `inventory` CI
+  job fails a row with no test or a cited test that does not exist.
 - Work one roadmap phase at a time. Do not start a phase until the previous
   phase's acceptance check in `docs/ROADMAP.md` actually passes.
 - The ingestion Lambda stays stateless: validate → persist raw → archive media
@@ -86,7 +91,9 @@ the table above — not appended here.
 throwaway Postgres: `npm run db:up`, then
 `TEST_DATABASE_URL=postgres://postgres:postgres@localhost:54329/postgres npm test`.
 The harness refuses any host other than `localhost`, so it cannot reach
-production. CI (`.github/workflows/ci.yml`) runs both on every PR.
+production. CI (`.github/workflows/ci.yml`) reports `unit`, `integration`,
+`eval` and `inventory` on every PR; `docs/TESTING.md` has the command for
+each layer.
 `npm run eval` checks the golden cases against live Gemini; it needs that
 database and `GEMINI_EVAL_API_KEY`, and CI skips it when no extraction,
 prompt, golden or eval path changed.

@@ -32,7 +32,13 @@ describe("several purchases in one message", () => {
   });
 
   it("two items at one store stay one card with two lines", async () => {
-    gemini.extract = golden("same-place-lines").recorded;
+    const recorded = golden("same-place-lines").recorded as {
+      events: { items: object[] }[];
+    };
+    const [event] = recorded.events;
+    gemini.extract = {
+      events: [{ ...event, items: [{ ...event.items[0], bucket: "needs" }, event.items[1]] }],
+    };
     await chat.text("milk 4 and bread 3 at Fresh Market");
 
     expect(chat.replies()).toHaveLength(1);
@@ -43,6 +49,10 @@ describe("several purchases in one message", () => {
 
     await chat.tap(card, "Confirm");
     expect(await ledger.transactions()).toMatchObject([{ amount: "7.00", lines: 2 }]);
+    expect(await ledger.items()).toMatchObject([
+      { description: "Bread", bucket: "wants" },
+      { description: "Milk", bucket: "needs" },
+    ]);
   });
 
   it("two items with no place stay one card with two lines", async () => {

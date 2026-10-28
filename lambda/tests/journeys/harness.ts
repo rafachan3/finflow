@@ -4,6 +4,7 @@ import { mockClient } from "aws-sdk-client-mock";
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
 import { afterAll, afterEach, beforeAll, beforeEach, expect } from "vitest";
+import { retryWait } from "../../src/gemini.js";
 import { closeHelpers, resetData, sql } from "../integration/db-helpers.js";
 import { testDbUrl } from "../integration/env.js";
 
@@ -33,7 +34,13 @@ export function journeyConfig() {
 
 type Sent = { method: string; body: Record<string, unknown>; failed: boolean };
 
-const telegram = { sent: [] as Sent[], failSends: 0, filePath: "", rejected: [] as string[] };
+/** file_id -> file_path of the media the next message carries; getFile knows nothing else. */
+const telegram = {
+  sent: [] as Sent[],
+  failSends: 0,
+  files: {} as Record<string, string>,
+  rejected: [] as string[],
+};
 
 type Button = { text?: string; callback_data?: string };
 
@@ -72,6 +79,8 @@ type GeminiCall = { model: string; kind: "extract" | "patch" };
 /** Scripted Gemini: set `extract` / `patch` per journey. */
 export const gemini = {
   calls: [] as GeminiCall[],
+  /** Waits the retry code asked for between models; none are actually waited out. */
+  delays: [] as number[],
   extract: undefined as unknown,
   patch: undefined as unknown,
   overloaded: new Set<string>(),
@@ -106,7 +115,13 @@ const server = setupServer(
       return HttpResponse.json({ ok: false, description: "Bad Gateway" }, { status: 502 });
     }
     if (method === "getFile") {
-      return HttpResponse.json({ ok: true, result: { file_path: telegram.filePath } });
+      const filePath = telegram.files[String(body.file_id)];
+      if (!filePath) {
+        const unknown = `getFile: no such file_id ${String(body.file_id)}`;
+        telegram.rejected.push(unknown);
+        return HttpResponse.json({ ok: false, description: `Bad Request: ${unknown}` }, { status: 400 });
+      }
+      return HttpResponse.json({ ok: true, result: { file_path: filePath } });
     }
     return HttpResponse.json({ ok: true, result: {} });
   }),
@@ -136,6 +151,8 @@ const server = setupServer(
   ),
 );
 
+const realSleep = retryWait.sleep;
+
 const s3 = mockClient(S3Client);
 
 export function uploads() {
@@ -163,7 +180,12 @@ export function useJourneys(): void {
     telegram.rejected = [];
     telegram.sent = [];
     telegram.failSends = 0;
+    telegram.files = {};
     gemini.calls = [];
+    gemini.delays = [];
+    retryWait.sleep = async (ms) => {
+      gemini.delays.push(ms);
+    };
     gemini.extract = undefined;
     gemini.patch = undefined;
     gemini.overloaded = new Set();
@@ -174,6 +196,7 @@ export function useJourneys(): void {
   afterAll(async () => {
     server.close();
     s3.restore();
+    retryWait.sleep = realSleep;
     const db = await import("../../src/db.js");
     await db.closePool();
     await closeHelpers();
@@ -229,7 +252,7 @@ export const chat = {
     return deliver(message({ text }, from));
   },
   photo(caption = "") {
-    telegram.filePath = "photos/file_1.jpg";
+    telegram.files = { "photo-large": "photos/file_1.jpg" };
     const photo = [
       { file_id: "photo-small", file_size: 10 },
       { file_id: "photo-large", file_size: 900 },
@@ -237,7 +260,7 @@ export const chat = {
     return deliver(message(caption ? { photo, caption } : { photo }));
   },
   voice() {
-    telegram.filePath = "voice/file_2.oga";
+    telegram.files = { "voice-1": "voice/file_2.oga" };
     return deliver(message({ voice: { file_id: "voice-1", duration: 4 } }));
   },
   tap(reply: Reply, label: string, from = OWNER) {
@@ -311,7 +334,7 @@ export const ledger = {
   },
   items() {
     return sql<{ description: string; bucket: string }>(
-      `select description, bucket::text from transaction_items order by id`,
+      `select description, bucket::text from transaction_items order by description`,
     );
   },
 };

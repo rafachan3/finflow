@@ -40,8 +40,23 @@ describe("logging one purchase", () => {
     await chat.tap(card, "Confirm");
     expect(chat.acks()).toEqual(["Saved."]);
     expect(await ledger.transactions()).toMatchObject([
-      { date: "2026-10-25", amount: "14.00", notes: "was too tired to pack lunch", funder: "self" },
+      {
+        date: "2026-10-25",
+        amount: "14.00",
+        notes: "was too tired to pack lunch",
+        funder: "self",
+        merchant: null,
+      },
     ]);
+    expect(await ledger.items()).toMatchObject([{ description: "Sub", bucket: "wants" }]);
+  });
+
+  it("a merchant from the lookup is linked, and one outside it is left unattached", async () => {
+    const recorded = golden("text-with-note").recorded as { events: { merchant: string }[] };
+    gemini.extract = { events: [{ ...recorded.events[0], merchant: "Acme Mart" }] };
+    await chat.text("14 lunch at Acme Mart on Oct 25");
+    await chat.tap(chat.last(), "Confirm");
+    expect(await ledger.transactions()).toMatchObject([{ merchant: "Acme Mart" }]);
   });
 
   it("tapping Confirm twice saves once and says it was already handled", async () => {
@@ -69,13 +84,19 @@ describe("logging one purchase", () => {
 
   it("a purchase with no date uses today, warns, and can still be confirmed", async () => {
     gemini.extract = golden("no-date-text").recorded;
+    const before = todayToronto();
     await chat.text("4.50 coffee");
+    const after = todayToronto();
 
     const card = chat.last();
-    expect(card.text.split("\n")[0]).toBe(`Expense · ${todayToronto()} · CAD 4.50`);
+    // A run that crosses midnight may default to either day.
+    const header = card.text.split("\n")[0];
+    expect(header).toMatch(/^Expense · \d{4}-\d{2}-\d{2} · CAD 4\.50$/);
+    const date = header.split(" · ")[1];
+    expect([before, after]).toContain(date);
     expect(card.text).toContain("! date defaulted to today");
     await chat.tap(card, "Confirm");
-    expect(await ledger.transactions()).toMatchObject([{ date: todayToronto() }]);
+    expect(await ledger.transactions()).toMatchObject([{ date }]);
   });
 
   it("someone else paying is saved with them as the funder", async () => {
@@ -130,14 +151,18 @@ describe("receipts and voice notes", () => {
 
   it("a voice note is archived as audio and offered for Confirm with today's date", async () => {
     gemini.extract = golden("voice-note").recorded;
+    const before = todayToronto();
     await chat.voice();
+    const after = todayToronto();
 
     const [row] = await ledger.ingestions();
     expect(row.source).toBe("voice");
     expect(uploads()).toEqual([
       expect.objectContaining({ Key: `${row.id}.ogg`, ContentType: "audio/ogg" }),
     ]);
-    expect(chat.last().text.split("\n")[0]).toBe(`Expense · ${todayToronto()} · CAD 3.25`);
+    const header = chat.last().text.split("\n")[0];
+    expect(header).toMatch(/^Expense · \d{4}-\d{2}-\d{2} · CAD 3\.25$/);
+    expect([before, after]).toContain(header.split(" · ")[1]);
     expect(labels(chat.last())).toEqual(REVIEW);
   });
 });
@@ -159,6 +184,7 @@ describe("only the owner can use the bot", () => {
     const result = await chat.tap(chat.last(), "Confirm", STRANGER);
 
     expect(result.body).toBe("ignored");
+    expect(chat.acks()).toEqual([]);
     expect(await ledger.transactions()).toEqual([]);
   });
 

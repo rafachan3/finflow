@@ -30,6 +30,11 @@ const ATTEMPTS = [
   { model: GEMINI_LITE_MODEL, delayMs: 2000 },
 ];
 
+/** The wait before each fallback attempt; tests replace `sleep` so a retry does not wait. */
+export const retryWait = {
+  sleep: (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)),
+};
+
 const ENGLISH_DESCRIPTIONS =
   "Header and line descriptions are ordinary English. Translate French and other languages from the receipt or message. Keep brand names. Do not add commentary.";
 
@@ -263,7 +268,7 @@ async function generateJson(args: {
     console.warn(
       `Gemini HTTP ${res.status} on ${model}; retry ${attempt + 1} on ${next.model}`,
     );
-    await new Promise((resolve) => setTimeout(resolve, next.delayMs));
+    await retryWait.sleep(next.delayMs);
     model = next.model;
   }
   if (!res.ok) {

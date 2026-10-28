@@ -13,7 +13,7 @@ Living state of the project. Read this first; update it whenever work lands.
 - [x] Taxonomy tweak — Hygiene + Beauty → Personal care (Health and wellness); buckets untouched (2026-08-13)
 - [x] Phase 2 — Telegram bot walking skeleton (text only, no LLM) (2026-08-17)
 - [x] Phase 3 — Gemini extraction (text → photo → voice) — **3a + 3b + 3c phone-tested; funding source applied; Edit phone-tested; context notes phone-tested; multi-event accepted by the Phase 3.6 journeys** (2026-10-28; the S3 key prefix stays an optional leftover)
-- [ ] Phase 3.6 — Regression test suite — **in progress: integration tests (#32), chat journeys (#33) and live eval (#37) done**
+- [ ] Phase 3.6 — Regression test suite — **in progress: integration tests (#32), chat journeys (#33), live eval (#37) and the inventory check with a coverage floor done**
 - [ ] Phase 3.5 — Ingestion follow-ons (item tags, duplicate warning, merchant commands)
 - [ ] Phase 4 — dbt semantic layer + MetricFlow
 - [ ] Phase 4.5 — Proactive nudges (recurring reminders, merchant recommendations)
@@ -210,7 +210,7 @@ local `postgres:17`, applies every migration plus
 `seed.personal.example.sql`, and runs every `db.ts` path against real
 SQL, including two connections racing on one update. The harness
 refuses any host but `localhost`. `.github/workflows/ci.yml` runs both
-on every PR; the deploy workflow now runs on push to main only.
+on every PR; the deploy workflow runs only on main.
 
 Journeys (`lambda/tests/journeys/`) run the real handler against that
 database. MSW fakes Telegram and Gemini, and any other outbound request
@@ -256,6 +256,15 @@ drops `bucket`; older rows keep them. A full eval run is 13 requests,
 down from 25. With no rules, the default_bucket hints now reach the
 model; before, the bucket call was told to use hints it never got.
 
+Enforcement (Phase 3.6 PR 4, 2026-10-28; DECISIONS.md): `docs/TESTING.md`
+maps every bot behaviour to the tests that guard it and
+`scripts/check-inventory.mjs` fails a row with no test or a cited title
+that does not exist. The `inventory` CI job runs that check and
+`npm run test:coverage`, whose floor is lines 90, statements 90, branches
+84, functions 98 (measured 90.63 / 90.63 / 84.98 / 98.68). The deploy
+workflow now runs after a successful CI run on `main`. Journeys wait out no
+real retry delay: `retryWait.sleep` in `gemini.ts` is the test seam.
+
 Bucket rule-following is automated instead of phone-checked (2026-10-28;
 DECISIONS.md). Four `rules-*` goldens run under
 `lambda/tests/golden/bucket-rules.synthetic.md`, a fictional ruleset the
@@ -275,8 +284,9 @@ eval PR's `eval` job; it must pass before that PR merges. If a live answer
 legitimately differs from a recording, `npm run eval -- --record` with the
 key exported refreshes the goldens it satisfies.
 
-After that: Phase 3.6 PR 4 (enforcement: `docs/TESTING.md` inventory,
-coverage floor, required checks on `main`).
+Owner: make `unit`, `integration`, `eval` and `inventory` required checks on
+`main` (branch protection; not changed by any PR). Then Phase 3.6 PR 5, the
+post-deploy smoke step.
 
 Optional leftover: S3 keys `{source}/{yyyy-mm}/{id}.{ext}` in the existing
 bucket.

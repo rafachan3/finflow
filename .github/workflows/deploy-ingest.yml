@@ -1,11 +1,13 @@
 name: Deploy ingest Lambda
 
+# Deploys only after CI is green on the commit that landed on main.
+# workflow_run has no path filter, so every green push to main redeploys;
+# redeploying unchanged code is harmless.
 on:
-  push:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
     branches: [main]
-    paths:
-      - "lambda/**"
-      - ".github/workflows/deploy-ingest.yml"
 
 permissions:
   id-token: write
@@ -13,19 +15,23 @@ permissions:
 
 jobs:
   deploy:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push'
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: lambda
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
           cache: npm
           cache-dependency-path: lambda/package-lock.json
       - run: npm ci
-      - run: npm test
       - run: npm run bundle
       - name: Zip bundle
         run: (cd dist && zip -j ../ingest.zip index.js)
