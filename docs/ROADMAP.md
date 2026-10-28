@@ -120,8 +120,8 @@ skeleton everything else hangs on. Ship the smallest loop first.*
       alone is already one expense with lines on every channel. Covers two
       merchants in one message ("$3 at the dollar store and $5 at the
       pharmacy" → two cards).
-      *(merged, pending phone test; migration 0009; DECISIONS.md
-      2026-10-12)*
+      *(merged #28; migration 0009; DECISIONS.md 2026-10-12. Acceptance
+      is the Phase 3.6 journeys and golden cases, not a phone test)*
 - [x] Context notes: the *why* behind a purchase ("too lazy to cook",
       "overslept, couldn't pack lunch") extracted in the owner's words
       into the existing `transactions.notes`, shown on the card,
@@ -136,6 +136,26 @@ skeleton everything else hangs on. Ship the smallest loop first.*
 **Done when:** photo of a real receipt and a voice note each produce a correct
 confirmed transaction with ≤1 manual correction on average, and the image is
 retrievable from S3 at the key recorded in `ingestions.media_path`.
+
+## Phase 3.6 — Regression test suite (≈3–4 evenings)
+
+Every behaviour gets an automated test, and a PR that breaks one cannot
+merge. Replaces manual phone tests; no test touches production
+(DECISIONS.md 2026-10-28).
+
+- [x] Integration: throwaway Postgres 17 in CI; every migration applies to
+      an empty database; every `db.ts` path runs against real SQL
+- [ ] Journeys: the real handler against the throwaway database, a fake
+      Telegram API and fake S3, with Gemini replayed from golden files
+- [ ] Eval: golden cases against live Gemini; a failure blocks the PR
+- [ ] Enforcement: `docs/TESTING.md` behaviour inventory checked in CI,
+      coverage floor, required checks on `main`
+- [ ] Post-deploy smoke: a wrong-secret request to the deployed Lambda
+      returns 401
+
+**Done when:** a PR that deliberately breaks a behaviour is blocked by CI,
+a clean PR passes with no manual step, and every inventory row maps to an
+existing test.
 
 ## Phase 3.5 — Ingestion follow-ons (≈2 evenings)
 

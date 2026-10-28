@@ -82,6 +82,12 @@ the table above — not appended here.
 
 ## Verification
 
-There is no test suite yet. Until there is, "done" means the acceptance check
-written in `docs/ROADMAP.md` for that phase has been run and passed. Say which
-check you ran and what it output. Do not report a phase complete otherwise.
+`cd lambda && npm test` runs the unit tests. Integration tests need a
+throwaway Postgres: `npm run db:up`, then
+`TEST_DATABASE_URL=postgres://postgres:postgres@localhost:54329/postgres npm test`.
+The harness refuses any host other than `localhost`, so it cannot reach
+production. CI (`.github/workflows/ci.yml`) runs both on every PR.
+
+Until Phase 3.6 is complete, a phase's acceptance check in
+`docs/ROADMAP.md` still decides "done": say which check you ran and what
+it output.
