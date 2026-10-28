@@ -25,13 +25,13 @@ const REVIEW = ["Confirm", "Discard", "Fix date", "Edit"];
 describe("logging one purchase", () => {
   it("a text purchase shows a card, and Confirm saves it with its date and reason", async () => {
     gemini.extract = golden("text-with-note").recorded;
-    await chat.text("14 lunch at Sandwich Shop on Oct 25, was too tired to pack lunch");
+    await chat.text("14 lunch at Sandwich Shop on Oct 25, was to tierd didnt pak lunch");
 
     const card = chat.last();
     expect(card.text.split("\n").slice(0, 3)).toEqual([
       "Expense · 2026-10-25 · CAD 14.00",
       "Lunch at Sandwich Shop",
-      "Note: was too tired to pack lunch",
+      "Note: I was too tired and didn't pack lunch.",
     ]);
     expect(labels(card)).toEqual(REVIEW);
     expect(gemini.calls).toEqual([{ model: "gemini-3.6-flash", kind: "extract" }]);
@@ -43,7 +43,7 @@ describe("logging one purchase", () => {
       {
         date: "2026-10-25",
         amount: "14.00",
-        notes: "was too tired to pack lunch",
+        notes: "I was too tired and didn't pack lunch.",
         funder: "self",
         merchant: null,
       },
@@ -61,7 +61,7 @@ describe("logging one purchase", () => {
 
   it("tapping Confirm twice saves once and says it was already handled", async () => {
     gemini.extract = golden("text-with-note").recorded;
-    await chat.text("14 lunch at Sandwich Shop on Oct 25, was too tired to pack lunch");
+    await chat.text("14 lunch at Sandwich Shop on Oct 25, was to tierd didnt pak lunch");
     const card = chat.last();
     await chat.tap(card, "Confirm");
     await chat.tap(card, "Confirm");
@@ -72,7 +72,7 @@ describe("logging one purchase", () => {
 
   it("Discard drops the purchase, and a second tap says it was already handled", async () => {
     gemini.extract = golden("text-with-note").recorded;
-    await chat.text("14 lunch at Sandwich Shop on Oct 25, was too tired to pack lunch");
+    await chat.text("14 lunch at Sandwich Shop on Oct 25, was to tierd didnt pak lunch");
     const card = chat.last();
     await chat.tap(card, "Discard");
     await chat.tap(card, "Discard");
@@ -180,7 +180,7 @@ describe("only the owner can use the bot", () => {
 
   it("a button tapped from another chat does nothing", async () => {
     gemini.extract = golden("text-with-note").recorded;
-    await chat.text("14 lunch at Sandwich Shop on Oct 25, was too tired to pack lunch");
+    await chat.text("14 lunch at Sandwich Shop on Oct 25, was to tierd didnt pak lunch");
     const result = await chat.tap(chat.last(), "Confirm", STRANGER);
 
     expect(result.body).toBe("ignored");

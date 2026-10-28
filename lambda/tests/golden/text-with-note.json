@@ -1,8 +1,8 @@
 {
-  "name": "a stated date and a reason are kept",
+  "name": "a stated date and a reason are kept, the reason copy-edited",
   "input": {
     "kind": "text",
-    "text": "14 lunch at Sandwich Shop on Oct 25, was too tired to pack lunch"
+    "text": "14 lunch at Sandwich Shop on Oct 25, was to tierd didnt pak lunch"
   },
   "expect": {
     "events": [
@@ -11,7 +11,19 @@
         "lines": 1,
         "merchant": true,
         "date": true,
-        "note": true
+        "note": true,
+        "noteHas": [
+          "tired",
+          "pack"
+        ],
+        "noteLacks": [
+          "tierd",
+          "didnt",
+          "pak",
+          "Sandwich",
+          "14"
+        ],
+        "noteMaxWords": 10
       }
     ]
   },
@@ -30,7 +42,7 @@
         "is_recurring": false,
         "income_source": null,
         "to_account": null,
-        "notes": "was too tired to pack lunch",
+        "notes": "I was too tired and didn't pack lunch.",
         "items": [
           {
             "description": "Sub",
