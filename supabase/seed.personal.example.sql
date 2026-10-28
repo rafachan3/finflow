@@ -31,5 +31,5 @@ insert into tags (name) values
 -- Recurring merchants you want normalized, with the aliases the LLM
 -- should map onto them (e.g. how the name appears on receipts).
 insert into merchants (name, aliases) values
-  ('Costco', '{"COSTCO WHOLESALE"}'),
-  ('Amazon', '{"AMZN Mktp", "AMAZON.CA"}');
+  ('Acme Mart', '{"ACME MART WHOLESALE"}'),
+  ('Example Online', '{"EXAMPLE MKTP", "EXAMPLE.CA"}');
