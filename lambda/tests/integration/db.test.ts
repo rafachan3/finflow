@@ -103,7 +103,7 @@ describe("confirmIngestion", () => {
       currency: "CAD",
       description: "groceries",
       notes: "stocking up",
-      merchant: "Costco",
+      merchant: "Acme Mart",
       venue: "Supermarket",
       funder: "self",
       income_source_id: null,
@@ -275,7 +275,7 @@ describe("loadTaxonomy", () => {
     expect(t.incomeSources).toEqual(["Refund", "Salary"]);
     expect(t.accounts).toEqual(["Emergency fund", "Retirement account"]);
     expect(t.fundingSources).toEqual(["family", "self"]);
-    expect(t.merchants).toEqual(["Amazon", "Costco"]);
+    expect(t.merchants).toEqual(["Acme Mart", "Example Online"]);
     expect(t.tags).toEqual(expect.arrayContaining(["Partner", "Social"]));
     expect(t.subcategories).toContainEqual({
       category: "Food and drink",
