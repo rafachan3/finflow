@@ -68,6 +68,7 @@ Run from `lambda/`.
 | Everything | `npm test` | `TEST_DATABASE_URL`, or the database layers are skipped with a warning |
 | Coverage floor | `npm run test:coverage` | `TEST_DATABASE_URL` |
 | Eval (live Gemini) | `npm run eval` | `TEST_DATABASE_URL`, `GEMINI_EVAL_API_KEY` |
+| Needs/wants accuracy (local only) | `npm run eval:buckets` | see [below](#the-needswants-accuracy-check) |
 | Inventory | `node scripts/check-inventory.mjs` (repo root) | nothing |
 
 A throwaway Postgres for the database layers: start Docker, run
@@ -103,6 +104,49 @@ A case answered by a fallback model passes when its answer satisfies
 `expect`: a real message sent that day would have been answered by the same
 model (owner ruling 2026-10-28, DECISIONS.md). The job summary still lists
 each case's answering model.
+
+## The needs/wants accuracy check
+
+`npm run eval:buckets` measures how often production's bucket call agrees
+with the owner on the owner's own history. It runs on the owner's machine
+only, never in CI, and nothing it reads or writes is tracked.
+
+Ground truth is the expenses no ingestion was confirmed into: the Notion
+import, where the owner picked every `Bucket` by hand. Bot-created rows are
+left out. Their bucket is Gemini's, and the owner only pressed Confirm, so
+counting them would score the model against itself.
+
+For each sampled expense the script rebuilds a text message from the row
+(description, amount, merchant, venue, lines, funder, tags, notes; never
+the bucket) and sends it through `extractFromText`, the bot's text path,
+with the live taxonomy and the private rules. Each owner line is paired with
+an answer line of the same amount, else the same position. stdout shows
+agreement, a truth→predicted confusion table per category, which model
+answered each case, and every mismatch with its message.
+
+What it reads, all from the main checkout and all gitignored:
+
+| Input | Where |
+|---|---|
+| Rows | `finflow_readonly` through the pooler in `supabase/.temp/pooler-url` (password `FINFLOW_READONLY_PASSWORD` in `.env`), over TLS verified against Supabase's public root CA, `supabase/prod-ca-2021.crt` |
+| Rules | `docs/BUCKET_RULES.local.md`, or `--rules PATH` |
+| Key | `GEMINI_EVAL_API_KEY` from the environment, else from `.env` |
+
+Run it from the repo root after a change to the bucket prompt, the rules, or
+the model pins, and before trusting a rules edit:
+
+```sh
+npm --prefix lambda run eval:buckets                  # 10 cases, seed 1
+npm --prefix lambda run eval:buckets -- --sample 20 --seed 2 --detail
+npm --prefix lambda run eval:buckets -- --dry-run     # the messages, no Gemini call
+```
+
+One request per case, 13 s apart, on the eval key's daily quota (20 per
+Flash model), so keep `--sample` at 20 or less. The same seed picks the
+same cases while the history is unchanged. `--detail` writes every case as
+JSON to `lambda/.eval-buckets/`. The unit tests in
+`lambda/tests/eval-buckets.test.ts` cover sampling, the message, pairing and
+the report on synthetic rows.
 
 ## Adding or changing a behaviour
 

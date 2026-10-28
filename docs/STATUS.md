@@ -264,7 +264,17 @@ that does not exist. The `inventory` CI job runs that check and
 workflow now runs after a successful CI run on `main`. Journeys wait out no
 real retry delay: `retryWait.sleep` in `gemini.ts` is the test seam.
 
+Needs/wants accuracy check (2026-10-28; TESTING.md): `npm run
+eval:buckets` replays a seeded sample of the Notion-imported expenses
+(owner-set buckets) through `extractFromText` with the private rules and
+prints agreement, per-category confusion, model mix and mismatches. Reads
+through `finflow_readonly` only; local only, never in CI.
+
 ## Next concrete step
+
+Owner: add `GEMINI_EVAL_API_KEY=<eval key>` to the gitignored `.env` in the
+main checkout, then run `npm --prefix lambda run eval:buckets` for a
+baseline agreement figure.
 
 Owner phone check of the single call with the real rules: log 3 to 5
 real expenses, including one where the rules overrule the subcategory
