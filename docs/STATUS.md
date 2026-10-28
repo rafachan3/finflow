@@ -139,7 +139,7 @@ test (pg mock on the transactions insert). Phone-tested 2026-10-12:
 text with a reason and voice saved the owner's words; text and a
 receipt without a reason saved NULL (no note invented from receipt
 text); a caption reason became the note; a note added through Edit
-was saved. Notes are verbatim, typos included.
+was saved. Notes were verbatim, typos included, until #27.
 
 Gemini overload (2026-10-12): every logged error since 2026-09-30
 (8 in ~28 interactions) was `Gemini HTTP 503` "high demand" from
@@ -285,6 +285,16 @@ eval:buckets` replays a seeded sample of the Notion-imported expenses
 (owner-set buckets) through `extractFromText` with the private rules and
 prints agreement, per-category confusion, model mix and mismatches. Reads
 through `finflow_readonly` only; local only, never in CI.
+
+Notes are copy-edited (#27, 2026-10-28; DECISIONS.md). The `NOTES`
+instruction now asks Gemini, in the same request, to fix spelling, typos,
+punctuation and grammar and to join broken fragments with connectors,
+keeping the owner's wording and adding no facts. `golden:text-with-note`
+sends a typo-laden reason and checks the corrections are present, the typos
+gone, and the note no longer than a copy-edit allows. The raw text, caption
+and voice `file_id` stay in `ingestions.raw_payload` (voice audio in S3),
+written with the extraction after Gemini answers, so the original of every
+saved card is recoverable.
 
 ## Next concrete step
 

@@ -438,6 +438,33 @@ describe("extractFromText", () => {
     expect(body.systemInstruction.parts[0].text).toMatch(/never from printed receipt text/i);
   });
 
+  it("asks Gemini to copy-edit the note lightly and add nothing", async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce({
+      ok: true,
+      json: async () => geminiJson(events({ ...extracted, notes: "was too tired to cook" })),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await extractFromText({
+      apiKey: "test-key",
+      text: "13.50 indian on uber eats, was to tierd too cook",
+      taxonomy,
+      bucketRules: "",
+      today: "2026-08-17",
+    });
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body as string) as {
+      systemInstruction: { parts: { text: string }[] };
+    };
+    const prompt = body.systemInstruction.parts[0].text;
+    expect(prompt).toMatch(/lightly copy-edited: fix spelling, typos, punctuation and grammar/);
+    expect(prompt).toMatch(/join broken fragments with connectors/);
+    expect(prompt).toMatch(/Keep the owner's own wording and voice: do not rephrase/);
+    expect(prompt).toMatch(/never add facts, reasons or details/);
+    expect(prompt).toMatch(/translated to English/);
+    expect(prompt).not.toMatch(/kept in their words/);
+  });
+
   it("returns null notes when Gemini omits or empties them", async () => {
     const fetchMock = vi
       .fn()

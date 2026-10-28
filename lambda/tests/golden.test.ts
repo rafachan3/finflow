@@ -75,6 +75,26 @@ describe("mismatches", () => {
       "event 0: line 2 (Soda) bucket undefined != wants",
     ]);
   });
+
+  it("reports a note that keeps a typo, misses a correction, or grows too long", () => {
+    const want: ExpectedEvent = {
+      type: "income",
+      lines: 0,
+      noteHas: ["tired", "didn't"],
+      noteLacks: ["tierd", "pak"],
+      noteMaxWords: 6,
+    };
+    const note = (notes: string) => mismatches([{ type: "income", items: [], notes }], [want]);
+    expect(note("I was too tired and didn’t pack lunch")).toEqual([
+      "event 0: note has 8 words > 6",
+    ]);
+    expect(note("was tierd, didnt pak lunch")).toEqual([
+      'event 0: note lacks "tired"',
+      'event 0: note lacks "didn\'t"',
+      'event 0: note has "tierd"',
+      'event 0: note has "pak"',
+    ]);
+  });
 });
 
 describe("bucketRules", () => {

@@ -16,6 +16,12 @@ export type ExpectedEvent = {
   merchant?: boolean;
   date?: boolean;
   note?: boolean;
+  /** Whole words the note must contain, case-insensitive (e.g. a typo's correction). */
+  noteHas?: string[];
+  /** Whole words the note must not contain (a typo left in, a repeated fact). */
+  noteLacks?: string[];
+  /** A copy-edit adds little; more words than this means facts were added. */
+  noteMaxWords?: number;
   funder?: string;
   /** Each line's bucket, in order. Only meaningful with `rules`. */
   buckets?: ("needs" | "wants")[];
@@ -95,6 +101,15 @@ export function mismatches(events: RawEvent[], expected: ExpectedEvent[]): strin
       if (wanted !== undefined && present(value) !== wanted) {
         out.push(`${at}: ${field} ${wanted ? "missing" : "unexpected"}`);
       }
+    }
+    const note = typeof got.notes === "string" ? got.notes.replace(/\u2019/g, "'") : "";
+    // Golden words are plain letters and apostrophes, so no escaping.
+    const hasWord = (w: string) => new RegExp(`(^|[^\\w'])${w}($|[^\\w'])`, "i").test(note);
+    for (const w of want.noteHas ?? []) if (!hasWord(w)) out.push(`${at}: note lacks "${w}"`);
+    for (const w of want.noteLacks ?? []) if (hasWord(w)) out.push(`${at}: note has "${w}"`);
+    const words = note.split(/\s+/).filter(Boolean).length;
+    if (want.noteMaxWords !== undefined && words > want.noteMaxWords) {
+      out.push(`${at}: note has ${words} words > ${want.noteMaxWords}`);
     }
     if (want.funder !== undefined && got.funded_by !== want.funder) {
       out.push(`${at}: funder ${String(got.funded_by)} != ${want.funder}`);

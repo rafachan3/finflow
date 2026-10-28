@@ -1038,3 +1038,22 @@ the owner's machine.
 **Ruled out:** bot-confirmed rows as truth (self-agreement); running it in
 CI (personal rows and rules would reach a public runner); unverified TLS
 to the pooler.
+
+---
+
+## 2026-10-28 — Notes get a light copy-edit, not a rewrite
+
+Owner ruling on #27. Gemini fixes spelling, typos, punctuation and grammar
+in `notes` and joins broken fragments with connectors. It keeps the
+owner's own wording and voice and never adds facts, reasons or details.
+The old note rules stay (translate to English; no amount, merchant, items,
+date or category; never from printed receipt text). It is part of the
+`NOTES` instruction in the existing request.
+
+The raw input needed no new column: `ingestions.raw_payload` already keeps
+the full Telegram update (text, caption, voice `file_id`) and S3 the voice
+audio, for every card that is saved.
+
+**Ruled out:** full rewording for clarity or coherence (it drifts from the
+owner's voice and invites invented detail); a second Gemini request just
+for the note (free-tier budget, one request per message).
