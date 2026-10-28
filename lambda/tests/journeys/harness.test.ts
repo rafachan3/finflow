@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { sendMessage, answerCallbackQuery } from "../../src/telegram.js";
+import { sendMessage, answerCallbackQuery, downloadTelegramFile } from "../../src/telegram.js";
 import { takeStrayRequests, takeTelegramRejections, useJourneys } from "./harness.js";
 
 vi.mock("../../src/config.js", async () => {
@@ -43,5 +43,10 @@ describe("the journey fakes", () => {
     expect(takeTelegramRejections()).toEqual([
       "answerCallbackQuery: text must be at most 200 characters",
     ]);
+  });
+
+  it("reject a file that no message carried", async () => {
+    await expect(downloadTelegramFile("t", "photo-small")).rejects.toThrow(/HTTP 400|getFile/);
+    expect(takeTelegramRejections()).toEqual(["getFile: no such file_id photo-small"]);
   });
 });

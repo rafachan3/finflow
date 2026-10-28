@@ -33,7 +33,13 @@ export function journeyConfig() {
 
 type Sent = { method: string; body: Record<string, unknown>; failed: boolean };
 
-const telegram = { sent: [] as Sent[], failSends: 0, filePath: "", rejected: [] as string[] };
+/** file_id -> file_path of the media the next message carries; getFile knows nothing else. */
+const telegram = {
+  sent: [] as Sent[],
+  failSends: 0,
+  files: {} as Record<string, string>,
+  rejected: [] as string[],
+};
 
 type Button = { text?: string; callback_data?: string };
 
@@ -106,7 +112,13 @@ const server = setupServer(
       return HttpResponse.json({ ok: false, description: "Bad Gateway" }, { status: 502 });
     }
     if (method === "getFile") {
-      return HttpResponse.json({ ok: true, result: { file_path: telegram.filePath } });
+      const filePath = telegram.files[String(body.file_id)];
+      if (!filePath) {
+        const unknown = `getFile: no such file_id ${String(body.file_id)}`;
+        telegram.rejected.push(unknown);
+        return HttpResponse.json({ ok: false, description: `Bad Request: ${unknown}` }, { status: 400 });
+      }
+      return HttpResponse.json({ ok: true, result: { file_path: filePath } });
     }
     return HttpResponse.json({ ok: true, result: {} });
   }),
@@ -163,6 +175,7 @@ export function useJourneys(): void {
     telegram.rejected = [];
     telegram.sent = [];
     telegram.failSends = 0;
+    telegram.files = {};
     gemini.calls = [];
     gemini.extract = undefined;
     gemini.patch = undefined;
@@ -229,7 +242,7 @@ export const chat = {
     return deliver(message({ text }, from));
   },
   photo(caption = "") {
-    telegram.filePath = "photos/file_1.jpg";
+    telegram.files = { "photo-large": "photos/file_1.jpg" };
     const photo = [
       { file_id: "photo-small", file_size: 10 },
       { file_id: "photo-large", file_size: 900 },
@@ -237,7 +250,7 @@ export const chat = {
     return deliver(message(caption ? { photo, caption } : { photo }));
   },
   voice() {
-    telegram.filePath = "voice/file_2.oga";
+    telegram.files = { "voice-1": "voice/file_2.oga" };
     return deliver(message({ voice: { file_id: "voice-1", duration: 4 } }));
   },
   tap(reply: Reply, label: string, from = OWNER) {
