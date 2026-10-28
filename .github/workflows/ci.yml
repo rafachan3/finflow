@@ -76,7 +76,6 @@ jobs:
           --health-retries 10
     env:
       TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
-      GEMINI_EVAL_API_KEY: ${{ secrets.GEMINI_EVAL_API_KEY }}
       EVAL_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
     defaults:
       run:
@@ -92,4 +91,7 @@ jobs:
           cache: npm
           cache-dependency-path: lambda/package-lock.json
       - run: npm ci
+      # Only this step sees the key, not checkout or npm ci's install scripts.
       - run: npm run eval
+        env:
+          GEMINI_EVAL_API_KEY: ${{ secrets.GEMINI_EVAL_API_KEY }}

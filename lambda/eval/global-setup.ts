@@ -23,6 +23,7 @@ export default async function setup({ provide }: TestProject): Promise<void> {
   if (!scope.run) return;
   if (!process.env.GEMINI_EVAL_API_KEY) {
     // One line, no stack: the fix is a missing secret, not a code bug.
+    // PRs from forks never get Actions secrets, so they fail here too.
     const annotation = process.env.GITHUB_ACTIONS ? "::error::" : "";
     console.error(
       `${annotation}GEMINI_EVAL_API_KEY is not set: add it as an Actions secret (or export it locally) to run the live eval`,
