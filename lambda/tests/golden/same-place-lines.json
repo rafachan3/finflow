@@ -2,7 +2,7 @@
   "name": "two items at one store stay one purchase with two lines",
   "input": {
     "kind": "text",
-    "text": "milk 4 and bread 3 at Maxi"
+    "text": "milk 4 and bread 3 at Fresh Market"
   },
   "expect": {
     "events": [
@@ -20,8 +20,8 @@
         "amount": "7.00",
         "currency": "CAD",
         "date": "",
-        "description": "Groceries at Maxi",
-        "merchant": "Maxi",
+        "description": "Groceries at Fresh Market",
+        "merchant": "Fresh Market",
         "venue": "Supermarket",
         "tags": [],
         "funded_by": null,

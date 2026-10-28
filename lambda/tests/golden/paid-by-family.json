@@ -2,7 +2,7 @@
   "name": "someone else paying is recorded as the funder",
   "input": {
     "kind": "text",
-    "text": "20 dinner at Mandy's on Oct 24, my family paid"
+    "text": "20 dinner at Salad Bar on Oct 24, my family paid"
   },
   "expect": {
     "events": [
@@ -21,8 +21,8 @@
         "amount": "20.00",
         "currency": "CAD",
         "date": "2026-10-24",
-        "description": "Dinner at Mandy's",
-        "merchant": "Mandy's",
+        "description": "Dinner at Salad Bar",
+        "merchant": "Salad Bar",
         "venue": null,
         "tags": [],
         "funded_by": "family",

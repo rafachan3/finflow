@@ -2,7 +2,7 @@
   "name": "a purchase and a paycheque become two entries",
   "input": {
     "kind": "text",
-    "text": "groceries at Maxi 40, and got paid 200 salary"
+    "text": "groceries at Fresh Market 40, and got paid 200 salary"
   },
   "expect": {
     "events": [
@@ -24,8 +24,8 @@
         "amount": "40.00",
         "currency": "CAD",
         "date": "",
-        "description": "Groceries at Maxi",
-        "merchant": "Maxi",
+        "description": "Groceries at Fresh Market",
+        "merchant": "Fresh Market",
         "venue": "Supermarket",
         "tags": [],
         "funded_by": null,

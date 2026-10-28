@@ -2,7 +2,7 @@
   "name": "two stores in one message become two purchases",
   "input": {
     "kind": "text",
-    "text": "3 at Dollarama and 5 at Pharmaprix"
+    "text": "3 at Dollar Corner and 5 at Corner Pharmacy"
   },
   "expect": {
     "events": [
@@ -25,8 +25,8 @@
         "amount": "3.00",
         "currency": "CAD",
         "date": "",
-        "description": "Dollarama purchase",
-        "merchant": "Dollarama",
+        "description": "Dollar Corner purchase",
+        "merchant": "Dollar Corner",
         "venue": null,
         "tags": [],
         "funded_by": null,
@@ -36,7 +36,7 @@
         "notes": null,
         "items": [
           {
-            "description": "Dollarama items",
+            "description": "Dollar Corner items",
             "amount": "3.00",
             "category": "Shopping",
             "subcategory": "Other shopping",
@@ -50,8 +50,8 @@
         "amount": "5.00",
         "currency": "CAD",
         "date": "",
-        "description": "Pharmaprix purchase",
-        "merchant": "Pharmaprix",
+        "description": "Corner Pharmacy purchase",
+        "merchant": "Corner Pharmacy",
         "venue": "Pharmacy",
         "tags": [],
         "funded_by": null,

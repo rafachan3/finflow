@@ -2,7 +2,7 @@
   "name": "a receipt plus a caption purchase become two purchases",
   "input": {
     "kind": "photo",
-    "caption": "also 5 at Pharmaprix",
+    "caption": "also 5 at Corner Pharmacy",
     "media": "receipt.png"
   },
   "expect": {
@@ -27,8 +27,8 @@
         "amount": "23.47",
         "currency": "CAD",
         "date": "2026-10-25",
-        "description": "Costco groceries",
-        "merchant": "Costco",
+        "description": "Big Box Market groceries",
+        "merchant": "Big Box Market",
         "venue": "Supermarket",
         "tags": [],
         "funded_by": null,
@@ -66,8 +66,8 @@
         "amount": "5.00",
         "currency": "CAD",
         "date": "",
-        "description": "Pharmaprix purchase",
-        "merchant": "Pharmaprix",
+        "description": "Corner Pharmacy purchase",
+        "merchant": "Corner Pharmacy",
         "venue": "Pharmacy",
         "tags": [],
         "funded_by": null,

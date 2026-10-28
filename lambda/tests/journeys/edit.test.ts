@@ -14,7 +14,7 @@ const ASK_EDIT = "Send the correction — amount, category, a line, whatever is 
 
 async function lunchCard() {
   gemini.extract = golden("text-with-note").recorded;
-  await chat.text("14 lunch at Subway on Oct 25, was too tired to pack lunch");
+  await chat.text("14 lunch at Sandwich Shop on Oct 25, was too tired to pack lunch");
   return chat.last();
 }
 

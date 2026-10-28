@@ -16,7 +16,7 @@ const BUSY =
 
 async function twoCards() {
   gemini.extract = golden("two-stores").recorded;
-  await chat.text("3 at Dollarama and 5 at Pharmaprix");
+  await chat.text("3 at Dollar Corner and 5 at Corner Pharmacy");
   return chat.replies();
 }
 

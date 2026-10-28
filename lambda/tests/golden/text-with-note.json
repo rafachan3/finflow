@@ -2,7 +2,7 @@
   "name": "a stated date and a reason are kept",
   "input": {
     "kind": "text",
-    "text": "14 lunch at Subway on Oct 25, was too tired to pack lunch"
+    "text": "14 lunch at Sandwich Shop on Oct 25, was too tired to pack lunch"
   },
   "expect": {
     "events": [
@@ -22,8 +22,8 @@
         "amount": "14.00",
         "currency": "CAD",
         "date": "2026-10-25",
-        "description": "Lunch at Subway",
-        "merchant": "Subway",
+        "description": "Lunch at Sandwich Shop",
+        "merchant": "Sandwich Shop",
         "venue": "Fast Food",
         "tags": [],
         "funded_by": null,
