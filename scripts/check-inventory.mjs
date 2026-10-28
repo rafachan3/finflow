@@ -7,10 +7,15 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 /** Rows of the `| Area | Behaviour | Tests |` table; Tests holds backtick-quoted titles. */
 export function parseInventory(markdown) {
   const rows = [];
+  let inTable = false;
   for (const line of markdown.split("\n")) {
-    if (!line.startsWith("|")) continue;
+    if (!line.startsWith("|")) {
+      inTable = false;
+      continue;
+    }
     const cells = line.replace(/^\||\|\s*$/g, "").split("|").map((c) => c.trim());
-    if (cells.length !== 3 || cells[0] === "Area" || /^[-:\s]*$/.test(cells[0])) continue;
+    if (cells.join("|") === "Area|Behaviour|Tests") inTable = true;
+    if (!inTable || cells.length !== 3 || cells[0] === "Area" || /^[-:\s]*$/.test(cells[0])) continue;
     const tests = [...cells[2].matchAll(/`([^`]+)`/g)].map((m) => m[1]);
     rows.push({ area: cells[0], behaviour: cells[1], tests });
   }

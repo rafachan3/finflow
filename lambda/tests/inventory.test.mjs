@@ -33,6 +33,11 @@ describe("parseInventory", () => {
     expect(rows).toEqual([{ area: "A", behaviour: "B", tests: [] }]);
   });
 
+  it("ignores other tables with three columns", () => {
+    const other = "| Layer | Command | Needs |\n|---|---|---|\n| Unit | npm test | nothing |\n\n";
+    expect(parseInventory(other + TABLE)).toHaveLength(2);
+  });
+
   it("finds no rows in a document without the table", () => {
     expect(parseInventory("# Testing\n\nNothing here.\n")).toEqual([]);
   });
