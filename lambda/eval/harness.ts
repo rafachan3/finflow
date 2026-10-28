@@ -35,7 +35,8 @@ export function shouldRun(
 }
 
 // gemini.ts throws this only after every model in its fallback chain
-// answered with a retryable status.
+// answered with a retryable status. A 429 here is per-minute: geminiFetch
+// throws its own error on a per-day one first.
 const OUTAGE = /^Gemini HTTP (429|500|503|504)\b/;
 
 /**
@@ -85,14 +86,45 @@ function modelOf(input: Parameters<typeof fetch>[0]): string {
   return /\/models\/([^:/]+):/.exec(url)?.[1] ?? url;
 }
 
+type QuotaDetail = { violations?: { quotaId?: string }[]; retryDelay?: string };
+
 /**
- * The eval's fetch: logs the model and status of every Gemini response.
- * Requests go to `realFetch` exactly as production built them.
+ * The eval's fetch: spaces Gemini requests `minGapMs` apart (start to
+ * start) and logs the model and status of every response. Requests go to
+ * `realFetch` exactly as production built them.
+ *
+ * A 429 logs its quotaId and retryDelay. A per-day quota will not come back
+ * within the run, so it throws at once, and every later request throws too,
+ * instead of spending the outage budget.
  */
-export function geminiFetch(realFetch: typeof fetch): typeof fetch {
+export function geminiFetch(
+  realFetch: typeof fetch,
+  opts: { minGapMs: number; now: () => number; sleep: (ms: number) => Promise<void> },
+): typeof fetch {
+  let last = -Infinity;
+  let daily: Error | undefined;
   return async (input, init) => {
+    if (daily) throw daily;
+    const wait = last + opts.minGapMs - opts.now();
+    if (wait > 0) await opts.sleep(wait);
+    last = opts.now();
     const res = await realFetch(input, init);
-    console.log(`${modelOf(input)}: HTTP ${res.status}`);
+    const model = modelOf(input);
+    console.log(`${model}: HTTP ${res.status}`);
+    if (res.status !== 429) return res;
+
+    const body = await res.clone().json().catch(() => ({}));
+    const details: QuotaDetail[] = body?.error?.details ?? [];
+    const ids = details.flatMap((d) => d.violations ?? []).map((v) => v.quotaId ?? "?");
+    const delay = details.find((d) => d.retryDelay)?.retryDelay ?? "?";
+    const quotaId = ids.join(",") || "?";
+    console.log(`${model}: 429 quotaId=${quotaId} retryDelay=${delay}`);
+    if (ids.some((id) => /PerDay/i.test(id))) {
+      daily = new Error(
+        `Gemini daily quota exhausted on ${model} (${quotaId}); it resets at midnight Pacific. Stopping instead of waiting.`,
+      );
+      throw daily;
+    }
     return res;
   };
 }

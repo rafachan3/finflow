@@ -26,9 +26,14 @@ import {
 const GOLDEN_DIR = new URL("../tests/golden/", import.meta.url);
 const RECORD = process.env.EVAL_RECORD === "1";
 
-// Every model shedding load or out of quota: try again every 2 minutes, for
-// at most 20 minutes in the whole run, then fail (the PR waits for Gemini).
+// Every model shedding load or out of per-minute quota: try again every 2
+// minutes, for at most 20 minutes in the whole run, then fail (the PR waits
+// for Gemini). A per-day quota fails at once in geminiFetch.
 const waitForGemini = outageWaiter({ budgetMs: 20 * 60_000, everyMs: 2 * 60_000, sleep });
+
+// Each case sends an extractor and a bucket call back to back. 13 s apart
+// keeps the run under a 5-requests-per-minute free-tier limit.
+const MIN_GAP_MS = 13_000;
 
 let db: Client;
 let taxonomy: TaxonomySnapshot;
@@ -73,7 +78,7 @@ describe.skipIf(inject("evalSkip"))("live Gemini", () => {
   const realFetch = globalThis.fetch;
 
   beforeAll(async () => {
-    globalThis.fetch = geminiFetch(realFetch);
+    globalThis.fetch = geminiFetch(realFetch, { minGapMs: MIN_GAP_MS, now: Date.now, sleep });
     db = new Client({ connectionString: testDbUrl() });
     await db.connect();
     taxonomy = await loadTaxonomy(db);

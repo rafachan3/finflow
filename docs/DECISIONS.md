@@ -859,6 +859,13 @@ base commit it runs every case.
   needs/wants.
 - The 20-minute outage wait is one budget for the whole run, not per
   case, so a long outage fails the job in about 20 minutes.
+- Gemini requests start at least 13 s apart (the free tier allows about
+  5 a minute, and each case sends an extractor and a bucket call), at
+  the cost of about 6 minutes per full run. The spacing lives in the
+  eval's fetch wrapper, so the request bytes stay production's.
+- A 429 whose `quotaId` is per-day fails the run at once: it resets at
+  midnight Pacific, not within the 20-minute budget. Per-minute 429s and
+  5xx still wait.
 - `npm run eval` wraps vitest in `eval/run.mjs` because vitest rejects an
   unknown `--record` flag.
 

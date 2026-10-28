@@ -225,8 +225,11 @@ the production `extractFromText` / `extractFromPhoto` / `extractFromVoice`
 / `patchExtraction` with the taxonomy loaded from the throwaway database,
 no bucket rules (the bot's no-rules fallback), and the eval's own key.
 Gemini's first answer is checked against the case's `expect`; a miss gets
-one retry. When every model answers 429/5xx the run waits 2 minutes and
-tries again, for at most 20 minutes per run. `--record` rewrites a golden's
+one retry. Requests start at least 13 s apart, and each response logs its
+model and status (a 429 also its `quotaId` and `retryDelay`). When every
+model answers 5xx or a per-minute 429 the run waits 2 minutes and tries
+again, for at most 20 minutes per run; a per-day 429 fails it at once.
+`--record` rewrites a golden's
 `recorded` only when the live answer satisfies `expect`. The CI `eval` job
 always reports: with no change under `lambda/src/`, `lambda/tests/golden/`,
 `lambda/eval/`, `supabase/migrations/` or `seed.personal.example.sql`
