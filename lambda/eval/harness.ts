@@ -175,8 +175,7 @@ export type Answer = { raw: unknown; model: string | undefined };
 
 /**
  * Runs `call` and returns the JSON of the first successful Gemini answer
- * and the model that gave it: the extractor's, before any bucket call.
- * That is what goldens record.
+ * and the model that gave it. That is what goldens record.
  */
 export async function captureAnswer(call: () => Promise<unknown>): Promise<Answer> {
   const realFetch = globalThis.fetch;

@@ -343,9 +343,10 @@ still only offers Confirm / Discard; failed mechanical checks omit Confirm.
 `meta` identifies what the model saw: pin name, plus sha256 of the static
 extractor instructions (today's calendar date is a placeholder so the hash
 does not rotate daily), the live taxonomy blob, and the rules string actually
-sent in the same prompt. An Edit still runs a separate bucket call, so a
-corrected row also carries `bucket_sha256`, `bucket_model`, and
-`usage.bucket`; rows from before 2026-10-28 carry them too. This is not an
+sent in the same prompt. Rows from before 2026-10-28, when buckets took a
+second call, also carry `bucket_sha256`, `bucket_model`, and `usage.bucket`.
+An Edit sends each line's stored `bucket` and `bucket_why` back with the
+correction, and keeps them unless the correction changes that line. This is not an
 accuracy label. A Phase 4 mart can group token cost (and later Edit diffs)
 by these hashes. Do not use a manual prompt-version string — it will not
 bump when SSM rules change.

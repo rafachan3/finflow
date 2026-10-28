@@ -786,18 +786,13 @@ const current = {
 } as Extraction;
 
 describe("patchExtraction", () => {
-  it("sends the current extraction and correction, then the bucket specialist, with no media", async () => {
+  it("sends the current extraction, its buckets, and the correction in one call with no media", async () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce({
         ok: true,
         json: async () =>
           geminiJson({ ...extracted, amount: "14.50", items: [{ ...extracted.items[0], amount: "14.50" }] }, 80, 20),
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () =>
-          geminiJson({ buckets: [{ bucket: "wants", why: "takeout" }] }, 40, 8),
       });
     vi.stubGlobal("fetch", fetchMock);
 
@@ -810,7 +805,7 @@ describe("patchExtraction", () => {
       today: "2026-08-30",
     });
 
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
     const first = JSON.parse(fetchMock.mock.calls[0][1].body as string) as {
       systemInstruction: { parts: { text: string }[] };
       contents: {
@@ -818,26 +813,57 @@ describe("patchExtraction", () => {
       }[];
     };
     const blob = JSON.stringify(first.contents[0].parts);
+    const [sent] = JSON.parse(first.contents[0].parts[0].text ?? "{}").items as {
+      bucket: string;
+      bucket_why: string;
+    }[];
     expect(blob).toContain("chipotle lunch");
     expect(blob).toContain("burrito");
     expect(blob).toContain("14.50");
     expect(blob).not.toContain("aaaaaaaa");
-    expect(blob).not.toContain("takeout");
+    expect(sent).toMatchObject({ bucket: "wants", bucket_why: "takeout" });
     expect(blob).not.toContain("inlineData");
+    expect(blob).not.toContain("Takeout is wants.");
     expect(first.systemInstruction.parts[0].text).toMatch(/correction/i);
     expect(first.systemInstruction.parts[0].text).toMatch(/Keep every field/i);
     expect(first.systemInstruction.parts[0].text).not.toMatch(/receipt photo/i);
     expect(first.systemInstruction.parts[0].text).not.toMatch(/one event per merchant or place/i);
+    expect(first.systemInstruction.parts[0].text).not.toMatch(/Do not assign needs\/wants/);
+    expect(first.systemInstruction.parts[0].text).toMatch(/Keep each line's bucket and bucket_why/);
+    expect(first.systemInstruction.parts[0].text).toContain("Needs/wants rules:\nTakeout is wants.");
 
-    const second = JSON.parse(fetchMock.mock.calls[1][1].body as string) as {
-      contents: { parts: { text?: string; inlineData?: unknown }[] }[];
-    };
-    expect(JSON.stringify(second.contents)).not.toContain("inlineData");
     expect(result.amount).toBe("14.50");
     expect(result.items[0].bucket).toBe("wants");
-    expect(result.usage?.extractor).toEqual({ input: 80, output: 20 });
+    expect(result.items[0].bucket_why).toBe("takeout");
+    expect(result.usage).toEqual({ extractor: { input: 80, output: 20 } });
+    expect(result.meta?.rules_sha256).toMatch(/^[0-9a-f]{64}$/);
+    expect(result.meta?.bucket_sha256).toBeUndefined();
+    expect(result.meta?.bucket_model).toBeUndefined();
     expect(result.meta?.extractor_sha256).toMatch(/^[0-9a-f]{64}$/);
     expect(result.meta?.extractor_sha256).not.toBe(current.meta?.extractor_sha256);
+  });
+
+  it("returns the bucket the correction changes", async () => {
+    const need = { ...extracted.items[0], bucket: "needs", bucket_why: "owner says it is a need" };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValueOnce({
+        ok: true,
+        json: async () => geminiJson({ ...extracted, items: [need] }),
+      }),
+    );
+
+    const result = await patchExtraction({
+      apiKey: "test-key",
+      current,
+      correction: "that one is a need",
+      taxonomy,
+      bucketRules: "Takeout is wants.",
+      today: "2026-08-30",
+    });
+
+    expect(result.items[0].bucket).toBe("needs");
+    expect(result.items[0].bucket_why).toBe("owner says it is a need");
   });
 
   it("keeps date_source when the date is unchanged", async () => {
@@ -846,11 +872,6 @@ describe("patchExtraction", () => {
       .mockResolvedValueOnce({
         ok: true,
         json: async () => geminiJson(extracted),
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () =>
-          geminiJson({ buckets: [{ bucket: "wants", why: "takeout" }] }),
       });
     vi.stubGlobal("fetch", fetchMock);
 
@@ -873,11 +894,6 @@ describe("patchExtraction", () => {
       .mockResolvedValueOnce({
         ok: true,
         json: async () => geminiJson({ ...extracted, date: "2026-08-16" }),
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () =>
-          geminiJson({ buckets: [{ bucket: "wants", why: "takeout" }] }),
       });
     vi.stubGlobal("fetch", fetchMock);
 
@@ -901,11 +917,6 @@ describe("patchExtraction", () => {
         ok: true,
         json: async () =>
           geminiJson({ ...extracted, notes: "overslept, couldn't pack lunch" }),
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () =>
-          geminiJson({ buckets: [{ bucket: "wants", why: "takeout" }] }),
       });
     vi.stubGlobal("fetch", fetchMock);
 
