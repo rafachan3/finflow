@@ -275,6 +275,10 @@ covers (its needs hint applies), and an Edit that calls one receipt line
 a need and keeps the other two. A journey replays that Edit through
 Confirm. A full eval run is 18 requests when every case passes first
 time; `golden.test.ts` fails if the cases would need more than 20.
+Two prompt fixes came with them, after Flash-Lite failed `voice-note` and
+retried `transfer` on `main`: each extractor prompt now says a named
+business is the merchant even when it is not in the Merchants list, and
+the bucket line no longer asks for lines on income and transfers.
 
 ## Next concrete step
 
