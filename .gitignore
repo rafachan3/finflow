@@ -26,3 +26,6 @@ supabase/.temp/
 
 # Claude Code agent worktrees — local only
 .claude/worktrees/
+
+# Needs/wants accuracy check detail: owner transactions, local only
+lambda/.eval-buckets/
