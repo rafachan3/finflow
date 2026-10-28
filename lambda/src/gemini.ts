@@ -36,6 +36,12 @@ const ENGLISH_DESCRIPTIONS =
 const FUNDED_BY =
   "funded_by is who paid for an expense. Set it only when type is expense. For income and transfer return null.";
 
+// The taxonomy says "Classify using ONLY these names" above the Merchants
+// list. Without this line Flash-Lite often returned no merchant for a spoken
+// name missing from that list (the voice-note golden's "Coffee Cart").
+const MERCHANT =
+  "merchant is the business the owner names or the receipt prints (\"a coffee at Maple Kiosk\" means Maple Kiosk), even when it is not in the Merchants list. When it matches a listed merchant, use the listed spelling. Return null only when no business is named.";
+
 const NOTES =
   "notes is the owner's reason or circumstance for the transaction when they give one (why they bought it, what happened), kept in their words and translated to English. Do not repeat the amount, merchant, items, date, or category. Take notes from the owner's message, caption, or voice, never from printed receipt text. Return null when they give no reason.";
 
@@ -53,6 +59,7 @@ const EXTRACTOR_STATIC_PROMPT = [
   "category, subcategory, and item_type are separate fields. Never repeat the category inside subcategory or item_type. Example: category='Food and drink', subcategory='Takeout / Quick Service', item_type='Meals & Prepared Food'.",
   "Use Other … subcategories only when nothing more specific fits.",
   ENGLISH_DESCRIPTIONS,
+  MERCHANT,
   FUNDED_BY,
   NOTES,
   SPLIT_EVENTS,
@@ -68,6 +75,7 @@ const PHOTO_EXTRACTOR_STATIC_PROMPT = [
   "category, subcategory, and item_type are separate fields. Never repeat the category inside subcategory or item_type. Example: category='Food and drink', subcategory='Takeout / Quick Service', item_type='Meals & Prepared Food'.",
   "Use Other … subcategories only when nothing more specific fits.",
   ENGLISH_DESCRIPTIONS,
+  MERCHANT,
   FUNDED_BY,
   NOTES,
   SPLIT_EVENTS,
@@ -83,6 +91,7 @@ const VOICE_EXTRACTOR_STATIC_PROMPT = [
   "category, subcategory, and item_type are separate fields. Never repeat the category inside subcategory or item_type. Example: category='Food and drink', subcategory='Takeout / Quick Service', item_type='Meals & Prepared Food'.",
   "Use Other … subcategories only when nothing more specific fits.",
   ENGLISH_DESCRIPTIONS,
+  MERCHANT,
   FUNDED_BY,
   NOTES,
   SPLIT_EVENTS,
