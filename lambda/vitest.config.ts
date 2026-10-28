@@ -20,7 +20,7 @@ if (!process.env.TEST_DATABASE_URL) {
 export default defineConfig({
   test: {
     projects: [
-      { test: { name: "unit", include: ["tests/*.test.ts"] } },
+      { test: { name: "unit", include: ["tests/*.test.{ts,mjs}"] } },
       ...(process.env.TEST_DATABASE_URL ? [integration] : []),
     ],
   },
