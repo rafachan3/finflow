@@ -67,9 +67,9 @@ export function takeTelegramRejections(): string[] {
   return telegram.rejected.splice(0);
 }
 
-type GeminiCall = { model: string; kind: "extract" | "patch" | "bucket" };
+type GeminiCall = { model: string; kind: "extract" | "patch" };
 
-/** Scripted Gemini: set `extract` / `patch` per journey; buckets answer themselves. */
+/** Scripted Gemini: set `extract` / `patch` per journey. */
 export const gemini = {
   calls: [] as GeminiCall[],
   extract: undefined as unknown,
@@ -119,16 +119,10 @@ const server = setupServer(
       const model = String(params.call).split(":")[0];
       const body = (await request.json()) as GeminiRequest;
       const props = body.generationConfig.responseSchema.properties;
-      const kind = props.events ? "extract" : props.buckets ? "bucket" : "patch";
+      const kind = props.events ? "extract" : "patch";
       gemini.calls.push({ model, kind });
       if (gemini.overloaded.has(model)) {
         return HttpResponse.json({ error: { message: "overloaded" } }, { status: 503 });
-      }
-      if (kind === "bucket") {
-        const lines = JSON.parse(body.contents[0].parts[0].text ?? "[]") as unknown[];
-        return geminiReply({
-          buckets: lines.map(() => ({ bucket: "wants", why: "journey default" })),
-        });
       }
       const data = kind === "extract" ? gemini.extract : gemini.patch;
       if (data === undefined) {
@@ -313,6 +307,11 @@ export const ledger = {
        left join income_sources s on s.id = t.income_source_id
        left join accounts a on a.id = t.to_account_id
        order by t.created_at, t.amount`,
+    );
+  },
+  items() {
+    return sql<{ description: string; bucket: string }>(
+      `select description, bucket::text from transaction_items order by id`,
     );
   },
 };

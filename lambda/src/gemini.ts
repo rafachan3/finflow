@@ -1,8 +1,6 @@
 import { createHash } from "node:crypto";
 import {
-  mergeBuckets,
   normalizeTaxonomyNames,
-  type Bucket,
   type Extraction,
   type ExtractionItem,
   type ExtractionMeta,
@@ -44,17 +42,21 @@ const NOTES =
 const SPLIT_EVENTS =
   "Return events: one event per separate transaction, in the order the owner mentioned them. Split by place: one event per merchant or place. Amounts at the same place, or with no place given, are one expense with several items. Income and transfers are always their own event. A receipt photo is one event; the caption may add others. A date or funder stated once applies to every event unless an event states its own. notes and tags belong to the event they describe.";
 
+const BUCKETS =
+  "For each expense line set bucket_why (one short clause naming the rule applied), then bucket (needs or wants). Apply the owner's needs/wants rules at the end of this prompt. They override the (hint …) on subcategories. If no rule fits or context is missing, choose wants. On income and transfer lines return wants; it is ignored.";
+
 const EXTRACTOR_STATIC_PROMPT = [
   "You extract Canadian personal-finance transactions from a short text.",
   "Today is YYYY-MM-DD (America/Toronto). Currency is CAD.",
   "Amounts are strings with exactly two decimal places. Line amounts include tax and MUST sum to the header amount.",
-  "Do not assign needs/wants. Item types must belong to the same category as the subcategory.",
+  "Item types must belong to the same category as the subcategory.",
   "category, subcategory, and item_type are separate fields. Never repeat the category inside subcategory or item_type. Example: category='Food and drink', subcategory='Takeout / Quick Service', item_type='Meals & Prepared Food'.",
   "Use Other … subcategories only when nothing more specific fits.",
   ENGLISH_DESCRIPTIONS,
   FUNDED_BY,
   NOTES,
   SPLIT_EVENTS,
+  BUCKETS,
   "date is YYYY-MM-DD only when the user stated a calendar date (including today, yesterday, or a month and day). If they did not, return an empty string. Never guess today's date.",
 ].join("\n");
 
@@ -62,13 +64,14 @@ const PHOTO_EXTRACTOR_STATIC_PROMPT = [
   "You extract Canadian personal-finance transactions from a receipt photo.",
   "Today is YYYY-MM-DD (America/Toronto). Currency is CAD.",
   "Amounts are strings with exactly two decimal places. Line amounts include tax and MUST sum to the header amount.",
-  "Do not assign needs/wants. Item types must belong to the same category as the subcategory.",
+  "Item types must belong to the same category as the subcategory.",
   "category, subcategory, and item_type are separate fields. Never repeat the category inside subcategory or item_type. Example: category='Food and drink', subcategory='Takeout / Quick Service', item_type='Meals & Prepared Food'.",
   "Use Other … subcategories only when nothing more specific fits.",
   ENGLISH_DESCRIPTIONS,
   FUNDED_BY,
   NOTES,
   SPLIT_EVENTS,
+  BUCKETS,
   "date is YYYY-MM-DD only when printed on the receipt or stated in the caption (including today, yesterday, or a month and day). If neither, return an empty string. Never guess today's date or the photo send time.",
 ].join("\n");
 
@@ -76,13 +79,14 @@ const VOICE_EXTRACTOR_STATIC_PROMPT = [
   "You extract Canadian personal-finance transactions from a voice note.",
   "Today is YYYY-MM-DD (America/Toronto). Currency is CAD.",
   "Amounts are strings with exactly two decimal places. Line amounts include tax and MUST sum to the header amount.",
-  "Do not assign needs/wants. Item types must belong to the same category as the subcategory.",
+  "Item types must belong to the same category as the subcategory.",
   "category, subcategory, and item_type are separate fields. Never repeat the category inside subcategory or item_type. Example: category='Food and drink', subcategory='Takeout / Quick Service', item_type='Meals & Prepared Food'.",
   "Use Other … subcategories only when nothing more specific fits.",
   ENGLISH_DESCRIPTIONS,
   FUNDED_BY,
   NOTES,
   SPLIT_EVENTS,
+  BUCKETS,
   "date is YYYY-MM-DD only when the user stated a calendar date in the recording or caption (including today, yesterday, or a month and day). If they did not, return an empty string. Never guess today's date or the voice send time.",
 ].join("\n");
 
@@ -93,51 +97,53 @@ const PATCH_EXTRACTOR_STATIC_PROMPT = [
   "Keep every field the correction does not change.",
   "Keep date unless the correction changes the calendar date. Never guess today's date.",
   "Amounts are strings with exactly two decimal places. Line amounts include tax and MUST sum to the header amount.",
-  "Do not assign needs/wants. Item types must belong to the same category as the subcategory.",
+  "Item types must belong to the same category as the subcategory.",
   "category, subcategory, and item_type are separate fields. Never repeat the category inside subcategory or item_type. Example: category='Food and drink', subcategory='Takeout / Quick Service', item_type='Meals & Prepared Food'.",
   "Use Other … subcategories only when nothing more specific fits.",
   ENGLISH_DESCRIPTIONS,
   FUNDED_BY,
   NOTES,
+  BUCKETS,
+  "Keep each line's bucket and bucket_why unless the correction changes that line or states needs/wants; then reclassify that line with the rules.",
 ].join("\n");
-
-const BUCKET_STATIC_PROMPT = [
-  "You assign needs or wants to each expense line.",
-  "Apply these rules. They override default_bucket hints.",
-].join("\n\n");
 
 function sha256Hex(text: string): string {
   return createHash("sha256").update(text, "utf8").digest("hex");
 }
 
+const NO_RULES =
+  "No personal rules. Use each subcategory's default_bucket hint, shown as (hint …) in the taxonomy. If it has none or context is missing, choose wants.";
+
+function rulesText(bucketRules: string): string {
+  return bucketRules.trim() || NO_RULES;
+}
+
+/** Static text, taxonomy, then the owner's rules: the stable prefix comes first. */
 function extractorSystem(
   today: string,
   taxonomy: TaxonomySnapshot,
   extractorStatic: string,
+  bucketRules: string,
 ): string {
   return [
     extractorStatic.replace("YYYY-MM-DD", today),
     taxonomyPrompt(taxonomy),
+    `Needs/wants rules:\n${rulesText(bucketRules)}`,
   ].join("\n");
 }
 
 function promptMeta(
   model: string,
   taxonomy: TaxonomySnapshot,
-  bucket?: { prompt: string; rules: string; model: string },
-  extractorStatic: string = EXTRACTOR_STATIC_PROMPT,
+  extractorStatic: string,
+  bucketRules: string,
 ): ExtractionMeta {
-  const meta: ExtractionMeta = {
+  return {
     model,
     extractor_sha256: sha256Hex(extractorStatic),
     taxonomy_sha256: sha256Hex(taxonomyPrompt(taxonomy)),
+    rules_sha256: sha256Hex(rulesText(bucketRules)),
   };
-  if (bucket) {
-    meta.bucket_sha256 = sha256Hex(bucket.prompt);
-    meta.rules_sha256 = sha256Hex(bucket.rules);
-    meta.bucket_model = bucket.model;
-  }
-  return meta;
 }
 
 const ITEM_PROPERTIES = {
@@ -146,6 +152,8 @@ const ITEM_PROPERTIES = {
   category: { type: "STRING" },
   subcategory: { type: "STRING" },
   item_type: { type: "STRING", nullable: true },
+  bucket_why: { type: "STRING" },
+  bucket: { type: "STRING", enum: ["needs", "wants"] },
 };
 
 const EXTRACTOR_SCHEMA = {
@@ -169,13 +177,9 @@ const EXTRACTOR_SCHEMA = {
       items: {
         type: "OBJECT",
         properties: ITEM_PROPERTIES,
-        required: [
-          "description",
-          "amount",
-          "category",
-          "subcategory",
-          "item_type",
-        ],
+        required: Object.keys(ITEM_PROPERTIES),
+        // Without it Gemini may emit keys alphabetically, deciding bucket before category.
+        propertyOrdering: Object.keys(ITEM_PROPERTIES),
       },
     },
     confidence: { type: "NUMBER" },
@@ -203,24 +207,6 @@ const EVENTS_SCHEMA = {
     events: { type: "ARRAY", items: EXTRACTOR_SCHEMA },
   },
   required: ["events"],
-};
-
-const BUCKET_SCHEMA = {
-  type: "OBJECT",
-  properties: {
-    buckets: {
-      type: "ARRAY",
-      items: {
-        type: "OBJECT",
-        properties: {
-          bucket: { type: "STRING", enum: ["needs", "wants"] },
-          why: { type: "STRING" },
-        },
-        required: ["bucket", "why"],
-      },
-    },
-  },
-  required: ["buckets"],
 };
 
 type GeminiResponse = {
@@ -321,14 +307,17 @@ function asString(v: unknown): string | null {
   return String(v);
 }
 
-function asItem(raw: unknown): Omit<ExtractionItem, "bucket" | "bucket_why"> {
+function asItem(raw: unknown): ExtractionItem {
   const o = raw as Record<string, unknown>;
+  const why = asString(o.bucket_why);
   return {
     description: String(o.description ?? ""),
     amount: String(o.amount ?? ""),
     category: String(o.category ?? ""),
     subcategory: String(o.subcategory ?? ""),
     item_type: asString(o.item_type),
+    bucket: o.bucket === "needs" ? "needs" : "wants",
+    ...(why ? { bucket_why: why } : {}),
   };
 }
 
@@ -351,87 +340,9 @@ function asExtraction(raw: unknown): Extraction {
     income_source: asString(o.income_source),
     to_account: asString(o.to_account),
     notes: asString(o.notes),
-    items: items.map((item) => ({ ...item, bucket: "wants" as Bucket })),
+    items,
     confidence: typeof o.confidence === "number" ? o.confidence : 0,
   };
-}
-
-const NO_RULES =
-  "No personal rules. Use subcategory default_bucket hints. If null or context is missing, assign wants.";
-
-/** One bucket call for every expense line of every event; split back by position. */
-async function assignBuckets(args: {
-  apiKey: string;
-  bucketRules: string;
-  events: Extraction[];
-}): Promise<{ events: Extraction[]; usage: TokenUsage; model: string; rules: string } | null> {
-  const lines = args.events.flatMap((event, eventIndex) =>
-    event.type === "expense" ? event.items.map((item) => ({ event, eventIndex, item })) : [],
-  );
-  if (lines.length === 0) return null;
-
-  const rules = args.bucketRules.trim() || NO_RULES;
-  const res = await generateJson({
-    apiKey: args.apiKey,
-    schema: BUCKET_SCHEMA,
-    system: [BUCKET_STATIC_PROMPT, rules].join("\n\n"),
-    userParts: [
-      {
-        text: JSON.stringify(
-          lines.map(({ event, eventIndex, item }, index) => ({
-            index,
-            event: eventIndex,
-            description: item.description,
-            amount: item.amount,
-            category: item.category,
-            subcategory: item.subcategory,
-            item_type: item.item_type,
-            tags: event.tags,
-            merchant: event.merchant,
-            venue: event.venue,
-          })),
-        ),
-      },
-    ],
-  });
-  const buckets = (res.data as { buckets?: { bucket: Bucket; why?: string }[] }).buckets ?? [];
-  if (buckets.length !== lines.length) {
-    throw new Error(`bucket count ${buckets.length} != line count ${lines.length}`);
-  }
-  let next = 0;
-  const events = args.events.map((event) => {
-    if (event.type !== "expense" || event.items.length === 0) return event;
-    const slice = buckets.slice(next, next + event.items.length);
-    next += event.items.length;
-    return mergeBuckets(event, slice);
-  });
-  return { events, usage: res.usage, model: res.model, rules };
-}
-
-/** Buckets, meta on every event, usage on event 0 only (the calls are shared). */
-async function finishEvents(args: {
-  apiKey: string;
-  taxonomy: TaxonomySnapshot;
-  bucketRules: string;
-  extractorStatic: string;
-  extractor: { usage: TokenUsage; model: string };
-  events: Extraction[];
-}): Promise<Extraction[]> {
-  const bucketed = await assignBuckets(args);
-  const meta = promptMeta(
-    args.extractor.model,
-    args.taxonomy,
-    bucketed ? { prompt: BUCKET_STATIC_PROMPT, rules: bucketed.rules, model: bucketed.model } : undefined,
-    args.extractorStatic,
-  );
-  const usage = bucketed
-    ? { extractor: args.extractor.usage, bucket: bucketed.usage }
-    : { extractor: args.extractor.usage };
-  return (bucketed?.events ?? args.events).map((event, i) => ({
-    ...event,
-    meta,
-    usage: i === 0 ? usage : undefined,
-  }));
 }
 
 async function extractEvents(args: {
@@ -445,16 +356,18 @@ async function extractEvents(args: {
   const extractor = await generateJson({
     apiKey: args.apiKey,
     schema: EVENTS_SCHEMA,
-    system: extractorSystem(args.today, args.taxonomy, args.extractorStatic),
+    system: extractorSystem(args.today, args.taxonomy, args.extractorStatic, args.bucketRules),
     userParts: args.userParts,
   });
   const raw = (extractor.data as { events?: unknown[] }).events ?? [];
   if (raw.length === 0) throw new Error("Gemini returned no events");
-  return finishEvents({
-    ...args,
-    extractor,
-    events: raw.map((e) => normalizeTaxonomyNames(asExtraction(e), args.taxonomy)),
-  });
+  // One call serves every event: meta on each, usage on event 0 only.
+  const meta = promptMeta(extractor.model, args.taxonomy, args.extractorStatic, args.bucketRules);
+  return raw.map((e, i) => ({
+    ...normalizeTaxonomyNames(asExtraction(e), args.taxonomy),
+    meta,
+    usage: i === 0 ? { extractor: extractor.usage } : undefined,
+  }));
 }
 
 export async function extractFromText(args: {
@@ -525,6 +438,8 @@ function extractionForPatch(current: Extraction): unknown {
       category: item.category,
       subcategory: item.subcategory,
       item_type: item.item_type,
+      bucket_why: item.bucket_why ?? null,
+      bucket: item.bucket,
     })),
     confidence: current.confidence,
   };
@@ -541,25 +456,24 @@ export async function patchExtraction(args: {
   const extractor = await generateJson({
     apiKey: args.apiKey,
     schema: EXTRACTOR_SCHEMA,
-    system: extractorSystem(args.today, args.taxonomy, PATCH_EXTRACTOR_STATIC_PROMPT),
+    system: extractorSystem(
+      args.today,
+      args.taxonomy,
+      PATCH_EXTRACTOR_STATIC_PROMPT,
+      args.bucketRules,
+    ),
     userParts: [
       { text: JSON.stringify(extractionForPatch(args.current)) },
       { text: args.correction },
     ],
   });
-  const [patched] = await finishEvents({
-    apiKey: args.apiKey,
-    taxonomy: args.taxonomy,
-    bucketRules: args.bucketRules,
-    extractorStatic: PATCH_EXTRACTOR_STATIC_PROMPT,
-    extractor,
-    events: [normalizeTaxonomyNames(asExtraction(extractor.data), args.taxonomy)],
-  });
-  patched.date_source =
-    patched.date === args.current.date
-      ? args.current.date_source
-      : "fix";
-  return patched;
+  const patched = normalizeTaxonomyNames(asExtraction(extractor.data), args.taxonomy);
+  return {
+    ...patched,
+    date_source: patched.date === args.current.date ? args.current.date_source : "fix",
+    meta: promptMeta(extractor.model, args.taxonomy, PATCH_EXTRACTOR_STATIC_PROMPT, args.bucketRules),
+    usage: { extractor: extractor.usage },
+  };
 }
 
 export async function extractFromVoice(args: {

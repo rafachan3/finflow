@@ -13,7 +13,7 @@ Living state of the project. Read this first; update it whenever work lands.
 - [x] Taxonomy tweak — Hygiene + Beauty → Personal care (Health and wellness); buckets untouched (2026-08-13)
 - [x] Phase 2 — Telegram bot walking skeleton (text only, no LLM) (2026-08-17)
 - [x] Phase 3 — Gemini extraction (text → photo → voice) — **3a + 3b + 3c phone-tested; funding source applied; Edit phone-tested; context notes phone-tested; multi-event accepted by the Phase 3.6 journeys** (2026-10-28; the S3 key prefix stays an optional leftover)
-- [ ] Phase 3.6 — Regression test suite — **in progress: integration tests (#32) and chat journeys (#33) done; live eval in review, waiting on the `GEMINI_EVAL_API_KEY` secret**
+- [ ] Phase 3.6 — Regression test suite — **in progress: integration tests (#32), chat journeys (#33) and live eval (#37) done**
 - [ ] Phase 3.5 — Ingestion follow-ons (item tags, duplicate warning, merchant commands)
 - [ ] Phase 4 — dbt semantic layer + MetricFlow
 - [ ] Phase 4.5 — Proactive nudges (recurring reminders, merchant recommendations)
@@ -216,8 +216,8 @@ Journeys (`lambda/tests/journeys/`) run the real handler against that
 database. MSW fakes Telegram and Gemini, and any other outbound request
 fails the test. `aws-sdk-client-mock` fakes S3, and a `chat` driver sends
 messages and taps buttons the way the owner does. Gemini's answers come
-from `lambda/tests/golden/*.json`; the bucket call answers `wants` by
-itself. The journeys cover every row of the retired phone-test table plus
+from `lambda/tests/golden/*.json`; recorded lines without a bucket parse
+as `wants`. The journeys cover every row of the retired phone-test table plus
 everyday logging, Edit, owner-only access and failures.
 
 Live eval (`lambda/eval/`, `npm run eval`): every golden case goes through
@@ -242,7 +242,26 @@ missing secret fails it with one line. Golden media are synthetic: SVG
 receipts rendered with `rsvg-convert`, and a macOS `say` clip encoded as
 Opus by `afconvert` and wrapped in Ogg by `caf2ogg.py`.
 
+One Gemini request per message (2026-10-28; DECISIONS.md): the
+extractor now sets each line's `bucket_why` and `bucket` itself, with
+the owner's SSM rules (or the no-rules fallback) after the taxonomy in
+its system instruction. The item schema's `propertyOrdering` puts the
+reason after the category and the label last. A text, photo, voice or
+multi-event message is 1 request instead of 2, and an Edit is 1 instead
+of 2. An Edit sends each line's stored bucket and reason back and keeps
+them unless the correction changes that line, so "that one is a need"
+now works. `meta` drops `bucket_sha256` / `bucket_model` and `usage`
+drops `bucket`; older rows keep them. A full eval run is 13 requests,
+down from 25. With no rules, the default_bucket hints now reach the
+model; before, the bucket call was told to use hints it never got.
+
 ## Next concrete step
+
+Owner phone check of the single call with the real rules: log 3 to 5
+real expenses, including one where the rules overrule the subcategory
+hint, plus one Edit that says "that one is a need". Check each card's
+bucket and reason. If an Edit flips the bucket on a line it did not
+touch, add a code guard (DECISIONS.md 2026-10-28).
 
 Owner: create a Google AI Studio project and API key just for the eval
 and add it as the `GEMINI_EVAL_API_KEY` Actions secret. Then re-run the

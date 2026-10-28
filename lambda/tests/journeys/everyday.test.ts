@@ -34,6 +34,7 @@ describe("logging one purchase", () => {
       "Note: was too tired to pack lunch",
     ]);
     expect(labels(card)).toEqual(REVIEW);
+    expect(gemini.calls).toEqual([{ model: "gemini-3.6-flash", kind: "extract" }]);
     expect(await ledger.transactions()).toEqual([]);
 
     await chat.tap(card, "Confirm");

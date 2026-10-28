@@ -38,6 +38,26 @@ describe("correcting a card with Edit", () => {
     ]);
   });
 
+  it("an Edit that says a line is a need changes its bucket in one request", async () => {
+    const card = await lunchCard();
+    await chat.tap(card, "Edit");
+    const patched = golden("edit-amount").recorded as { items: object[] };
+    gemini.patch = {
+      ...patched,
+      items: [{ ...patched.items[0], bucket_why: "owner says it is a need", bucket: "needs" }],
+    };
+    const callsBefore = gemini.calls.length;
+    await chat.text("that one is a need");
+
+    expect(gemini.calls.slice(callsBefore)).toEqual([{ model: "gemini-3.6-flash", kind: "patch" }]);
+    const fixed = chat.last();
+    expect(fixed.text).toContain("/ needs");
+    expect(fixed.text).toContain("owner says it is a need");
+
+    await chat.tap(fixed, "Confirm");
+    expect(await ledger.items()).toMatchObject([{ bucket: "needs" }]);
+  });
+
   it("a correction that breaks the card is shown without buttons and the card keeps waiting", async () => {
     const card = await lunchCard();
     await chat.tap(card, "Edit");

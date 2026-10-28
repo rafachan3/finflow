@@ -3,7 +3,6 @@ import {
   applyDatePolicy,
   formatPreview,
   fundingSourceToPersist,
-  mergeBuckets,
   normalizeTaxonomyNames,
   parseCents,
   parseDateReply,
@@ -308,26 +307,6 @@ describe("normalizeTaxonomyNames", () => {
     expect(normalized.items[0].subcategory).toBe("Takeout / Quick Service");
     expect(normalized.items[0].item_type).toBe("Meals & Prepared Food");
     expect(validateExtraction(normalized, taxonomy).ok).toBe(true);
-  });
-});
-
-describe("mergeBuckets", () => {
-  it("assigns buckets by item index without changing amounts", () => {
-    const extracted = expense({
-      items: expense().items.map(({ bucket: _b, ...item }) => ({
-        ...item,
-        bucket: "needs" as const,
-      })),
-    });
-    // Simulate extractor output by overwriting after merge input type — merge
-    // takes items that may omit a final bucket.
-    const merged = mergeBuckets(extracted, [
-      { bucket: "wants", why: "takeout is discretionary" },
-      { bucket: "wants", why: "soft drink" },
-    ]);
-    expect(merged.items[0].bucket).toBe("wants");
-    expect(merged.items[0].bucket_why).toBe("takeout is discretionary");
-    expect(merged.items[1].amount).toBe("8.05");
   });
 });
 

@@ -18,8 +18,8 @@ export type ExtractionMeta = {
   model: string;
   extractor_sha256: string;
   taxonomy_sha256: string;
+  /** Only on rows from before 2026-10-28, when buckets took a second call. */
   bucket_sha256?: string;
-  /** Set when the bucket step ran; may differ from model after a fallback. */
   bucket_model?: string;
   rules_sha256?: string;
 };
@@ -44,6 +44,7 @@ export type Extraction = {
   notes?: string | null;
   items: ExtractionItem[];
   confidence: number;
+  /** `bucket` only on rows from before 2026-10-28. */
   usage?: { extractor?: TokenUsage; bucket?: TokenUsage };
   meta?: ExtractionMeta;
 };
@@ -378,25 +379,6 @@ export function fundingSourceToPersist(
   fundedBy: string | null,
 ): string | null {
   return type === "expense" ? fundedBy : null;
-}
-
-export function mergeBuckets(
-  extraction: Extraction,
-  buckets: { bucket: Bucket; why?: string }[],
-): Extraction {
-  if (buckets.length !== extraction.items.length) {
-    throw new Error(
-      `bucket count ${buckets.length} != item count ${extraction.items.length}`,
-    );
-  }
-  return {
-    ...extraction,
-    items: extraction.items.map((item, i) => ({
-      ...item,
-      bucket: buckets[i].bucket,
-      bucket_why: buckets[i].why,
-    })),
-  };
 }
 
 export function formatPreview(

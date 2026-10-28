@@ -318,14 +318,12 @@ amount:
   ],
   "confidence": 0.91,
   "usage": {
-    "extractor": { "input": 1200, "output": 180 },
-    "bucket": { "input": 800, "output": 40 }
+    "extractor": { "input": 1200, "output": 180 }
   },
   "meta": {
     "model": "gemini-3.6-flash",
     "extractor_sha256": "…64 hex…",
     "taxonomy_sha256": "…64 hex…",
-    "bucket_sha256": "…64 hex…",
     "rules_sha256": "…64 hex…"
   }
 }
@@ -333,8 +331,8 @@ amount:
 
 `income_source` is required when `type` is `income`; `to_account` when `type`
 is `transfer`. `funded_by` is required when `type` is `expense` and must be
-null on income and transfer. Expense lines include `bucket` only after the
-bucket specialist runs. Tags are transaction-level, not per line. `date_source`
+null on income and transfer. The extraction call sets each line's `bucket`
+and `bucket_why`; on income and transfer lines the bucket is ignored. Tags are transaction-level, not per line. `date_source`
 is `stated` (user, caption, or receipt), `today_default` (text with no date),
 `missing` (photo with no date — Confirm omitted), or `fix` (owner typed a
 date after Fix date).
@@ -344,9 +342,11 @@ still only offers Confirm / Discard; failed mechanical checks omit Confirm.
 
 `meta` identifies what the model saw: pin name, plus sha256 of the static
 extractor instructions (today's calendar date is a placeholder so the hash
-does not rotate daily), the live taxonomy blob, the static bucket
-instructions, and the rules string actually sent. Bucket/rules hashes are
-omitted when the bucket call is skipped (income/transfer). This is not an
+does not rotate daily), the live taxonomy blob, and the rules string actually
+sent in the same prompt. Rows from before 2026-10-28, when buckets took a
+second call, also carry `bucket_sha256`, `bucket_model`, and `usage.bucket`.
+An Edit sends each line's stored `bucket` and `bucket_why` back with the
+correction, and keeps them unless the correction changes that line. This is not an
 accuracy label. A Phase 4 mart can group token cost (and later Edit diffs)
 by these hashes. Do not use a manual prompt-version string — it will not
 bump when SSM rules change.
