@@ -822,3 +822,24 @@ Testcontainers (a dependency for one container); PGlite (single
 connection, so it cannot test the advisory lock); a staging environment
 or automatic rollback (a second Supabase project or a Lambda alias;
 revisit if a smoke failure ever ships).
+
+---
+
+## 2026-10-28 — Unknown merchants stay unattached
+
+When Gemini extracts a merchant that is not in the `merchants` lookup, the
+transaction saves with `merchant_id` NULL. The bot does not create
+merchants. Many merchants are one-off purchases the owner never wants in
+the lookup, and auto-creating rows would fill it with noise.
+
+Today's behaviour: validation warns that the merchant is not in the lookup
+and will be saved without one, and the save path looks the name up and
+falls back to NULL. The name is kept reliably only in
+`ingestions.extraction`, which stores the full extraction JSON. The
+transaction `description` is Gemini's free text. It often includes the
+brand because the prompt says to keep brand names, but nothing guarantees
+it. A name like "Acme Mart" can therefore be recovered from the ingestion
+row even when the transaction has no merchant.
+
+**Ruled out:** auto-creating merchant rows on save. To add a merchant on
+purpose, use the Telegram merchant commands planned for Phase 3.5.
