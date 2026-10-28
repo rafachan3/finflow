@@ -760,7 +760,7 @@ infra for a problem the paid tier also solves); Lite as primary
 
 ## 2026-10-12 — Multi-event: one ingestions row per event
 
-One message can describe several separate purchases ("3 at Dollarama
+One message can describe several separate purchases ("3 at Acme Mart
 and 5 at Pharmaprix"). Owner choices: split by place (one event per
 merchant or place; the same place or no place stays one expense with
 lines; income and transfers are always separate), and separate cards
