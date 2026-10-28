@@ -15,6 +15,14 @@ describe("test database guard", () => {
     expect(() => adminUrl()).toThrow(/local throwaway Postgres/);
   });
 
+  it.each(["host", "hostaddr"])(
+    "refuses a local URL whose %s parameter points elsewhere",
+    (param) => {
+      process.env.TEST_DATABASE_URL = `postgres://postgres:pw@localhost:5432/postgres?${param}=aws-0-ca-central-1.pooler.supabase.com`;
+      expect(() => adminUrl()).toThrow(/local throwaway Postgres/);
+    },
+  );
+
   it("refuses to run without TEST_DATABASE_URL", () => {
     delete process.env.TEST_DATABASE_URL;
     expect(() => adminUrl()).toThrow(/TEST_DATABASE_URL is not set/);
