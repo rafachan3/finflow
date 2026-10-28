@@ -195,6 +195,39 @@ describe("extractFromText", () => {
     expect(a.meta?.extractor_sha256).toBe(d.meta?.extractor_sha256);
   });
 
+  it("sends each line's default_bucket hint when there are no rules to apply", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => geminiJson(events(extracted)),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () =>
+          geminiJson({ buckets: [{ bucket: "wants", why: "hint" }] }),
+      });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await extractFromText({
+      apiKey: "test-key",
+      text: "12.50 lunch chipotle",
+      taxonomy,
+      bucketRules: "",
+      today: "2026-08-17",
+    });
+
+    const bucketBody = JSON.parse(fetchMock.mock.calls[1][1].body as string) as {
+      systemInstruction: { parts: { text: string }[] };
+      contents: { parts: { text: string }[] }[];
+    };
+    expect(bucketBody.systemInstruction.parts[0].text).toMatch(/default_bucket hints/);
+    const [line] = JSON.parse(bucketBody.contents[0].parts[0].text) as {
+      default_bucket: string | null;
+    }[];
+    expect(line.default_bucket).toBe("wants");
+  });
+
   it("skips the bucket call for income", async () => {
     const fetchMock = vi.fn().mockResolvedValueOnce({
       ok: true,

@@ -362,6 +362,7 @@ const NO_RULES =
 /** One bucket call for every expense line of every event; split back by position. */
 async function assignBuckets(args: {
   apiKey: string;
+  taxonomy: TaxonomySnapshot;
   bucketRules: string;
   events: Extraction[];
 }): Promise<{ events: Extraction[]; usage: TokenUsage; model: string; rules: string } | null> {
@@ -386,6 +387,10 @@ async function assignBuckets(args: {
             category: item.category,
             subcategory: item.subcategory,
             item_type: item.item_type,
+            default_bucket:
+              args.taxonomy.subcategories.find(
+                (s) => s.category === item.category && s.name === item.subcategory,
+              )?.default_bucket ?? null,
             tags: event.tags,
             merchant: event.merchant,
             venue: event.venue,
