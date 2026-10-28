@@ -8,6 +8,7 @@ import {
   recordedFile,
   retryOnce,
   shouldRun,
+  summary,
 } from "../eval/harness.js";
 
 describe("isRelevant", () => {
@@ -357,5 +358,31 @@ describe("geminiFetch", () => {
     await expect(wrapped(urlOf("gemini-3.5-flash-lite"))).rejects.toThrow(daily);
     await expect(wrapped(url)).rejects.toThrow(daily);
     expect(realFetch).toHaveBeenCalledTimes(3);
+  });
+});
+
+describe("summary", () => {
+  it("tables every case and counts primary against fallback answers", () => {
+    const md = summary(
+      [
+        { name: "edit-amount", attempts: 1, model: "gemini-3.6-flash", passed: true },
+        { name: "expense-and-income", attempts: 2, model: "gemini-3.5-flash-lite", passed: true },
+        { name: "two-stores", attempts: 2, model: undefined, passed: false },
+      ],
+      "gemini-3.6-flash",
+    );
+
+    expect(md).toBe(
+      [
+        "| case | attempts | answering model | result |",
+        "| --- | --- | --- | --- |",
+        "| edit-amount | 1 | gemini-3.6-flash | pass |",
+        "| expense-and-income | 2 | gemini-3.5-flash-lite | pass |",
+        "| two-stores | 2 | none | fail |",
+        "",
+        "Answered by the primary gemini-3.6-flash: 1 of 3. By a fallback: 1. By no model: 1.",
+        "",
+      ].join("\n"),
+    );
   });
 });

@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
 import { setTimeout as sleep } from "node:timers/promises";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
@@ -28,11 +28,14 @@ import {
   problems,
   recordedFile,
   retryOnce,
+  summary,
   type Answer,
+  type CaseRow,
 } from "./harness.js";
 
 const GOLDEN_DIR = new URL("../tests/golden/", import.meta.url);
 const RECORD = process.env.EVAL_RECORD === "1";
+const rows: CaseRow[] = [];
 
 // Every model shedding load or out of per-minute quota: try again every 2
 // minutes, for at most 20 minutes in the whole run, then fail (the PR waits
@@ -104,6 +107,9 @@ describe.skipIf(inject("evalSkip"))("live Gemini", () => {
   afterAll(async () => {
     globalThis.fetch = realFetch;
     await db?.end();
+    // Fallback answers are reported here, not failed.
+    const out = process.env.GITHUB_STEP_SUMMARY;
+    if (out) appendFileSync(out, `## Live Gemini eval\n\n${summary(rows, GEMINI_MODEL)}`);
   });
 
   it.each(allGoldens().map((g) => [g.file, g.name, g] as const))("%s: %s", async (_file, _name, g) => {
@@ -114,6 +120,7 @@ describe.skipIf(inject("evalSkip"))("live Gemini", () => {
       return problems(g, answer.raw);
     });
     console.log(`${g.file}: ${attempts} attempt(s), answered by ${answer?.model ?? "no model"}`);
+    rows.push({ name: g.file, attempts, model: answer?.model, passed: found.length === 0 });
     if (RECORD && found.length === 0) {
       const file = new URL(`${g.file}.json`, GOLDEN_DIR);
       const next = recordedFile(readFileSync(file, "utf8"), answer!.raw);

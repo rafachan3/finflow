@@ -200,3 +200,22 @@ export async function captureAnswer(call: () => Promise<unknown>): Promise<Answe
   }
   return { raw: await first, model };
 }
+
+export type CaseRow = { name: string; attempts: number; model: string | undefined; passed: boolean };
+
+/** Markdown for the job summary: one row per case, then primary vs fallback counts. */
+export function summary(rows: CaseRow[], primary: string): string {
+  const count = (keep: (r: CaseRow) => boolean) => rows.filter(keep).length;
+  return [
+    "| case | attempts | answering model | result |",
+    "| --- | --- | --- | --- |",
+    ...rows.map(
+      (r) => `| ${r.name} | ${r.attempts} | ${r.model ?? "none"} | ${r.passed ? "pass" : "fail"} |`,
+    ),
+    "",
+    `Answered by the primary ${primary}: ${count((r) => r.model === primary)} of ${rows.length}. ` +
+      `By a fallback: ${count((r) => !!r.model && r.model !== primary)}. ` +
+      `By no model: ${count((r) => !r.model)}.`,
+    "",
+  ].join("\n");
+}
