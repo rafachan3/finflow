@@ -3,7 +3,7 @@ import { defineConfig } from "vitest/config";
 const integration = {
   test: {
     name: "integration",
-    include: ["tests/integration/**/*.test.ts"],
+    include: ["tests/integration/**/*.test.ts", "tests/journeys/**/*.test.ts"],
     globalSetup: ["tests/integration/global-setup.ts"],
     // Files share one database and truncate it per test, so one worker
     // runs them in turn (fileParallelism is ignored inside a project).

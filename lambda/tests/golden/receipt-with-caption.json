@@ -1,0 +1,91 @@
+{
+  "name": "a receipt plus a caption purchase become two purchases",
+  "input": {
+    "kind": "photo",
+    "caption": "also 5 at Corner Pharmacy",
+    "media": "receipt.png"
+  },
+  "expect": {
+    "events": [
+      {
+        "type": "expense",
+        "lines": 3,
+        "merchant": true,
+        "date": true
+      },
+      {
+        "type": "expense",
+        "lines": 1,
+        "merchant": true
+      }
+    ]
+  },
+  "recorded": {
+    "events": [
+      {
+        "type": "expense",
+        "amount": "23.47",
+        "currency": "CAD",
+        "date": "2026-10-25",
+        "description": "Big Box Market groceries",
+        "merchant": "Big Box Market",
+        "venue": "Supermarket",
+        "tags": [],
+        "funded_by": null,
+        "is_recurring": false,
+        "income_source": null,
+        "to_account": null,
+        "notes": null,
+        "items": [
+          {
+            "description": "Rotisserie chicken",
+            "amount": "9.99",
+            "category": "Food and drink",
+            "subcategory": "Groceries",
+            "item_type": "Meals & Prepared Food"
+          },
+          {
+            "description": "Bananas",
+            "amount": "6.49",
+            "category": "Food and drink",
+            "subcategory": "Groceries",
+            "item_type": "Ingredients & Staples"
+          },
+          {
+            "description": "Sparkling water",
+            "amount": "6.99",
+            "category": "Food and drink",
+            "subcategory": "Groceries",
+            "item_type": "Non-Alcoholic Beverages"
+          }
+        ],
+        "confidence": 0.9
+      },
+      {
+        "type": "expense",
+        "amount": "5.00",
+        "currency": "CAD",
+        "date": "",
+        "description": "Corner Pharmacy purchase",
+        "merchant": "Corner Pharmacy",
+        "venue": "Pharmacy",
+        "tags": [],
+        "funded_by": null,
+        "is_recurring": false,
+        "income_source": null,
+        "to_account": null,
+        "notes": null,
+        "items": [
+          {
+            "description": "Pharmacy items",
+            "amount": "5.00",
+            "category": "Health and wellness",
+            "subcategory": "Medical",
+            "item_type": null
+          }
+        ],
+        "confidence": 0.9
+      }
+    ]
+  }
+}

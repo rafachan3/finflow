@@ -1,0 +1,75 @@
+{
+  "name": "two stores in one message become two purchases",
+  "input": {
+    "kind": "text",
+    "text": "3 at Dollar Corner and 5 at Corner Pharmacy"
+  },
+  "expect": {
+    "events": [
+      {
+        "type": "expense",
+        "lines": 1,
+        "merchant": true
+      },
+      {
+        "type": "expense",
+        "lines": 1,
+        "merchant": true
+      }
+    ]
+  },
+  "recorded": {
+    "events": [
+      {
+        "type": "expense",
+        "amount": "3.00",
+        "currency": "CAD",
+        "date": "",
+        "description": "Dollar Corner purchase",
+        "merchant": "Dollar Corner",
+        "venue": null,
+        "tags": [],
+        "funded_by": null,
+        "is_recurring": false,
+        "income_source": null,
+        "to_account": null,
+        "notes": null,
+        "items": [
+          {
+            "description": "Dollar Corner items",
+            "amount": "3.00",
+            "category": "Shopping",
+            "subcategory": "Other shopping",
+            "item_type": null
+          }
+        ],
+        "confidence": 0.9
+      },
+      {
+        "type": "expense",
+        "amount": "5.00",
+        "currency": "CAD",
+        "date": "",
+        "description": "Corner Pharmacy purchase",
+        "merchant": "Corner Pharmacy",
+        "venue": "Pharmacy",
+        "tags": [],
+        "funded_by": null,
+        "is_recurring": false,
+        "income_source": null,
+        "to_account": null,
+        "notes": null,
+        "items": [
+          {
+            "description": "Pharmacy items",
+            "amount": "5.00",
+            "category": "Health and wellness",
+            "subcategory": "Medical",
+            "item_type": null
+          }
+        ],
+        "confidence": 0.9
+      }
+    ]
+  }
+}

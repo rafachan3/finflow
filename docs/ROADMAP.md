@@ -111,7 +111,7 @@ skeleton everything else hangs on. Ship the smallest loop first.*
       date stays the dedicated date path. Migration 0008.
       *(applied; phone-tested 2026-09-08: amount, category, still-waiting
       photo; #19)*
-- [ ] Multi-event message: one text, voice, or photo+caption that
+- [x] Multi-event message: one text, voice, or photo+caption that
       describes 2+ independent ledger headers → N pending ingestions
       and N Confirm cards. A grocery breakdown (several SKUs) plus an
       unrelated drink or a separate income in the same message is two
@@ -120,8 +120,8 @@ skeleton everything else hangs on. Ship the smallest loop first.*
       alone is already one expense with lines on every channel. Covers two
       merchants in one message ("$3 at the dollar store and $5 at the
       pharmacy" → two cards).
-      *(merged #28; migration 0009; DECISIONS.md 2026-10-12. Acceptance
-      is the Phase 3.6 journeys and golden cases, not a phone test)*
+      *(merged #28; migration 0009; DECISIONS.md 2026-10-12. Accepted
+      by the Phase 3.6 journeys in `lambda/tests/journeys/`)*
 - [x] Context notes: the *why* behind a purchase ("too lazy to cook",
       "overslept, couldn't pack lunch") extracted in the owner's words
       into the existing `transactions.notes`, shown on the card,
@@ -145,7 +145,7 @@ merge. Replaces manual phone tests; no test touches production
 
 - [x] Integration: throwaway Postgres 17 in CI; every migration applies to
       an empty database; every `db.ts` path runs against real SQL
-- [ ] Journeys: the real handler against the throwaway database, a fake
+- [x] Journeys: the real handler against the throwaway database, a fake
       Telegram API and fake S3, with Gemini replayed from golden files
 - [ ] Eval: golden cases against live Gemini; a failure blocks the PR
 - [ ] Enforcement: `docs/TESTING.md` behaviour inventory checked in CI,

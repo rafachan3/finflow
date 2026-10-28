@@ -1,0 +1,47 @@
+{
+  "name": "a stated date and a reason are kept",
+  "input": {
+    "kind": "text",
+    "text": "14 lunch at Sandwich Shop on Oct 25, was too tired to pack lunch"
+  },
+  "expect": {
+    "events": [
+      {
+        "type": "expense",
+        "lines": 1,
+        "merchant": true,
+        "date": true,
+        "note": true
+      }
+    ]
+  },
+  "recorded": {
+    "events": [
+      {
+        "type": "expense",
+        "amount": "14.00",
+        "currency": "CAD",
+        "date": "2026-10-25",
+        "description": "Lunch at Sandwich Shop",
+        "merchant": "Sandwich Shop",
+        "venue": "Fast Food",
+        "tags": [],
+        "funded_by": null,
+        "is_recurring": false,
+        "income_source": null,
+        "to_account": null,
+        "notes": "was too tired to pack lunch",
+        "items": [
+          {
+            "description": "Sub",
+            "amount": "14.00",
+            "category": "Food and drink",
+            "subcategory": "Takeout / Quick Service",
+            "item_type": "Meals & Prepared Food"
+          }
+        ],
+        "confidence": 0.9
+      }
+    ]
+  }
+}

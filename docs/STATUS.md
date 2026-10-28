@@ -2,8 +2,8 @@
 
 Living state of the project. Read this first; update it whenever work lands.
 
-**Last updated:** 2026-10-12
-**Current phase:** Phase 3 — Gemini extraction (see [ROADMAP.md](ROADMAP.md))
+**Last updated:** 2026-10-28
+**Current phase:** Phase 3.6 — Regression test suite (see [ROADMAP.md](ROADMAP.md))
 
 ## Phase progress
 
@@ -12,8 +12,8 @@ Living state of the project. Read this first; update it whenever work lands.
 - [x] Phase 1 — Supabase project, schema migrations, Notion history import (2026-08-13)
 - [x] Taxonomy tweak — Hygiene + Beauty → Personal care (Health and wellness); buckets untouched (2026-08-13)
 - [x] Phase 2 — Telegram bot walking skeleton (text only, no LLM) (2026-08-17)
-- [ ] Phase 3 — Gemini extraction (text → photo → voice) — **3a + 3b + 3c phone-tested; funding source applied; Edit phone-tested; context notes phone-tested; multi-event merged (#28), accepted by Phase 3.6 journeys**
-- [ ] Phase 3.6 — Regression test suite — **in progress: integration tests on a throwaway Postgres done (PR 1)**
+- [x] Phase 3 — Gemini extraction (text → photo → voice) — **3a + 3b + 3c phone-tested; funding source applied; Edit phone-tested; context notes phone-tested; multi-event accepted by the Phase 3.6 journeys** (2026-10-28; the S3 key prefix stays an optional leftover)
+- [ ] Phase 3.6 — Regression test suite — **in progress: integration tests (#32) and chat journeys done**
 - [ ] Phase 3.5 — Ingestion follow-ons (item tags, duplicate warning, merchant commands)
 - [ ] Phase 4 — dbt semantic layer + MetricFlow
 - [ ] Phase 4.5 — Proactive nudges (recurring reminders, merchant recommendations)
@@ -212,16 +212,23 @@ SQL, including two connections racing on one update. The harness
 refuses any host but `localhost`. `.github/workflows/ci.yml` runs both
 on every PR; the deploy workflow now runs on push to main only.
 
+Journeys (`lambda/tests/journeys/`) run the real handler against that
+database. MSW fakes Telegram and Gemini, and any other outbound request
+fails the test. `aws-sdk-client-mock` fakes S3, and a `chat` driver sends
+messages and taps buttons the way the owner does. Gemini's answers come
+from `lambda/tests/golden/*.json`; the bucket call answers `wants` by
+itself. The journeys cover every row of the retired phone-test table plus
+everyday logging, Edit, owner-only access and failures.
+
 ## Next concrete step
 
-Phase 3.6 PR 2: journeys. The real handler runs against the throwaway
-database, with an MSW fake Telegram, an S3 mock, and Gemini replayed from
-golden files. The multi-event phone-test rows become journeys there;
-Phase 3 closes when they pass.
+Phase 3.6 PR 3: the live Gemini eval over the golden files. It needs a
+second Gemini API key in its own Google AI Studio project, stored as the
+`GEMINI_EVAL_API_KEY` Actions secret. A synthetic receipt image and a
+generated voice clip will be added for the photo and voice cases.
 
-Optional leftover: S3 keys
-`{source}/{yyyy-mm}/{id}.{ext}` in the existing bucket. Optional smoke:
-a receipt with no printed or caption date persists without Confirm.
+Optional leftover: S3 keys `{source}/{yyyy-mm}/{id}.{ext}` in the existing
+bucket.
 
 ## Open questions
 

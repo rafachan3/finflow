@@ -1,0 +1,52 @@
+{
+  "name": "two items at one store stay one purchase with two lines",
+  "input": {
+    "kind": "text",
+    "text": "milk 4 and bread 3 at Fresh Market"
+  },
+  "expect": {
+    "events": [
+      {
+        "type": "expense",
+        "lines": 2,
+        "merchant": true
+      }
+    ]
+  },
+  "recorded": {
+    "events": [
+      {
+        "type": "expense",
+        "amount": "7.00",
+        "currency": "CAD",
+        "date": "",
+        "description": "Groceries at Fresh Market",
+        "merchant": "Fresh Market",
+        "venue": "Supermarket",
+        "tags": [],
+        "funded_by": null,
+        "is_recurring": false,
+        "income_source": null,
+        "to_account": null,
+        "notes": null,
+        "items": [
+          {
+            "description": "Milk",
+            "amount": "4.00",
+            "category": "Food and drink",
+            "subcategory": "Groceries",
+            "item_type": "Ingredients & Staples"
+          },
+          {
+            "description": "Bread",
+            "amount": "3.00",
+            "category": "Food and drink",
+            "subcategory": "Groceries",
+            "item_type": "Ingredients & Staples"
+          }
+        ],
+        "confidence": 0.9
+      }
+    ]
+  }
+}

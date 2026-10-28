@@ -1,0 +1,46 @@
+{
+  "name": "a receipt with no printed date leaves the date empty",
+  "input": {
+    "kind": "photo",
+    "caption": "",
+    "media": "receipt-no-date.png"
+  },
+  "expect": {
+    "events": [
+      {
+        "type": "expense",
+        "lines": 1,
+        "date": false
+      }
+    ]
+  },
+  "recorded": {
+    "events": [
+      {
+        "type": "expense",
+        "amount": "12.30",
+        "currency": "CAD",
+        "date": "",
+        "description": "Big Box Market groceries",
+        "merchant": "Big Box Market",
+        "venue": "Supermarket",
+        "tags": [],
+        "funded_by": null,
+        "is_recurring": false,
+        "income_source": null,
+        "to_account": null,
+        "notes": null,
+        "items": [
+          {
+            "description": "Eggs",
+            "amount": "12.30",
+            "category": "Food and drink",
+            "subcategory": "Groceries",
+            "item_type": "Ingredients & Staples"
+          }
+        ],
+        "confidence": 0.9
+      }
+    ]
+  }
+}
