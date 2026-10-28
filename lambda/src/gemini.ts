@@ -49,7 +49,7 @@ const SPLIT_EVENTS =
   "Return events: one event per separate transaction, in the order the owner mentioned them. Split by place: one event per merchant or place. Amounts at the same place, or with no place given, are one expense with several items. Income and transfers are always their own event. A receipt photo is one event; the caption may add others. A date or funder stated once applies to every event unless an event states its own. notes and tags belong to the event they describe.";
 
 const BUCKETS =
-  "For each expense line set bucket_why (one short clause naming the rule applied), then bucket (needs or wants). Apply the owner's needs/wants rules at the end of this prompt. They override the (hint …) on subcategories. If no rule fits or context is missing, choose wants. On income and transfer lines return wants; it is ignored.";
+  "For each expense line set bucket_why (one short clause naming the rule applied), then bucket (needs or wants). Apply the owner's needs/wants rules at the end of this prompt. They override the (hint …) on subcategories. If no rule fits or context is missing, choose wants. Income and transfer events have no lines: return an empty items list.";
 
 const EXTRACTOR_STATIC_PROMPT = [
   "You extract Canadian personal-finance transactions from a short text.",

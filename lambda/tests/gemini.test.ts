@@ -95,6 +95,9 @@ describe("extractFromText", () => {
     expect(system).not.toMatch(/Do not assign needs\/wants/);
     expect(system).toMatch(/bucket_why/);
     expect(system).toMatch(/even when it is not in the Merchants list/);
+    // Validation rejects lines on income and transfers; the prompt must not invite them.
+    expect(system).toMatch(/Income and transfer events have no lines/);
+    expect(system).not.toMatch(/income and transfer lines/i);
     expect(system.indexOf("Subcategories:")).toBeGreaterThan(-1);
     expect(system.indexOf("Needs/wants rules:\nTakeout is wants.")).toBeGreaterThan(
       system.indexOf("Subcategories:"),
