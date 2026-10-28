@@ -822,3 +822,23 @@ Testcontainers (a dependency for one container); PGlite (single
 connection, so it cannot test the advisory lock); a staging environment
 or automatic rollback (a second Supabase project or a Lambda alias;
 revisit if a smoke failure ever ships).
+
+## 2026-10-28 — Live eval: what triggers it and what it sends
+
+The `eval` job calls Gemini only when the PR changes `lambda/src/`,
+`lambda/tests/golden/`, `lambda/eval/`, `supabase/migrations/` or
+`supabase/seed.personal.example.sql` (the seed shapes the taxonomy in the
+prompt). Workflow and docs changes do not trigger it. Without a usable
+base commit it runs every case.
+
+- Bucket rules are empty, so the bucket call uses the bot's no-rules
+  fallback: personal rules never leave SSM, and `expect` does not judge
+  needs/wants.
+- The 20-minute outage wait is one budget for the whole run, not per
+  case, so a long outage fails the job in about 20 minutes.
+- `npm run eval` wraps vitest in `eval/run.mjs` because vitest rejects an
+  unknown `--record` flag.
+
+**Ruled out:** a temperature override or a forked prompt for the eval;
+ffmpeg for the voice clip (`afconvert` encodes Opus, a stdlib script
+writes the Ogg pages).

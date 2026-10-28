@@ -87,6 +87,9 @@ throwaway Postgres: `npm run db:up`, then
 `TEST_DATABASE_URL=postgres://postgres:postgres@localhost:54329/postgres npm test`.
 The harness refuses any host other than `localhost`, so it cannot reach
 production. CI (`.github/workflows/ci.yml`) runs both on every PR.
+`npm run eval` checks the golden cases against live Gemini; it needs that
+database and `GEMINI_EVAL_API_KEY`, and CI skips it when no extraction,
+prompt, golden or eval path changed.
 
 Until Phase 3.6 is complete, a phase's acceptance check in
 `docs/ROADMAP.md` still decides "done": say which check you ran and what
