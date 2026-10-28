@@ -95,3 +95,34 @@ jobs:
       - run: npm run eval
         env:
           GEMINI_EVAL_API_KEY: ${{ secrets.GEMINI_EVAL_API_KEY }}
+
+  # Every behaviour in docs/TESTING.md cites a test that exists, and the
+  # whole suite stays above the coverage floor in lambda/vitest.config.ts.
+  inventory:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: lambda/package-lock.json
+      - run: node scripts/check-inventory.mjs
+      - run: npm ci
+        working-directory: lambda
+      - run: npm run test:coverage
+        working-directory: lambda
