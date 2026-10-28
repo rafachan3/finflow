@@ -94,6 +94,10 @@ describe("extractFromText", () => {
     const system = body.systemInstruction.parts[0].text;
     expect(system).not.toMatch(/Do not assign needs\/wants/);
     expect(system).toMatch(/bucket_why/);
+    expect(system).toMatch(/even when it is not in the Merchants list/);
+    // Validation rejects lines on income and transfers; the prompt must not invite them.
+    expect(system).toMatch(/Income and transfer events have no lines/);
+    expect(system).not.toMatch(/income and transfer lines/i);
     expect(system.indexOf("Subcategories:")).toBeGreaterThan(-1);
     expect(system.indexOf("Needs/wants rules:\nTakeout is wants.")).toBeGreaterThan(
       system.indexOf("Subcategories:"),
@@ -639,6 +643,7 @@ describe("extractFromPhoto", () => {
       true,
     );
     expect(first.systemInstruction.parts[0].text).toMatch(/receipt/i);
+    expect(first.systemInstruction.parts[0].text).toMatch(/even when it is not in the Merchants list/);
     expect(first.systemInstruction.parts[0].text).toMatch(/never guess/i);
     expect(first.systemInstruction.parts[0].text).toMatch(/empty string/i);
     expect(first.systemInstruction.parts[0].text).toMatch(/ordinary English/i);
@@ -720,6 +725,7 @@ describe("extractFromVoice", () => {
     });
     expect(parts.some((p) => p.text?.includes("yesterday"))).toBe(true);
     expect(first.systemInstruction.parts[0].text).toMatch(/voice note/i);
+    expect(first.systemInstruction.parts[0].text).toMatch(/even when it is not in the Merchants list/);
     expect(first.systemInstruction.parts[0].text).toMatch(/never guess/i);
     expect(first.systemInstruction.parts[0].text).toMatch(/empty string/i);
     expect(first.systemInstruction.parts[0].text).not.toMatch(/from a receipt photo/i);

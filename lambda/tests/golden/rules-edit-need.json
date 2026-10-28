@@ -1,0 +1,65 @@
+{
+  "name": "an Edit that calls one line a need flips only that line",
+  "input": {
+    "kind": "edit",
+    "base": "rules-mixed-receipt",
+    "correction": "the sparkling water is a need"
+  },
+  "rules": "bucket-rules.synthetic.md",
+  "expect": {
+    "events": [
+      {
+        "type": "expense",
+        "lines": 3,
+        "merchant": true,
+        "date": true,
+        "buckets": ["wants", "needs", "needs"]
+      }
+    ]
+  },
+  "recorded": {
+    "type": "expense",
+    "amount": "23.47",
+    "currency": "CAD",
+    "date": "2026-10-25",
+    "description": "Big Box Market groceries",
+    "merchant": "Big Box Market",
+    "venue": "Supermarket",
+    "tags": [],
+    "funded_by": null,
+    "is_recurring": false,
+    "income_source": null,
+    "to_account": null,
+    "notes": null,
+    "items": [
+      {
+        "description": "Rotisserie chicken",
+        "amount": "9.99",
+        "category": "Food and drink",
+        "subcategory": "Groceries",
+        "item_type": "Meals & Prepared Food",
+        "bucket_why": "ready-to-eat food is a want",
+        "bucket": "wants"
+      },
+      {
+        "description": "Bananas",
+        "amount": "6.49",
+        "category": "Food and drink",
+        "subcategory": "Groceries",
+        "item_type": "Ingredients & Staples",
+        "bucket_why": "fruit is a need",
+        "bucket": "needs"
+      },
+      {
+        "description": "Sparkling water",
+        "amount": "6.99",
+        "category": "Food and drink",
+        "subcategory": "Groceries",
+        "item_type": "Non-Alcoholic Beverages",
+        "bucket_why": "owner says it is a need",
+        "bucket": "needs"
+      }
+    ],
+    "confidence": 0.9
+  }
+}

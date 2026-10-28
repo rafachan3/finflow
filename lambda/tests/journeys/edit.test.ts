@@ -58,6 +58,24 @@ describe("correcting a card with Edit", () => {
     expect(await ledger.items()).toMatchObject([{ bucket: "needs" }]);
   });
 
+  it("an Edit that calls one receipt line a need saves that change and keeps the other lines", async () => {
+    gemini.extract = golden("rules-mixed-receipt").recorded;
+    await chat.photo();
+    await chat.tap(chat.last(), "Edit");
+    gemini.patch = golden("rules-edit-need").recorded;
+    await chat.text("the sparkling water is a need");
+    await chat.tap(chat.last(), "Confirm");
+
+    const items = await ledger.items();
+    items.sort((a, b) => a.description.localeCompare(b.description));
+    expect(items).toEqual([
+      { description: "Bananas", bucket: "needs" },
+      { description: "Rotisserie chicken", bucket: "wants" },
+      { description: "Sparkling water", bucket: "needs" },
+    ]);
+    expect(await ledger.transactions()).toMatchObject([{ amount: "23.47", lines: 3 }]);
+  });
+
   it("a correction that breaks the card is shown without buttons and the card keeps waiting", async () => {
     const card = await lunchCard();
     await chat.tap(card, "Edit");
