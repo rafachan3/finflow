@@ -16,7 +16,7 @@ export function expense(over: Partial<Extraction> = {}): Extraction {
     type: "expense",
     amount: "12.50",
     description: "groceries",
-    merchant: "Costco",
+    merchant: "Acme Mart",
     venue: "Supermarket",
     tags: ["Social"],
     funded_by: "self",
