@@ -975,3 +975,28 @@ real message sent that day would have been answered by the same model,
 so the eval tested what production would have done. The job summary
 still lists each case's answering model, so a run that leaned on Lite
 is visible.
+
+---
+
+## 2026-10-28 — Inventory check, coverage floor, deploy after CI
+
+Phase 3.6 enforcement.
+
+- `docs/TESTING.md` is the behaviour inventory. A row cites its tests by
+  exact title; `scripts/check-inventory.mjs` fails a row with no test or a
+  title that is not in `lambda/tests` or `lambda/eval`. A title match, not
+  a file path, so moving a test between files does not break the row.
+- The coverage floor is lines 90, statements 90, branches 84, functions 98
+  on `lambda/src`, measured on unit plus integration plus journeys at
+  90.63 / 90.63 / 84.98 / 98.68. It only goes up. It runs in the
+  `inventory` job, so it needs the database and cannot be measured on the
+  unit project alone.
+- The eval key must come from its own Google AI Studio project, because
+  free-tier quota is per project.
+- Deploy runs from `workflow_run` on a successful CI run for `main`, not
+  from `push`, so a red CI run cannot ship. `workflow_run` takes no path
+  filter, so a push with no Lambda change redeploys the same code.
+
+**Ruled out:** a lint rule for private tooling markers in comments (the
+owner rejected it); one deploy job inside `ci.yml` with `needs` (it would
+run on PR builds too, or need an `if` on every step).
