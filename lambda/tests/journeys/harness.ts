@@ -4,6 +4,7 @@ import { mockClient } from "aws-sdk-client-mock";
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
 import { afterAll, afterEach, beforeAll, beforeEach, expect } from "vitest";
+import { retryWait } from "../../src/gemini.js";
 import { closeHelpers, resetData, sql } from "../integration/db-helpers.js";
 import { testDbUrl } from "../integration/env.js";
 
@@ -78,6 +79,8 @@ type GeminiCall = { model: string; kind: "extract" | "patch" };
 /** Scripted Gemini: set `extract` / `patch` per journey. */
 export const gemini = {
   calls: [] as GeminiCall[],
+  /** Waits the retry code asked for between models; none are actually waited out. */
+  delays: [] as number[],
   extract: undefined as unknown,
   patch: undefined as unknown,
   overloaded: new Set<string>(),
@@ -148,6 +151,8 @@ const server = setupServer(
   ),
 );
 
+const realSleep = retryWait.sleep;
+
 const s3 = mockClient(S3Client);
 
 export function uploads() {
@@ -177,6 +182,10 @@ export function useJourneys(): void {
     telegram.failSends = 0;
     telegram.files = {};
     gemini.calls = [];
+    gemini.delays = [];
+    retryWait.sleep = async (ms) => {
+      gemini.delays.push(ms);
+    };
     gemini.extract = undefined;
     gemini.patch = undefined;
     gemini.overloaded = new Set();
@@ -187,6 +196,7 @@ export function useJourneys(): void {
   afterAll(async () => {
     server.close();
     s3.restore();
+    retryWait.sleep = realSleep;
     const db = await import("../../src/db.js");
     await db.closePool();
     await closeHelpers();
