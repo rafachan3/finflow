@@ -922,3 +922,56 @@ about 10 expense messages the bot falls to `gemini-3.5-flash-lite`
 matches the last green eval on the same PR (an `actions/cache` key on that
 hash, saved only on success). Production's request is unchanged.
 
+## 2026-10-28 — One Gemini request per message: needs/wants in the extractor
+
+Reverses one line of 2026-08-17: "Ruled out: stuffing bucket rules into
+the extractor prompt." The extractor now classifies needs/wants in the
+same call, and the separate bucket specialist is gone.
+
+**Why:** the binding constraint is now free-tier requests per day, not
+classification quality. `gemini-3.6-flash` allows 20 requests a day
+(2026-10-28, "Live eval quota budget"). An expense message cost 2
+requests and an Edit 2 more, so 5 to 15 messages a day (10 to 30
+requests) pushed busy days onto Flash-Lite, which gets categories and
+buckets wrong more often. Now a message is 1 request and an Edit is 1,
+so 5 to 15 messages fit the primary model's quota. That entry's request
+arithmetic is superseded: a full eval run is 13 requests (10 expense
+cases x 1, transfer x 1, edit-amount x 2), not 25.
+
+- The rules sit in one delimited block, `Needs/wants rules:`, after the
+  taxonomy in the system instruction. Static text, then taxonomy, then
+  rules, then the user's message. They are still read from SSM at cold
+  start and never stored or logged; only `rules_sha256` is.
+- Each item returns `bucket_why` then `bucket`. `propertyOrdering` on the
+  item schema fixes that order. It is documented on the API's `Schema`
+  object ("Used to determine the order of the properties in the
+  response", <https://ai.google.dev/api/generate-content>), so the model
+  gives the reason after classifying the line and before the label.
+- An Edit sends each line's stored `bucket` and `bucket_why` back and the
+  patch prompt keeps them unless the correction changes that line or
+  states needs/wants. Before, an Edit could not change a bucket.
+- With no rules (empty SSM, the eval), the fallback text and the
+  `(hint …)` on subcategories are in the same prompt.
+- A message now either fully succeeds or fully fails. Before, a failed
+  bucket call wasted the extractor's request.
+
+**Risk accepted:** one prompt follows both the extraction instructions
+and about 6 KB of personal rules. The eval guards extraction (amounts,
+lines, merchant, date, note, split) but cannot judge buckets, since it
+runs without the private rules. The card, Edit, the Lite warning, and
+Confirm stay the safety net. Rollback is one revert, with no migration.
+
+**Ruled out:** copying the old bucket in code when a patched line looks
+unchanged (matching lines by position after an Edit adds or removes
+lines is fragile; add it only if Edits flip untouched lines); a local
+A/B replay of production history against the real rules (1 request per
+row; only if the phone check shows a problem).
+
+## 2026-10-28 — A fallback model's eval pass is a pass
+
+Owner ruling: an eval case answered by a fallback model (for example
+`gemini-3.5-flash-lite`) passes when its answer satisfies `expect`. A
+real message sent that day would have been answered by the same model,
+so the eval tested what production would have done. The job summary
+still lists each case's answering model, so a run that leaned on Lite
+is visible.

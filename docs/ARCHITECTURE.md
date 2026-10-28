@@ -9,8 +9,7 @@ flowchart TD
     subgraph ING["INGESTION"]
         TG["Telegram Bot API"]
         LM["AWS Lambda + Function URL<br/>stateless webhook"]
-        EX["Gemini Flash · extractor<br/>facts + taxonomy"]
-        BK["Gemini Flash · bucket specialist<br/>needs / wants"]
+        EX["Gemini Flash · extractor<br/>facts + taxonomy + needs / wants"]
     end
 
     subgraph STO["STORAGE"]
@@ -35,9 +34,8 @@ flowchart TD
     end
 
     SRC --> TG --> LM
-    LM -->|"1 · extract"| EX
-    EX -->|"lines, no bucket"| BK
-    BK -->|"buckets"| LM
+    LM -->|"1 · extract (one request)"| EX
+    EX -->|"lines with buckets"| LM
     LM -->|"2 · validate + persist pending"| RAW
     LM -->|"archive media on persist"| S3
     LM -->|"3 · preview: Confirm / Discard / Fix date / Edit"| TG
@@ -60,8 +58,8 @@ Multi-event: one text, voice, or photo caption with 2+ independent
 headers (split by place; income and transfers always separate) becomes
 one `ingestions` row and one Confirm card per event, labelled "(i of n)".
 A grocery trip alone is one transaction with lines on every channel.
-One Telegram update is one extractor call and at most one bucket call,
-however many events.
+One Telegram update is one Gemini request, however many events, and an
+Edit is one more (DECISIONS.md 2026-10-28).
 
 `docs/SEMANTIC_LAYER.md` is the metric contract for the marts layer: both the
 dbt models and the agent read it, so numbers agree everywhere.
@@ -110,9 +108,12 @@ dbt models and the agent read it, so numbers agree everywhere.
   improve its products, and human reviewers may read them. Receipt
   photos, voice notes, and messages go there. Accepted under the
   no-paid-ingestion constraint.
-- Two sequential structured-output calls in the Lambda, not one prompt:
-  **extractor** (facts + taxonomy, including `item_type`) then **bucket
-  specialist** (personal rules from SSM). Item type is not a third call.
+- One structured-output call in the Lambda: the **extractor** returns
+  facts, taxonomy (including `item_type`) and each line's needs/wants
+  with a short reason. The personal rules from SSM sit after the
+  taxonomy in its system instruction. This replaced a separate bucket
+  call to stay inside the free tier's 20 requests a day
+  (DECISIONS.md 2026-10-28).
 - Extractor prompt includes the live taxonomy (fetched from Postgres, contract
   in docs/TAXONOMY.md). Output matches the `extraction` schema in
   DATA_MODEL.md. Line amounts (tax allocated proportionally) must sum to the
