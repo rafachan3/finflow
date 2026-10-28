@@ -228,7 +228,10 @@ Gemini's first answer is checked against the case's `expect`; a miss gets
 one retry. Requests start at least 13 s apart, and each response logs its
 model and status (a 429 also its `quotaId` and `retryDelay`). When every
 model answers 5xx or a per-minute 429 the run waits 2 minutes and tries
-again, for at most 20 minutes per run; a per-day 429 fails it at once.
+again, for at most 20 minutes per run. A per-day 429 takes that model out
+of the run and production's chain moves on; the run fails at once only
+when every model is out for the day. The job summary tables each case's
+answering model.
 `--record` rewrites a golden's
 `recorded` only when the live answer satisfies `expect`. The CI `eval` job
 always reports: with no change to a path in `RELEVANT`

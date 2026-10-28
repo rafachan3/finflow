@@ -865,12 +865,54 @@ base commit it runs every case.
   5 a minute, and each case sends an extractor and a bucket call), at
   the cost of about 6 minutes per full run. The spacing lives in the
   eval's fetch wrapper, so the request bytes stay production's.
-- A 429 whose `quotaId` is per-day fails the run at once: it resets at
-  midnight Pacific, not within the 20-minute budget. Per-minute 429s and
-  5xx still wait.
+- A 429 whose `quotaId` is per-day marks that model out for the rest of
+  the run: the 429 goes back to production, which moves down its fallback
+  chain, and later requests to that model get the same 429 without a
+  call. The run fails at once only when every model in the chain is out
+  for the day (it resets at midnight Pacific, not within the 20-minute
+  budget). Per-minute 429s and 5xx still wait.
+- The job summary lists each case's attempts, answering model and
+  result, and counts primary against fallback answers. A fallback answer
+  is reported, not failed.
 - `npm run eval` wraps vitest in `eval/run.mjs` because vitest rejects an
   unknown `--record` flag.
 
 **Ruled out:** a temperature override or a forked prompt for the eval;
 ffmpeg for the voice clip (`afconvert` encodes Opus, a stdlib script
 writes the Ogg pages).
+
+## 2026-10-28 — Live eval quota budget
+
+Facts, read 2026-10-28 from
+<https://ai.google.dev/gemini-api/docs/rate-limits>,
+<https://ai.google.dev/gemini-api/docs/deprecations> and
+<https://ai.google.dev/gemini-api/docs/models/gemini-3.5-flash>:
+
+- Limits are per project, not per key; RPD resets at midnight Pacific.
+- The docs no longer publish per-model free-tier RPM/RPD numbers. They
+  point to AI Studio (<https://aistudio.google.com/rate-limit>) and say
+  the limits are not guaranteed. The eval now logs `limit=` from a 429's
+  `quotaValue`, which is the number Gemini itself enforces.
+- `gemini-3.5-flash` (production's first fallback) was deprecated
+  2026-05-19 and its requests are routed to `gemini-3.6-flash`.
+  `gemini-3.6-flash` and `gemini-3.5-flash-lite` were deprecated
+  2026-07-21, no shutdown date. Its daily quota is still counted under
+  its own id (CI run 40742233785).
+
+Counts from the code: a bot message is one extractor call plus one
+bucket call when it has an expense line (income or transfer only: one
+call); an Edit adds two more. A full eval run is at least 25 successful
+requests (10 expense cases x 2, transfer x 1, edit-amount x 4), more when
+a model answers 503 and the chain falls through, and up to double with
+retries. In run 40742233785 the fresh eval project's `gemini-3.5-flash`
+hit its per-day quota after 8 earlier requests that day (4 OK, 4 503).
+
+**So:** one full run can spend a fallback model's whole day. Five to 15
+bot messages is 10 to 30 requests a day on the production project,
+separate from the eval's; whether that fits depends on the AI Studio
+numbers, which the owner should read for the production project.
+
+**Proposed, not built:** skip the eval when a hash of the `RELEVANT` files
+matches the last green eval on the same PR (an `actions/cache` key on that
+hash, saved only on success). Production's request is unchanged.
+
