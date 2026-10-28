@@ -1,0 +1,49 @@
+{
+  "name": "a rule overrules the subcategory's wants hint",
+  "input": {
+    "kind": "text",
+    "text": "18.40 taxi home from the airport on Oct 24"
+  },
+  "rules": "bucket-rules.synthetic.md",
+  "expect": {
+    "events": [
+      {
+        "type": "expense",
+        "lines": 1,
+        "date": true,
+        "buckets": ["needs"]
+      }
+    ]
+  },
+  "recorded": {
+    "events": [
+      {
+        "type": "expense",
+        "amount": "18.40",
+        "currency": "CAD",
+        "date": "2026-10-24",
+        "description": "Taxi home from the airport",
+        "merchant": null,
+        "venue": null,
+        "tags": [],
+        "funded_by": null,
+        "is_recurring": false,
+        "income_source": null,
+        "to_account": null,
+        "notes": null,
+        "items": [
+          {
+            "description": "Taxi ride",
+            "amount": "18.40",
+            "category": "Transportation",
+            "subcategory": "Taxis and rideshares",
+            "item_type": null,
+            "bucket_why": "taxis and rideshares are needs for this owner",
+            "bucket": "needs"
+          }
+        ],
+        "confidence": 0.9
+      }
+    ]
+  }
+}

@@ -1,0 +1,48 @@
+{
+  "name": "with rules that say nothing about a line, its subcategory hint applies",
+  "input": {
+    "kind": "text",
+    "text": "paid 65.00 for the internet bill"
+  },
+  "rules": "bucket-rules.synthetic.md",
+  "expect": {
+    "events": [
+      {
+        "type": "expense",
+        "lines": 1,
+        "buckets": ["needs"]
+      }
+    ]
+  },
+  "recorded": {
+    "events": [
+      {
+        "type": "expense",
+        "amount": "65.00",
+        "currency": "CAD",
+        "date": "",
+        "description": "Internet bill",
+        "merchant": null,
+        "venue": null,
+        "tags": [],
+        "funded_by": null,
+        "is_recurring": true,
+        "income_source": null,
+        "to_account": null,
+        "notes": null,
+        "items": [
+          {
+            "description": "Internet bill",
+            "amount": "65.00",
+            "category": "Bills",
+            "subcategory": "Internet and phone",
+            "item_type": null,
+            "bucket_why": "no rule covers bills; Internet and phone hint is needs",
+            "bucket": "needs"
+          }
+        ],
+        "confidence": 0.9
+      }
+    ]
+  }
+}

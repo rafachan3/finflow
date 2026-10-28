@@ -16,6 +16,12 @@ describe("golden files", () => {
     },
   );
 
+  it("a full eval run fits gemini-3.6-flash's 20 free requests a day", () => {
+    // One request per case; an edit re-extracts its base, then patches.
+    const requests = allGoldens().reduce((n, g) => n + (g.input.kind === "edit" ? 2 : 1), 0);
+    expect(requests).toBeLessThanOrEqual(20);
+  });
+
   it("edit cases correct an existing case", () => {
     for (const { input } of allGoldens()) {
       if (input.kind !== "edit") continue;
