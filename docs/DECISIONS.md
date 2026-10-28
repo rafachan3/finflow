@@ -904,13 +904,19 @@ bucket call when it has an expense line (income or transfer only: one
 call); an Edit adds two more. A full eval run is at least 25 successful
 requests (10 expense cases x 2, transfer x 1, edit-amount x 4), more when
 a model answers 503 and the chain falls through, and up to double with
-retries. In run 40742233785 the fresh eval project's `gemini-3.5-flash`
-hit its per-day quota after 8 earlier requests that day (4 OK, 4 503).
+retries. Gemini's own 429s (`quotaValue`, CI run 40750690681) put the
+free-tier daily limit at 20 requests for both `gemini-3.6-flash` and
+`gemini-3.5-flash`. 503s seem to count: the eval project spent
+`gemini-3.5-flash`'s 20 on 8 logged requests plus the earlier run's.
+`gemini-3.5-flash-lite` then answered all 12 cases (about 25 requests)
+without a 429; its limit is not yet known.
 
-**So:** one full run can spend a fallback model's whole day. Five to 15
-bot messages is 10 to 30 requests a day on the production project,
-separate from the eval's; whether that fits depends on the AI Studio
-numbers, which the owner should read for the production project.
+**So:** a full run (25+ requests) exceeds one model's daily 20, and one
+free project gets at most about one full run a day, mostly on the
+fallbacks. Five to 15 bot messages is 10 to 30 requests a day on the
+production project. The low end fits `gemini-3.6-flash`'s 20; above
+about 10 expense messages the bot falls to `gemini-3.5-flash-lite`
+(`gemini-3.5-flash` is routed to `gemini-3.6-flash` anyway).
 
 **Proposed, not built:** skip the eval when a hash of the `RELEVANT` files
 matches the last green eval on the same PR (an `actions/cache` key on that
