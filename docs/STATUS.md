@@ -280,7 +280,17 @@ retried `transfer` on `main`: each extractor prompt now says a named
 business is the merchant even when it is not in the Merchants list, and
 the bucket line no longer asks for lines on income and transfers.
 
+Needs/wants accuracy check (2026-10-28; TESTING.md): `npm run
+eval:buckets` replays a seeded sample of the Notion-imported expenses
+(owner-set buckets) through `extractFromText` with the private rules and
+prints agreement, per-category confusion, model mix and mismatches. Reads
+through `finflow_readonly` only; local only, never in CI.
+
 ## Next concrete step
+
+Owner: add `GEMINI_EVAL_API_KEY=<eval key>` to the gitignored `.env` in the
+main checkout, then run `npm --prefix lambda run eval:buckets` for a
+baseline agreement figure.
 
 Owner: create a Google AI Studio project and API key just for the eval
 and add it as the `GEMINI_EVAL_API_KEY` Actions secret. Then re-run the
