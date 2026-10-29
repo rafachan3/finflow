@@ -8,7 +8,7 @@ export default defineConfig({
     include: ["eval/**/*.eval.ts"],
     globalSetup: ["eval/global-setup.ts"],
     // Cases run one at a time and may wait out a 20-minute Gemini outage.
-    poolOptions: { forks: { singleFork: true } },
+    maxWorkers: 1,
     testTimeout: 30 * 60_000,
   },
 });
