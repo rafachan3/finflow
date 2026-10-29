@@ -1412,3 +1412,36 @@ linked 1 past transaction, but 4 Notion-imported rows were left, because their
 **Ruled out:** a separate relink command (re-running `/addmerchant` is it);
 substring, prefix or fuzzy description matching; a migration that rewrites the
 imported descriptions; matching ingestion-backed rows on `description`.
+
+## 2026-10-29 — An Edit's tip correction replaces the old tip
+
+The first nightly after #56 (run 40829256766, issue #60) failed `edit-tip`
+on `gemini-3.5-flash-lite`, the same wrong answer on both attempts: amount
+39.24 where the golden expects 34.74. The base receipt is 33.24 paid with a
+4.50 tip; the correction is "the tip was 6.00, not 4.50". Lite added the
+new tip on top (33.24 + 6.00) instead of swapping it (33.24 - 4.50 + 6.00).
+
+The model was wrong and the prompt invited it. The patch request carries
+the current extraction, which has no tip field: the old tip is already
+folded into the amount and the lines. The shared line-amount rule says the
+header includes "any tip ... in the message", which Lite read as "add the
+tip in the correction". The patch prompt now says the current amount and
+lines already include the tax and any tip, and a tip or tax correction
+replaces the old value, with a worked example in other numbers (50.00 with
+a 5.00 tip, corrected to 8.00, is 53.00, not 58.00). Only the Edit prompt
+changed, so text, photo and voice requests keep their hashes.
+
+After the change: two live `edit-tip` calls, both passed on the first
+attempt (one answered by `gemini-3.5-flash-lite`, one by
+`gemini-3.5-flash`).
+
+**Ruled out:** loosening the golden (39.24 is a wrong amount paid that the
+owner would have to fix on the card); treating it as a Lite flake (the
+same wrong sum twice in a row is a reading of the prompt, not noise);
+storing the tip as a field (a schema change for a case the prompt can
+state).
+
+**Known limit:** a correction that gives only the new tip ("the tip was
+6.00") does not tell the model the old one, which the stored extraction
+does not keep. The model can only guess there; the card shows the new
+total before Confirm.

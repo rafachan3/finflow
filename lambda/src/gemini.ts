@@ -117,6 +117,9 @@ const PATCH_EXTRACTOR_STATIC_PROMPT = [
   "Keep every field the correction does not change.",
   "Keep date unless the correction changes the calendar date. Never guess today's date.",
   LINE_AMOUNTS,
+  // The current JSON has no tip field: the old tip is already inside the
+  // amount and the lines, so Lite added a corrected tip on top (#60).
+  "The current amount and lines already include the tax and any tip. A correction to the tip or tax replaces the old value, it does not add to it: subtract the old tip from the current amount and add the new one, then refold the lines. Example: a current amount of 50.00 with a 5.00 tip, corrected to an 8.00 tip, becomes 53.00, not 58.00.",
   "Item types must belong to the same category as the subcategory.",
   "category, subcategory, and item_type are separate fields. Never repeat the category inside subcategory or item_type. Example: category='Food and drink', subcategory='Takeout / Quick Service', item_type='Meals & Prepared Food'.",
   "Use Other … subcategories only when nothing more specific fits.",

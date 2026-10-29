@@ -1042,6 +1042,9 @@ describe("multi-event extraction", () => {
       expect(system).toContain("Never add a tax or tip line.");
       expect(system).toContain("the line amounts MUST sum to the header amount");
     }
+    const patchSystem = JSON.parse(fetchMock.mock.calls[3][1].body as string).systemInstruction.parts[0]
+      .text as string;
+    expect(patchSystem).toContain("A correction to the tip or tax replaces the old value, it does not add to it");
   });
 
   it("throws when Gemini returns no events", async () => {

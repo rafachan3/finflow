@@ -327,7 +327,9 @@ the total paid including tax and any tip, even a tip printed below the
 total; tax and tip are folded into the item lines in proportion to each
 line's price, with no tax or tip line, and the lines sum to the header.
 Golden cases `receipt-with-tip` (synthetic diner receipt) and `edit-tip`
-check the amount paid as well as the line count.
+check the amount paid as well as the line count. The Edit prompt also says
+the current amount already holds the old tip, so a tip correction replaces
+it rather than adding to it (#60: Lite answered 39.24 for 34.74).
 
 Duplicate warning (Phase 3.5 PR 1; DECISIONS.md 2026-10-29): every saved
 card (new message, `/pending`, Fix date, Edit) gets at most one `!` line
