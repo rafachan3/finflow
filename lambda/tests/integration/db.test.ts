@@ -581,6 +581,24 @@ describe("merchants", () => {
     expect(await db.addMerchant("Joe's Diner")).toEqual({ added: "Joe's Diner", unhid: false, linked: 2 });
   });
 
+  it("links past transactions whose re-read media names the merchant, and leaves linked and pending ones alone", async () => {
+    const ids = await save(953, expense({ merchant: null }), expense({ merchant: null }), expense({ merchant: null }));
+    for (const id of ids.slice(0, 2)) await db.confirmIngestion(id);
+    await sql("update ingestions set media_merchant = 'MAPLE  kiosk' where id = any($1::uuid[])", [ids]);
+    await sql(
+      `update transactions set merchant_id = (select id from merchants where name = 'Acme Mart')
+       where id = (select transaction_id from ingestions where id = $1)`,
+      [ids[1]],
+    );
+
+    expect(await db.addMerchant("Maple Kiosk")).toMatchObject({ added: "Maple Kiosk", linked: 1 });
+    expect(await sql("select m.name from transactions t join merchants m on m.id = t.merchant_id order by m.name")).toEqual([
+      { name: "Acme Mart" },
+      { name: "Maple Kiosk" },
+    ]);
+    expect(await status(ids[2])).toBe("pending");
+  });
+
   it("adding a name that exists links what is still unlinked and reports the count", async () => {
     await imported("Acme Mart");
     await imported("acme mart");

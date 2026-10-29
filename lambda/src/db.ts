@@ -113,8 +113,9 @@ export const MERCHANT_KEY = (name: string) =>
 /**
  * Adds a merchant, unhides one with that name, or finds it already visible; then
  * links the saved transactions with no merchant that name it. A bot-saved
- * transaction names it in its stored extraction; a history import has no
- * ingestion, so its whole description must be the name. The unique constraint is
+ * transaction names it in its stored extraction or in what a re-read of its
+ * archived media found (media_merchant); a history import has no ingestion, so
+ * its whole description must be the name. The unique constraint is
  * case-sensitive, so a name matching in another case or apostrophe is matched here.
  */
 export async function addMerchant(
@@ -153,7 +154,9 @@ export async function addMerchant(
            EXISTS (
              SELECT 1 FROM ingestions i
              WHERE i.transaction_id = t.id
-               AND ${MERCHANT_KEY("i.extraction->>'merchant'")} = ${MERCHANT_KEY("target.name")}
+               AND ${MERCHANT_KEY("target.name")} IN (
+                 ${MERCHANT_KEY("i.extraction->>'merchant'")}, ${MERCHANT_KEY("i.media_merchant")}
+               )
            )
            OR (
              NOT EXISTS (SELECT 1 FROM ingestions i WHERE i.transaction_id = t.id)
