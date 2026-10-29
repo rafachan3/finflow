@@ -1601,3 +1601,59 @@ delete, N copies of one header fact, a deploy-order hazard where the old
 Lambda writes header rows the new invariant forbids, and not reversible);
 deterministic caption parsing (only the model can tell which line "the
 bananas" means).
+
+## 2026-10-29 — Metric contract: wants is discretionary, savings rate is residual, unallocated cash proves the move
+
+Phase 4 PR-A. `docs/SEMANTIC_LAYER.md` is created with twelve metrics. The
+owner ruled on four definitions; the chief of staff took the spec's
+recommendation on the rest without asking.
+
+Owner decisions:
+
+- **Discretionary spend is `wants_spend`.** Own spend lines with
+  `bucket = 'wants'`. "Discretionary spend" is a synonym in the contract,
+  with no separate metric, mart column or MetricFlow name. The roadmap's
+  wording is met by the synonym. **Ruled out:** ARCHITECTURE.md's
+  "self-funded expenses except Rent" (subcategory ≠ Rent). It predates
+  per-line buckets and is really "spend ex-rent", which SEMANTIC_LAYER.md
+  keeps as a recipe for Phase 5.
+- **Savings rate is `(income − spend) / income`.** A residual rate, null when
+  income is 0. **Ruled out:** ARCHITECTURE.md's "transfers / income", which
+  swings with when money is moved rather than how much was spent.
+- **`unallocated_cash` = income − own spend − transfers to savings and
+  investment accounts, per month, plus `unallocated_cash_cumulative`.** The
+  owner needs proof the surplus actually left chequing, because idle cash
+  gets spent by mistake the next month. Positive means money still to move.
+  A transfer's destination type is `accounts.kind` through
+  `transactions.to_account_id`. `transfers` stays its own metric. Phase 4.5
+  may nudge on it; no nudge is built here. **Ruled out:** making transfers
+  the savings rate (above); a balance from bank data (the ledger has no
+  opening balance, so the running sum is drift since 2026-06-01).
+- **Expenses someone else paid for are in no spend metric**, and are
+  reported as `external_spend`. **Ruled out:** counting them in
+  `fixed_base_burn` as "what living costs".
+- **`fixed_base_burn` = own needs lines on recurring transactions**, with
+  `variable_needs` (needs not flagged recurring, such as groceries) next to
+  it, so `needs_spend = fixed_base_burn + variable_needs`. Food is a need but
+  variable and partly avoidable, so it is not fixed. **Ruled out:** all
+  recurring spend (a recurring want is not base).
+
+Defaults taken by the chief of staff (spec recommendations, not asked):
+
+- Refunds count as income; there is no refund flag. Spend and income are
+  both overstated by a refund; `unallocated_cash` and the savings-rate
+  numerator stay exact. **Ruled out for now:** a migration adding
+  `income_sources.kind` to net refunds, until a refund visibly distorts a
+  month.
+- `needs_wants_ratio = needs_spend / wants_spend`. **Ruled out:**
+  `needs / (needs + wants)`; one ratio, not both.
+- A marts-only `finflow_analyst` role for Grafana and the MCP (PR-B), and
+  `dbt` as a required check on `main` (PR-C).
+- `transfers`, `external_spend` and `variable_needs` are metrics, not
+  side columns: the owner asked to see each, and CLAUDE.md requires every
+  reported number to trace to a definition.
+
+Open: whether anything happened from 2026-08-13 to 2026-08-16 (after the
+Notion import, before the bot went live) is not confirmed by the owner.
+SEMANTIC_LAYER.md marks August 2026 partial until it is; nothing is
+backfilled.
