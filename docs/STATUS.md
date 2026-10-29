@@ -3,7 +3,7 @@
 Living state of the project. Read this first; update it whenever work lands.
 
 **Last updated:** 2026-10-29
-**Current phase:** Phase 3.5 — Ingestion follow-ons (see [ROADMAP.md](ROADMAP.md))
+**Current phase:** Phase 4 — Semantic layer, not started (see [ROADMAP.md](ROADMAP.md))
 
 ## Phase progress
 
@@ -14,7 +14,7 @@ Living state of the project. Read this first; update it whenever work lands.
 - [x] Phase 2 — Telegram bot walking skeleton (text only, no LLM) (2026-08-17)
 - [x] Phase 3 — Gemini extraction (text → photo → voice) — **3a + 3b + 3c phone-tested; funding source applied; Edit phone-tested; context notes phone-tested; multi-event accepted by the Phase 3.6 journeys** (2026-10-28; S3 key prefix landed 2026-10-29)
 - [x] Phase 3.6 — Regression test suite — **accepted 2026-10-29: deliberate-break PR #48 blocked (unit + inventory failed, BLOCKED), clean PRs #46/#47 green, smoke step green on deploy run 40803017809, `main` protected** (2026-10-29)
-- [ ] Phase 3.5 — Ingestion follow-ons (duplicate warning, merchant commands, the frequent-merchant hint and merchant evidence on add done 2026-10-29; item tags in review, migration 0012 to apply before merge)
+- [x] Phase 3.5 — Ingestion follow-ons — **accepted 2026-10-29 by the journey tests (no phone test): 25 of 25 passed in `line-tags`, `duplicates` and `merchants`; see Next concrete step** (2026-10-29)
 - [ ] Phase 4 — dbt semantic layer + MetricFlow
 - [ ] Phase 4.5 — Proactive nudges (recurring reminders, merchant recommendations)
 - [ ] Phase 5 — Grafana dashboards
@@ -429,10 +429,18 @@ red; the code stays deployed.
 
 ## Next concrete step
 
-Phase 3.5 closes when the item-level tags PR merges: apply migration 0012
-(`supabase db push`, then `\d transaction_item_tags`) before merging, since
-the merged code writes that table on every Confirm and merging deploys. Then
-record the Done-when check here and tick Phase 3.5.
+Phase 4 — Semantic layer (see ROADMAP.md); not started. Its first item is the
+dbt project skeleton.
+
+Phase 3.5 acceptance (2026-10-29): the journey tests are the check, not a
+phone test. Against a throwaway Postgres (`cd lambda && npm run db:up`), then
+`TEST_DATABASE_URL=$(npm run -s db:url) npm test -- tests/journeys/line-tags.test.ts tests/journeys/duplicates.test.ts tests/journeys/merchants.test.ts`,
+then `npm run db:down`, the output was `Test Files 3 passed (3)`,
+`Tests 25 passed (25)`. They cover the Done-when clauses: a line tag lands on
+that line only (`line-tags`), a re-sent confirmed receipt shows the
+duplicate warning (`duplicates`), and a merchant added from Telegram is
+listed in the next extraction while a deleted one is not (`merchants`).
+Migration 0012 was applied before the item-tags PR merged.
 
 Owner: add `GEMINI_EVAL_API_KEY=<eval key>` to the gitignored `.env` in the
 main checkout, then run `npm --prefix lambda run eval:buckets` for a
