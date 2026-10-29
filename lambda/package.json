@@ -13,6 +13,7 @@
     "db:down": "node scripts/test-db.mjs down",
     "db:url": "node scripts/test-db.mjs url",
     "build": "tsc --noEmit",
+    "backfill:media-merchant": "esbuild scripts/backfill-media-merchant.ts --bundle --platform=node --target=node22 --format=esm --packages=external --outfile=dist/backfill-media-merchant.mjs && node dist/backfill-media-merchant.mjs",
     "telegram:commands": "esbuild scripts/set-commands.ts --bundle --platform=node --target=node22 --format=esm --outfile=dist/set-commands.mjs && node dist/set-commands.mjs",
     "bundle":"esbuild src/handler.ts --bundle --platform=node --target=node22 --outfile=dist/index.js --format=cjs"
   },
