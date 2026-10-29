@@ -2,6 +2,7 @@ import type {
   APIGatewayProxyEventV2,
   APIGatewayProxyResultV2,
 } from "aws-lambda";
+import { parseCommand, type CommandName } from "./commands.js";
 import { getConfig } from "./config.js";
 import {
   applyIngestionDate,
@@ -77,8 +78,6 @@ const WAITING_EDIT =
 const BUSY_WAITING =
   "Another card is waiting for a date or correction. Send it, or tap Discard on that card, then try again.";
 
-/** Telegram appends @botname to a command in a group or when picked from the menu. */
-const PENDING_COMMAND = /^\/pending(@\w+)?$/i;
 const NOTHING_PENDING = "No pending cards.";
 
 const GEMINI_OVERLOADED =
@@ -269,14 +268,11 @@ async function sendCard(
 }
 
 /** Resends the card of every pending row, e.g. one whose first send failed after saving. */
-async function resendPendingCards(
-  chatId: number,
-  botToken: string,
-): Promise<APIGatewayProxyResultV2> {
+async function resendPendingCards(chatId: number, botToken: string): Promise<void> {
   const rows = await listPendingIngestions(chatId);
   if (rows.length === 0) {
     await sendMessage(botToken, chatId, NOTHING_PENDING);
-    return ok("ok");
+    return;
   }
   const taxonomy = await loadTaxonomy();
   for (const row of rows) {
@@ -287,8 +283,14 @@ async function resendPendingCards(
       console.error("card send error", err);
     }
   }
-  return ok("ok");
 }
+
+type CommandContext = { chatId: number; botToken: string; args: string };
+
+/** What each slash command does; the type makes a command with no entry here a compile error. */
+const RUN: Record<CommandName, (c: CommandContext) => Promise<void>> = {
+  pending: ({ chatId, botToken }) => resendPendingCards(chatId, botToken),
+};
 
 /** Check, persist, and present every event of one message, in order. */
 async function offerEvents(args: {
@@ -432,9 +434,15 @@ async function handleMessage(
     return ok("ignored");
   }
 
-  // Before the wait: "/pending" is never a date or a correction to send to Gemini.
-  if (PENDING_COMMAND.test(message.text?.trim() ?? "")) {
-    return await resendPendingCards(message.chat.id, config.botToken);
+  // Before the wait: a command is never a date or a correction to send to Gemini.
+  const command = parseCommand(message.text);
+  if (command) {
+    await RUN[command.name]({
+      chatId: message.chat.id,
+      botToken: config.botToken,
+      args: command.args,
+    });
+    return ok("ok");
   }
 
   const awaiting = await findAwaitingIngestion();
