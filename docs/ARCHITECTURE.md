@@ -298,7 +298,10 @@ is part of any rebuild, and the "deploy your own" guide must say so.
   deploy step can register the bot's command menu.
 - S3 bucket: Block Public Access enabled, default encryption on, no bucket
   policy granting anything to `*`.
-- The MCP database role is read-only (`GRANT SELECT` on marts only).
+- The MCP database role is `finflow_analyst`: `SELECT` on marts only, nothing
+  on `public` (no raw Telegram payloads). dbt runs as `finflow_dbt`, which reads
+  `public` and writes only `staging` and `marts`, so it cannot change the
+  ledger. Both are created by migration 0013 without passwords.
 - AWS billing is a security concern here, not just a cost one: a leaked key on
   a public repo is exploitable for compute. Budget alarm + least-privilege IAM
   + no long-lived access keys in CI (use OIDC if Actions ever needs AWS).

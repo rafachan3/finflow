@@ -1657,3 +1657,42 @@ Open: whether anything happened from 2026-08-13 to 2026-08-16 (after the
 Notion import, before the bot went live) is not confirmed by the owner.
 SEMANTIC_LAYER.md marks August 2026 partial until it is; nothing is
 backfilled.
+
+## 2026-10-29 — dbt writes only its own schemas; the analyst role sees marts only
+
+Phase 4 PR-B, migration 0013. dbt cannot run as `finflow_readonly` (it builds
+views and tables), and the constraint behind the request is that dbt must never
+change the ledger.
+
+- **`finflow_dbt`** reads `public` (`SELECT` on every table, plus a default
+  privilege for tables later migrations add) and has `USAGE, CREATE` on the
+  `staging` and `marts` schemas. It has no `CREATE` on `public` and no write on
+  any ledger table. The schemas belong to the migrating role, so dbt can
+  replace and drop its own relations but not the schemas.
+- **`finflow_analyst`** (Grafana, Postgres MCP) has `USAGE` on `marts` and
+  nothing on `public` or `staging`, so it cannot read the raw Telegram payloads
+  in `ingestions`. This makes ARCHITECTURE.md's "`GRANT SELECT` on marts only"
+  line true. `finflow_readonly` stays for the owner-local `eval:buckets`.
+- **Mart reads come from a default privilege, not from dbt.** `ALTER DEFAULT
+  PRIVILEGES FOR ROLE finflow_dbt IN SCHEMA marts GRANT SELECT ON TABLES TO
+  finflow_analyst` makes every relation dbt creates readable at creation, so a
+  rebuild or a new model can never leave the analyst locked out and dbt needs no
+  `+grants` config. The statement needs the migrating role to be a member of
+  `finflow_dbt`. A superuser is exempt, which is why local and CI runs would hide
+  the failure; Supabase's `postgres` is not one. The migration grants itself
+  the membership for that one statement and revokes it. The statement sequence
+  was run as a non-superuser `CREATEROLE` owner of a scratch database on
+  Postgres 17 to confirm it.
+- **Passwords are set out of band.** Both roles are created `LOGIN` with no
+  password, as `finflow_readonly` was, and the migration creates each only when
+  absent (roles are cluster-wide and the local test cluster keeps them across
+  database rebuilds).
+- No `search_path` is set on either role: dbt qualifies every relation it
+  creates or reads, so the default is enough.
+
+**Ruled out:** giving dbt a write role on `public` or ownership of the ledger
+(the failure mode this exists to prevent); one shared role for dbt and the
+analyst (the MCP would read raw payloads and could write); relying on dbt's
+`+grants` alone for analyst reads (a mart built without the config, or a failed
+run between drop and re-grant, locks the analyst out); granting the analyst
+`SELECT` on `staging` (not part of the contract, and views there read the ledger).
