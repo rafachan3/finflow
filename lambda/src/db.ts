@@ -67,7 +67,7 @@ export async function loadTaxonomy(
     `SELECT name FROM funding_sources ORDER BY name`,
   );
   const merchants = await q.query<{ name: string }>(
-    `SELECT name FROM merchants ORDER BY name`,
+    `SELECT name FROM merchants WHERE hidden_at IS NULL ORDER BY name`,
   );
   const income = await q.query<{ name: string }>(
     `SELECT name FROM income_sources ORDER BY name`,
@@ -88,42 +88,63 @@ export async function loadTaxonomy(
   };
 }
 
-export async function listMerchants(): Promise<string[]> {
+/** The merchants the prompt offers, and how many are hidden. */
+export async function listMerchants(): Promise<{ names: string[]; hidden: number }> {
   const db = await getPool();
-  const res = await db.query<{ name: string }>(`SELECT name FROM merchants ORDER BY name`);
-  return res.rows.map((r) => r.name);
+  const res = await db.query<{ name: string; hidden: boolean }>(
+    `SELECT name, hidden_at IS NOT NULL AS hidden FROM merchants ORDER BY name`,
+  );
+  return {
+    names: res.rows.filter((r) => !r.hidden).map((r) => r.name),
+    hidden: res.rows.filter((r) => r.hidden).length,
+  };
 }
 
-/** The unique constraint is case-sensitive, so a name matching in another case is refused here. */
+/**
+ * Adds a merchant, or unhides one with that name. The unique constraint is
+ * case-sensitive, so a name matching in another case is matched here.
+ */
 export async function addMerchant(
   name: string,
-): Promise<{ added: string } | { exists: string }> {
+): Promise<{ added: string; unhid: boolean } | { exists: string }> {
   const db = await getPool();
-  // One statement: insert unless a merchant matches ignoring case, else report that one.
-  const res = await db.query<{ name: string; added: boolean }>(
-    `WITH ins AS (
+  // One statement: insert unless a merchant matches ignoring case; unhide that one if
+  // it is hidden; else report it.
+  const res = await db.query<{ name: string; added: boolean; unhid: boolean }>(
+    `WITH m AS (
+       SELECT id, name, hidden_at FROM merchants WHERE lower(name) = lower($1) FOR UPDATE
+     ),
+     ins AS (
        INSERT INTO merchants (name)
-       SELECT $1::text
-       WHERE NOT EXISTS (SELECT 1 FROM merchants WHERE lower(name) = lower($1))
-       RETURNING name
+       SELECT $1::text WHERE NOT EXISTS (SELECT 1 FROM m)
+       RETURNING id, name
+     ),
+     unhid AS (
+       UPDATE merchants SET hidden_at = NULL
+       WHERE id IN (SELECT id FROM m WHERE hidden_at IS NOT NULL)
+       RETURNING id, name
      )
-     SELECT name, true AS added FROM ins
+     SELECT name, true AS added, false AS unhid FROM ins
      UNION ALL
-     SELECT name, false FROM merchants
-     WHERE lower(name) = lower($1) AND NOT EXISTS (SELECT 1 FROM ins)`,
+     SELECT name, true, true FROM unhid
+     UNION ALL
+     SELECT name, false, false FROM m WHERE hidden_at IS NULL`,
     [name],
   );
   const row = res.rows[0];
-  return row.added ? { added: row.name } : { exists: row.name };
+  return row.added ? { added: row.name, unhid: row.unhid } : { exists: row.name };
 }
 
-/** Refuses a merchant that transactions use, so a delete never unlinks the ledger. */
+/**
+ * Deletes a merchant no transaction uses. One that transactions use is hidden
+ * instead, so a delete never unlinks the ledger.
+ */
 export async function deleteMerchant(
   name: string,
-): Promise<{ deleted: string } | { missing: true } | { inUse: number; name: string }> {
+): Promise<{ deleted: string } | { missing: true } | { hidden: string; uses: number }> {
   const db = await getPool();
-  // One statement, so the count and the delete share a snapshot and a row lock. The
-  // foreign key still refuses the delete if a Confirm links the merchant after the count.
+  // One statement, so the count and the delete or hide share a snapshot and a row lock.
+  // The foreign key still refuses the delete if a Confirm links the merchant after the count.
   const res = await db.query<{ name: string; n: number; deleted: boolean }>(
     `WITH m AS (
        SELECT id, name FROM merchants WHERE lower(name) = lower($1) FOR UPDATE
@@ -135,13 +156,18 @@ export async function deleteMerchant(
        DELETE FROM merchants
        WHERE id IN (SELECT id FROM m) AND (SELECT n FROM used) = 0
        RETURNING id
+     ),
+     hid AS (
+       UPDATE merchants SET hidden_at = coalesce(hidden_at, now())
+       WHERE id IN (SELECT id FROM m) AND (SELECT n FROM used) > 0
+       RETURNING id
      )
      SELECT m.name, used.n, EXISTS (SELECT 1 FROM del) AS deleted FROM m, used`,
     [name],
   );
   const row = res.rows[0];
   if (!row) return { missing: true };
-  return row.deleted ? { deleted: row.name } : { inUse: row.n, name: row.name };
+  return row.deleted ? { deleted: row.name } : { hidden: row.name, uses: row.n };
 }
 
 export type PendingIngestion = {
@@ -451,7 +477,7 @@ export async function confirmIngestion(
         ? null
         : await lookupId(
             client,
-            `SELECT id FROM merchants WHERE name = $1`,
+            `SELECT id FROM merchants WHERE name = $1 AND hidden_at IS NULL`,
             [extraction.merchant],
           );
 

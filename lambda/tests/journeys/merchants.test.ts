@@ -51,17 +51,37 @@ describe("merchant commands", () => {
     expect(await ledger.transactions()).toMatchObject([{ merchant: null }]);
   });
 
-  it("a merchant on saved transactions is not deleted, and the reply says how many", async () => {
+  it("a merchant on saved transactions is hidden: it stays on them, the next extraction leaves it out, and Confirm does not link it", async () => {
     geminiReadsMerchant("Acme Mart");
     await chat.text("14 lunch at Acme Mart on Oct 25");
     await chat.tap(chat.last(), "Confirm");
 
     expect(await send("/delmerchant acme mart")).toEqual([
-      "Acme Mart is on 1 saved transaction, so it stays.",
+      "Hid Acme Mart: it stays on 1 saved transaction but won't be suggested.",
     ]);
+    expect(await send("/merchants")).toEqual(["Merchants (1, 1 hidden): Example Online"]);
 
     await chat.text("14 lunch at Acme Mart on Oct 26");
-    expect(gemini.merchants()).toContain("Acme Mart");
+    expect(gemini.merchants()).toEqual(["Example Online"]);
+    await chat.tap(chat.last(), "Confirm");
+    expect(await ledger.transactions()).toMatchObject([{ merchant: "Acme Mart" }, { merchant: null }]);
+  });
+
+  it("/addmerchant on a hidden merchant brings it back to the next extraction", async () => {
+    geminiReadsMerchant("Acme Mart");
+    await chat.text("14 lunch at Acme Mart on Oct 25");
+    await chat.tap(chat.last(), "Confirm");
+    await chat.text("/delmerchant Acme Mart");
+
+    expect(await send("/addmerchant ACME  mart")).toEqual([
+      "Unhid merchant: Acme Mart. The next message will use it.",
+    ]);
+    expect(await send("/merchants")).toEqual(["Merchants (2): Acme Mart, Example Online"]);
+
+    await chat.text("14 lunch at Acme Mart on Oct 26");
+    expect(gemini.merchants()).toEqual(["Acme Mart", "Example Online"]);
+    await chat.tap(chat.last(), "Confirm");
+    expect(await ledger.transactions()).toMatchObject([{ merchant: "Acme Mart" }, { merchant: "Acme Mart" }]);
   });
 
   it("/merchants lists them sorted, and a command with no usable name gets a hint, not a write", async () => {

@@ -32,6 +32,7 @@ export async function resetData(): Promise<void> {
   );
   // Merchant commands change the lookup, so put it back as seeded.
   await pool.query("DELETE FROM merchants WHERE name <> ALL($1)", [SEED_MERCHANTS]);
+  await pool.query("UPDATE merchants SET hidden_at = NULL WHERE hidden_at IS NOT NULL");
   await pool.query(
     "INSERT INTO merchants (name) SELECT unnest($1::text[]) ON CONFLICT (name) DO NOTHING",
     [SEED_MERCHANTS],

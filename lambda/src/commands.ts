@@ -40,9 +40,11 @@ export function collapseSpaces(s: string): string {
   return s.replace(/\s+/g, " ").trim();
 }
 
-export function formatMerchants(names: string[]): string {
-  if (names.length === 0) return "No merchants.";
-  const text = `Merchants (${names.length}): ${names.join(", ")}`;
+/** The visible merchants; the hidden count goes before the names so a cut list keeps it. */
+export function formatMerchants({ names, hidden }: { names: string[]; hidden: number }): string {
+  if (names.length === 0) return hidden > 0 ? `No merchants (${hidden} hidden).` : "No merchants.";
+  const counts = hidden > 0 ? `${names.length}, ${hidden} hidden` : `${names.length}`;
+  const text = `Merchants (${counts}): ${names.join(", ")}`;
   return text.length > TELEGRAM_TEXT_MAX ? `${text.slice(0, TELEGRAM_TEXT_MAX - 1)}…` : text;
 }
 
@@ -57,18 +59,18 @@ export function cleanMerchantName(raw: string): { name: string } | { error: stri
   return { name };
 }
 
-export function addReply(result: { added: string } | { exists: string }): string {
-  return "added" in result
-    ? `Added merchant: ${result.added}. The next message will use it.`
-    : `Already a merchant: ${result.exists}.`;
+export function addReply(result: { added: string; unhid: boolean } | { exists: string }): string {
+  if ("exists" in result) return `Already a merchant: ${result.exists}.`;
+  const verb = result.unhid ? "Unhid" : "Added";
+  return `${verb} merchant: ${result.added}. The next message will use it.`;
 }
 
 export function deleteReply(
-  result: { deleted: string } | { missing: true } | { inUse: number; name: string },
+  result: { deleted: string } | { missing: true } | { hidden: string; uses: number },
   typed: string,
 ): string {
   if ("deleted" in result) return `Deleted merchant: ${result.deleted}.`;
   if ("missing" in result) return `No merchant named ${typed}. Send /merchants for the list.`;
-  const s = result.inUse === 1 ? "" : "s";
-  return `${result.name} is on ${result.inUse} saved transaction${s}, so it stays.`;
+  const s = result.uses === 1 ? "" : "s";
+  return `Hid ${result.hidden}: it stays on ${result.uses} saved transaction${s} but won't be suggested.`;
 }
