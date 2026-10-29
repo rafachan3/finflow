@@ -85,7 +85,9 @@ CI (`.github/workflows/ci.yml`) reports four jobs on every PR: `unit`,
 `integration`, `eval` and `inventory`. `inventory` runs the inventory check
 and the coverage floor (lines 90, statements 90, branches 84, functions 98;
 raise it, never lower it). The deploy workflow runs only after CI succeeds
-on `main`.
+on `main`, then POSTs a wrong webhook secret to the deployed Function URL
+(read with `get-function-url-config`, never committed) and fails unless it
+gets 401. That smoke step has no inventory row: it is not a test file.
 
 ## The eval and its key
 

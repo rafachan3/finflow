@@ -151,7 +151,7 @@ merge. Replaces manual phone tests; no test touches production
 - [ ] Enforcement: `docs/TESTING.md` behaviour inventory checked in CI,
       coverage floor (done), required checks on `main` (owner runs the
       branch-protection command)
-- [ ] Post-deploy smoke: a wrong-secret request to the deployed Lambda
+- [x] Post-deploy smoke: a wrong-secret request to the deployed Lambda
       returns 401
 
 **Done when:** a PR that deliberately breaks a behaviour is blocked by CI,
