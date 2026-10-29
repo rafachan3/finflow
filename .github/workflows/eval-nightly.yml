@@ -1,0 +1,89 @@
+name: Eval nightly
+
+# Every golden case against live Gemini, with the model chain rotated per
+# case (lambda/eval/golden.eval.ts). It spends the eval project's daily
+# quota just before it resets at midnight Pacific.
+#
+# 06:07 UTC is 23:07 Pacific in summer (PDT) and 22:07 in winter (PST), so
+# it lands before the reset in both. At 07:xx UTC it would spend the next
+# day's quota every summer night. :07 avoids the top-of-hour load on which
+# GitHub delays or drops scheduled runs, and leaves 53 minutes of delay
+# before the summer reset.
+on:
+  schedule:
+    - cron: "7 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency: eval-nightly
+
+jobs:
+  eval:
+    runs-on: ubuntu-latest
+    # Cases plus up to 20 minutes waiting out a Gemini outage.
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
+      EVAL_NIGHTLY: "1"
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    defaults:
+      run:
+        working-directory: lambda
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: lambda/package-lock.json
+      - run: npm ci
+      - run: npm run eval -- --hashes
+        env:
+          GEMINI_EVAL_API_KEY: ${{ secrets.GEMINI_EVAL_API_KEY }}
+          EVAL_SUMMARY_FILE: ${{ runner.temp }}/summary.md
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: goldens
+          path: lambda/tests/golden/*.json
+          retention-days: 7
+
+      # One open issue at most: a failure opens it or comments on it, a pass
+      # closes it. GitHub notifies the owner of both.
+      - name: Open or update the eval-nightly issue
+        if: failure()
+        env:
+          SUMMARY: ${{ runner.temp }}/summary.md
+        run: |
+          [ -s "$SUMMARY" ] || echo "The eval stopped before its summary; see the run log." > "$SUMMARY"
+          printf '\n%s\n' "Run: $RUN_URL" >> "$SUMMARY"
+          gh label create eval-nightly --color B60205 --description "The nightly live eval failed" --force
+          issue=$(gh issue list --label eval-nightly --state open --json number --jq '.[0].number')
+          if [ -n "$issue" ]; then
+            gh issue comment "$issue" --body-file "$SUMMARY"
+          else
+            gh issue create --label eval-nightly --title "Nightly eval failing" --body-file "$SUMMARY"
+          fi
+      - name: Close the eval-nightly issue
+        if: success()
+        run: |
+          for issue in $(gh issue list --label eval-nightly --state open --json number --jq '.[].number'); do
+            gh issue close "$issue" --reason completed --comment "Passed: $RUN_URL"
+          done

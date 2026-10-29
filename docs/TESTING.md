@@ -56,6 +56,8 @@ included.
 | Gemini | A message is one request with the buckets included, and the rules never reach the logs | `makes one call that returns buckets, with the rules after the taxonomy`<br>`reads needs from the item and maps anything else to wants`<br>`never logs the system prompt, so the rules stay out of CloudWatch`<br>`sends the API key in a header, not the URL` |
 | Gemini | Token usage is stored on the first event of a message only | `persists the valid event, previews the invalid one without buttons, and moves usage` |
 | Taxonomy | The taxonomy comes from the database and rejects a subcategory or item type that is not in it | `returns the generic seed plus the example overlay, nothing personal`<br>`rejects an item_type from a different category than the subcategory`<br>`accepts a balanced expense with live taxonomy` |
+| Eval | A golden case whose Gemini request is byte-for-byte the one recorded as passing replays its recording through today's code instead of calling Gemini | `answers every Gemini request with the recording, without the network, and keeps the bodies`<br>`keeps the body and puts fetch back when the current code rejects the recording`<br>`changes when one byte of the body or any model in the chain changes`<br>`rewrites only the recording and the request hash, in the file's own format`<br>`marks a replayed case and counts it apart from live answers` |
+| Eval | The nightly run asks Gemini every case, case i starting on model (i + day) mod chain length, and reports each 429's quota limit | `starts case i on model (i + day) mod chain length and falls through the rest in order`<br>`covers every model with every case over chain-length nights`<br>`sends each request to the model the route picks and reports that model`<br>`keeps each 429's quotaValue by model and quota`<br>`lists the quota limits Gemini reported in its 429s` |
 | Safety | Tests refuse any database that is not on this machine, and the read-only role writes nothing | `refuses a database that is not on this machine`<br>`can read every public table and write none of them`<br>`is refused a write when it tries one` |
 
 ## Running each layer
@@ -69,6 +71,7 @@ Run from `lambda/`.
 | Everything | `npm test` | `TEST_DATABASE_URL`, or the database layers are skipped with a warning |
 | Coverage floor | `npm run test:coverage` | `TEST_DATABASE_URL` |
 | Eval (live Gemini) | `npm run eval` | `TEST_DATABASE_URL`, `GEMINI_EVAL_API_KEY` |
+| Nightly eval (every case live, models rotated) | `EVAL_NIGHTLY=1 npm run eval` | the same |
 | Needs/wants accuracy (local only) | `npm run eval:buckets` | see [below](#the-needswants-accuracy-check) |
 | Inventory | `node scripts/check-inventory.mjs` (repo root) | nothing |
 
@@ -86,11 +89,36 @@ on `main`.
 
 ## The eval and its key
 
-`npm run eval` sends every golden case to live Gemini through the production
-extraction code and checks the answer against the case's `expect`. It passes
-without calling Gemini when no path that changes the request or the judging
-moved since the base commit. Add `-- --record` to refresh a golden's
-`recorded` from a live answer that satisfies `expect`.
+`npm run eval` runs every golden case through the production extraction
+code and checks Gemini's answer against the case's `expect`. It passes
+without running when no path that changes the request or the judging moved
+since the base commit.
+
+Each case first builds its exact Gemini request with no network call, from
+its `recorded` answer, and hashes it with the model chain
+(`requestHash`). When that hash equals the case's `request_sha256`, Gemini
+already passed that exact request, so the recording goes through today's
+code and is checked against `expect`, with no Gemini call. Any other case
+calls Gemini. The eval pins "today" to a fixed date so the request does not
+change daily, and an edit case patches its base case's recording, so every
+case is at most one request.
+
+Add `-- --hashes` to write each live pass's request hash into its
+golden's `request_sha256`, keeping `recorded` (the journeys assert on it).
+`-- --record` also replaces `recorded` with the live answer; update the
+journeys that quote it in the same commit. Locally the key comes from the
+environment or the repo-root `.env`.
+
+CI runs with `--hashes` but cannot commit, so after a PR's eval calls
+Gemini, commit the hashes in the same PR (gh will not overwrite files, hence
+the scratch directory):
+
+```sh
+gh run download <run-id> -n goldens -D /tmp/goldens
+cp /tmp/goldens/*.json lambda/tests/golden/
+```
+
+The next push then replays those cases without a call.
 
 Key setup, once:
 
@@ -98,8 +126,24 @@ Key setup, once:
    bot's**, and an API key in it. Free-tier quota is counted per project (20
    requests a day on each Flash model), so a key from the production project
    would spend the bot's daily requests.
-2. Add the key as the `GEMINI_EVAL_API_KEY` Actions secret. Export it to run
-   the eval locally.
+2. Add the key as the `GEMINI_EVAL_API_KEY` Actions secret. To run the eval
+   locally, export it or add `GEMINI_EVAL_API_KEY=<key>` to the repo-root
+   `.env`.
+
+## The nightly eval
+
+`.github/workflows/eval-nightly.yml` runs at 06:07 UTC, before the eval
+project's quota resets at midnight Pacific, and on demand
+(`gh workflow run eval-nightly.yml`). It calls Gemini for every case, with
+no replay, so it catches model drift that a replay cannot. Case i (in run
+order) starts on model (i + day) mod 3 of production's chain and falls
+through the rest in order, so over three nights each case is answered by
+each model. Its summary lists each case's answering model and the
+`quotaValue` of every 429, which is how the daily limits get measured.
+
+A failure opens one issue labelled `eval-nightly` with the summary table,
+or comments on the open one. The next pass closes it. Its refreshed goldens
+are the run's `goldens` artifact.
 
 A case answered by a fallback model passes when its answer satisfies
 `expect`: a real message sent that day would have been answered by the same

@@ -296,20 +296,23 @@ and voice `file_id` stay in `ingestions.raw_payload` (voice audio in S3),
 written with the extraction after Gemini answers, so the original of every
 saved card is recoverable.
 
+Eval budget (2026-10-28; DECISIONS.md, TESTING.md): the eval replays a
+case whose exact Gemini request (hashed with the model chain, stored as
+`request_sha256` in its golden) already passed, and calls Gemini only for
+the rest. "Today" is pinned and an edit patches its base's recording, so a
+full live run is 16 requests for 16 cases. CI writes live passes' request hashes into the
+`goldens` artifact for the PR to commit. A nightly workflow at 06:07 UTC
+runs every case live with the model chain rotated per case, reports each
+429's `quotaValue`, and keeps one `eval-nightly` issue open while it fails.
+
 ## Next concrete step
 
 Owner: add `GEMINI_EVAL_API_KEY=<eval key>` to the gitignored `.env` in the
 main checkout, then run `npm --prefix lambda run eval:buckets` for a
 baseline agreement figure.
 
-Owner: create a Google AI Studio project and API key just for the eval
-and add it as the `GEMINI_EVAL_API_KEY` Actions secret. Then re-run the
-eval PR's `eval` job; it must pass before that PR merges. If a live answer
-legitimately differs from a recording, `npm run eval -- --record` with the
-key exported refreshes the goldens it satisfies.
-
-Owner: make `unit`, `integration`, `eval` and `inventory` required checks on
-`main` (branch protection; not changed by any PR). Then Phase 3.6 PR 5, the
+Watch the first nightly runs: the summary's quota line names
+Flash-Lite's daily limit once it runs out. Then Phase 3.6 PR 5, the
 post-deploy smoke step.
 
 Optional leftover: S3 keys `{source}/{yyyy-mm}/{id}.{ext}` in the existing

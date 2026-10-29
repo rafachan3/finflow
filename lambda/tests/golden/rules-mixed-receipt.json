@@ -13,7 +13,11 @@
         "lines": 3,
         "merchant": true,
         "date": true,
-        "buckets": ["wants", "needs", "wants"]
+        "buckets": [
+          "wants",
+          "needs",
+          "wants"
+        ]
       }
     ]
   },
@@ -65,5 +69,6 @@
         "confidence": 0.9
       }
     ]
-  }
+  },
+  "request_sha256": "f4c4841a413676e7cef5ca16d92059f067bc0c0fb2fb81cb6f15e525aec7a432"
 }

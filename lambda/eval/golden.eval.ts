@@ -17,7 +17,7 @@ import {
   GEMINI_MODEL,
   patchExtraction,
 } from "../src/gemini.js";
-import { todayToronto, withDatePolicy } from "../src/handler.js";
+import { withDatePolicy } from "../src/handler.js";
 import { mimeTypeForPath } from "../src/telegram.js";
 import { testDbUrl } from "../tests/integration/env.js";
 import {
@@ -33,15 +33,29 @@ import {
   outageWaiter,
   problems,
   recordedFile,
+  replay,
+  requestHash,
   retryOnce,
+  rotate,
   summary,
   type Answer,
   type CaseRow,
 } from "./harness.js";
 
 const GOLDEN_DIR = new URL("../tests/golden/", import.meta.url);
-const RECORD = process.env.EVAL_RECORD === "1";
+// "1": write each live pass's answer and request hash; "hash": the hash only.
+const RECORD = process.env.EVAL_RECORD;
+const CHAIN = [GEMINI_MODEL, GEMINI_FALLBACK_MODEL, GEMINI_LITE_MODEL];
+// Pinned so a case's request bytes do not change with the calendar, which
+// would defeat the replay below. `expect` only checks whether a date is set.
+const TODAY = "2026-10-28";
+// The nightly run (.github/workflows/eval-nightly.yml) calls Gemini for every
+// case and rotates the chain per case, so over three nights every case is
+// answered by every model. PR runs keep production's order.
+const NIGHTLY = process.env.EVAL_NIGHTLY === "1";
+const DAY = Math.floor(Date.now() / 86_400_000);
 const rows: CaseRow[] = [];
+const limits = new Map<string, string>();
 
 // Every model shedding load or out of per-minute quota: try again every 2
 // minutes, for at most 20 minutes in the whole run, then fail (the PR waits
@@ -49,8 +63,8 @@ const rows: CaseRow[] = [];
 // every model in production's fallback chain is out of it.
 const waitForGemini = outageWaiter({ budgetMs: 20 * 60_000, everyMs: 2 * 60_000, sleep });
 
-// Each case sends one request (an edit sends two: base, then patch), so a
-// full run is 18 when every case passes first time.
+// Each case sends at most one request, so a full live run is one per case
+// when every case passes first time.
 // 13 s apart keeps the run under a 5-requests-per-minute free-tier limit.
 const MIN_GAP_MS = 13_000;
 
@@ -67,7 +81,7 @@ function args(g: Golden) {
     apiKey: process.env.GEMINI_EVAL_API_KEY!,
     taxonomy,
     bucketRules: bucketRules(g),
-    today: todayToronto(),
+    today: TODAY,
   };
 }
 
@@ -85,32 +99,40 @@ function extract(g: Golden, input: Exclude<GoldenInput, { kind: "edit" }>): Prom
     : extractFromVoice({ ...media, audio: bytes });
 }
 
-/** Gemini's raw answer (the shape a golden records) and the model that gave it. */
-async function liveAnswer(g: Golden): Promise<Answer> {
+/** The production call for a case. */
+function call(g: Golden): () => Promise<unknown> {
   const { input } = g;
-  if (input.kind !== "edit") return captureAnswer(() => extract(g, input));
-  // An edit corrects what the base message extracts live, after the date
-  // policy the bot applies before it stores the extraction an Edit patches.
-  // Production sends one ruleset to both calls; golden.test.ts checks an
-  // edit names the same rules as its base.
-  const base = golden(input.base).input as Exclude<GoldenInput, { kind: "edit" }>;
-  const [current] = (await extract(g, base)).map((e) =>
-    withDatePolicy(normalizeTaxonomyNames(e, taxonomy), todayToronto(), base.kind),
-  );
-  return captureAnswer(() =>
-    patchExtraction({ ...args(g), current, correction: input.correction }),
-  );
+  if (input.kind !== "edit") return () => extract(g, input);
+  // An edit corrects the base case's recorded answer, after the date policy
+  // the bot applies before it stores the extraction an Edit patches. The
+  // base's own case checks Gemini on the base message. Production sends one
+  // ruleset to both calls; golden.test.ts checks an edit names the same
+  // rules as its base. Read at run time: a --record run re-records bases
+  // before edits (see the case order below).
+  return async () => {
+    const base = golden(input.base);
+    const message = base.input as Exclude<GoldenInput, { kind: "edit" }>;
+    const [current] = (await replay(base.recorded, () => extract(g, message))).map((e) =>
+      withDatePolicy(normalizeTaxonomyNames(e, taxonomy), TODAY, message.kind),
+    );
+    return patchExtraction({ ...args(g), current, correction: input.correction });
+  };
 }
+
+// Bases first, so an edit built on a base re-recorded in this run hashes
+// the request it will really send next time.
+const CASES = allGoldens().sort((a, b) => +(a.input.kind === "edit") - +(b.input.kind === "edit"));
 
 describe.skipIf(inject("evalSkip"))("live Gemini", () => {
   const realFetch = globalThis.fetch;
 
   beforeAll(async () => {
     globalThis.fetch = geminiFetch(realFetch, {
-      models: [GEMINI_MODEL, GEMINI_FALLBACK_MODEL, GEMINI_LITE_MODEL],
+      models: CHAIN,
       minGapMs: MIN_GAP_MS,
       now: Date.now,
       sleep,
+      limits,
     });
     db = new Client({ connectionString: testDbUrl() });
     await db.connect();
@@ -120,23 +142,46 @@ describe.skipIf(inject("evalSkip"))("live Gemini", () => {
   afterAll(async () => {
     globalThis.fetch = realFetch;
     await db?.end();
-    // Fallback answers are reported here, not failed.
-    const out = process.env.GITHUB_STEP_SUMMARY;
-    if (out) appendFileSync(out, `## Live Gemini eval\n\n${summary(rows, GEMINI_MODEL)}`);
+    // Fallback answers are reported here, not failed. EVAL_SUMMARY_FILE is
+    // the nightly issue's body.
+    const md = `## Live Gemini eval\n\n${summary(rows, GEMINI_MODEL, limits)}`;
+    for (const out of [process.env.GITHUB_STEP_SUMMARY, process.env.EVAL_SUMMARY_FILE]) {
+      if (out) appendFileSync(out, md);
+    }
   });
 
-  it.each(allGoldens().map((g) => [g.file, g.name, g] as const))("%s: %s", async (_file, _name, g) => {
+  it.each(CASES.map((g, i) => [g.file, g.name, g, i] as const))("%s: %s", async (_file, _name, g, i) => {
+    // The request the current code builds, from the recording, no network.
+    // A request that matches the one recorded as passing is not sent again:
+    // the recording goes through today's code instead.
+    const bodies: string[] = [];
+    let replayError: string | undefined;
+    await replay(g.recorded, call(g), bodies).catch((err: Error) => (replayError = err.message));
+    const hash = bodies[0] === undefined ? undefined : requestHash(CHAIN, bodies[0]);
+    if (!NIGHTLY && hash && hash === g.request_sha256) {
+      const found = replayError ? [replayError] : problems(g, g.recorded);
+      console.log(`${g.file}: request unchanged since it passed, replayed without a call`);
+      rows.push({ name: g.file, attempts: 0, model: undefined, replayed: true, passed: found.length === 0 });
+      expect(found).toEqual([]);
+      return;
+    }
+
+    console.log(`${g.file}: request ${hash ?? "not built"} has no recorded pass, calling Gemini`);
     let answer: Answer | undefined;
     const { problems: found, attempts } = await retryOnce(g.file, async () => {
       answer = undefined;
-      answer = await waitForGemini(() => liveAnswer(g));
+      const route = NIGHTLY ? rotate(CHAIN, i + DAY) : undefined;
+      answer = await waitForGemini(() => captureAnswer(call(g), route));
       return problems(g, answer.raw);
     });
     console.log(`${g.file}: ${attempts} attempt(s), answered by ${answer?.model ?? "no model"}`);
     rows.push({ name: g.file, attempts, model: answer?.model, passed: found.length === 0 });
-    if (RECORD && found.length === 0) {
+    if (RECORD && found.length === 0 && hash) {
       const file = new URL(`${g.file}.json`, GOLDEN_DIR);
-      const next = recordedFile(readFileSync(file, "utf8"), answer!.raw);
+      // --hashes keeps the recording the journeys assert on; the old one
+      // satisfies `expect` too (golden.test.ts).
+      const raw = RECORD === "hash" ? g.recorded : answer!.raw;
+      const next = recordedFile(readFileSync(file, "utf8"), raw, hash);
       if (next) writeFileSync(file, next);
     }
     expect(found).toEqual([]);

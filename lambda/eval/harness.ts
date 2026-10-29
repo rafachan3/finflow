@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { mismatches, recordedEvents, type Golden } from "../tests/golden/golden.js";
 
 /**
@@ -88,9 +89,26 @@ export async function retryOnce(
   }
 }
 
+function urlOf(input: Parameters<typeof fetch>[0]): string {
+  return input instanceof Request ? input.url : String(input);
+}
+
 function modelOf(input: Parameters<typeof fetch>[0]): string {
-  const url = input instanceof Request ? input.url : String(input);
+  const url = urlOf(input);
   return /\/models\/([^:/]+):/.exec(url)?.[1] ?? url;
+}
+
+/**
+ * The nightly run's model for each request production makes: production
+ * asks chain[j] on its j-th attempt, and gets chain[(j + shift) mod n].
+ * With shift = case index + day, case i starts on model (i + day) mod n and
+ * falls through the rest of the chain in order.
+ */
+export function rotate(chain: string[], shift: number): (model: string) => string {
+  return (model) => {
+    const j = chain.indexOf(model);
+    return j < 0 ? model : chain[(j + shift) % chain.length];
+  };
 }
 
 type QuotaDetail = {
@@ -117,6 +135,8 @@ export function geminiFetch(
     minGapMs: number;
     now: () => number;
     sleep: (ms: number) => Promise<void>;
+    /** Filled with each 429's quotaValue, keyed "model quotaId". */
+    limits?: Map<string, string>;
   },
 ): typeof fetch {
   let last = -Infinity;
@@ -148,6 +168,7 @@ export function geminiFetch(
     const limit = violations.find((v) => v.quotaValue)?.quotaValue;
     const delay = details.find((d) => d.retryDelay)?.retryDelay ?? "?";
     const quotaId = ids.join(",") || "?";
+    if (limit) opts.limits?.set(`${model} ${quotaId}`, limit);
     console.log(
       `${model}: 429 quotaId=${quotaId} retryDelay=${delay}${limit ? ` limit=${limit}` : ""}`,
     );
@@ -164,27 +185,68 @@ export function problems(g: Pick<Golden, "input" | "expect">, raw: unknown): str
   return mismatches(recordedEvents({ ...g, recorded: raw } as Golden), g.expect.events);
 }
 
-/** The golden file with `recorded` replaced, or null when `raw` misses `expect`. */
-export function recordedFile(text: string, raw: unknown): string | null {
+/**
+ * The golden file with `recorded` and the hash of the request that produced
+ * it replaced, or null when `raw` misses `expect`.
+ */
+export function recordedFile(text: string, raw: unknown, hash: string): string | null {
   const g = JSON.parse(text);
   if (problems(g, raw).length > 0) return null;
-  return `${JSON.stringify({ ...g, recorded: raw }, null, 2)}\n`;
+  return `${JSON.stringify({ ...g, recorded: raw, request_sha256: hash }, null, 2)}\n`;
+}
+
+/**
+ * Identifies a Gemini request: the exact body production sends (prompt,
+ * taxonomy, rules, schema, generationConfig, inline media) and the model
+ * chain it falls through. The API key travels in a header, so it is not in it.
+ */
+export function requestHash(models: string[], body: string): string {
+  return createHash("sha256").update(`${models.join("\n")}\n\n${body}`).digest("hex");
+}
+
+/**
+ * Runs `call` with every Gemini request answered by `recorded`, no network.
+ * Each request body is pushed to `bodies`, even when `call` then throws.
+ */
+export async function replay<T>(
+  recorded: unknown,
+  call: () => Promise<T>,
+  bodies: string[] = [],
+): Promise<T> {
+  const before = globalThis.fetch;
+  globalThis.fetch = async (_input, init) => {
+    bodies.push(String(init?.body));
+    const text = JSON.stringify(recorded);
+    return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text }] } }] }));
+  };
+  try {
+    return await call();
+  } finally {
+    globalThis.fetch = before;
+  }
 }
 
 export type Answer = { raw: unknown; model: string | undefined };
 
 /**
  * Runs `call` and returns the JSON of the first successful Gemini answer
- * and the model that gave it. That is what goldens record.
+ * and the model that gave it. That is what goldens record. `route` sends
+ * each request to another model (the nightly rotation).
  */
-export async function captureAnswer(call: () => Promise<unknown>): Promise<Answer> {
+export async function captureAnswer(
+  call: () => Promise<unknown>,
+  route: (model: string) => string = (m) => m,
+): Promise<Answer> {
   const realFetch = globalThis.fetch;
   let first: Promise<unknown> | undefined;
   let model: string | undefined;
-  globalThis.fetch = async (...args) => {
-    const res = await realFetch(...args);
+  globalThis.fetch = async (input, init) => {
+    const asked = modelOf(input);
+    const to = route(asked);
+    const url = to === asked ? input : urlOf(input).replace(`/models/${asked}:`, `/models/${to}:`);
+    const res = await realFetch(url, init);
     if (res.ok && !first) {
-      model = modelOf(args[0]);
+      model = to;
       first = res
         .clone()
         .json()
@@ -200,21 +262,33 @@ export async function captureAnswer(call: () => Promise<unknown>): Promise<Answe
   return { raw: await first, model };
 }
 
-export type CaseRow = { name: string; attempts: number; model: string | undefined; passed: boolean };
+export type CaseRow = {
+  name: string;
+  attempts: number;
+  model: string | undefined;
+  passed: boolean;
+  /** Its request matched a recorded pass, so the recording was checked instead of calling Gemini. */
+  replayed?: boolean;
+};
 
 /** Markdown for the job summary: one row per case, then primary vs fallback counts. */
-export function summary(rows: CaseRow[], primary: string): string {
+export function summary(rows: CaseRow[], primary: string, limits = new Map<string, string>()): string {
   const count = (keep: (r: CaseRow) => boolean) => rows.filter(keep).length;
   return [
     "| case | attempts | answering model | result |",
     "| --- | --- | --- | --- |",
     ...rows.map(
-      (r) => `| ${r.name} | ${r.attempts} | ${r.model ?? "none"} | ${r.passed ? "pass" : "fail"} |`,
+      (r) =>
+        `| ${r.name} | ${r.attempts} | ${r.replayed ? "replayed, no call" : (r.model ?? "none")} | ${r.passed ? "pass" : "fail"} |`,
     ),
     "",
     `Answered by the primary ${primary}: ${count((r) => r.model === primary)} of ${rows.length}. ` +
       `By a fallback: ${count((r) => !!r.model && r.model !== primary)}. ` +
-      `By no model: ${count((r) => !r.model)}.`,
+      `By no model: ${count((r) => !r.model && !r.replayed)}. ` +
+      `Replayed without a call: ${count((r) => !!r.replayed)}.`,
     "",
+    ...(limits.size
+      ? [`Quota limits in 429s (quotaValue): ${[...limits].map(([k, v]) => `${k} = ${v}`).join(", ")}.`, ""]
+      : []),
   ].join("\n");
 }
