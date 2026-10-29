@@ -10,7 +10,9 @@
       {
         "type": "expense",
         "lines": 1,
-        "buckets": ["needs"]
+        "buckets": [
+          "needs"
+        ]
       }
     ]
   },
@@ -44,5 +46,6 @@
         "confidence": 0.9
       }
     ]
-  }
+  },
+  "request_sha256": "156bdb938b31c9fb0f2c52737a5608ff9873739255c307fd03430d0ceb84b5b7"
 }
