@@ -176,7 +176,7 @@ Settled before Phase 4 so the dbt models are built on the final grain.
       type and amount within 3 days, or the same Telegram photo
       `file_unique_id`). Covers expenses, income (same source too) and
       transfers. Warning only — Confirm stays.
-- [ ] Merchant commands in Telegram: add and delete a merchant from the
+- [x] Merchant commands in Telegram: add and delete a merchant from the
       phone.
 
 **Done when:** a receipt whose caption tags one item writes that tag on
