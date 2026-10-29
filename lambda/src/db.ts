@@ -101,16 +101,19 @@ export async function listMerchants(): Promise<{ names: string[]; hidden: number
 }
 
 /**
- * Adds a merchant, or unhides one with that name. The unique constraint is
- * case-sensitive, so a name matching in another case is matched here.
+ * Adds a merchant, or unhides one with that name, and links the saved
+ * transactions with no merchant whose stored extraction names it. The unique
+ * constraint is case-sensitive, so a name matching in another case is matched here.
  */
 export async function addMerchant(
   name: string,
-): Promise<{ added: string; unhid: boolean } | { exists: string }> {
+): Promise<{ added: string; unhid: boolean; linked: number } | { exists: string }> {
   const db = await getPool();
   // One statement: insert unless a merchant matches ignoring case; unhide that one if
-  // it is hidden; else report it.
-  const res = await db.query<{ name: string; added: boolean; unhid: boolean }>(
+  // it is hidden; else report it. A new or unhidden merchant fills only a NULL
+  // merchant_id, matching the extraction's name as cleanMerchantName and the
+  // lookup do: spaces collapsed, case ignored.
+  const res = await db.query<{ name: string; added: boolean; unhid: boolean; linked: number }>(
     `WITH m AS (
        SELECT id, name, hidden_at FROM merchants WHERE lower(name) = lower($1) FOR UPDATE
      ),
@@ -123,16 +126,31 @@ export async function addMerchant(
        UPDATE merchants SET hidden_at = NULL
        WHERE id IN (SELECT id FROM m WHERE hidden_at IS NOT NULL)
        RETURNING id, name
+     ),
+     target AS (
+       SELECT id, name, false AS unhid FROM ins
+       UNION ALL
+       SELECT id, name, true FROM unhid
+     ),
+     linked AS (
+       UPDATE transactions t SET merchant_id = target.id
+       FROM target, ingestions i
+       WHERE i.transaction_id = t.id
+         AND t.merchant_id IS NULL
+         AND lower(btrim(regexp_replace(i.extraction->>'merchant', '\\s+', ' ', 'g')))
+             = lower(target.name)
+       RETURNING t.id
      )
-     SELECT name, true AS added, false AS unhid FROM ins
+     SELECT name, true AS added, unhid, (SELECT count(*)::int FROM linked) AS linked
+     FROM target
      UNION ALL
-     SELECT name, true, true FROM unhid
-     UNION ALL
-     SELECT name, false, false FROM m WHERE hidden_at IS NULL`,
+     SELECT name, false, false, 0 FROM m WHERE hidden_at IS NULL`,
     [name],
   );
   const row = res.rows[0];
-  return row.added ? { added: row.name, unhid: row.unhid } : { exists: row.name };
+  return row.added
+    ? { added: row.name, unhid: row.unhid, linked: row.linked }
+    : { exists: row.name };
 }
 
 /**

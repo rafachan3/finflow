@@ -34,11 +34,14 @@ describe("merchant command replies", () => {
   });
 
   it("answers an add and a delete in each outcome, with 'transaction' singular for one", () => {
-    expect(addReply({ added: "Maple Kiosk", unhid: false })).toBe(
+    expect(addReply({ added: "Maple Kiosk", unhid: false, linked: 0 })).toBe(
       "Added merchant: Maple Kiosk. The next message will use it.",
     );
-    expect(addReply({ added: "Acme Mart", unhid: true })).toBe(
-      "Unhid merchant: Acme Mart. The next message will use it.",
+    expect(addReply({ added: "Maple Kiosk", unhid: false, linked: 1 })).toBe(
+      "Added merchant: Maple Kiosk. Linked 1 past transaction. The next message will use it.",
+    );
+    expect(addReply({ added: "Acme Mart", unhid: true, linked: 7 })).toBe(
+      "Unhid merchant: Acme Mart. Linked 7 past transactions. The next message will use it.",
     );
     expect(addReply({ exists: "Acme Mart" })).toBe("Already a merchant: Acme Mart.");
     expect(deleteReply({ deleted: "Maple Kiosk" }, "maple kiosk")).toBe("Deleted merchant: Maple Kiosk.");

@@ -59,10 +59,14 @@ export function cleanMerchantName(raw: string): { name: string } | { error: stri
   return { name };
 }
 
-export function addReply(result: { added: string; unhid: boolean } | { exists: string }): string {
+export function addReply(
+  result: { added: string; unhid: boolean; linked: number } | { exists: string },
+): string {
   if ("exists" in result) return `Already a merchant: ${result.exists}.`;
   const verb = result.unhid ? "Unhid" : "Added";
-  return `${verb} merchant: ${result.added}. The next message will use it.`;
+  const s = result.linked === 1 ? "" : "s";
+  const linked = result.linked > 0 ? ` Linked ${result.linked} past transaction${s}.` : "";
+  return `${verb} merchant: ${result.added}.${linked} The next message will use it.`;
 }
 
 export function deleteReply(

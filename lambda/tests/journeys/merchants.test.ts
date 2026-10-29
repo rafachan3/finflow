@@ -72,16 +72,41 @@ describe("merchant commands", () => {
     await chat.text("14 lunch at Acme Mart on Oct 25");
     await chat.tap(chat.last(), "Confirm");
     await chat.text("/delmerchant Acme Mart");
+    await chat.text("14 lunch at Acme Mart on Oct 26");
+    await chat.tap(chat.last(), "Confirm");
 
     expect(await send("/addmerchant ACME  mart")).toEqual([
-      "Unhid merchant: Acme Mart. The next message will use it.",
+      "Unhid merchant: Acme Mart. Linked 1 past transaction. The next message will use it.",
     ]);
     expect(await send("/merchants")).toEqual(["Merchants (2): Acme Mart, Example Online"]);
 
-    await chat.text("14 lunch at Acme Mart on Oct 26");
+    await chat.text("14 lunch at Acme Mart on Oct 27");
     expect(gemini.merchants()).toEqual(["Acme Mart", "Example Online"]);
     await chat.tap(chat.last(), "Confirm");
-    expect(await ledger.transactions()).toMatchObject([{ merchant: "Acme Mart" }, { merchant: "Acme Mart" }]);
+    expect(await ledger.transactions()).toMatchObject([
+      { merchant: "Acme Mart" },
+      { merchant: "Acme Mart" },
+      { merchant: "Acme Mart" },
+    ]);
+  });
+
+  it("/addmerchant links past saved transactions that named it and leaves already-linked ones alone", async () => {
+    geminiReadsMerchant("maple kiosk");
+    await chat.text("14 lunch at Maple Kiosk on Oct 25");
+    await chat.tap(chat.last(), "Confirm");
+    geminiReadsMerchant("Acme Mart");
+    await chat.text("14 lunch at Acme Mart on Oct 26");
+    await chat.tap(chat.last(), "Confirm");
+    expect(await ledger.transactions()).toMatchObject([{ merchant: null }, { merchant: "Acme Mart" }]);
+
+    expect(await send("/addmerchant Maple Kiosk")).toEqual([
+      "Added merchant: Maple Kiosk. Linked 1 past transaction. The next message will use it.",
+    ]);
+    expect(await ledger.transactions()).toMatchObject([
+      { merchant: "Maple Kiosk" },
+      { merchant: "Acme Mart" },
+    ]);
+    expect(gemini.calls).toHaveLength(2);
   });
 
   it("/merchants lists them sorted, and a command with no usable name gets a hint, not a write", async () => {
