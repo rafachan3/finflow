@@ -397,6 +397,28 @@ export const ledger = {
       `select description, bucket::text from transaction_items order by description`,
     );
   },
+  /** Each line's own tags, and its effective tags (its own plus its transaction's). */
+  lineTags() {
+    return sql<{ description: string; own: string[]; effective: string[] }>(
+      `select i.description,
+              array(select g.name::text from transaction_item_tags lt join tags g on g.id = lt.tag_id
+                    where lt.transaction_item_id = i.id order by 1) as own,
+              array(select g.name::text from tags g
+                    where g.id in (select tag_id from transaction_item_tags where transaction_item_id = i.id)
+                       or g.id in (select tag_id from transaction_tags where transaction_id = i.transaction_id)
+                    order by 1) as effective
+       from transaction_items i order by i.description`,
+    );
+  },
+  /** Each transaction's whole-transaction tags, by type. */
+  transactionTags() {
+    return sql<{ type: string; tags: string[] }>(
+      `select t.type::text,
+              array(select g.name::text from transaction_tags tt join tags g on g.id = tt.tag_id
+                    where tt.transaction_id = t.id order by 1) as tags
+       from transactions t order by t.created_at`,
+    );
+  },
 };
 
 export function todayToronto(): string {

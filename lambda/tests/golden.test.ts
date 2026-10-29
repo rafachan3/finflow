@@ -83,6 +83,20 @@ describe("mismatches", () => {
     ]);
   });
 
+  it("reports header tags and each line's own tags, once a tag on every line counts as the header's", () => {
+    const want: ExpectedEvent = { type: "expense", lines: 2, tags: ["Travel"], lineTags: [[], ["Partner"]] };
+    const line = (tags?: string[]) => ({ amount: "1.00", tags });
+    const event = (tags: string[], lines: (string[] | undefined)[]) =>
+      mismatches([{ type: "expense", amount: "2.00", tags, items: lines.map(line) }], [want]);
+    expect(event(["Travel"], [[], ["Partner"]])).toEqual([]);
+    expect(event([], [["Travel"], ["Travel", "Partner"]])).toEqual([]);
+    expect(event([], [undefined, ["Partner"]])).toEqual(["event 0: tags [] != [Travel]"]);
+    expect(event(["Travel"], [["Partner"], []])).toEqual([
+      "event 0: line 0 tags [Partner] != []",
+      "event 0: line 1 tags [] != [Partner]",
+    ]);
+  });
+
   it("reports a note that keeps a typo, misses a correction, or grows too long", () => {
     const want: ExpectedEvent = {
       type: "income",

@@ -50,6 +50,11 @@ const MERCHANT =
 const NOTES =
   "notes is the owner's reason or circumstance for the transaction when they give one (why they bought it, what happened), translated to English and lightly copy-edited: fix spelling, typos, punctuation and grammar, and join broken fragments with connectors such as 'and'. Keep the owner's own wording and voice: do not rephrase, and never add facts, reasons or details they did not give. Example: 'raining realy hard didnt want walk' becomes 'it was raining really hard and I didn't want to walk'. Do not repeat the amount, merchant, items, date, or category. Take notes from the owner's message, caption, or voice, never from printed receipt text. Return null when they give no reason.";
 
+// Line tags let one receipt line carry context the others do not (Phase 3.5).
+// normalizeTaxonomyNames moves a tag every line repeats to the event.
+const TAGS =
+  "tags on the event are context for the whole transaction (a trip, an occasion). A line's tags are context the owner gives for that line only (\"the bananas were for Partner\" tags the bananas line). Never repeat an event tag on a line. Use only names from the Tags list. Lines with no tag of their own return an empty list.";
+
 const SPLIT_EVENTS =
   "Return events: one event per separate transaction, in the order the owner mentioned them. Split by place: one event per merchant or place. Amounts at the same place, or with no place given, are one expense with several items. Income and transfers are always their own event. A receipt photo is one event; the caption may add others. A date or funder stated once applies to every event unless an event states its own. notes and tags belong to the event they describe.";
 
@@ -73,6 +78,7 @@ const EXTRACTOR_STATIC_PROMPT = [
   MERCHANT,
   FUNDED_BY,
   NOTES,
+  TAGS,
   SPLIT_EVENTS,
   BUCKETS,
   "date is YYYY-MM-DD only when the user stated a calendar date (including today, yesterday, or a month and day). If they did not, return an empty string. Never guess today's date.",
@@ -89,6 +95,7 @@ const PHOTO_EXTRACTOR_STATIC_PROMPT = [
   MERCHANT,
   FUNDED_BY,
   NOTES,
+  TAGS,
   SPLIT_EVENTS,
   BUCKETS,
   "date is YYYY-MM-DD only when printed on the receipt or stated in the caption (including today, yesterday, or a month and day). If neither, return an empty string. Never guess today's date or the photo send time.",
@@ -105,6 +112,7 @@ const VOICE_EXTRACTOR_STATIC_PROMPT = [
   MERCHANT,
   FUNDED_BY,
   NOTES,
+  TAGS,
   SPLIT_EVENTS,
   BUCKETS,
   "date is YYYY-MM-DD only when the user stated a calendar date in the recording or caption (including today, yesterday, or a month and day). If they did not, return an empty string. Never guess today's date or the voice send time.",
@@ -126,6 +134,7 @@ const PATCH_EXTRACTOR_STATIC_PROMPT = [
   ENGLISH_DESCRIPTIONS,
   FUNDED_BY,
   NOTES,
+  TAGS,
   BUCKETS,
   "Keep each line's bucket and bucket_why unless the correction changes that line or states needs/wants; then reclassify that line with the rules.",
 ].join("\n");
@@ -175,6 +184,8 @@ const ITEM_PROPERTIES = {
   category: { type: "STRING" },
   subcategory: { type: "STRING" },
   item_type: { type: "STRING", nullable: true },
+  // Before the bucket: who a line was for can bear on the needs/wants rules.
+  tags: { type: "ARRAY", items: { type: "STRING" } },
   bucket_why: { type: "STRING" },
   bucket: { type: "STRING", enum: ["needs", "wants"] },
 };
@@ -339,6 +350,7 @@ function asItem(raw: unknown): ExtractionItem {
     category: String(o.category ?? ""),
     subcategory: String(o.subcategory ?? ""),
     item_type: asString(o.item_type),
+    tags: Array.isArray(o.tags) ? o.tags.map(String) : [],
     bucket: o.bucket === "needs" ? "needs" : "wants",
     ...(why ? { bucket_why: why } : {}),
   };
@@ -461,6 +473,7 @@ function extractionForPatch(current: Extraction): unknown {
       category: item.category,
       subcategory: item.subcategory,
       item_type: item.item_type,
+      tags: item.tags ?? [],
       bucket_why: item.bucket_why ?? null,
       bucket: item.bucket,
     })),

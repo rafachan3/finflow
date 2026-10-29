@@ -1,4 +1,5 @@
 import { readdirSync, readFileSync } from "node:fs";
+import { canonicalTags } from "../../src/extraction.js";
 
 /**
  * One owner message per file: the input, the shape Gemini's answer must have,
@@ -27,6 +28,10 @@ export type ExpectedEvent = {
   funder?: string;
   /** Each line's bucket, in order. Only meaningful with `rules`. */
   buckets?: ("needs" | "wants")[];
+  /** The whole-transaction tags, as a set. */
+  tags?: string[];
+  /** Each line's own tags, in line order, as sets. */
+  lineTags?: string[][];
 };
 
 export type Golden = {
@@ -48,7 +53,8 @@ export type RawEvent = {
   merchant?: unknown;
   notes?: unknown;
   funded_by?: unknown;
-  items?: { amount?: unknown; description?: unknown; bucket?: unknown }[];
+  tags?: unknown;
+  items?: { amount?: unknown; description?: unknown; bucket?: unknown; tags?: unknown }[];
 };
 
 const DIR = new URL("./", import.meta.url);
@@ -79,6 +85,12 @@ export function recordedEvents(g: Golden): RawEvent[] {
 function present(v: unknown): boolean {
   return typeof v === "string" && v.trim() !== "";
 }
+
+function names(v: unknown): string[] {
+  return Array.isArray(v) ? v.map(String) : [];
+}
+
+const tagSet = (tags: string[]) => `[${[...tags].sort().join(", ")}]`;
 
 function cents(v: unknown): number {
   return Math.round(Number(v) * 100);
@@ -128,6 +140,18 @@ export function mismatches(events: RawEvent[], expected: ExpectedEvent[]): strin
           out.push(
             `${at}: line ${j} (${String(line.description)}) bucket ${String(line.bucket)} != ${bucket}`,
           );
+        }
+      });
+    }
+    // Judged as stored: after a tag on every line has moved to the header.
+    const tags = canonicalTags(names(got.tags), items.map((item) => names(item.tags)));
+    if (want.tags !== undefined && tagSet(tags.tags) !== tagSet(want.tags)) {
+      out.push(`${at}: tags ${tagSet(tags.tags)} != ${tagSet(want.tags)}`);
+    }
+    if (want.lineTags !== undefined && items.length === want.lines) {
+      want.lineTags.forEach((wanted, j) => {
+        if (tagSet(tags.lineTags[j]) !== tagSet(wanted)) {
+          out.push(`${at}: line ${j} tags ${tagSet(tags.lineTags[j])} != ${tagSet(wanted)}`);
         }
       });
     }
