@@ -84,6 +84,14 @@ export const gemini = {
   extract: undefined as unknown,
   patch: undefined as unknown,
   overloaded: new Set<string>(),
+  /** The system instruction of the latest request, e.g. to read its Merchants: line. */
+  lastSystem: "",
+  /** The merchants the latest extract request offered Gemini. */
+  merchants(): string[] {
+    const line = gemini.lastSystem.split("\n").find((l) => l.startsWith("Merchants: "));
+    const list = line?.slice("Merchants: ".length) ?? "";
+    return list === "(none)" ? [] : list.split(", ");
+  },
 };
 
 function geminiReply(data: unknown) {
@@ -94,6 +102,7 @@ function geminiReply(data: unknown) {
 }
 
 type GeminiRequest = {
+  systemInstruction: { parts: { text: string }[] };
   contents: { parts: { text?: string }[] }[];
   generationConfig: { responseSchema: { properties: Record<string, unknown> } };
 };
@@ -136,6 +145,7 @@ const server = setupServer(
       const props = body.generationConfig.responseSchema.properties;
       const kind = props.events ? "extract" : "patch";
       gemini.calls.push({ model, kind });
+      gemini.lastSystem = body.systemInstruction.parts[0].text;
       if (gemini.overloaded.has(model)) {
         return HttpResponse.json({ error: { message: "overloaded" } }, { status: 503 });
       }
@@ -182,6 +192,7 @@ export function useJourneys(): void {
     telegram.failSends = 0;
     telegram.files = {};
     gemini.calls = [];
+    gemini.lastSystem = "";
     gemini.delays = [];
     retryWait.sleep = async (ms) => {
       gemini.delays.push(ms);

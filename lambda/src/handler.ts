@@ -2,16 +2,28 @@ import type {
   APIGatewayProxyEventV2,
   APIGatewayProxyResultV2,
 } from "aws-lambda";
-import { parseCommand, type CommandName } from "./commands.js";
+import {
+  addReply,
+  cleanMerchantName,
+  collapseSpaces,
+  DELETE_USAGE,
+  deleteReply,
+  formatMerchants,
+  parseCommand,
+  type CommandName,
+} from "./commands.js";
 import { getConfig } from "./config.js";
 import {
+  addMerchant,
   applyIngestionDate,
   applyIngestionEdit,
   confirmIngestion,
+  deleteMerchant,
   discardIngestion,
   findAwaitingIngestion,
   findDuplicates,
   insertPendingIngestions,
+  listMerchants,
   listPendingIngestions,
   loadTaxonomy,
   type PendingIngestion,
@@ -290,6 +302,20 @@ type CommandContext = { chatId: number; botToken: string; args: string };
 /** What each slash command does; the type makes a command with no entry here a compile error. */
 const RUN: Record<CommandName, (c: CommandContext) => Promise<void>> = {
   pending: ({ chatId, botToken }) => resendPendingCards(chatId, botToken),
+  merchants: async ({ chatId, botToken }) => {
+    await sendMessage(botToken, chatId, formatMerchants(await listMerchants()));
+  },
+  // The typed command is the confirmation: exact owner input, no model, and a lookup table, not the ledger.
+  addmerchant: async ({ chatId, botToken, args }) => {
+    const clean = cleanMerchantName(args);
+    const reply = "error" in clean ? clean.error : addReply(await addMerchant(clean.name));
+    await sendMessage(botToken, chatId, reply);
+  },
+  delmerchant: async ({ chatId, botToken, args }) => {
+    const name = collapseSpaces(args);
+    const reply = name === "" ? DELETE_USAGE : deleteReply(await deleteMerchant(name), name);
+    await sendMessage(botToken, chatId, reply);
+  },
 };
 
 /** Check, persist, and present every event of one message, in order. */
