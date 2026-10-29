@@ -1478,3 +1478,57 @@ before the Gemini daily reset to just after it.
 **Ruled out:** a second project or key for the nightly (Google's terms,
 §2(d)); keeping the pre-reset slot (it measured only Lite on any day with
 prompt-changing PRs, run 40829256766).
+
+## 2026-10-29 — `/addmerchant` finds past purchases from all evidence, in two confidence tiers
+
+Owner request: adding a merchant should find past purchases there from every
+source, bot messages and Notion imports alike. Before this, link-on-add read
+only the stored extraction's merchant and an import's whole description. A
+read-only check that day found the merchant captured on confirmed photos 19/24,
+voice notes 5/16 and text 17/62, so most misses are in the owner's own words or
+in media the extraction did not name.
+
+- **Tier 1, linked at once: an exact name.** A transaction with no merchant is
+  linked when the merchant's key equals its extraction merchant, its
+  `ingestions.media_merchant`, or (no ingestion) its whole description. These
+  are statements that the purchase was at that business, so the typed command
+  is confirmation enough. The reply says `Linked N past transactions that name
+  it exactly.`
+- **Tier 2, offered for review: a mention.** The key appears as a whole word or
+  phrase (non-alphanumeric on both sides, after the key's case, space and
+  apostrophe rules) in the message text or caption (`raw_payload`) or in any
+  transaction's description. A mention is not a statement: "Metro" names a
+  grocery chain and a subway, and "coffee next to Maple Kiosk" is not a
+  purchase there. Constraint 3 (nothing written without confirmation) applies,
+  so each row waits for the owner's pick. Substring matching was ruled out:
+  "Metro" would match "Metropolitan".
+- **The review is one toggle per row, state in the keyboard.** Owner design:
+  `☐ Sep 15 · 12.50 · "words around the match"`, tap to tick, then Link
+  selected, Select all or Skip; 8 rows per message and More › for the rest. The
+  Lambda stays stateless: Telegram returns the message's keyboard with every
+  tap, so a toggle only edits the keyboard and Link selected reads the ticked
+  ids from it. Callback data is `mt:<transaction>`, `ml:<merchant>`, `ma`, `ms`
+  and `mp:<merchant>:<last transaction shown>` (at most 50 bytes). Link selected
+  writes only rows still without a merchant, and only for a merchant that
+  exists and is visible, so a row linked elsewhere since the offer keeps its
+  link. More pages by the last row shown, not a page number, so rows linked
+  from an earlier page do not shift what comes next.
+- **Media is re-read once, by a script, not by the Lambda.** `ingestions.media_merchant`
+  (migration 0011) holds the business a re-read of the archived photo or voice
+  note names. `npm run backfill:media-merchant` fills it for confirmed photos
+  and voice notes whose extraction named no merchant, run by hand against
+  production with `--dry-run` first. It skips a message that produced several
+  events: its media names one business, which may not be every event's. The
+  Lambda never reads S3 (its role may only `PutObject`); new photos and voice
+  notes need no re-read, because the extraction prompt already asks for the
+  merchant. The script's prompt asks only "which business does this name?" It
+  is not on the ingestion path, so it has no golden case and leaves the
+  extraction prompt hashes alone.
+- **Aliases are deliberately not handled yet.** "mcdo" or "Tim's" for a
+  merchant named McDonald's or Tim Hortons match neither tier. `merchants.aliases`
+  exists but stays empty until the open question on seeding it is settled.
+
+**Ruled out:** auto-linking mentions; substring or fuzzy matching; a
+server-side selection store (it would make the Lambda stateful); re-reading
+media in the Lambda on every `/addmerchant` (Gemini latency and free-tier quota on a
+command, and an S3 read grant for the ingest role); page-number paging.

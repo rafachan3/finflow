@@ -14,7 +14,7 @@ Living state of the project. Read this first; update it whenever work lands.
 - [x] Phase 2 — Telegram bot walking skeleton (text only, no LLM) (2026-08-17)
 - [x] Phase 3 — Gemini extraction (text → photo → voice) — **3a + 3b + 3c phone-tested; funding source applied; Edit phone-tested; context notes phone-tested; multi-event accepted by the Phase 3.6 journeys** (2026-10-28; S3 key prefix landed 2026-10-29)
 - [x] Phase 3.6 — Regression test suite — **accepted 2026-10-29: deliberate-break PR #48 blocked (unit + inventory failed, BLOCKED), clean PRs #46/#47 green, smoke step green on deploy run 40803017809, `main` protected** (2026-10-29)
-- [ ] Phase 3.5 — Ingestion follow-ons (item tags; duplicate warning, merchant commands and the frequent-merchant hint done 2026-10-29)
+- [ ] Phase 3.5 — Ingestion follow-ons (item tags; duplicate warning, merchant commands, the frequent-merchant hint and merchant evidence on add done 2026-10-29)
 - [ ] Phase 4 — dbt semantic layer + MetricFlow
 - [ ] Phase 4.5 — Proactive nudges (recurring reminders, merchant recommendations)
 - [ ] Phase 5 — Grafana dashboards
@@ -383,6 +383,27 @@ equals the name, never part of it, and `/addmerchant` on a visible merchant
 runs the link and replies `Already a merchant: X. Linked N past transactions.`
 Owner action after deploy: re-run `/addmerchant McDonald's` to link the four
 imported rows. No migration, prompt or golden change.
+
+Merchant evidence on add (DECISIONS.md 2026-10-29, two confidence tiers):
+`/addmerchant X` (new, unhidden or existing) links at once every transaction
+with no merchant whose extraction merchant, `ingestions.media_merchant` or
+(Notion import) whole description is X by key, and says `Linked N past
+transactions that name it exactly.` Then it offers, never links, the ones whose
+message text, caption or description mentions X as a whole word: a review
+message, 8 rows at a time, one toggle button per row (`☐ Sep 15 · 12.50 ·
+"…words around it…"`), Link selected / Select all / Skip and More ›. Ticks live
+in the message's keyboard (stateless); Link selected writes only ticked rows
+still without a merchant. Migration 0011 adds `ingestions.media_merchant`; the
+one-off `npm run backfill:media-merchant` fills it from the archived photos and
+voice notes (about 16 rows qualified on 2026-10-29; multi-event messages are
+skipped). No extraction prompt or golden change. Aliases ("mcdo") are not
+handled yet.
+
+Owner/CoS actions, in order: push migration 0011 to production, merge the PR
+(it auto-deploys code that reads the column), then from `lambda/`:
+`RECEIPTS_BUCKET=finflow-receipts-$(aws sts get-caller-identity --query Account --output text) AWS_REGION=ca-central-1 npm run backfill:media-merchant -- --dry-run`,
+check the proposed names, and run it again without `--dry-run`. Then re-run
+`/addmerchant` for the merchants that matter to link and review.
 
 Command menu (DECISIONS.md 2026-10-29): `src/commands.ts` is the one command
 table. The handler's run table is typed against it, and the last step of the
