@@ -136,3 +136,50 @@ jobs:
         working-directory: lambda
       - run: npm run test:coverage
         working-directory: lambda
+
+  # dbt build on a throwaway ledger loaded like `integration`'s, plus the
+  # synthetic fixture (docs/TESTING.md, "The dbt build"). No secrets: it
+  # never reaches production.
+  dbt:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
+    defaults:
+      run:
+        working-directory: dbt
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: dbt/requirements.txt
+      - run: pip install -r requirements.txt
+      - name: dbt build on the synthetic fixture
+        run: |
+          env=$(python scripts/test_db.py)
+          eval "$env"
+          dbt build
+      - name: a line off by 0.01 fails expense_lines_sum_to_header, and nothing else
+        run: |
+          env=$(python scripts/test_db.py fixtures/off_by_a_cent.sql)
+          eval "$env"
+          if dbt build; then
+            echo "::error::dbt build passed with a line off by 0.01"
+            exit 1
+          fi
+          jq -e '[.results[] | select(.status != "pass" and .status != "success") | .unique_id]
+            == ["test.finflow.expense_lines_sum_to_header"]' target/run_results.json

@@ -122,8 +122,10 @@ runs the suite against it. The harness recreates a `finflow_test` database on it
 and refuses any other host. `npm run db:down` stops only this checkout's
 container.
 
-CI (`.github/workflows/ci.yml`) reports four jobs on every PR: `unit`,
-`integration`, `eval` and `inventory`. `inventory` runs the inventory check
+CI (`.github/workflows/ci.yml`) reports five jobs on every PR: `unit`,
+`integration`, `eval`, `inventory` and `dbt`. `unit`, `integration`, `eval`
+and `inventory` are required on `main`; `dbt` joins them once the owner has
+seen it run stable. `inventory` runs the inventory check
 and the coverage floor (lines 90, statements 90, branches 84, functions 98;
 raise it, never lower it). The deploy workflow runs only after CI succeeds
 on `main`, then POSTs a wrong webhook secret to the deployed Function URL
@@ -160,6 +162,12 @@ eval "$(TEST_DATABASE_URL=$(npm --prefix ../lambda run -s db:url) .venv/bin/pyth
 Extra SQL files given to `test_db.py` load after the fixture.
 `dbt/fixtures/off_by_a_cent.sql` moves one receipt line by 0.01; with it,
 `dbt build` must fail on `expense_lines_sum_to_header` and nothing else.
+
+The CI job `dbt` runs both on every PR, against a `postgres:17` service:
+`dbt build` on the fixture must pass, then `dbt build` with the variant
+must fail, and `target/run_results.json` must name that one test as the
+only one not passing. So a lines-sum test that stopped biting fails the job.
+pip's download cache is keyed on `dbt/requirements.txt`.
 
 ## The eval and its key
 
