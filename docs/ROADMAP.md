@@ -148,15 +148,21 @@ merge. Replaces manual phone tests; no test touches production
 - [x] Journeys: the real handler against the throwaway database, a fake
       Telegram API and fake S3, with Gemini replayed from golden files
 - [x] Eval: golden cases against live Gemini; a failure blocks the PR
-- [ ] Enforcement: `docs/TESTING.md` behaviour inventory checked in CI,
-      coverage floor (done), required checks on `main` (owner runs the
-      branch-protection command)
+- [x] Enforcement: `docs/TESTING.md` behaviour inventory checked in CI,
+      coverage floor, required checks on `main` (unit, integration, eval,
+      inventory; `enforce_admins` on; verified 2026-10-29 via
+      `gh api repos/{owner}/{repo}/branches/main/protection`)
 - [x] Post-deploy smoke: a wrong-secret request to the deployed Lambda
-      returns 401
+      returns 401 *(deploy run 40803017809: "wrong-secret request returned
+      HTTP 401")*
 
 **Done when:** a PR that deliberately breaks a behaviour is blocked by CI,
 a clean PR passes with no manual step, and every inventory row maps to an
 existing test.
+*Accepted 2026-10-29: the deliberate break (#48, closed unmerged) failed
+`unit` and `inventory` in run 40804919784 and `mergeStateStatus` was
+BLOCKED; clean PRs #46 and #47 passed all four checks with no manual
+step; the inventory job passes, so every row maps to an existing test.*
 
 ## Phase 3.5 — Ingestion follow-ons (≈2 evenings)
 
