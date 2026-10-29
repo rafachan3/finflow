@@ -9,7 +9,8 @@ it ruled out: DECISIONS.md 2026-10-28.
 One row per behaviour. The Tests column cites each guarding test by its exact
 title in backticks, one per line. `golden:<name>` cites a case file in
 `lambda/tests/golden/`, which both the journeys replay and the live eval
-checks. `scripts/check-inventory.mjs` (CI job `inventory`) fails when a row
+checks. `dbt:<name>` cites a singular dbt test, `dbt/tests/<name>.sql`.
+`scripts/check-inventory.mjs` (CI job `inventory`) fails when a row
 cites no test or cites one that does not exist.
 
 A title that comes from `it.each` is cited as written in the source, `%s`
