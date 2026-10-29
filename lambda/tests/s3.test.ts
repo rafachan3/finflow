@@ -34,7 +34,7 @@ describe("putReceipt", () => {
       contentType: "image/jpeg",
     });
 
-    expect(key).toBe("11111111-1111-1111-1111-111111111111.jpg");
+    expect(key).toBe("11111111-1111-1111-1111-111111111111.jpeg");
     expect(send).toHaveBeenCalledTimes(1);
     const command = send.mock.calls[0][0] as { input: Record<string, unknown> };
     expect(command.input).toEqual({
