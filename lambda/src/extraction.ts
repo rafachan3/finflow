@@ -407,6 +407,21 @@ export function withPosition(ack: string, cardText?: string): string {
   return ack + label;
 }
 
+/** At most one card warning for findDuplicates' ordered matches: a photo match wins. */
+export function duplicateWarnings(matches: DuplicateMatch[]): string[] {
+  const [first] = matches;
+  if (!first) return [];
+  const status = first.status === "saved" ? "saved" : "still pending";
+  if (first.rule === "photo") {
+    return [`Same photo as a card from ${first.date} (${status})`];
+  }
+  // Photo matches sort first, so every match here is an amount match.
+  const more = matches.length > 1 ? ` (+${matches.length - 1} more)` : "";
+  return [
+    `Possible duplicate: CAD ${first.amount} on ${first.date}, "${first.description}" (${status})${more}`,
+  ];
+}
+
 export function formatPreview(
   extraction: Extraction,
   checks: CheckResult,

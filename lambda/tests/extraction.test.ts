@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   applyDatePolicy,
+  duplicateWarnings,
   formatPreview,
   withPosition,
   fundingSourceToPersist,
@@ -422,5 +423,37 @@ describe("fundingSourceToPersist", () => {
     expect(fundingSourceToPersist("income", "self")).toBeNull();
     expect(fundingSourceToPersist("transfer", "dad")).toBeNull();
     expect(fundingSourceToPersist("income", null)).toBeNull();
+  });
+});
+
+describe("duplicateWarnings", () => {
+  const saved = {
+    rule: "amount",
+    status: "saved",
+    date: "2026-10-25",
+    amount: "23.47",
+    description: "Big Box Market groceries",
+  } as const;
+
+  it("is empty when nothing matches", () => {
+    expect(duplicateWarnings([])).toEqual([]);
+  });
+
+  it("names the nearest amount match, saved or still pending, and counts the rest", () => {
+    expect(duplicateWarnings([saved])).toEqual([
+      'Possible duplicate: CAD 23.47 on 2026-10-25, "Big Box Market groceries" (saved)',
+    ]);
+    expect(
+      duplicateWarnings([
+        { ...saved, status: "pending", date: "2026-10-27", amount: "12.50", description: "Lunch" },
+        saved,
+      ]),
+    ).toEqual(['Possible duplicate: CAD 12.50 on 2026-10-27, "Lunch" (still pending) (+1 more)']);
+  });
+
+  it("shows only the photo match when there is one", () => {
+    expect(
+      duplicateWarnings([{ ...saved, rule: "photo", date: "2026-10-26" }, saved, saved]),
+    ).toEqual(["Same photo as a card from 2026-10-26 (saved)"]);
   });
 });

@@ -9,6 +9,7 @@ import {
   confirmIngestion,
   discardIngestion,
   findAwaitingIngestion,
+  findDuplicates,
   insertPendingIngestions,
   listPendingIngestions,
   loadTaxonomy,
@@ -18,6 +19,7 @@ import {
 } from "./db.js";
 import {
   applyDatePolicy,
+  duplicateWarnings,
   formatPreview,
   MISSING_DATE,
   normalizeTaxonomyNames,
@@ -32,7 +34,6 @@ import { extractFromPhoto, extractFromText, extractFromVoice, patchExtraction } 
 import { putReceipt } from "./s3.js";
 import {
   answerCallbackQuery,
-  confirmDiscardKeyboard,
   discardKeyboard,
   downloadTelegramFile,
   largestPhotoFileId,
@@ -183,9 +184,8 @@ async function handleAwaitingDate(
   };
   const taxonomy = await loadTaxonomy();
   const checks = validateExtraction(extraction, taxonomy);
-  const preview = formatPreview(extraction, checks);
   if (!checks.ok) {
-    await sendMessage(botToken, chatId, preview);
+    await sendMessage(botToken, chatId, formatPreview(extraction, checks));
     return ok("ok");
   }
 
@@ -195,12 +195,7 @@ async function handleAwaitingDate(
     return ok("ok");
   }
 
-  await sendMessage(
-    botToken,
-    chatId,
-    preview,
-    confirmDiscardKeyboard(awaiting.id),
-  );
+  await sendCard(botToken, chatId, awaiting.id, extraction, checks);
   return ok("ok");
 }
 
@@ -222,10 +217,8 @@ async function handleAwaitingEdit(
       today,
     });
     const checks = validateExtraction(extraction, taxonomy);
-    const preview = formatPreview(extraction, checks);
-    const offer = previewOffer(extraction, checks);
-    if (!offer.persist) {
-      await sendMessage(config.botToken, chatId, preview);
+    if (!previewOffer(extraction, checks).persist) {
+      await sendMessage(config.botToken, chatId, formatPreview(extraction, checks));
       return ok("ok");
     }
 
@@ -235,12 +228,7 @@ async function handleAwaitingEdit(
       return ok("ok");
     }
 
-    await sendMessage(
-      config.botToken,
-      chatId,
-      preview,
-      reviewKeyboard(awaiting.id, { confirm: offer.confirm }),
-    );
+    await sendCard(config.botToken, chatId, awaiting.id, extraction, checks);
     return ok("ok");
   } catch (err) {
     console.error("edit extract error", err);
@@ -253,7 +241,7 @@ async function handleAwaitingEdit(
   }
 }
 
-/** A saved row's card: the preview with the buttons its checks allow. */
+/** A saved row's card: the preview, any likely duplicate, and the buttons its checks allow. */
 async function sendCard(
   botToken: string,
   chatId: number,
@@ -263,10 +251,19 @@ async function sendCard(
   position?: { index: number; count: number },
 ): Promise<void> {
   const { confirm } = previewOffer(extraction, checks);
+  let duplicates: string[] = [];
+  try {
+    duplicates = duplicateWarnings(await findDuplicates(ingestionId));
+  } catch (err) {
+    // The row is saved: a card without the warning beats no card.
+    console.error("duplicate check error", err);
+  }
+  // A warning only adds a line; Confirm still follows the checks alone.
+  const shown = { ...checks, warnings: [...checks.warnings, ...duplicates] };
   await sendMessage(
     botToken,
     chatId,
-    formatPreview(extraction, checks, position),
+    formatPreview(extraction, shown, position),
     reviewKeyboard(ingestionId, { confirm }),
   );
 }

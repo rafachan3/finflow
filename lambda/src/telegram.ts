@@ -98,10 +98,6 @@ export function discardKeyboard(ingestionId: string): object {
   };
 }
 
-export function confirmDiscardKeyboard(ingestionId: string): object {
-  return reviewKeyboard(ingestionId);
-}
-
 export function largestPhotoFileId(photos: unknown[]): string {
   let bestId: string | undefined;
   let bestSize = -1;
