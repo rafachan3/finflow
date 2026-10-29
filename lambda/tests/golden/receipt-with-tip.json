@@ -1,0 +1,60 @@
+{
+  "name": "a tip below the total is folded into the items: no tip line, lines sum to the amount paid",
+  "input": {
+    "kind": "photo",
+    "caption": "",
+    "media": "receipt-tip.png"
+  },
+  "expect": {
+    "events": [
+      {
+        "type": "expense",
+        "lines": 2,
+        "amount": "33.24",
+        "merchant": true,
+        "date": true
+      }
+    ]
+  },
+  "recorded": {
+    "events": [
+      {
+        "type": "expense",
+        "amount": "33.24",
+        "currency": "CAD",
+        "date": "2026-10-24",
+        "description": "Club sandwich and garden salad at Riverside Diner",
+        "merchant": "Riverside Diner",
+        "venue": null,
+        "tags": [],
+        "is_recurring": false,
+        "income_source": null,
+        "to_account": null,
+        "items": [
+          {
+            "description": "Club sandwich",
+            "amount": "21.27",
+            "category": "Food and drink",
+            "subcategory": "Restaurants",
+            "item_type": "Meals & Prepared Food",
+            "bucket_why": "default wants hint for Restaurants",
+            "bucket": "wants"
+          },
+          {
+            "description": "Garden salad",
+            "amount": "11.97",
+            "category": "Food and drink",
+            "subcategory": "Restaurants",
+            "item_type": "Meals & Prepared Food",
+            "bucket_why": "default wants hint for Restaurants",
+            "bucket": "wants"
+          }
+        ],
+        "confidence": 1,
+        "funded_by": null,
+        "notes": null
+      }
+    ]
+  },
+  "request_sha256": "995420bbb8ee6bc3926002823a6ae28ec1c1f3ea04fb8aed8abdf05c8ed1391c"
+}

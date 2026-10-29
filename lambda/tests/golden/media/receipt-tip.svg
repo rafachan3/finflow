@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Synthetic restaurant receipt with a tip below the total; the diner is fictional. See README.md. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="420" height="560" viewBox="0 0 420 560">
+  <rect width="420" height="560" fill="#ffffff"/>
+  <g font-family="Courier New, Courier, monospace" font-size="18" fill="#111111">
+    <text x="210" y="50" font-size="26" font-weight="bold" text-anchor="middle">RIVERSIDE DINER</text>
+    <text x="210" y="80" text-anchor="middle">Table 12</text>
+    <text x="30" y="125">Date: 2026-10-24  19:05</text>
+    <text x="30" y="150">Server: 3</text>
+    <line x1="30" y1="170" x2="390" y2="170" stroke="#111111" stroke-dasharray="6 4"/>
+    <text x="30" y="205">CLUB SANDWICH</text><text x="390" y="205" text-anchor="end">16.00</text>
+    <text x="30" y="235">GARDEN SALAD</text><text x="390" y="235" text-anchor="end">9.00</text>
+    <line x1="30" y1="260" x2="390" y2="260" stroke="#111111" stroke-dasharray="6 4"/>
+    <text x="30" y="295">SUBTOTAL</text><text x="390" y="295" text-anchor="end">25.00</text>
+    <text x="30" y="325">GST 5%</text><text x="390" y="325" text-anchor="end">1.25</text>
+    <text x="30" y="355">QST 9.975%</text><text x="390" y="355" text-anchor="end">2.49</text>
+    <text x="30" y="395" font-size="22" font-weight="bold">TOTAL</text><text x="390" y="395" font-size="22" font-weight="bold" text-anchor="end">28.74</text>
+    <text x="30" y="435">TIP</text><text x="390" y="435" text-anchor="end">4.50</text>
+    <text x="210" y="500" text-anchor="middle">THANK YOU</text>
+  </g>
+</svg>
