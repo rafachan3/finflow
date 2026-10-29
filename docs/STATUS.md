@@ -416,6 +416,10 @@ context ("road trip snacks" → Travel) stays on the header's `Tags:` line and
 there; income and transfer tags are unchanged. An Edit sends each line's
 tags back and can move one. All four prompts and the item schema changed,
 so every golden re-ran live; new golden `receipt-line-tag` (19 of 20).
+A line tag missing from the Tags list is dropped and the card warns
+(`! tag "X" is not in lookup; "Bananas" will save without it`) with Confirm
+still offered; an unknown event tag still fails checks. Confirm rolls back
+on a tag it cannot find, and an old card repeating a header tag confirms.
 
 Command menu (DECISIONS.md 2026-10-29): `src/commands.ts` is the one command
 table. The handler's run table is typed against it, and the last step of the
