@@ -1,11 +1,8 @@
 name: Eval nightly
 
 # Every golden case against live Gemini, with the model chain rotated per
-# case (lambda/eval/golden.eval.ts). It spends its own project's daily
-# quota just before it resets at midnight Pacific. The key is
-# GEMINI_NIGHTLY_API_KEY, from a project PR evals do not use, so a day of PR
-# runs cannot exhaust it; until that secret exists it falls back to the PR
-# eval key.
+# case (lambda/eval/golden.eval.ts). It spends the eval project's daily
+# quota just before it resets at midnight Pacific.
 #
 # 06:07 UTC is 23:07 Pacific in summer (PDT) and 22:07 in winter (PST), so
 # it lands before the reset in both. At 07:xx UTC it would spend the next
@@ -57,16 +54,9 @@ jobs:
           cache: npm
           cache-dependency-path: lambda/package-lock.json
       - run: npm ci
-      - name: Say which key the run uses
-        env:
-          NIGHTLY_SET: ${{ secrets.GEMINI_NIGHTLY_API_KEY != '' }}
-        run: |
-          if [ "$NIGHTLY_SET" = true ]; then k="GEMINI_NIGHTLY_API_KEY"; else k="GEMINI_EVAL_API_KEY (GEMINI_NIGHTLY_API_KEY is not set; sharing the PR eval quota)"; fi
-          echo "Eval key: $k"
-          echo "EVAL_KEY_NOTE=Eval key: $k" >> "$GITHUB_ENV"
       - run: npm run eval -- --hashes
         env:
-          GEMINI_EVAL_API_KEY: ${{ secrets.GEMINI_NIGHTLY_API_KEY || secrets.GEMINI_EVAL_API_KEY }}
+          GEMINI_EVAL_API_KEY: ${{ secrets.GEMINI_EVAL_API_KEY }}
           EVAL_SUMMARY_FILE: ${{ runner.temp }}/summary.md
       - uses: actions/upload-artifact@v4
         if: always()
@@ -83,7 +73,7 @@ jobs:
           SUMMARY: ${{ runner.temp }}/summary.md
         run: |
           [ -s "$SUMMARY" ] || echo "The eval stopped before its summary; see the run log." > "$SUMMARY"
-          printf '\n%s\n%s\n' "$EVAL_KEY_NOTE" "Run: $RUN_URL" >> "$SUMMARY"
+          printf '\n%s\n' "Run: $RUN_URL" >> "$SUMMARY"
           gh label create eval-nightly --color B60205 --description "The nightly live eval failed" --force
           issue=$(gh issue list --label eval-nightly --state open --json number --jq '.[0].number')
           if [ -n "$issue" ]; then
