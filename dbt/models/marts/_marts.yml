@@ -1,0 +1,77 @@
+version: 2
+
+# The marts docs/SEMANTIC_LAYER.md defines. Generic tests here; the money
+# reconciliations are singular tests in dbt/tests/.
+
+models:
+  - name: dim_date
+    description: One row per day from the first data month to a year past Toronto's today.
+    columns:
+      - name: date_day
+        data_tests: [unique, not_null]
+      - name: month_start
+        data_tests: [not_null]
+
+  - name: fct_transactions
+    description: >
+      One row per ledger line: each expense line, plus one row per income or
+      transfer transaction (its header stands in for its line). amount is the
+      line amount, or the header amount for income and transfers. tags holds
+      the line's effective tags (its own plus its transaction's).
+    columns:
+      - name: line_key
+        data_tests: [unique, not_null]
+      - name: transaction_id
+        data_tests: [not_null]
+      - name: occurred_on
+        description: Every ledger date falls inside the time spine.
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_date')
+                field: date_day
+      - name: amount
+        data_tests: [not_null]
+      - name: type
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [income, expense, transfer]
+      - name: currency
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [CAD]
+      - name: bucket
+        data_tests:
+          - not_null:
+              config:
+                where: "type = 'expense'"
+          - accepted_values:
+              arguments:
+                values: [needs, wants]
+      - name: is_self_funded
+        data_tests:
+          - not_null:
+              config:
+                where: "type = 'expense'"
+      - name: subcategory_id
+        data_tests:
+          - not_null:
+              config:
+                where: "type = 'expense'"
+      - name: account_kind
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [savings, investment]
+      - name: entry_source
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [photo, voice, text, import]
+      - name: tags
+        data_tests: [not_null]

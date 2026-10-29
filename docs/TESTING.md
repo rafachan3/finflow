@@ -96,6 +96,7 @@ included.
 | Ledger | A line's item type belongs to the same category as its subcategory | `dbt:item_type_matches_subcategory_category` |
 | Ledger | An expense has a funder, and income and transfers have none; a transfer names its account | `dbt:expense_funding_rules`<br>`dbt:transfer_has_account` |
 | Ledger | Warnings, not failures: a line tag that repeats its header tag, a transaction with two confirmed ingestions, a date past Toronto's tomorrow | `dbt:line_tag_not_on_header`<br>`dbt:one_confirmed_ingestion_per_transaction`<br>`dbt:occurred_on_not_in_future` |
+| Marts | `fct_transactions` drops and doubles no ledger line: per type, its amounts sum to the ledger's expense lines and income and transfer headers | `dbt:fct_amount_reconciles_to_ledger` |
 
 ## Running each layer
 
