@@ -109,6 +109,7 @@ erDiagram
     integer id PK
     text name UK
     text_array aliases
+    timestamptz hidden_at "nullable"
   }
 
   venues {
@@ -171,7 +172,8 @@ create table item_types (
 create table merchants (
   id      integer generated always as identity primary key,
   name    text not null unique,
-  aliases text[] not null default '{}'            -- for LLM normalization
+  aliases text[] not null default '{}',           -- for LLM normalization
+  hidden_at timestamptz                           -- set: kept on past rows, not offered or linked
 );
 
 -- Venue / channel of purchase (Supermarket, Coffee Shop, Pharmacy, ...).
