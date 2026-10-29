@@ -420,6 +420,46 @@ describe("findDuplicates", () => {
   });
 });
 
+describe("merchants", () => {
+  it("lists the merchants sorted by name", async () => {
+    await sql("insert into merchants (name) values ('Maple Kiosk')");
+    expect(await db.listMerchants()).toEqual(["Acme Mart", "Example Online", "Maple Kiosk"]);
+  });
+
+  it("adds a merchant with no aliases, and the next taxonomy load has it", async () => {
+    expect(await db.addMerchant("Maple Kiosk")).toEqual({ added: "Maple Kiosk" });
+    expect(await sql("select aliases from merchants where name = 'Maple Kiosk'")).toEqual([
+      { aliases: [] },
+    ]);
+    expect((await db.loadTaxonomy()).merchants).toContain("Maple Kiosk");
+  });
+
+  it("will not add a name that matches a merchant in another case, and reports the existing spelling", async () => {
+    expect(await db.addMerchant("acme MART")).toEqual({ exists: "Acme Mart" });
+    expect(await db.addMerchant("Acme Mart")).toEqual({ exists: "Acme Mart" });
+    expect(await count("merchants")).toBe(2);
+  });
+
+  it("deletes a merchant that no transaction uses, whatever the case", async () => {
+    await db.addMerchant("Maple Kiosk");
+    expect(await db.deleteMerchant("maple kiosk")).toEqual({ deleted: "Maple Kiosk" });
+    expect(await db.listMerchants()).toEqual(["Acme Mart", "Example Online"]);
+  });
+
+  it("reports a name that is not a merchant", async () => {
+    expect(await db.deleteMerchant("Nowhere")).toEqual({ missing: true });
+    expect(await count("merchants")).toBe(2);
+  });
+
+  it("refuses to delete a merchant that saved transactions use, and says how many", async () => {
+    const [a, b] = await save(901, expense({ merchant: "Acme Mart" }), expense({ merchant: "Acme Mart" }));
+    await db.confirmIngestion(a);
+    await db.confirmIngestion(b);
+    expect(await db.deleteMerchant("ACME MART")).toEqual({ inUse: 2, name: "Acme Mart" });
+    expect(await db.listMerchants()).toContain("Acme Mart");
+  });
+});
+
 describe("loadTaxonomy", () => {
   it("returns the generic seed plus the example overlay, nothing personal", async () => {
     const t = await db.loadTaxonomy();

@@ -1,3 +1,5 @@
+import { commandMenu } from "./commands.js";
+
 async function callTelegram(
   botToken: string,
   method: string,
@@ -54,6 +56,11 @@ export async function sendMessage(
     body.reply_markup = replyMarkup;
   }
   await postTelegram(botToken, "sendMessage", body);
+}
+
+/** Sets the bot's command menu to the command table. Run by the deploy workflow. */
+export async function registerCommandMenu(botToken: string): Promise<void> {
+  await postTelegram(botToken, "setMyCommands", { commands: commandMenu() });
 }
 
 export async function answerCallbackQuery(

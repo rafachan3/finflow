@@ -58,3 +58,14 @@ jobs:
             -d '{}')
           echo "wrong-secret request returned HTTP $code"
           test "$code" = 401
+      # Last on purpose. The new code is already live, so a failure here turns
+      # the run red without undoing the deploy, and no continue-on-error hides
+      # it. setMyCommands is idempotent: re-run the job to retry.
+      - name: Register bot command menu
+        run: |
+          token=$(aws ssm get-parameter \
+            --name /finflow/telegram/bot-token \
+            --with-decryption \
+            --query Parameter.Value --output text)
+          echo "::add-mask::$token"
+          TELEGRAM_BOT_TOKEN="$token" npm run telegram:commands

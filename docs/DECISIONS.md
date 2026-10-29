@@ -1267,3 +1267,59 @@ handles); blocking or asking "are you sure?" (adds a step); also
 requiring the same merchant (cuts daily-coffee noise but misses a copy
 whose merchant was read differently; revisit if the warning fires so
 often it stops being read).
+
+## 2026-10-29 — Merchant commands write directly and refuse an in-use delete
+
+`/merchants`, `/addmerchant Name` and `/delmerchant Name` change the
+`merchants` lookup at once. Owner decisions 2026-10-29 plus the defaults taken
+for the questions not raised to them.
+
+- **The typed command is the confirmation.** The "nothing is written without
+  confirmation" rule guards the ledger from model guesses. A command is the
+  owner's exact text, no model is in the path, and the write goes to a lookup
+  table. A Confirm button would only echo what they typed.
+- **`/delmerchant` refuses a merchant that saved transactions use** and says
+  how many. Deleting would have to unlink confirmed ledger rows. Revisit if a
+  typo merchant is linked before it is noticed; a rename command is the better
+  fix then.
+- **Matching ignores case, for add and delete.** The unique constraint is
+  case-sensitive, and a near-duplicate would confuse the prompt's "use the
+  listed spelling" rule. Whitespace is collapsed first, so a newline in a name
+  becomes a space and only an empty, over-100-character or comma name is
+  refused (a comma would split one merchant into two in the `Merchants:` line).
+- **Commands are a table, run before the wait, after the allowlist.** A typed
+  command must never be sent to Gemini as the correction a waiting card expects.
+  `src/commands.ts` holds name -> description and the parser; the handler's run
+  table is typed against it, so a command cannot be added without a handler.
+- **The count and delete are one SQL statement** (`FOR UPDATE` on the merchant
+  row). The foreign key still refuses a delete if a Confirm links the merchant
+  after the count, so the ledger can never hold a dangling id.
+
+**Ruled out:** a Confirm/Cancel card per command (friction, no safety gained);
+unlinking on a button or a soft-delete column (a migration and re-add logic for
+a rare case); a wait state for a bare `/addmerchant` (it replies with the usage
+line instead); aliases, rename and case-insensitive matching at Confirm.
+
+## 2026-10-29 — The command menu is registered by the deploy workflow
+
+Overrides the design's "script run by hand". The last step of
+`deploy-ingest.yml` reads `/finflow/telegram/bot-token` with decryption (the
+grant from the entry above), masks it with `::add-mask::`, and runs
+`npm run telegram:commands`, which sends `setMyCommands` built from the same
+table the handler routes on.
+
+- **A failed registration fails the run but does not roll back the code.** The
+  step comes after the update and the smoke test, so the function is already
+  live and healthy; the menu is cosmetic next to the ingestion path. It has no
+  `continue-on-error`, so a bad token or a Telegram outage shows as a red
+  deploy run rather than a menu that silently drifted. `setMyCommands` is
+  idempotent, so re-running the job retries it. Rolling back would mean
+  re-deploying the previous bundle for a cosmetic failure.
+- **The script is bundled with esbuild, not run through `npx vite-node`.**
+  `vite-node` is not a dependency of `lambda/`; `npx` would download an
+  unpinned package into a step that holds the bot token. esbuild is already a
+  devDependency and builds the Lambda bundle.
+
+**Ruled out:** a hand-run script (nothing would catch a menu that drifted from
+the table); registering from the Lambda at cold start (a Telegram call in the
+request path); a GitHub secret for the token (a second copy to rotate).

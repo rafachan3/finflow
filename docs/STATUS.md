@@ -311,9 +311,8 @@ oldest first, with the buttons its checks allow today; with none it
 replies "No pending cards.". It asks Gemini nothing and runs before the
 date/correction wait, so it cannot be taken as a date or a correction.
 A card that fails to resend is logged and the rest still go out. This
-covers a card whose send failed after its row was saved. Not added to
-the Telegram command menu (no `setMyCommands` in the repo); typing it
-works.
+covers a card whose send failed after its row was saved. It is one entry
+of the command table now, and so in the command menu (below).
 
 Batch position in acks (#30; DECISIONS.md 2026-10-28): confirming or
 discarding a card from a batch of 2+ replies `Saved. (k of n)` /
@@ -343,11 +342,28 @@ Gemini call, no migration. Watch how often it fires on daily identical
 purchases (spec risk; the fix would be "same merchant when both have
 one").
 
+Merchant commands (Phase 3.5; DECISIONS.md 2026-10-29): `/merchants` lists
+them sorted, `/addmerchant Name` adds one, `/delmerchant Name` deletes one.
+Each writes at once; the typed command is the confirmation. Names match
+ignoring case; an add trims and collapses spaces and refuses an empty,
+over-100-character or comma name (a comma would split one merchant in the
+prompt's list). `/delmerchant` refuses a merchant that saved transactions
+use and says how many. A merchant added at 12:00 is in the 12:01 Gemini
+request (`loadTaxonomy` reads the table on every message) and a deleted one
+is not; no prompt text changed. Commands run before the wait, from the
+allowlisted chat only, and never reach Gemini.
+
+Command menu (DECISIONS.md 2026-10-29): `src/commands.ts` is the one command
+table. The handler's run table is typed against it, and the last step of the
+deploy workflow registers it with `setMyCommands` (`npm run telegram:commands`;
+token read from SSM and masked). A failed registration turns the deploy run
+red; the code stays deployed.
+
 ## Next concrete step
 
-Phase 3.5 continues: merchant commands next (PR 2), then item-level tags
-(PR 3), per the 2026-10-28 design's delivery order. Ship each behaviour
-with its TESTING.md row and journey.
+Phase 3.5 continues: item-level tags (PR 3) is the one follow-on left; the
+duplicate warning and the merchant commands are in. Ship each behaviour with
+its TESTING.md row and journey.
 
 Owner: add `GEMINI_EVAL_API_KEY=<eval key>` to the gitignored `.env` in the
 main checkout, then run `npm --prefix lambda run eval:buckets` for a
@@ -394,6 +410,5 @@ bucket.
   update has `event_index > 0`.
 
 Deploy role reads the bot token (DECISIONS.md 2026-10-29): the deploy role
-may `ssm:GetParameter` exactly `/finflow/telegram/bot-token`, so a later
-deploy step can register the command menu. Terraform only; it takes effect
-when the owner applies. The workflow step is the next PR.
+may `ssm:GetParameter` exactly `/finflow/telegram/bot-token` (applied), and
+the menu-registration step that uses it now exists (see Command menu above).

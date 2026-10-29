@@ -12,7 +12,8 @@
     "db:up": "docker run -d --rm --name finflow-test-db -e POSTGRES_PASSWORD=postgres -p 127.0.0.1:54329:5432 postgres:17",
     "db:down": "docker stop finflow-test-db",
     "build": "tsc --noEmit",
-    "bundle": "esbuild src/handler.ts --bundle --platform=node --target=node22 --outfile=dist/index.js --format=cjs"
+    "telegram:commands": "esbuild scripts/set-commands.ts --bundle --platform=node --target=node22 --format=esm --outfile=dist/set-commands.mjs && node dist/set-commands.mjs",
+    "bundle":"esbuild src/handler.ts --bundle --platform=node --target=node22 --outfile=dist/index.js --format=cjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1120.0",

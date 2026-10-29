@@ -82,10 +82,15 @@ dbt models and the agent read it, so numbers agree everywhere.
   never removes Confirm; if it fails the card goes out without it. Photos and voice
   download media first; S3 archive happens only on persist (UUID, then
   PutObject, then INSERT). All state lives in Postgres, so it stays
-  stateless. The `/pending` command skips extraction and comes before
-  the date/correction wait: it resends the card of every row still
-  `pending` in that chat (rows are saved before their cards are sent, so
-  a failed send leaves a row with no card).
+  stateless. Slash commands (`src/commands.ts` is the table) skip
+  extraction and come before the date/correction wait, so one is never
+  taken as a date or a correction. `/pending` resends the card of every
+  row still `pending` in that chat (rows are saved before their cards
+  are sent, so a failed send leaves a row with no card).
+  `/merchants`, `/addmerchant` and `/delmerchant` read and write the
+  `merchants` lookup directly, with no Confirm; the next message's
+  `loadTaxonomy` sees the change. The deploy workflow's last step
+  registers the same table as the Telegram command menu.
 - Idempotency: one Telegram update may yield several `ingestions` rows
   (one per event), unique on `(telegram_update_id, event_index)`. Telegram
   retries webhooks, and a retry re-runs Gemini, which can return a

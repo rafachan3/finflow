@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { COMMANDS, commandMenu } from "../src/commands.js";
 import {
+  registerCommandMenu,
   discardKeyboard,
   downloadTelegramFile,
   largestPhotoFileId,
@@ -85,6 +87,36 @@ describe("voiceFileId", () => {
 
   it("throws when file_id is missing", () => {
     expect(() => voiceFileId({})).toThrow(/no voice file_id/i);
+  });
+});
+
+describe("command menu", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("lists exactly the commands the handler routes on, in Telegram's allowed shape", () => {
+    expect(commandMenu().map((c) => c.command)).toEqual(Object.keys(COMMANDS));
+    for (const { command, description } of commandMenu()) {
+      expect(COMMANDS[command as keyof typeof COMMANDS]).toBe(description);
+      expect(command).toMatch(/^[a-z0-9_]{1,32}$/);
+      expect(description.length).toBeGreaterThanOrEqual(3);
+      expect(description.length).toBeLessThanOrEqual(256);
+    }
+  });
+
+  it("registers that menu with setMyCommands", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue({ ok: true, json: async () => ({ ok: true, result: true }) });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await registerCommandMenu("TOKEN");
+
+    expect(fetchMock).toHaveBeenCalledOnce();
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe("https://api.telegram.org/botTOKEN/setMyCommands");
+    expect(JSON.parse(init.body)).toEqual({ commands: commandMenu() });
   });
 });
 
