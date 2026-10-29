@@ -401,7 +401,12 @@ const RUN: Record<CommandName, (c: CommandContext) => Promise<void>> = {
     }
     const result = await addMerchant(clean.name);
     await sendMessage(botToken, chatId, addReply(result));
-    await offerMentions(botToken, chatId, result.id, null);
+    // The reply is sent: a failed offer must not 500, or Telegram resends the command.
+    try {
+      await offerMentions(botToken, chatId, result.id, null);
+    } catch (err) {
+      console.error("mention offer error", err);
+    }
   },
   delmerchant: async ({ chatId, botToken, args }) => {
     const name = collapseSpaces(args);

@@ -19,6 +19,8 @@ vi.mock("../src/db.js", () => ({
   applyIngestionEdit: vi.fn(),
   findDuplicates: vi.fn(),
   findFrequentMerchant: vi.fn(),
+  addMerchant: vi.fn(),
+  findMentions: vi.fn(),
 }));
 vi.mock("../src/gemini.js", () => ({
   extractFromText: vi.fn(),
@@ -41,8 +43,10 @@ vi.mock("../src/s3.js", () => ({
 
 import { getConfig } from "../src/config.js";
 import {
+  addMerchant,
   applyIngestionDate,
   applyIngestionEdit,
+  findMentions,
   findAwaitingIngestion,
   findDuplicates,
   findFrequentMerchant,
@@ -256,6 +260,22 @@ describe("handler", () => {
 
     expect(error).toHaveBeenCalledWith("merchant hint error", expect.any(Error));
     expect(sendMessage).toHaveBeenCalledWith("t", 1, expect.not.stringContaining("💡"), { confirm: "ing-1" });
+    error.mockRestore();
+  });
+
+  it("answers /addmerchant with 200 when the mention offer fails after the reply, so Telegram does not resend it", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.mocked(addMerchant).mockResolvedValue({ id: 7, added: "Maple Kiosk", unhid: false, linked: 0 });
+    vi.mocked(findMentions).mockRejectedValue(new Error("db down"));
+
+    const res = await bodyOf(
+      await handler(event({ update_id: 34, message: { chat: { id: 1 }, text: "/addmerchant Maple Kiosk" } })),
+    );
+
+    expect(res.statusCode).toBe(200);
+    expect(sendMessage).toHaveBeenCalledOnce();
+    expect(sendMessage).toHaveBeenCalledWith("t", 1, expect.stringContaining("Added merchant: Maple Kiosk."));
+    expect(error).toHaveBeenCalledWith("mention offer error", expect.any(Error));
     error.mockRestore();
   });
 
