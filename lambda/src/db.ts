@@ -88,6 +88,62 @@ export async function loadTaxonomy(
   };
 }
 
+export async function listMerchants(): Promise<string[]> {
+  const db = await getPool();
+  const res = await db.query<{ name: string }>(`SELECT name FROM merchants ORDER BY name`);
+  return res.rows.map((r) => r.name);
+}
+
+/** The unique constraint is case-sensitive, so a name matching in another case is refused here. */
+export async function addMerchant(
+  name: string,
+): Promise<{ added: string } | { exists: string }> {
+  const db = await getPool();
+  // One statement: insert unless a merchant matches ignoring case, else report that one.
+  const res = await db.query<{ name: string; added: boolean }>(
+    `WITH ins AS (
+       INSERT INTO merchants (name)
+       SELECT $1::text
+       WHERE NOT EXISTS (SELECT 1 FROM merchants WHERE lower(name) = lower($1))
+       RETURNING name
+     )
+     SELECT name, true AS added FROM ins
+     UNION ALL
+     SELECT name, false FROM merchants
+     WHERE lower(name) = lower($1) AND NOT EXISTS (SELECT 1 FROM ins)`,
+    [name],
+  );
+  const row = res.rows[0];
+  return row.added ? { added: row.name } : { exists: row.name };
+}
+
+/** Refuses a merchant that transactions use, so a delete never unlinks the ledger. */
+export async function deleteMerchant(
+  name: string,
+): Promise<{ deleted: string } | { missing: true } | { inUse: number; name: string }> {
+  const db = await getPool();
+  // One statement, so the count and the delete share a snapshot and a row lock. The
+  // foreign key still refuses the delete if a Confirm links the merchant after the count.
+  const res = await db.query<{ name: string; n: number; deleted: boolean }>(
+    `WITH m AS (
+       SELECT id, name FROM merchants WHERE lower(name) = lower($1) FOR UPDATE
+     ),
+     used AS (
+       SELECT count(*)::int AS n FROM transactions WHERE merchant_id IN (SELECT id FROM m)
+     ),
+     del AS (
+       DELETE FROM merchants
+       WHERE id IN (SELECT id FROM m) AND (SELECT n FROM used) = 0
+       RETURNING id
+     )
+     SELECT m.name, used.n, EXISTS (SELECT 1 FROM del) AS deleted FROM m, used`,
+    [name],
+  );
+  const row = res.rows[0];
+  if (!row) return { missing: true };
+  return row.deleted ? { deleted: row.name } : { inUse: row.n, name: row.name };
+}
+
 export type PendingIngestion = {
   id: string;
   source: "text" | "photo" | "voice";
