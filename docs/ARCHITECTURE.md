@@ -75,8 +75,8 @@ dbt models and the agent read it, so numbers agree everywhere.
 - Lambda's free tier is **perpetual**, not 12-month: 1M requests and 400k
   GB-seconds per month, against a workload of ~150 invocations. Ingestion
   compute is $0 indefinitely, not $0 until a trial expires.
-- The handler is intentionally thin: authenticate → extract (two Gemini
-  specialists) → validate → persist pending → reply. Photos and voice
+- The handler is intentionally thin: authenticate → extract (one Gemini
+  request) → validate → persist pending → reply. Photos and voice
   download media first; S3 archive happens only on persist (UUID, then
   PutObject, then INSERT). All state lives in Postgres, so it stays
   stateless.
