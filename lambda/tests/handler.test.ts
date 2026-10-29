@@ -18,6 +18,7 @@ vi.mock("../src/db.js", () => ({
   setIngestionAwaitingEdit: vi.fn(),
   applyIngestionEdit: vi.fn(),
   findDuplicates: vi.fn(),
+  findFrequentMerchant: vi.fn(),
 }));
 vi.mock("../src/gemini.js", () => ({
   extractFromText: vi.fn(),
@@ -44,6 +45,7 @@ import {
   applyIngestionEdit,
   findAwaitingIngestion,
   findDuplicates,
+  findFrequentMerchant,
   insertPendingIngestions,
   loadTaxonomy,
   setIngestionAwaitingDate,
@@ -141,6 +143,7 @@ beforeEach(() => {
   vi.mocked(insertPendingIngestions).mockResolvedValue([{ id: "ing-1" }]);
   vi.mocked(findAwaitingIngestion).mockResolvedValue(null);
   vi.mocked(findDuplicates).mockResolvedValue([]);
+  vi.mocked(findFrequentMerchant).mockResolvedValue(null);
   vi.mocked(downloadTelegramFile).mockResolvedValue({
     bytes: Buffer.from([0xff, 0xd8, 0xff]),
     mimeType: "image/jpeg",
@@ -231,6 +234,28 @@ describe("handler", () => {
       expect.not.stringContaining("duplicate"),
       { confirm: "ing-1" },
     );
+    error.mockRestore();
+  });
+
+  it("adds a hint to add a merchant bought from often, and keeps Confirm", async () => {
+    vi.mocked(findFrequentMerchant).mockResolvedValue({ name: "Maple Kiosk", count: 4 });
+
+    await handler(event({ update_id: 32, message: { chat: { id: 1 }, text: "12.50 lunch" } }));
+
+    expect(findFrequentMerchant).toHaveBeenCalledWith("ing-1", 3);
+    const text = String(vi.mocked(sendMessage).mock.calls[0][2]);
+    expect(text).toContain("💡 You've bought from Maple Kiosk 4 times. Send /addmerchant Maple Kiosk to track it.");
+    expect(reviewKeyboard).toHaveBeenCalledWith("ing-1", { confirm: true });
+  });
+
+  it("sends a saved card without the hint when the merchant check fails", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.mocked(findFrequentMerchant).mockRejectedValue(new Error("db down"));
+
+    await handler(event({ update_id: 33, message: { chat: { id: 1 }, text: "12.50 lunch" } }));
+
+    expect(error).toHaveBeenCalledWith("merchant hint error", expect.any(Error));
+    expect(sendMessage).toHaveBeenCalledWith("t", 1, expect.not.stringContaining("💡"), { confirm: "ing-1" });
     error.mockRestore();
   });
 

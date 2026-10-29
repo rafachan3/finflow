@@ -22,6 +22,7 @@ import {
   discardIngestion,
   findAwaitingIngestion,
   findDuplicates,
+  findFrequentMerchant,
   insertPendingIngestions,
   listMerchants,
   listPendingIngestions,
@@ -33,6 +34,8 @@ import {
 import {
   applyDatePolicy,
   duplicateWarnings,
+  FREQUENT_MERCHANT_MIN,
+  merchantHint,
   formatPreview,
   MISSING_DATE,
   normalizeTaxonomyNames,
@@ -252,7 +255,7 @@ async function handleAwaitingEdit(
   }
 }
 
-/** A saved row's card: the preview, any likely duplicate, and the buttons its checks allow. */
+/** A saved row's card: the preview, any likely duplicate or merchant hint, and the buttons its checks allow. */
 async function sendCard(
   botToken: string,
   chatId: number,
@@ -269,12 +272,18 @@ async function sendCard(
     // The row is saved: a card without the warning beats no card.
     console.error("duplicate check error", err);
   }
-  // A warning only adds a line; Confirm still follows the checks alone.
+  let hint: string | undefined;
+  try {
+    hint = merchantHint(await findFrequentMerchant(ingestionId, FREQUENT_MERCHANT_MIN));
+  } catch (err) {
+    console.error("merchant hint error", err);
+  }
+  // A warning or hint only adds a line; Confirm still follows the checks alone.
   const shown = { ...checks, warnings: [...checks.warnings, ...duplicates] };
   await sendMessage(
     botToken,
     chatId,
-    formatPreview(extraction, shown, position),
+    formatPreview(extraction, shown, position, hint),
     reviewKeyboard(ingestionId, { confirm }),
   );
 }

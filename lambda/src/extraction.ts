@@ -1,3 +1,5 @@
+import { cleanMerchantName } from "./commands.js";
+
 export type Money = string;
 export type Bucket = "needs" | "wants";
 export type TxType = "income" | "expense" | "transfer";
@@ -422,10 +424,21 @@ export function duplicateWarnings(matches: DuplicateMatch[]): string[] {
   ];
 }
 
+/** Saved purchases naming an unlisted merchant before a card suggests adding it. */
+export const FREQUENT_MERCHANT_MIN = 3;
+
+/** The card's hint to /addmerchant a merchant bought from often, unless the command would refuse the name. */
+export function merchantHint(frequent: { name: string; count: number } | null): string | undefined {
+  if (!frequent || "error" in cleanMerchantName(frequent.name)) return undefined;
+  const { name, count } = frequent;
+  return `You've bought from ${name} ${count} times. Send /addmerchant ${name} to track it.`;
+}
+
 export function formatPreview(
   extraction: Extraction,
   checks: CheckResult,
   position?: { index: number; count: number },
+  hint?: string,
 ): string {
   const lines: string[] = [];
   const title =
@@ -478,6 +491,7 @@ export function formatPreview(
   for (const w of checks.warnings) {
     lines.push(`! ${w}`);
   }
+  if (hint) lines.push(`💡 ${hint}`);
   // Lite is the overload fallback: totals hold, classification wobbles.
   const models = [extraction.meta?.model, extraction.meta?.bucket_model];
   if (models.some((m) => m?.includes("-lite"))) {

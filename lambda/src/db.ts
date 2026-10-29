@@ -100,6 +100,11 @@ export async function listMerchants(): Promise<{ names: string[]; hidden: number
   };
 }
 
+/** A merchant name as the lookups compare it: spaces collapsed, ends trimmed. */
+const MERCHANT_SPACED = (name: string) => `btrim(regexp_replace(${name}, '\\s+', ' ', 'g'))`;
+/** The same, ignoring case: two spellings with one key are one merchant. */
+const MERCHANT_KEY = (name: string) => `lower(${MERCHANT_SPACED(name)})`;
+
 /**
  * Adds a merchant, or unhides one with that name, and links the saved
  * transactions with no merchant whose stored extraction names it. The unique
@@ -137,8 +142,7 @@ export async function addMerchant(
        FROM target, ingestions i
        WHERE i.transaction_id = t.id
          AND t.merchant_id IS NULL
-         AND lower(btrim(regexp_replace(i.extraction->>'merchant', '\\s+', ' ', 'g')))
-             = lower(target.name)
+         AND ${MERCHANT_KEY("i.extraction->>'merchant'")} = lower(target.name)
        RETURNING t.id
      )
      SELECT name, true AS added, unhid, (SELECT count(*)::int FROM linked) AS linked
@@ -368,6 +372,39 @@ export async function findDuplicates(ingestionId: string): Promise<DuplicateMatc
     [ingestionId],
   );
   return result.rows;
+}
+
+/**
+ * The card's merchant when it is in no lookup row (visible or hidden, any case)
+ * yet at least `min` other saved purchases name it: the owner may want to add
+ * it. Saved means a confirmed ingestion of another Telegram update, and the
+ * name is compared the way addMerchant links it.
+ */
+export async function findFrequentMerchant(
+  ingestionId: string,
+  min: number,
+): Promise<{ name: string; count: number } | null> {
+  const db = await getPool();
+  const result = await db.query<{ name: string; count: number }>(
+    `WITH self AS (
+       SELECT i.telegram_update_id,
+              ${MERCHANT_SPACED("i.extraction->>'merchant'")} AS name,
+              ${MERCHANT_KEY("i.extraction->>'merchant'")} AS key
+       FROM ingestions i WHERE i.id = $1
+     )
+     SELECT s.name, count(o.id)::int AS count
+     FROM self s
+     JOIN ingestions o
+       ON o.status = 'confirmed'
+      AND o.telegram_update_id <> s.telegram_update_id
+      AND ${MERCHANT_KEY("o.extraction->>'merchant'")} = s.key
+     WHERE s.key <> ''
+       AND NOT EXISTS (SELECT 1 FROM merchants m WHERE lower(m.name) = s.key)
+     GROUP BY s.name
+     HAVING count(o.id) >= $2`,
+    [ingestionId, min],
+  );
+  return result.rows[0] ?? null;
 }
 
 export type AwaitStart = "started" | "already_handled" | "busy";

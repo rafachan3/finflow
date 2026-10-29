@@ -1349,3 +1349,30 @@ use" part of "Merchant commands write directly and refuse an in-use delete"
 **Ruled out:** auto-creating a merchant on Confirm; unlinking past
 transactions on delete; a separate backfill command (adding the name is the
 backfill); matching extractions by aliases or fuzzy similarity.
+
+## 2026-10-29 — A card suggests adding a merchant the owner buys from often
+
+Owner idea, approved the same day. A saved card whose extracted merchant is in
+no `merchants` row but is named by 3 or more confirmed purchases gets one
+`💡 You've bought from X n times. Send /addmerchant X to track it.` line.
+
+- **Threshold 3** (`FREQUENT_MERCHANT_MIN`): two visits can be coincidence; a
+  third is a habit worth a lookup entry. One constant, changeable in one place.
+- **Counts only bot-era ingestions.** The count reads
+  `ingestions.extraction->>'merchant'` of confirmed rows. The Notion import
+  (2026-06 to 2026-08) carries no merchant names, so those 332 rows never count.
+- **Same normalisation as the link-on-add backfill** (spaces collapsed, case
+  ignored; one shared SQL expression in `db.ts`), so the count is exactly the
+  set `/addmerchant` would link. Purchases of the card's own Telegram update
+  are excluded, so a batch's events do not count each other.
+- **A hidden merchant gets no hint.** Hiding is the owner's choice; "any
+  `merchants` row, visible or hidden" suppresses it. A name `/addmerchant`
+  would refuse (comma, over 100 characters) gets none either.
+- **Same fail-open pattern as the duplicate check**: one read-only query in
+  `sendCard`, logged on failure, card sent without the line. No Gemini call,
+  no prompt change, no migration. Confirm looks the merchant up at tap time, so
+  `/addmerchant` then Confirm on the same card links it.
+
+**Ruled out:** auto-creating the merchant on the third purchase (merchants stay
+hand-created); a button on the card (a callback and a new write path for a
+command the owner can already type); counting pending cards.

@@ -79,7 +79,9 @@ dbt models and the agent read it, so numbers agree everywhere.
   request) → validate → persist pending → duplicate check → reply. The
   duplicate check is one read-only query per saved card (also on
   `/pending`, Fix date and Edit), adds at most one `!` warning line, and
-  never removes Confirm; if it fails the card goes out without it. Photos and voice
+  never removes Confirm; if it fails the card goes out without it. A second
+  read-only query adds a `💡` line when the card's merchant is unlisted but
+  bought from 3+ times, with the same fail-open rule. Photos and voice
   download media first; S3 archive happens only on persist (UUID, then
   PutObject, then INSERT). All state lives in Postgres, so it stays
   stateless. Slash commands (`src/commands.ts` is the table) skip
