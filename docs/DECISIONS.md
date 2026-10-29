@@ -1166,3 +1166,13 @@ cards.".
 **Ruled out for now:** the Phase 4.5 scheduled Lambda resending rows still
 pending after an hour (issue #29 option 2): it needs new infrastructure,
 and `/pending` covers the gap.
+
+## 2026-10-28 — Batch position in Confirm/Discard acks (#30)
+
+- **Source of truth.** `withPosition` reads the " (k of n)" off the first
+  line of the tapped card (`callback_query.message.text`) instead of storing
+  `n`: only `event_index` is persisted, and `n` also counts offers that were
+  never saved, so a migration would be needed for what the card already says.
+- **Resent cards.** `/pending` cards carry no label, so their acks do not
+  either; an ack always matches the card the owner tapped.
+- **Scope.** Only "Saved." and "Discarded."; "Already handled." is unchanged.

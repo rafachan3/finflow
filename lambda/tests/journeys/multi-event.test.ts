@@ -26,9 +26,18 @@ describe("several purchases in one message", () => {
 
     await chat.tap(first, "Confirm");
     await chat.tap(second, "Confirm");
-    expect(chat.acks()).toEqual(["Saved.", "Saved."]);
+    expect(chat.acks()).toEqual(["Saved. (1 of 2)", "Saved. (2 of 2)"]);
     const saved = await ledger.transactions();
     expect(saved.map((t) => t.amount)).toEqual(["3.00", "5.00"]);
+  });
+
+  it("discarding the second of two cards says which one, in the toast and the chat", async () => {
+    gemini.extract = golden("two-stores").recorded;
+    await chat.text("3 at Dollar Corner and 5 at Corner Pharmacy");
+
+    await chat.tap(chat.replies()[1], "Discard");
+    expect(chat.acks()).toEqual(["Discarded. (2 of 2)"]);
+    expect(chat.last().text).toBe("Discarded. (2 of 2)");
   });
 
   it("two items at one store stay one card with two lines", async () => {
