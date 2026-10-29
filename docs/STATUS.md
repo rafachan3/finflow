@@ -14,7 +14,7 @@ Living state of the project. Read this first; update it whenever work lands.
 - [x] Phase 2 — Telegram bot walking skeleton (text only, no LLM) (2026-08-17)
 - [x] Phase 3 — Gemini extraction (text → photo → voice) — **3a + 3b + 3c phone-tested; funding source applied; Edit phone-tested; context notes phone-tested; multi-event accepted by the Phase 3.6 journeys** (2026-10-28; the S3 key prefix stays an optional leftover)
 - [x] Phase 3.6 — Regression test suite — **accepted 2026-10-29: deliberate-break PR #48 blocked (unit + inventory failed, BLOCKED), clean PRs #46/#47 green, smoke step green on deploy run 40803017809, `main` protected** (2026-10-29)
-- [ ] Phase 3.5 — Ingestion follow-ons (item tags, duplicate warning, merchant commands)
+- [ ] Phase 3.5 — Ingestion follow-ons (item tags, merchant commands; duplicate warning done 2026-10-29)
 - [ ] Phase 4 — dbt semantic layer + MetricFlow
 - [ ] Phase 4.5 — Proactive nudges (recurring reminders, merchant recommendations)
 - [ ] Phase 5 — Grafana dashboards
@@ -330,10 +330,24 @@ line's price, with no tax or tip line, and the lines sum to the header.
 Golden cases `receipt-with-tip` (synthetic diner receipt) and `edit-tip`
 check the amount paid as well as the line count.
 
+Duplicate warning (Phase 3.5 PR 1; DECISIONS.md 2026-10-29): every saved
+card (new message, `/pending`, Fix date, Edit) gets at most one `!` line
+under Checks when it looks like an earlier copy: `Same photo as a card
+from <day> (saved|still pending)` when the largest photo's
+`file_unique_id` was sent before, else `Possible duplicate: CAD <amount>
+on <date>, "<description>" (saved|still pending)`, with `(+n more)`, for
+the same type and amount within 3 days (income also the same source)
+among confirmed transactions and the chat's open cards. Expenses, income
+and transfers are all covered. Confirm stays, nothing is stored, no
+Gemini call, no migration. Watch how often it fires on daily identical
+purchases (spec risk; the fix would be "same merchant when both have
+one").
+
 ## Next concrete step
 
-Phase 3.6 is closed. Start Phase 3.5 (item-level tags first, per
-ROADMAP.md); ship each behaviour with its TESTING.md row and journey.
+Phase 3.5 continues: merchant commands next (PR 2), then item-level tags
+(PR 3), per the 2026-10-28 design's delivery order. Ship each behaviour
+with its TESTING.md row and journey.
 
 Owner: add `GEMINI_EVAL_API_KEY=<eval key>` to the gitignored `.env` in the
 main checkout, then run `npm --prefix lambda run eval:buckets` for a

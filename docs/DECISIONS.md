@@ -1206,7 +1206,6 @@ call to allocate tax and tip (free-tier quota, and the prompt suffices);
 allocating in code after extraction (the model already returns per-line
 amounts, and the lines-sum check catches a miss).
 
-
 ## 2026-10-29 — Command menu registered by a deploy step; deploy role reads only the bot token
 
 The Telegram command menu (`setMyCommands`) is registered by a CI step after
@@ -1224,3 +1223,47 @@ role therefore gets `ssm:GetParameter` on exactly
 Telegram call to the request path); storing the token as a GitHub Actions
 secret (a second copy to rotate); `parameter/finflow/*` for the deploy role
 (it would also expose the database URL and Gemini key).
+
+## 2026-10-29 — A saved card warns about a likely duplicate; Confirm stays
+
+The owner sometimes sends a receipt twice, or texts a purchase and then
+photographs its receipt, and both got confirmed. Every saved card now
+carries at most one `!` warning line under Checks when it looks like an
+earlier copy. The owner chose the rule as specified, with no merchant
+requirement.
+
+- **The rule.** A match is either (A) an earlier, not-discarded card
+  whose photo includes this card's largest-photo `file_unique_id`, or
+  (B) the same type and amount (as `numeric`), dates at most 3 days
+  apart inclusive, and for income the same income source. Rule B looks
+  at confirmed `transactions` (so the Notion import counts) and this
+  chat's open cards (`pending`, `awaiting_date`, `awaiting_edit`).
+  Expense, income and transfer are all covered; transfers use type and
+  amount only, so a second copy whose account was read differently still
+  matches.
+- **3 days.** Shorter than any pay period (weekly 7, biweekly 14,
+  semi-monthly ~13 to 16), so the real next paycheck never flags, while
+  Friday's deposit typed again on Monday does.
+- **Dates.** The card's `date`; a dateless card (and a dateless open card
+  it is compared with) uses the day it was sent, `created_at` in
+  America/Toronto. A photo match shows the day the earlier card was sent.
+- **Never a match:** anything from the card's own Telegram update (the
+  events of one message, and a webhook retry), and discarded cards.
+- **Precedence.** One line only. A photo match wins. Otherwise the nearest
+  date, saved ahead of pending on a tie, then `(+n more)` for the rest.
+- **No storage.** `findDuplicates(ingestionId)` runs in `sendCard` every
+  time a saved card is rendered (new message, `/pending`, Fix date,
+  Edit), so an Edit or Fix date that changes the amount or date gets a
+  fresh answer. Fix date and Edit now render through `sendCard`. The
+  warning goes into `warnings` only, so Confirm still depends on the
+  checks alone. If the query fails, the card goes out without the
+  warning.
+
+**Ruled out:** checking in memory before the insert (a second code path
+for `/pending`, Fix date and Edit); storing the warning on the row (stale
+after an Edit or Fix date); a `file_unique_id` column with an index (a
+migration for data `raw_payload` holds, at a volume a sequential scan
+handles); blocking or asking "are you sure?" (adds a step); also
+requiring the same merchant (cuts daily-coffee noise but misses a copy
+whose merchant was read differently; revisit if the warning fires so
+often it stops being read).
