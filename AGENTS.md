@@ -1,11 +1,5 @@
 # FinFlow
 
-Self-hosted personal finance pipeline. Telegram bot (receipt photos, voice
-notes, text) → LLM extraction → Postgres → dbt semantic layer → dashboards +
-an analytics agent. Replaces a Notion expense tracker.
-
-Public repo, MIT. Built as a systems-design exercise as much as a tool.
-
 ## Read this first
 
 Before doing any work, read **[docs/STATUS.md](docs/STATUS.md)** — it holds the
@@ -31,19 +25,6 @@ comes before any other work, and the next nightly pass closes it.
    Actions secrets, or `.env` — never in Terraform variables or state.
 6. **Low friction wins.** Input priority is photos → voice → text. A change
    that adds a step to logging an expense is a regression.
-
-## Stack
-
-| Layer | Tool | Cost |
-|---|---|---|
-| Ingestion bot | Telegram Bot API + AWS Lambda + Function URL (TypeScript) | $0 (perpetual free tier) |
-| Extraction | Gemini Flash free tier (native image + audio input) | $0 |
-| Database | Supabase Postgres | $0 |
-| Receipt images | AWS S3 (private, Glacier IR after 1yr) | ~$0.05/mo |
-| Semantic layer | dbt-core, run via GitHub Actions cron | $0 |
-| Dashboards | Grafana Cloud free tier; Supabase SQL editor for ad-hoc | $0 |
-| Analytics agent | Claude Code: subagents in `.claude/agents/` + Postgres MCP | $0 marginal |
-| Infrastructure | Terraform in `infra/` (aws, supabase, grafana providers) | $0 |
 
 AWS is the only component that bills rather than failing closed. A
 `aws_budgets_budget` alarm at $1/month is a required resource, and Lambda's
@@ -93,17 +74,8 @@ the table above — not appended here.
 
 ## Verification
 
-`cd lambda && npm test` runs the unit tests. Integration tests need a
-throwaway Postgres: `npm run db:up`, then
-`TEST_DATABASE_URL=postgres://postgres:postgres@localhost:54329/postgres npm test`.
-The harness refuses any host other than `localhost`, so it cannot reach
-production. CI (`.github/workflows/ci.yml`) reports `unit`, `integration`,
-`eval` and `inventory` on every PR; `docs/TESTING.md` has the command for
-each layer.
-`npm run eval` checks the golden cases against live Gemini; it needs that
-database and `GEMINI_EVAL_API_KEY`, and CI skips it when no extraction,
-prompt, golden or eval path changed.
+The test harness refuses any host other than `localhost`, so it cannot reach
+production.
 
-Until Phase 3.6 is complete, a phase's acceptance check in
-`docs/ROADMAP.md` still decides "done": say which check you ran and what
-it output.
+A phase's acceptance check in `docs/ROADMAP.md` decides "done": say which
+check you ran and what it output.
