@@ -8,6 +8,7 @@ import {
   type Extraction,
   type TaxonomySnapshot,
 } from "./extraction.js";
+import { mentionPattern, MENTIONS_PAGE, type Mention } from "./mentions.js";
 
 let pool: Pool | undefined;
 
@@ -120,11 +121,13 @@ export const MERCHANT_KEY = (name: string) =>
  */
 export async function addMerchant(
   name: string,
-): Promise<{ added: string; unhid: boolean; linked: number } | { exists: string; linked: number }> {
+): Promise<
+  { id: number; added: string; unhid: boolean; linked: number } | { id: number; exists: string; linked: number }
+> {
   const db = await getPool();
   // One statement: insert unless a merchant matches by key; unhide that one if it is
   // hidden. Whichever merchant results only ever fills a NULL merchant_id.
-  const res = await db.query<{ name: string; kind: string; linked: number }>(
+  const res = await db.query<{ id: number; name: string; kind: string; linked: number }>(
     `WITH m AS (
        SELECT id, name, hidden_at FROM merchants
        WHERE ${MERCHANT_KEY("name")} = ${MERCHANT_KEY("$1::text")} FOR UPDATE
@@ -165,13 +168,82 @@ export async function addMerchant(
          )
        RETURNING t.id
      )
-     SELECT name, kind, (SELECT count(*)::int FROM linked) AS linked FROM target`,
+     SELECT id, name, kind, (SELECT count(*)::int FROM linked) AS linked FROM target`,
     [name],
   );
   const row = res.rows[0];
   return row.kind === "exists"
-    ? { exists: row.name, linked: row.linked }
-    : { added: row.name, unhid: row.kind === "unhid", linked: row.linked };
+    ? { id: row.id, exists: row.name, linked: row.linked }
+    : { id: row.id, added: row.name, unhid: row.kind === "unhid", linked: row.linked };
+}
+
+/**
+ * Transactions with no merchant that mention a visible merchant as a whole word
+ * or phrase (see mentionPattern) in their message text or caption, or in their
+ * description: newest first, one page after the `after` transaction. Null when
+ * the merchant is gone or hidden. Nothing is linked here.
+ */
+export async function findMentions(
+  merchantId: number,
+  after: string | null,
+): Promise<{ name: string; total: number; rows: Mention[] } | null> {
+  const db = await getPool();
+  const merchant = await db.query<{ name: string }>(
+    "SELECT name FROM merchants WHERE id = $1 AND hidden_at IS NULL",
+    [merchantId],
+  );
+  const name = merchant.rows[0]?.name;
+  if (name === undefined) return null;
+  const res = await db.query<Mention & { total: number }>(
+    `WITH hits AS (
+       SELECT t.id, t.occurred_on, t.created_at, t.amount, t.description,
+              (SELECT s.said
+               FROM ingestions i,
+                    LATERAL (SELECT coalesce(i.raw_payload #>> '{message,text}',
+                                             i.raw_payload #>> '{message,caption}') AS said) s
+               WHERE i.transaction_id = t.id AND ${MERCHANT_KEY("s.said")} ~ $1
+               LIMIT 1) AS said
+       FROM transactions t
+       WHERE t.merchant_id IS NULL
+         AND ($2::uuid IS NULL OR (t.occurred_on, t.created_at, t.id) <
+              (SELECT occurred_on, created_at, id FROM transactions WHERE id = $2::uuid))
+     )
+     SELECT id::text, occurred_on::text AS date, amount::text, description, said,
+            count(*) OVER ()::int AS total
+     FROM hits
+     WHERE said IS NOT NULL OR ${MERCHANT_KEY("description")} ~ $1
+     ORDER BY occurred_on DESC, created_at DESC, id DESC
+     LIMIT $3`,
+    [mentionPattern(name), after, MENTIONS_PAGE],
+  );
+  return {
+    name,
+    total: res.rows[0]?.total ?? 0,
+    rows: res.rows.map(({ id, date, amount, description, said }) => ({ id, date, amount, description, said })),
+  };
+}
+
+/**
+ * Links the picked transactions that still have no merchant to a visible
+ * merchant. Null when it is gone or hidden; then nothing is written.
+ */
+export async function linkMentions(
+  merchantId: number,
+  transactionIds: string[],
+): Promise<{ name: string; linked: number } | null> {
+  const db = await getPool();
+  const res = await db.query<{ name: string; linked: number }>(
+    `WITH m AS (SELECT id, name FROM merchants WHERE id = $1 AND hidden_at IS NULL FOR UPDATE),
+     linked AS (
+       UPDATE transactions t SET merchant_id = m.id
+       FROM m
+       WHERE t.id = ANY($2::uuid[]) AND t.merchant_id IS NULL
+       RETURNING t.id
+     )
+     SELECT name, (SELECT count(*)::int FROM linked) AS linked FROM m`,
+    [merchantId, transactionIds],
+  );
+  return res.rows[0] ?? null;
 }
 
 /**

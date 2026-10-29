@@ -58,6 +58,35 @@ export async function sendMessage(
   await postTelegram(botToken, "sendMessage", body);
 }
 
+/** Replaces a sent message's inline keyboard; an empty one removes the buttons. */
+export async function editMessageReplyMarkup(
+  botToken: string,
+  chatId: number,
+  messageId: number,
+  replyMarkup: { inline_keyboard: unknown[][] },
+): Promise<void> {
+  await postTelegram(botToken, "editMessageReplyMarkup", {
+    chat_id: chatId,
+    message_id: messageId,
+    reply_markup: replyMarkup,
+  });
+}
+
+/** Replaces a sent message's text and removes its buttons. */
+export async function editMessageText(
+  botToken: string,
+  chatId: number,
+  messageId: number,
+  text: string,
+): Promise<void> {
+  await postTelegram(botToken, "editMessageText", {
+    chat_id: chatId,
+    message_id: messageId,
+    text,
+    reply_markup: { inline_keyboard: [] },
+  });
+}
+
 /** Sets the bot's command menu to the command table. Run by the deploy workflow. */
 export async function registerCommandMenu(botToken: string): Promise<void> {
   await postTelegram(botToken, "setMyCommands", { commands: commandMenu() });
