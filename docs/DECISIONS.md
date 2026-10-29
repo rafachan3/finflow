@@ -1445,3 +1445,25 @@ state).
 6.00") does not tell the model the old one, which the stored extraction
 does not keep. The model can only guess there; the card shows the new
 total before Confirm.
+
+## 2026-10-29 — The nightly eval gets its own Gemini project
+
+Nightly run 40829256766 got 0 of 18 answers from full Flash: the day's PR
+evals had spent both Flash models' 20 requests a day on the shared eval
+project, and the nightly runs after them.
+
+- **Decision.** The nightly reads `GEMINI_NIGHTLY_API_KEY`, a key from a
+  separate free-tier Google project, and passes it to the eval as
+  `GEMINI_EVAL_API_KEY`. Quota is per project, so PR runs cannot starve it.
+  Cost stays $0.
+- **Fallback.** While the secret is unset the workflow uses
+  `GEMINI_EVAL_API_KEY`, so it keeps running. The log and the issue body
+  name the key used.
+- **Supersedes** the 2026-10-28 "second project for more quota" ruling for
+  the nightly only. The reason there was Google's terms; this is the
+  owner's call, with one project per job, not extra quota for one job.
+- Rotation and run order are unchanged: they never assumed shared quota.
+
+**Ruled out:** reserving quota in the PR eval (it would slow every PR);
+moving the nightly to a time PR evals are idle (the reset is midnight
+Pacific, so no time is quota-fresh and idle at once).
