@@ -36,6 +36,7 @@ import {
   replay,
   requestHash,
   retryOnce,
+  rotate,
   summary,
   type Answer,
   type CaseRow,
@@ -47,7 +48,13 @@ const CHAIN = [GEMINI_MODEL, GEMINI_FALLBACK_MODEL, GEMINI_LITE_MODEL];
 // Pinned so a case's request bytes do not change with the calendar, which
 // would defeat the replay below. `expect` only checks whether a date is set.
 const TODAY = "2026-10-28";
+// The nightly run (.github/workflows/eval-nightly.yml) calls Gemini for every
+// case and rotates the chain per case, so over three nights every case is
+// answered by every model. PR runs keep production's order.
+const NIGHTLY = process.env.EVAL_NIGHTLY === "1";
+const DAY = Math.floor(Date.now() / 86_400_000);
 const rows: CaseRow[] = [];
+const limits = new Map<string, string>();
 
 // Every model shedding load or out of per-minute quota: try again every 2
 // minutes, for at most 20 minutes in the whole run, then fail (the PR waits
@@ -120,10 +127,11 @@ describe.skipIf(inject("evalSkip"))("live Gemini", () => {
 
   beforeAll(async () => {
     globalThis.fetch = geminiFetch(realFetch, {
-      models: [GEMINI_MODEL, GEMINI_FALLBACK_MODEL, GEMINI_LITE_MODEL],
+      models: CHAIN,
       minGapMs: MIN_GAP_MS,
       now: Date.now,
       sleep,
+      limits,
     });
     db = new Client({ connectionString: testDbUrl() });
     await db.connect();
@@ -133,12 +141,15 @@ describe.skipIf(inject("evalSkip"))("live Gemini", () => {
   afterAll(async () => {
     globalThis.fetch = realFetch;
     await db?.end();
-    // Fallback answers are reported here, not failed.
-    const out = process.env.GITHUB_STEP_SUMMARY;
-    if (out) appendFileSync(out, `## Live Gemini eval\n\n${summary(rows, GEMINI_MODEL)}`);
+    // Fallback answers are reported here, not failed. EVAL_SUMMARY_FILE is
+    // the nightly issue's body.
+    const md = `## Live Gemini eval\n\n${summary(rows, GEMINI_MODEL, limits)}`;
+    for (const out of [process.env.GITHUB_STEP_SUMMARY, process.env.EVAL_SUMMARY_FILE]) {
+      if (out) appendFileSync(out, md);
+    }
   });
 
-  it.each(CASES.map((g) => [g.file, g.name, g] as const))("%s: %s", async (_file, _name, g) => {
+  it.each(CASES.map((g, i) => [g.file, g.name, g, i] as const))("%s: %s", async (_file, _name, g, i) => {
     // The request the current code builds, from the recording, no network.
     // A request that matches the one recorded as passing is not sent again:
     // the recording goes through today's code instead.
@@ -146,7 +157,7 @@ describe.skipIf(inject("evalSkip"))("live Gemini", () => {
     let replayError: string | undefined;
     await replay(g.recorded, call(g), bodies).catch((err: Error) => (replayError = err.message));
     const hash = bodies[0] === undefined ? undefined : requestHash(CHAIN, bodies[0]);
-    if (hash && hash === g.request_sha256) {
+    if (!NIGHTLY && hash && hash === g.request_sha256) {
       const found = replayError ? [replayError] : problems(g, g.recorded);
       console.log(`${g.file}: request unchanged since it passed, replayed without a call`);
       rows.push({ name: g.file, attempts: 0, model: undefined, replayed: true, passed: found.length === 0 });
@@ -158,7 +169,8 @@ describe.skipIf(inject("evalSkip"))("live Gemini", () => {
     let answer: Answer | undefined;
     const { problems: found, attempts } = await retryOnce(g.file, async () => {
       answer = undefined;
-      answer = await waitForGemini(() => captureAnswer(call(g)));
+      const route = NIGHTLY ? rotate(CHAIN, i + DAY) : undefined;
+      answer = await waitForGemini(() => captureAnswer(call(g), route));
       return problems(g, answer.raw);
     });
     console.log(`${g.file}: ${attempts} attempt(s), answered by ${answer?.model ?? "no model"}`);

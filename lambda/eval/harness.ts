@@ -89,9 +89,26 @@ export async function retryOnce(
   }
 }
 
+function urlOf(input: Parameters<typeof fetch>[0]): string {
+  return input instanceof Request ? input.url : String(input);
+}
+
 function modelOf(input: Parameters<typeof fetch>[0]): string {
-  const url = input instanceof Request ? input.url : String(input);
+  const url = urlOf(input);
   return /\/models\/([^:/]+):/.exec(url)?.[1] ?? url;
+}
+
+/**
+ * The nightly run's model for each request production makes: production
+ * asks chain[j] on its j-th attempt, and gets chain[(j + shift) mod n].
+ * With shift = case index + day, case i starts on model (i + day) mod n and
+ * falls through the rest of the chain in order.
+ */
+export function rotate(chain: string[], shift: number): (model: string) => string {
+  return (model) => {
+    const j = chain.indexOf(model);
+    return j < 0 ? model : chain[(j + shift) % chain.length];
+  };
 }
 
 type QuotaDetail = {
@@ -118,6 +135,8 @@ export function geminiFetch(
     minGapMs: number;
     now: () => number;
     sleep: (ms: number) => Promise<void>;
+    /** Filled with each 429's quotaValue, keyed "model quotaId". */
+    limits?: Map<string, string>;
   },
 ): typeof fetch {
   let last = -Infinity;
@@ -149,6 +168,7 @@ export function geminiFetch(
     const limit = violations.find((v) => v.quotaValue)?.quotaValue;
     const delay = details.find((d) => d.retryDelay)?.retryDelay ?? "?";
     const quotaId = ids.join(",") || "?";
+    if (limit) opts.limits?.set(`${model} ${quotaId}`, limit);
     console.log(
       `${model}: 429 quotaId=${quotaId} retryDelay=${delay}${limit ? ` limit=${limit}` : ""}`,
     );
@@ -210,16 +230,23 @@ export type Answer = { raw: unknown; model: string | undefined };
 
 /**
  * Runs `call` and returns the JSON of the first successful Gemini answer
- * and the model that gave it. That is what goldens record.
+ * and the model that gave it. That is what goldens record. `route` sends
+ * each request to another model (the nightly rotation).
  */
-export async function captureAnswer(call: () => Promise<unknown>): Promise<Answer> {
+export async function captureAnswer(
+  call: () => Promise<unknown>,
+  route: (model: string) => string = (m) => m,
+): Promise<Answer> {
   const realFetch = globalThis.fetch;
   let first: Promise<unknown> | undefined;
   let model: string | undefined;
-  globalThis.fetch = async (...args) => {
-    const res = await realFetch(...args);
+  globalThis.fetch = async (input, init) => {
+    const asked = modelOf(input);
+    const to = route(asked);
+    const url = to === asked ? input : urlOf(input).replace(`/models/${asked}:`, `/models/${to}:`);
+    const res = await realFetch(url, init);
     if (res.ok && !first) {
-      model = modelOf(args[0]);
+      model = to;
       first = res
         .clone()
         .json()
@@ -245,7 +272,7 @@ export type CaseRow = {
 };
 
 /** Markdown for the job summary: one row per case, then primary vs fallback counts. */
-export function summary(rows: CaseRow[], primary: string): string {
+export function summary(rows: CaseRow[], primary: string, limits = new Map<string, string>()): string {
   const count = (keep: (r: CaseRow) => boolean) => rows.filter(keep).length;
   return [
     "| case | attempts | answering model | result |",
@@ -260,5 +287,8 @@ export function summary(rows: CaseRow[], primary: string): string {
       `By no model: ${count((r) => !r.model && !r.replayed)}. ` +
       `Replayed without a call: ${count((r) => !!r.replayed)}.`,
     "",
+    ...(limits.size
+      ? [`Quota limits in 429s (quotaValue): ${[...limits].map(([k, v]) => `${k} = ${v}`).join(", ")}.`, ""]
+      : []),
   ].join("\n");
 }

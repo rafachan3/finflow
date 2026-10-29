@@ -9,6 +9,7 @@ import {
   replay,
   requestHash,
   retryOnce,
+  rotate,
   shouldRun,
   summary,
 } from "../eval/harness.js";
@@ -293,6 +294,21 @@ describe("captureAnswer", () => {
     expect(globalThis.fetch).toBe(fake);
   });
 
+  it("sends each request to the model the route picks and reports that model", async () => {
+    const urls: string[] = [];
+    globalThis.fetch = (async (input: Parameters<typeof fetch>[0]) => (
+      urls.push(String(input)), gemini(200, { events: [] })
+    )) as typeof fetch;
+
+    const answer = await captureAnswer(
+      () => fetch("https://generativelanguage.googleapis.com/v1beta/models/a:generateContent"),
+      (model) => (model === "a" ? "c" : model),
+    );
+
+    expect(urls).toEqual(["https://generativelanguage.googleapis.com/v1beta/models/c:generateContent"]);
+    expect(answer.model).toBe("c");
+  });
+
   it("puts fetch back even when the call throws", async () => {
     const before = globalThis.fetch;
     await expect(
@@ -413,6 +429,25 @@ describe("geminiFetch", () => {
     expect(realFetch.mock.calls.map(([u]) => u)).toEqual([url, urlOf("gemini-3.5-flash")]);
   });
 
+  it("keeps each 429's quotaValue by model and quota", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    const limits = new Map<string, string>();
+    const clock = fakeClock();
+    const wrapped = geminiFetch(async () => perDay(), {
+      models: ["gemini-3.6-flash", "gemini-3.5-flash"],
+      minGapMs: 0,
+      now: clock.now,
+      sleep: clock.sleep,
+      limits,
+    });
+
+    await wrapped(url);
+
+    expect([...limits]).toEqual([
+      ["gemini-3.6-flash GenerateRequestsPerDayPerProjectPerModel-FreeTier", "20"],
+    ]);
+  });
+
   it("fails fast only once every model in the chain is out for the day", async () => {
     vi.spyOn(console, "log").mockImplementation(() => {});
     const realFetch = vi.fn(async () => perDay());
@@ -424,6 +459,29 @@ describe("geminiFetch", () => {
     await expect(wrapped(urlOf("gemini-3.5-flash-lite"))).rejects.toThrow(daily);
     await expect(wrapped(url)).rejects.toThrow(daily);
     expect(realFetch).toHaveBeenCalledTimes(3);
+  });
+});
+
+describe("rotate", () => {
+  const chain = ["flash", "old-flash", "lite"];
+
+  it("starts case i on model (i + day) mod chain length and falls through the rest in order", () => {
+    // Production asks chain[0], then chain[1], then chain[2].
+    const asked = (shift: number) => chain.map(rotate(chain, shift));
+    expect(asked(0)).toEqual(["flash", "old-flash", "lite"]);
+    expect(asked(1)).toEqual(["old-flash", "lite", "flash"]);
+    expect(asked(2 + 30)).toEqual(["lite", "flash", "old-flash"]);
+  });
+
+  it("covers every model with every case over chain-length nights", () => {
+    const firstModel = (i: number, day: number) => rotate(chain, i + day)(chain[0]);
+    for (let i = 0; i < 5; i++) {
+      expect(new Set([0, 1, 2].map((day) => firstModel(i, 20_000 + day)))).toEqual(new Set(chain));
+    }
+  });
+
+  it("leaves a model outside the chain alone", () => {
+    expect(rotate(chain, 1)("other")).toBe("other");
   });
 });
 
@@ -459,5 +517,13 @@ describe("summary", () => {
     );
     expect(md).toContain("| transfer | 0 | replayed, no call | pass |");
     expect(md).toContain("By no model: 0. Replayed without a call: 1.");
+  });
+
+  it("lists the quota limits Gemini reported in its 429s", () => {
+    const limits = new Map([["gemini-3.5-flash-lite GenerateRequestsPerDayPerProjectPerModel-FreeTier", "1000"]]);
+    expect(summary([], "gemini-3.6-flash", limits)).toContain(
+      "Quota limits in 429s (quotaValue): gemini-3.5-flash-lite GenerateRequestsPerDayPerProjectPerModel-FreeTier = 1000.",
+    );
+    expect(summary([], "gemini-3.6-flash", new Map())).not.toContain("Quota limits");
   });
 });

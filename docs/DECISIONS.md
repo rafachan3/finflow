@@ -1100,3 +1100,35 @@ Supersedes "Proposed, not built" in "Live eval quota budget" (an
 **Ruled out:** committing from CI (needs a write token on a public repo's
 PR runs); hashing the RELEVANT files (any edit to `lambda/src/` re-ran
 every case).
+
+---
+
+## 2026-10-28 — Nightly live eval with rotated models
+
+Approved by the owner (option D of the eval budget). A scheduled workflow
+runs every case against live Gemini, with no replay, at 06:07 UTC.
+
+- **The time.** The eval project's daily quota resets at midnight Pacific:
+  07:00 UTC in summer (PDT), 08:00 UTC in winter (PST). Cron is UTC and
+  knows no DST, so 06:07 is the latest slot that is before the reset in
+  both seasons (23:07 PDT, 22:07 PST); 07:xx would spend the next day's
+  quota every summer night. GitHub delays scheduled runs under load,
+  most at the top of the hour, hence :07 and 53 minutes of slack in
+  summer. The run spends quota that would otherwise expire unused.
+- **Rotation.** Case i (in run order) is sent to model (i + day) mod 3 of
+  production's chain and falls through the rest in order, by rewriting the
+  model in the request URL in the eval's fetch. Over three nights each case
+  meets each model. PR runs keep production's fallthrough order, since PR
+  gating should mirror production. A pass from a fallback is a pass
+  (owner ruling, 2026-10-28).
+- **Alerting.** A failure opens one issue labelled `eval-nightly` with the
+  summary table (or comments on the open one), and the next pass closes
+  it. AGENTS.md tells every session to fix open `eval-nightly` issues
+  first. The job needs `issues: write` and creates the label if missing.
+- **Measuring limits.** The summary lists each 429's `quotaValue` by model
+  and quota id, so the first night Flash-Lite runs out names its daily
+  limit. On 2026-10-28 it answered about 18 eval requests per run, several
+  runs a day, with no 429.
+
+**Ruled out:** rotating models on PRs; a second project for more quota
+(Google's terms).
