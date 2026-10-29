@@ -1176,3 +1176,33 @@ and `/pending` covers the gap.
 - **Resent cards.** `/pending` cards carry no label, so their acks do not
   either; an ack always matches the card the owner tapped.
 - **Scope.** Only "Saved." and "Discarded."; "Already handled." is unchanged.
+
+## 2026-10-29 — A tip is folded into the item lines, like tax
+
+A receipt with a tip below its printed total came back with tax and tip
+spread unevenly across the lines by a fallback model, and two Edits of it
+were dropped (#31). No prompt mentioned a tip, and the taxonomy has no tip
+subcategory, so a tip line has nowhere honest to go.
+
+The tip follows the 2026-08-13 tax rule. For an expense, the header amount
+is the total paid, including tax and any tip (pourboire, gratuity), even
+when the tip sits below the printed total. Tax and tip are folded into the
+item lines in proportion to each line's price, any leftover cent goes on
+the largest line, and no line is a tax or tip line. The lines still sum to
+the header, so the existing checks are unchanged.
+
+- **One sentence in every extractor prompt.** Text, photo, voice and the
+  Edit (patch) prompt share a single `LINE_AMOUNTS` constant, which
+  replaced four copies of the tax sentence. A tip said in words ("lunch 20
+  plus 3 tip") is the same money as a printed one, and an Edit that
+  changes the tip must keep the rule or its result fails the line-sum
+  check and is dropped.
+- **Goldens check the amount paid.** `expect` gained an optional `amount`:
+  a line count alone would pass an answer that ignored the tip.
+
+**Ruled out:** a Tip subcategory or tip line (the tip is part of what each
+item cost; a separate line breaks per-item needs/wants); a second Gemini
+call to allocate tax and tip (free-tier quota, and the prompt suffices);
+allocating in code after extraction (the model already returns per-line
+amounts, and the lines-sum check catches a miss).
+

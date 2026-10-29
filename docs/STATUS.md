@@ -300,7 +300,7 @@ Eval budget (2026-10-28; DECISIONS.md, TESTING.md): the eval replays a
 case whose exact Gemini request (hashed with the model chain, stored as
 `request_sha256` in its golden) already passed, and calls Gemini only for
 the rest. "Today" is pinned and an edit patches its base's recording, so a
-full live run is 16 requests for 16 cases. CI writes live passes' request hashes into the
+full live run is 18 requests for 18 cases. CI writes live passes' request hashes into the
 `goldens` artifact for the PR to commit. A nightly workflow at 06:07 UTC
 runs every case live with the model chain rotated per case, reports each
 429's `quotaValue`, and keeps one `eval-nightly` issue open while it fails.
@@ -321,6 +321,14 @@ discarding a card from a batch of 2+ replies `Saved. (k of n)` /
 read back from the tapped card's header, so a card resent by `/pending`
 (no label) and a single card keep plain `Saved.` / `Discarded.`.
 "Already handled." never carries it.
+
+Tips (#31; DECISIONS.md 2026-10-29): every extractor prompt (text,
+photo, voice, Edit) shares one line-amount rule. An expense's header is
+the total paid including tax and any tip, even a tip printed below the
+total; tax and tip are folded into the item lines in proportion to each
+line's price, with no tax or tip line, and the lines sum to the header.
+Golden cases `receipt-with-tip` (synthetic diner receipt) and `edit-tip`
+check the amount paid as well as the line count.
 
 ## Next concrete step
 
