@@ -313,7 +313,8 @@ baseline agreement figure.
 
 Watch the first nightly runs: the summary's quota line names
 Flash-Lite's daily limit once it runs out. Owner: run `terraform apply` in
-`infra/` so the deploy role gets `lambda:GetFunctionUrlConfig`; until then
+`infra/` so the deploy role gets `lambda:GetFunctionUrlConfig` and `lambda:GetFunctionConfiguration` (the
+`function-updated` waiter); until then
 the post-deploy smoke step in `deploy-ingest.yml` fails on AccessDenied.
 
 Optional leftover: S3 keys `{source}/{yyyy-mm}/{id}.{ext}` in the existing
