@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { COMMANDS } from "../../src/commands.js";
 import { golden } from "../golden/golden.js";
+import { sql } from "../integration/db-helpers.js";
 import { chat, gemini, ledger, STRANGER, useJourneys } from "./harness.js";
 
 vi.mock("../../src/config.js", async () => {
@@ -19,7 +20,7 @@ async function send(text: string) {
 }
 
 /** Gemini reads a purchase at `merchant`, whatever the lookup holds. */
-function geminiReadsMerchant(merchant: string) {
+function geminiReadsMerchant(merchant: string | null) {
   const recorded = golden("text-with-note").recorded as { events: object[] };
   gemini.extract = { events: [{ ...recorded.events[0], merchant }] };
 }
@@ -76,7 +77,7 @@ describe("merchant commands", () => {
     await chat.tap(chat.last(), "Confirm");
 
     expect(await send("/addmerchant ACME  mart")).toEqual([
-      "Unhid merchant: Acme Mart. Linked 1 past transaction. The next message will use it.",
+      "Unhid merchant: Acme Mart. Linked 1 past transaction that names it exactly. The next message will use it.",
     ]);
     expect(await send("/merchants")).toEqual(["Merchants (2): Acme Mart, Example Online"]);
 
@@ -100,7 +101,7 @@ describe("merchant commands", () => {
     expect(await ledger.transactions()).toMatchObject([{ merchant: null }, { merchant: "Acme Mart" }]);
 
     expect(await send("/addmerchant Maple Kiosk")).toEqual([
-      "Added merchant: Maple Kiosk. Linked 1 past transaction. The next message will use it.",
+      "Added merchant: Maple Kiosk. Linked 1 past transaction that names it exactly. The next message will use it.",
     ]);
     expect(await ledger.transactions()).toMatchObject([
       { merchant: "Maple Kiosk" },
@@ -109,13 +110,27 @@ describe("merchant commands", () => {
     expect(gemini.calls).toHaveLength(2);
   });
 
+  it("/addmerchant links a receipt photo whose re-read media names it, though its extraction named no merchant", async () => {
+    geminiReadsMerchant(null);
+    await chat.photo();
+    await chat.tap(chat.last(), "Confirm");
+    // What the one-off media backfill stores after re-reading the archived photo.
+    await sql("update ingestions set media_merchant = 'MAPLE KIOSK'");
+
+    expect(await send("/addmerchant Maple Kiosk")).toEqual([
+      "Added merchant: Maple Kiosk. Linked 1 past transaction that names it exactly. The next message will use it.",
+    ]);
+    expect(await ledger.transactions()).toMatchObject([{ merchant: "Maple Kiosk" }]);
+  });
+
   it("/addmerchant links an imported row named with a curly apostrophe, and leaves a longer description alone", async () => {
     await ledger.importRow("Joe’s Diner");
     await ledger.importRow("Joe’s Diner lunch");
     await ledger.importRow("Bixi Monthly Pass");
 
     expect(await send("/addmerchant Joe's Diner")).toEqual([
-      "Added merchant: Joe's Diner. Linked 1 past transaction. The next message will use it.",
+      "Added merchant: Joe's Diner. Linked 1 past transaction that names it exactly. The next message will use it.",
+      "Check 1 that mentions Joe's Diner. Tap to pick, then Link:",
     ]);
     expect(await ledger.transactions()).toMatchObject([
       { description: "Joe’s Diner", merchant: "Joe's Diner" },
@@ -129,7 +144,7 @@ describe("merchant commands", () => {
     await ledger.importRow("ACME MART");
 
     expect(await send("/addmerchant Acme Mart")).toEqual([
-      "Already a merchant: Acme Mart. Linked 2 past transactions.",
+      "Already a merchant: Acme Mart. Linked 2 past transactions that name it exactly.",
     ]);
     expect(await ledger.transactions()).toMatchObject([{ merchant: "Acme Mart" }, { merchant: "Acme Mart" }]);
     expect(await send("/addmerchant Acme Mart")).toEqual(["Already a merchant: Acme Mart."]);

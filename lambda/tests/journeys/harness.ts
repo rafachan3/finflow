@@ -32,7 +32,10 @@ export function journeyConfig() {
   };
 }
 
-type Sent = { method: string; body: Record<string, unknown>; failed: boolean };
+type Sent = { method: string; body: Record<string, unknown>; failed: boolean; messageId?: number };
+
+type Button = { text: string; callback_data: string };
+type Shown = { text: string; keyboard: Button[][] };
 
 /** file_id -> file_path of the media the next message carries; getFile knows nothing else. */
 const telegram = {
@@ -40,21 +43,36 @@ const telegram = {
   failSends: 0,
   files: {} as Record<string, string>,
   rejected: [] as string[],
+  /** What each sent message shows now, after any edits, by message_id. */
+  shown: new Map<number, Shown>(),
+  nextMessageId: 1,
 };
 
-type Button = { text?: string; callback_data?: string };
+const EDITS = new Set(["editMessageText", "editMessageReplyMarkup"]);
+
+function keyboardOf(body: Record<string, unknown>): Button[][] | undefined {
+  return (body.reply_markup as { inline_keyboard?: Button[][] } | undefined)?.inline_keyboard;
+}
 
 /** The Bot API limits the real Telegram enforces with HTTP 400. */
 function telegramViolation(method: string, body: Record<string, unknown>): string | null {
-  if (method === "sendMessage") {
+  if (method === "sendMessage" || method === "editMessageText") {
     const text = typeof body.text === "string" ? body.text : "";
-    if (text.length < 1 || text.length > 4096) return "sendMessage: text must be 1-4096 characters";
-    const markup = body.reply_markup as { inline_keyboard?: Button[][] } | undefined;
-    for (const button of (markup?.inline_keyboard ?? []).flat()) {
-      const bytes = Buffer.byteLength(button.callback_data ?? "", "utf8");
-      if (bytes < 1 || bytes > 64) return "sendMessage: button callback_data must be 1-64 bytes";
-      if (!button.text) return "sendMessage: button text must not be empty";
-    }
+    if (text.length < 1 || text.length > 4096) return `${method}: text must be 1-4096 characters`;
+  }
+  for (const button of (keyboardOf(body) ?? []).flat()) {
+    const bytes = Buffer.byteLength(button.callback_data ?? "", "utf8");
+    if (bytes < 1 || bytes > 64) return `${method}: button callback_data must be 1-64 bytes`;
+    if (!button.text) return `${method}: button text must not be empty`;
+  }
+  if (EDITS.has(method)) {
+    const current = telegram.shown.get(Number(body.message_id));
+    if (!current) return `${method}: message to edit not found`;
+    const next = {
+      text: typeof body.text === "string" ? body.text : current.text,
+      keyboard: keyboardOf(body) ?? (method === "editMessageText" ? [] : current.keyboard),
+    };
+    if (JSON.stringify(next) === JSON.stringify(current)) return `${method}: message is not modified`;
   }
   if (method === "answerCallbackQuery" && typeof body.text === "string" && body.text.length > 200) {
     return "answerCallbackQuery: text must be at most 200 characters";
@@ -119,9 +137,24 @@ const server = setupServer(
     }
     const failed = method === "sendMessage" && telegram.failSends > 0;
     if (failed) telegram.failSends--;
-    telegram.sent.push({ method, body, failed });
     if (failed) {
+      telegram.sent.push({ method, body, failed });
       return HttpResponse.json({ ok: false, description: "Bad Gateway" }, { status: 502 });
+    }
+    if (method === "sendMessage") {
+      const messageId = telegram.nextMessageId++;
+      telegram.sent.push({ method, body, failed, messageId });
+      telegram.shown.set(messageId, { text: String(body.text), keyboard: keyboardOf(body) ?? [] });
+      return HttpResponse.json({ ok: true, result: { message_id: messageId } });
+    }
+    telegram.sent.push({ method, body, failed });
+    if (EDITS.has(method)) {
+      const id = Number(body.message_id);
+      const current = telegram.shown.get(id)!;
+      telegram.shown.set(id, {
+        text: typeof body.text === "string" ? body.text : current.text,
+        keyboard: keyboardOf(body) ?? (method === "editMessageText" ? [] : current.keyboard),
+      });
     }
     if (method === "getFile") {
       const filePath = telegram.files[String(body.file_id)];
@@ -191,6 +224,8 @@ export function useJourneys(): void {
     telegram.sent = [];
     telegram.failSends = 0;
     telegram.files = {};
+    telegram.shown = new Map();
+    telegram.nextMessageId = 1;
     gemini.calls = [];
     gemini.lastSystem = "";
     gemini.delays = [];
@@ -214,17 +249,13 @@ export function useJourneys(): void {
   });
 }
 
-export type Reply = { text: string; buttons: { text: string; data: string }[] };
+export type Reply = { text: string; buttons: { text: string; data: string }[]; messageId?: number };
 
-function toReply(s: Sent): Reply {
-  const markup = s.body.reply_markup as
-    | { inline_keyboard?: { text: string; callback_data: string }[][] }
-    | undefined;
+function toReply(shown: Shown, messageId?: number): Reply {
   return {
-    text: String(s.body.text),
-    buttons: (markup?.inline_keyboard ?? [])
-      .flat()
-      .map((b) => ({ text: b.text, data: b.callback_data })),
+    text: shown.text,
+    buttons: shown.keyboard.flat().map((b) => ({ text: b.text, data: b.callback_data })),
+    messageId,
   };
 }
 
@@ -275,19 +306,27 @@ export const chat = {
     telegram.files = { "voice-1": "voice/file_2.oga" };
     return deliver(message({ voice: { file_id: "voice-1", duration: 4 } }));
   },
+  /** Taps a button on the message as it shows now; Telegram sends that state with the tap. */
   tap(reply: Reply, label: string, from = OWNER) {
-    const button = reply.buttons.find((b) => b.text === label);
+    const shown = telegram.shown.get(reply.messageId ?? -1);
+    if (!shown) throw new Error(`not a message the bot sent: ${reply.text.split("\n")[0]}`);
+    const button = shown.keyboard.flat().find((b) => b.text === label);
     if (!button) {
-      throw new Error(`no "${label}" button on: ${reply.text.split("\n")[0]}`);
+      throw new Error(`no "${label}" button on: ${shown.text.split("\n")[0]}`);
     }
+    const markup = shown.keyboard.length > 0 ? { reply_markup: { inline_keyboard: shown.keyboard } } : {};
     return deliver({
       update_id: ++updateId,
       callback_query: {
         id: `cb-${++callbackId}`,
-        data: button.data,
-        message: { message_id: 1, chat: { id: from }, text: reply.text },
+        data: button.callback_data,
+        message: { message_id: reply.messageId, chat: { id: from }, text: shown.text, ...markup },
       },
     });
+  },
+  /** A sent message as it shows now, after any edits. */
+  current(reply: Reply): Reply {
+    return toReply(telegram.shown.get(reply.messageId!)!, reply.messageId);
   },
   /** Telegram resending the last update, as it does when a webhook call times out. */
   retry() {
@@ -303,7 +342,7 @@ export const chat = {
   replies(): Reply[] {
     return telegram.sent
       .filter((s) => s.method === "sendMessage" && !s.failed)
-      .map(toReply);
+      .map((s) => toReply({ text: String(s.body.text), keyboard: keyboardOf(s.body) ?? [] }, s.messageId));
   },
   last(): Reply {
     const all = chat.replies();

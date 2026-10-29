@@ -49,17 +49,17 @@ describe("merchant command replies", () => {
       "Added merchant: Maple Kiosk. The next message will use it.",
     );
     expect(addReply({ added: "Maple Kiosk", unhid: false, linked: 1 })).toBe(
-      "Added merchant: Maple Kiosk. Linked 1 past transaction. The next message will use it.",
+      "Added merchant: Maple Kiosk. Linked 1 past transaction that names it exactly. The next message will use it.",
     );
     expect(addReply({ added: "Acme Mart", unhid: true, linked: 7 })).toBe(
-      "Unhid merchant: Acme Mart. Linked 7 past transactions. The next message will use it.",
+      "Unhid merchant: Acme Mart. Linked 7 past transactions that name it exactly. The next message will use it.",
     );
     expect(addReply({ exists: "Acme Mart", linked: 0 })).toBe("Already a merchant: Acme Mart.");
     expect(addReply({ exists: "Acme Mart", linked: 1 })).toBe(
-      "Already a merchant: Acme Mart. Linked 1 past transaction.",
+      "Already a merchant: Acme Mart. Linked 1 past transaction that names it exactly.",
     );
     expect(addReply({ exists: "Acme Mart", linked: 4 })).toBe(
-      "Already a merchant: Acme Mart. Linked 4 past transactions.",
+      "Already a merchant: Acme Mart. Linked 4 past transactions that name it exactly.",
     );
     expect(deleteReply({ deleted: "Maple Kiosk" }, "maple kiosk")).toBe("Deleted merchant: Maple Kiosk.");
     expect(deleteReply({ missing: true }, "Nowhere")).toBe(

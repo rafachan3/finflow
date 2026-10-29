@@ -432,7 +432,7 @@ describe("merchants", () => {
   });
 
   it("adds a merchant with no aliases, and the next taxonomy load has it", async () => {
-    expect(await db.addMerchant("Maple Kiosk")).toEqual({ added: "Maple Kiosk", unhid: false, linked: 0 });
+    expect(await db.addMerchant("Maple Kiosk")).toMatchObject({ added: "Maple Kiosk", unhid: false, linked: 0 });
     expect(await sql("select aliases from merchants where name = 'Maple Kiosk'")).toEqual([
       { aliases: [] },
     ]);
@@ -440,8 +440,8 @@ describe("merchants", () => {
   });
 
   it("will not add a name that matches a merchant in another case, and reports the existing spelling", async () => {
-    expect(await db.addMerchant("acme MART")).toEqual({ exists: "Acme Mart", linked: 0 });
-    expect(await db.addMerchant("Acme Mart")).toEqual({ exists: "Acme Mart", linked: 0 });
+    expect(await db.addMerchant("acme MART")).toMatchObject({ exists: "Acme Mart", linked: 0 });
+    expect(await db.addMerchant("Acme Mart")).toMatchObject({ exists: "Acme Mart", linked: 0 });
     expect(await count("merchants")).toBe(2);
   });
 
@@ -479,10 +479,10 @@ describe("merchants", () => {
     await sql("update merchants set hidden_at = now() where name = 'Acme Mart'");
     const [a] = await save(903, expense({ merchant: "Acme Mart" }));
     await db.confirmIngestion(a);
-    expect(await db.addMerchant("acme mart")).toEqual({ added: "Acme Mart", unhid: true, linked: 1 });
+    expect(await db.addMerchant("acme mart")).toMatchObject({ added: "Acme Mart", unhid: true, linked: 1 });
     expect(await sql("select count(*)::int n from transactions where merchant_id is null")).toEqual([{ n: 0 }]);
     expect(await db.listMerchants()).toEqual({ names: ["Acme Mart", "Example Online"], hidden: 0 });
-    expect(await db.addMerchant("Acme Mart")).toEqual({ exists: "Acme Mart", linked: 0 });
+    expect(await db.addMerchant("Acme Mart")).toMatchObject({ exists: "Acme Mart", linked: 0 });
   });
 
   it("adding a merchant links past transactions whose extraction names it, ignoring case and spaces, and leaves linked ones alone", async () => {
@@ -503,7 +503,7 @@ describe("merchants", () => {
     );
     const [stillPending] = await save(905, expense({ merchant: "Maple Kiosk" }));
 
-    expect(await db.addMerchant("Maple Kiosk")).toEqual({ added: "Maple Kiosk", unhid: false, linked: 2 });
+    expect(await db.addMerchant("Maple Kiosk")).toMatchObject({ added: "Maple Kiosk", unhid: false, linked: 2 });
 
     const rows = await sql<{ merchant: string | null }>(
       `select m.name as merchant from ingestions i
@@ -513,7 +513,7 @@ describe("merchants", () => {
     );
     expect(rows.map((r) => r.merchant)).toEqual(["Maple Kiosk", "Maple Kiosk", "Acme Mart", null, null]);
     expect(await status(stillPending)).toBe("pending");
-    expect(await db.addMerchant("maple kiosk")).toEqual({ exists: "Maple Kiosk", linked: 0 });
+    expect(await db.addMerchant("maple kiosk")).toMatchObject({ exists: "Maple Kiosk", linked: 0 });
   });
 
   /** A Notion-style row: a saved transaction with no ingestion behind it. */
@@ -543,7 +543,7 @@ describe("merchants", () => {
     await imported("Acme Mart lunch");
     await imported("Joe\u2019s Diner", "Acme Mart");
 
-    expect(await db.addMerchant("Joe's Diner")).toEqual({ added: "Joe's Diner", unhid: false, linked: 2 });
+    expect(await db.addMerchant("Joe's Diner")).toMatchObject({ added: "Joe's Diner", unhid: false, linked: 2 });
 
     expect(await sql("select description, merchant_id is null as unlinked from transactions order by created_at")).toEqual([
       { description: "Joe\u2019s Diner", unlinked: false },
@@ -556,42 +556,60 @@ describe("merchants", () => {
   });
 
   it("never matches an imported row by part of its description", async () => {
-    await imported("Metro ticket");
-    await imported("Bixi Monthly Pass");
-    await imported("Bixi");
-    expect(await db.addMerchant("Metro")).toEqual({ added: "Metro", unhid: false, linked: 0 });
-    expect(await db.addMerchant("Bixi")).toEqual({ added: "Bixi", unhid: false, linked: 1 });
+    await imported("Lark ticket");
+    await imported("Wren Monthly Pass");
+    await imported("Wren");
+    expect(await db.addMerchant("Lark")).toMatchObject({ added: "Lark", unhid: false, linked: 0 });
+    expect(await db.addMerchant("Wren")).toMatchObject({ added: "Wren", unhid: false, linked: 1 });
     expect(await merchantByDescription()).toEqual({
-      "Metro ticket": null,
-      "Bixi Monthly Pass": null,
-      Bixi: "Bixi",
+      "Lark ticket": null,
+      "Wren Monthly Pass": null,
+      Wren: "Wren",
     });
   });
 
   it("an imported-row match applies only to rows with no ingestion: a bot row is matched by its extraction", async () => {
     const [a] = await save(950, expense({ merchant: "Corner Store", description: "Joe's Diner" }));
     await db.confirmIngestion(a);
-    expect(await db.addMerchant("Joe's Diner")).toEqual({ added: "Joe's Diner", unhid: false, linked: 0 });
+    expect(await db.addMerchant("Joe's Diner")).toMatchObject({ added: "Joe's Diner", unhid: false, linked: 0 });
   });
 
   it("links past transactions whose extraction names the merchant with a curly apostrophe", async () => {
     const [a, b] = await save(951, expense({ merchant: "Joe\u2019s Diner" }), expense({ merchant: "Joe\u2018s Diner" }));
     await db.confirmIngestion(a);
     await db.confirmIngestion(b);
-    expect(await db.addMerchant("Joe's Diner")).toEqual({ added: "Joe's Diner", unhid: false, linked: 2 });
+    expect(await db.addMerchant("Joe's Diner")).toMatchObject({ added: "Joe's Diner", unhid: false, linked: 2 });
+  });
+
+  it("links past transactions whose re-read media names the merchant, and leaves linked and pending ones alone", async () => {
+    const ids = await save(953, expense({ merchant: null }), expense({ merchant: null }), expense({ merchant: null }));
+    for (const id of ids.slice(0, 2)) await db.confirmIngestion(id);
+    await sql("update ingestions set media_merchant = 'MAPLE  kiosk' where id = any($1::uuid[])", [ids]);
+    await sql(
+      `update transactions set merchant_id = (select id from merchants where name = 'Acme Mart')
+       where id = (select transaction_id from ingestions where id = $1)`,
+      [ids[1]],
+    );
+
+    expect(await db.addMerchant("Maple Kiosk")).toMatchObject({ added: "Maple Kiosk", linked: 1 });
+    expect(await sql("select m.name from transactions t join merchants m on m.id = t.merchant_id order by m.name")).toEqual([
+      { name: "Acme Mart" },
+      { name: "Maple Kiosk" },
+    ]);
+    expect(await status(ids[2])).toBe("pending");
   });
 
   it("adding a name that exists links what is still unlinked and reports the count", async () => {
     await imported("Acme Mart");
     await imported("acme mart");
-    expect(await db.addMerchant("ACME MART")).toEqual({ exists: "Acme Mart", linked: 2 });
-    expect(await db.addMerchant("Acme Mart")).toEqual({ exists: "Acme Mart", linked: 0 });
+    expect(await db.addMerchant("ACME MART")).toMatchObject({ exists: "Acme Mart", linked: 2 });
+    expect(await db.addMerchant("Acme Mart")).toMatchObject({ exists: "Acme Mart", linked: 0 });
   });
 
   it("a name differing only by apostrophe style is the same merchant", async () => {
     await sql("insert into merchants (name) values ('Joe\u2019s Diner')");
     await imported("Joe's Diner");
-    expect(await db.addMerchant("Joe's Diner")).toEqual({ exists: "Joe\u2019s Diner", linked: 1 });
+    expect(await db.addMerchant("Joe's Diner")).toMatchObject({ exists: "Joe\u2019s Diner", linked: 1 });
     expect(await count("merchants")).toBe(3);
     expect(await db.deleteMerchant("JOE'S DINER")).toEqual({ hidden: "Joe\u2019s Diner", uses: 1 });
   });
@@ -611,6 +629,121 @@ describe("merchants", () => {
       const [row] = await sql<{ key: string }>(`select ${db.MERCHANT_KEY("$1::text")} as key`, [raw]);
       expect(row.key, JSON.stringify(raw)).toBe(merchantKey(raw));
     }
+  });
+});
+
+describe("findMentions and linkMentions", () => {
+  async function merchantId(name: string): Promise<number> {
+    const [row] = await sql<{ id: number }>("select id from merchants where name = $1", [name]);
+    return row.id;
+  }
+
+  /** A confirmed bot purchase whose message said `words`; its extraction named no merchant. */
+  async function said(updateId: number, words: { text?: string; caption?: string }, description: string) {
+    const row = { ...pending(updateId, expense({ merchant: null, description })), rawPayload: { update_id: updateId, message: words } };
+    const ids = await db.insertPendingIngestions([row]);
+    if (ids === "duplicate") throw new Error("unexpected duplicate");
+    await db.confirmIngestion(ids[0].id);
+  }
+
+  async function imported(description: string, occurredOn = "2026-07-01"): Promise<string> {
+    const [row] = await sql<{ id: string }>(
+      `insert into transactions (occurred_on, type, amount, description, funding_source_id)
+       values ($1, 'expense', 9.99, $2, (select id from funding_sources where name = 'self'))
+       returning id::text`,
+      [occurredOn, description],
+    );
+    return row.id;
+  }
+
+  it("finds the name as a whole word in a message, a caption or a description, apostrophes and case aside", async () => {
+    await sql("insert into merchants (name) values ('Maple''s')");
+    const id = await merchantId("Maple's");
+    await said(960, { text: "4 burger from MAPLE’S" }, "Burger");
+    await said(961, { caption: "fries, maple's again" }, "Fries");
+    await imported("Maple's drive-thru");
+    await imported("Maple'sville trip");
+    await imported("Lunch");
+
+    const found = await db.findMentions(id, null);
+    expect(found).toMatchObject({ name: "Maple's", total: 3 });
+    expect(found!.rows.map((r) => [r.description, r.said])).toEqual([
+      ["Fries", "fries, maple's again"],
+      ["Burger", "4 burger from MAPLE’S"],
+      ["Maple's drive-thru", null],
+    ]);
+    expect(found!.rows[0]).toMatchObject({ date: "2026-10-20", amount: "12.50" });
+  });
+
+  it("offers only rows with no merchant, a page at a time after the last row shown", async () => {
+    const id = await merchantId("Acme Mart");
+    const days = ["2026-07-01", "2026-07-02", "2026-07-03", "2026-07-04", "2026-07-05", "2026-07-06", "2026-07-07", "2026-07-08", "2026-07-09", "2026-07-10"];
+    for (const day of days) await imported(`Acme Mart run ${day}`, day);
+    await sql("update transactions set merchant_id = $1 where occurred_on = '2026-07-10'", [id]);
+
+    const first = await db.findMentions(id, null);
+    expect(first!.total).toBe(9);
+    expect(first!.rows.map((r) => r.date)).toEqual(days.slice(1, 9).reverse());
+    const rest = await db.findMentions(id, first!.rows.at(-1)!.id);
+    expect(rest).toMatchObject({ total: 1, rows: [{ date: "2026-07-01" }] });
+  });
+
+  it("matches a name with regex characters literally in Postgres", async () => {
+    await sql("insert into merchants (name) values ('A+B (C.)')");
+    await imported("lunch at A+B (C.) today");
+    await imported("AAB (CX)");
+    await imported("aab cx");
+
+    const found = await db.findMentions(await merchantId("A+B (C.)"), null);
+    expect(found!.rows.map((r) => r.description)).toEqual(["lunch at A+B (C.) today"]);
+  });
+
+  it("finds nothing for a hidden merchant", async () => {
+    await imported("Acme Mart run");
+    await sql("update merchants set hidden_at = now() where name = 'Acme Mart'");
+    expect(await db.findMentions(await merchantId("Acme Mart"), null)).toBeNull();
+  });
+
+  it("links the picked rows that still have no merchant, and nothing for a hidden or missing merchant", async () => {
+    const acme = await merchantId("Acme Mart");
+    const free = await imported("Acme Mart run");
+    const taken = await imported("Acme Mart and more");
+    const other = await imported("Acme Mart again");
+    await sql("update transactions set merchant_id = $1 where id = $2", [await merchantId("Example Online"), taken]);
+
+    expect(await db.linkMentions(acme, [free, taken])).toEqual({ name: "Acme Mart", linked: 1 });
+    expect(await db.linkMentions(999999, [other])).toBeNull();
+    await sql("update merchants set hidden_at = now() where id = $1", [acme]);
+    expect(await db.linkMentions(acme, [other])).toBeNull();
+
+    const rows = await sql<{ id: string; merchant: string | null }>(
+      "select t.id::text, m.name as merchant from transactions t left join merchants m on m.id = t.merchant_id",
+    );
+    expect(Object.fromEntries(rows.map((r) => [r.id, r.merchant]))).toEqual({
+      [free]: "Acme Mart",
+      [taken]: "Example Online",
+      [other]: null,
+    });
+  });
+
+  it("links only rows that mention the merchant, whatever ids the tap carries", async () => {
+    const acme = await merchantId("Acme Mart");
+    const inDescription = await imported("Acme Mart run");
+    await said(970, { caption: "lunch at acme mart" }, "Lunch out");
+    const [{ id: inCaption }] = await sql<{ id: string }>(
+      "select id::text from transactions where description = 'Lunch out'",
+    );
+    const unrelated = await imported("Groceries");
+
+    expect(await db.linkMentions(acme, [inDescription, inCaption, unrelated])).toEqual({ name: "Acme Mart", linked: 2 });
+    const rows = await sql<{ id: string; merchant: string | null }>(
+      "select t.id::text, m.name as merchant from transactions t left join merchants m on m.id = t.merchant_id",
+    );
+    expect(Object.fromEntries(rows.map((r) => [r.id, r.merchant]))).toEqual({
+      [inDescription]: "Acme Mart",
+      [inCaption]: "Acme Mart",
+      [unrelated]: null,
+    });
   });
 });
 

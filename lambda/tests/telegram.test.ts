@@ -4,6 +4,8 @@ import {
   registerCommandMenu,
   discardKeyboard,
   downloadTelegramFile,
+  editMessageReplyMarkup,
+  editMessageText,
   largestPhotoFileId,
   reviewKeyboard,
   voiceFileId,
@@ -219,5 +221,30 @@ describe("downloadTelegramFile", () => {
     await expect(downloadTelegramFile("tok", "missing")).rejects.toThrow(
       /getFile/i,
     );
+  });
+});
+
+describe("message edits", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  function telegramSays400(description: string) {
+    const body = JSON.stringify({ ok: false, error_code: 400, description });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status: 400, text: async () => body }));
+  }
+
+  it("treats Telegram's 'message is not modified' as done, so a retried tap does not fail", async () => {
+    telegramSays400(
+      "Bad Request: message is not modified: specified new message content and reply markup are exactly the same as a current content and reply markup of the message",
+    );
+    await expect(editMessageReplyMarkup("tok", 1, 2, { inline_keyboard: [] })).resolves.toBeUndefined();
+    await expect(editMessageText("tok", 1, 2, "Linked 1 of 2 to Maple Kiosk.")).resolves.toBeUndefined();
+  });
+
+  it("still throws any other refused edit", async () => {
+    telegramSays400("Bad Request: message to edit not found");
+    await expect(editMessageReplyMarkup("tok", 1, 2, { inline_keyboard: [] })).rejects.toThrow(/not found/);
+    await expect(editMessageText("tok", 1, 2, "x")).rejects.toThrow(/not found/);
   });
 });

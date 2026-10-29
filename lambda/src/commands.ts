@@ -34,7 +34,7 @@ export function parseCommand(
 export const DELETE_USAGE = "Send /delmerchant Name";
 
 const TELEGRAM_TEXT_MAX = 4096;
-const MERCHANT_NAME_MAX = 100;
+export const MERCHANT_NAME_MAX = 100;
 
 export function collapseSpaces(s: string): string {
   return s.replace(/\s+/g, " ").trim();
@@ -74,8 +74,8 @@ export function cleanMerchantName(raw: string): { name: string } | { error: stri
 export function addReply(
   result: { added: string; unhid: boolean; linked: number } | { exists: string; linked: number },
 ): string {
-  const s = result.linked === 1 ? "" : "s";
-  const linked = result.linked > 0 ? ` Linked ${result.linked} past transaction${s}.` : "";
+  const tx = result.linked === 1 ? "transaction that names" : "transactions that name";
+  const linked = result.linked > 0 ? ` Linked ${result.linked} past ${tx} it exactly.` : "";
   if ("exists" in result) return `Already a merchant: ${result.exists}.${linked}`;
   const verb = result.unhid ? "Unhid" : "Added";
   return `${verb} merchant: ${result.added}.${linked} The next message will use it.`;

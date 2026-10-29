@@ -163,7 +163,10 @@ for history; it is the ingest media store, not photos-only.
   per month. The image-retention question disappears rather than being deferred.
 - Bucket is private with Block Public Access on, SSE-S3 (AES256), and a
   TLS-only deny. The ingest role may `s3:PutObject` only. Extraction uses
-  Telegram file bytes, so `GetObject` is still unused. Any future UI would
+  Telegram file bytes, so the Lambda never reads S3. The one reader is the
+  one-off `backfill:media-merchant` script, run by hand with the operator's
+  credentials, which re-reads archived media to fill
+  `ingestions.media_merchant` (DECISIONS.md 2026-10-29). Any future UI would
   use presigned URLs.
 - Keys are currently `{id}.jpg` / `.png` / `.ogg` at the bucket root.
   Prefixes `{source}/{yyyy-mm}/{id}.{ext}` are a leftover (one bucket,

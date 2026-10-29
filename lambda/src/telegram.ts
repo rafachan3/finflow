@@ -58,6 +58,47 @@ export async function sendMessage(
   await postTelegram(botToken, "sendMessage", body);
 }
 
+/**
+ * An edit. Telegram answers 400 "message is not modified" when the message
+ * already shows the result (a retried or double tap), so that counts as done.
+ */
+async function postEdit(botToken: string, method: string, body: Record<string, unknown>): Promise<void> {
+  try {
+    await postTelegram(botToken, method, body);
+  } catch (err) {
+    if (!/message is not modified/.test((err as Error).message)) throw err;
+  }
+}
+
+/** Replaces a sent message's inline keyboard; an empty one removes the buttons. */
+export async function editMessageReplyMarkup(
+  botToken: string,
+  chatId: number,
+  messageId: number,
+  replyMarkup: { inline_keyboard: unknown[][] },
+): Promise<void> {
+  await postEdit(botToken, "editMessageReplyMarkup", {
+    chat_id: chatId,
+    message_id: messageId,
+    reply_markup: replyMarkup,
+  });
+}
+
+/** Replaces a sent message's text and removes its buttons. */
+export async function editMessageText(
+  botToken: string,
+  chatId: number,
+  messageId: number,
+  text: string,
+): Promise<void> {
+  await postEdit(botToken, "editMessageText", {
+    chat_id: chatId,
+    message_id: messageId,
+    text,
+    reply_markup: { inline_keyboard: [] },
+  });
+}
+
 /** Sets the bot's command menu to the command table. Run by the deploy workflow. */
 export async function registerCommandMenu(botToken: string): Promise<void> {
   await postTelegram(botToken, "setMyCommands", { commands: commandMenu() });

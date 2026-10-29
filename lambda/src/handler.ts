@@ -24,6 +24,8 @@ import {
   findDuplicates,
   findFrequentMerchant,
   insertPendingIngestions,
+  findMentions,
+  linkMentions,
   listMerchants,
   listPendingIngestions,
   loadTaxonomy,
@@ -47,11 +49,28 @@ import {
   type TaxonomySnapshot,
 } from "./extraction.js";
 import { extractFromPhoto, extractFromText, extractFromVoice, patchExtraction } from "./gemini.js";
+import {
+  ALREADY_LINKED,
+  linkedSummary,
+  MERCHANT_GONE,
+  mentionsMessage,
+  NO_MORE,
+  parseMentionTap,
+  PICK_FIRST,
+  selectAll,
+  ticked,
+  toggle,
+  withoutMore,
+  type Keyboard,
+  type MentionTap,
+} from "./mentions.js";
 import { putReceipt } from "./s3.js";
 import {
   answerCallbackQuery,
   discardKeyboard,
   downloadTelegramFile,
+  editMessageReplyMarkup,
+  editMessageText,
   largestPhotoFileId,
   reviewKeyboard,
   sendMessage,
@@ -70,7 +89,7 @@ type TelegramMessage = {
 type TelegramCallbackQuery = {
   id: string;
   data?: string;
-  message?: TelegramMessage;
+  message?: TelegramMessage & { reply_markup?: { inline_keyboard?: Keyboard } };
 };
 type TelegramUpdate = {
   update_id: number;
@@ -306,6 +325,72 @@ async function resendPendingCards(chatId: number, botToken: string): Promise<voi
   }
 }
 
+/** Sends one page of the mention review; false when there is nothing to offer. */
+async function offerMentions(
+  botToken: string,
+  chatId: number,
+  merchantId: number,
+  after: string | null,
+): Promise<boolean> {
+  const found = await findMentions(merchantId, after);
+  if (!found || found.rows.length === 0) return false;
+  const { text, keyboard } = mentionsMessage(merchantId, found.name, found, after !== null);
+  await sendMessage(botToken, chatId, text, { inline_keyboard: keyboard });
+  return true;
+}
+
+/**
+ * A tap on the mention review. Ticks live in the message's own keyboard, so a
+ * toggle only edits it; Link selected writes the ticked rows that still have no
+ * merchant, after the owner picked each one (constraint 3).
+ */
+async function handleMentionTap(
+  cb: TelegramCallbackQuery,
+  tap: MentionTap,
+  chatId: number,
+  botToken: string,
+): Promise<APIGatewayProxyResultV2> {
+  const messageId = cb.message!.message_id!;
+  const keyboard = cb.message?.reply_markup?.inline_keyboard ?? [];
+  if (tap.kind === "toggle" || tap.kind === "all") {
+    const next = tap.kind === "toggle" ? toggle(keyboard, cb.data!) : selectAll(keyboard);
+    // Telegram refuses an edit that changes nothing.
+    if (JSON.stringify(next) !== JSON.stringify(keyboard)) {
+      await editMessageReplyMarkup(botToken, chatId, messageId, { inline_keyboard: next });
+    }
+    // Answered after the edit, so the button's spinner holds until the tick shows.
+    await answerCallbackQuery(botToken, cb.id);
+  } else if (tap.kind === "skip") {
+    await answerCallbackQuery(botToken, cb.id, "Skipped.");
+    await editMessageReplyMarkup(botToken, chatId, messageId, { inline_keyboard: [] });
+  } else if (tap.kind === "more") {
+    await answerCallbackQuery(botToken, cb.id);
+    await editMessageReplyMarkup(botToken, chatId, messageId, { inline_keyboard: withoutMore(keyboard) });
+    if (!(await offerMentions(botToken, chatId, tap.merchantId, tap.after))) {
+      await sendMessage(botToken, chatId, NO_MORE);
+    }
+  } else {
+    const picked = ticked(keyboard);
+    if (picked.ids.length === 0) {
+      await answerCallbackQuery(botToken, cb.id, PICK_FIRST);
+      return ok("ok");
+    }
+    const result = await linkMentions(tap.merchantId, picked.ids);
+    if (result && result.linked === 0) {
+      // Every pick already has a merchant: most likely a retried or repeated
+      // Link, so the summary the first one wrote stays.
+      await answerCallbackQuery(botToken, cb.id, ALREADY_LINKED);
+      return ok("ok");
+    }
+    await answerCallbackQuery(botToken, cb.id, result ? "Linked." : "Nothing linked.");
+    const text = result
+      ? linkedSummary({ name: result.name, linked: result.linked, picked: picked.ids.length, shown: picked.shown })
+      : MERCHANT_GONE;
+    await editMessageText(botToken, chatId, messageId, text);
+  }
+  return ok("ok");
+}
+
 type CommandContext = { chatId: number; botToken: string; args: string };
 
 /** What each slash command does; the type makes a command with no entry here a compile error. */
@@ -314,11 +399,22 @@ const RUN: Record<CommandName, (c: CommandContext) => Promise<void>> = {
   merchants: async ({ chatId, botToken }) => {
     await sendMessage(botToken, chatId, formatMerchants(await listMerchants()));
   },
-  // The typed command is the confirmation: exact owner input, no model, and a lookup table, not the ledger.
+  // The typed command is the confirmation for the merchant and its exact-name links;
+  // a row that only mentions it waits for the owner's pick in the review.
   addmerchant: async ({ chatId, botToken, args }) => {
     const clean = cleanMerchantName(args);
-    const reply = "error" in clean ? clean.error : addReply(await addMerchant(clean.name));
-    await sendMessage(botToken, chatId, reply);
+    if ("error" in clean) {
+      await sendMessage(botToken, chatId, clean.error);
+      return;
+    }
+    const result = await addMerchant(clean.name);
+    await sendMessage(botToken, chatId, addReply(result));
+    // The reply is sent: a failed offer must not 500, or Telegram resends the command.
+    try {
+      await offerMentions(botToken, chatId, result.id, null);
+    } catch (err) {
+      console.error("mention offer error", err);
+    }
   },
   delmerchant: async ({ chatId, botToken, args }) => {
     const name = collapseSpaces(args);
@@ -547,6 +643,9 @@ async function handleCallback(
   if (chatId === undefined || !allowedChatIds.has(chatId)) {
     return ok("ignored");
   }
+
+  const review = parseMentionTap(cb.data);
+  if (review) return handleMentionTap(cb, review, chatId, botToken);
 
   const match = cb.data?.match(CALLBACK_RE);
   if (!match) {

@@ -94,7 +94,7 @@ describe("frequent merchant hint", () => {
 
     await chat.text("/addmerchant Maple Kiosk");
     expect(chat.last().text).toBe(
-      "Added merchant: Maple Kiosk. Linked 3 past transactions. The next message will use it.",
+      "Added merchant: Maple Kiosk. Linked 3 past transactions that name it exactly. The next message will use it.",
     );
 
     await chat.tap(shown, "Confirm");

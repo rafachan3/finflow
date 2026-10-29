@@ -242,7 +242,7 @@ type GeminiUserPart =
   | { text: string }
   | { inlineData: { mimeType: string; data: string } };
 
-async function generateJson(args: {
+export async function generateJson(args: {
   apiKey: string;
   system: string;
   userParts: GeminiUserPart[];

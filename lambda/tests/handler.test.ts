@@ -19,6 +19,8 @@ vi.mock("../src/db.js", () => ({
   applyIngestionEdit: vi.fn(),
   findDuplicates: vi.fn(),
   findFrequentMerchant: vi.fn(),
+  addMerchant: vi.fn(),
+  findMentions: vi.fn(),
 }));
 vi.mock("../src/gemini.js", () => ({
   extractFromText: vi.fn(),
@@ -31,6 +33,8 @@ vi.mock("../src/telegram.js", () => ({
   reviewKeyboard: vi.fn((id: string) => ({ confirm: id })),
   discardKeyboard: vi.fn((id: string) => ({ discard: id })),
   sendMessage: vi.fn(),
+  editMessageReplyMarkup: vi.fn(),
+  editMessageText: vi.fn(),
   downloadTelegramFile: vi.fn(),
   largestPhotoFileId: vi.fn(() => "file-big"),
   voiceFileId: vi.fn(() => "voice-id"),
@@ -41,8 +45,10 @@ vi.mock("../src/s3.js", () => ({
 
 import { getConfig } from "../src/config.js";
 import {
+  addMerchant,
   applyIngestionDate,
   applyIngestionEdit,
+  findMentions,
   findAwaitingIngestion,
   findDuplicates,
   findFrequentMerchant,
@@ -61,6 +67,7 @@ import {
   answerCallbackQuery,
   discardKeyboard,
   downloadTelegramFile,
+  editMessageReplyMarkup,
   reviewKeyboard,
   sendMessage,
   voiceFileId,
@@ -258,6 +265,44 @@ describe("handler", () => {
     expect(sendMessage).toHaveBeenCalledWith("t", 1, expect.not.stringContaining("💡"), { confirm: "ing-1" });
     error.mockRestore();
   });
+
+  it("answers /addmerchant with 200 when the mention offer fails after the reply, so Telegram does not resend it", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.mocked(addMerchant).mockResolvedValue({ id: 7, added: "Maple Kiosk", unhid: false, linked: 0 });
+    vi.mocked(findMentions).mockRejectedValue(new Error("db down"));
+
+    const res = await bodyOf(
+      await handler(event({ update_id: 34, message: { chat: { id: 1 }, text: "/addmerchant Maple Kiosk" } })),
+    );
+
+    expect(res.statusCode).toBe(200);
+    expect(sendMessage).toHaveBeenCalledOnce();
+    expect(sendMessage).toHaveBeenCalledWith("t", 1, expect.stringContaining("Added merchant: Maple Kiosk."));
+    expect(error).toHaveBeenCalledWith("mention offer error", expect.any(Error));
+    error.mockRestore();
+  });
+
+  it.each(["mt:aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", "ma"])(
+    "answers a %s review tap only after the keyboard is edited, so the spinner holds until it shows",
+    async (data) => {
+      const keyboard = [[{ text: "☐ Sep 15 · 12.50 · \"Maple Kiosk\"", callback_data: "mt:aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee" }]];
+      await handler(
+        event({
+          update_id: 35,
+          callback_query: {
+            id: "cb-review",
+            data,
+            message: { message_id: 5, chat: { id: 1 }, reply_markup: { inline_keyboard: keyboard } },
+          },
+        }),
+      );
+
+      const edited = vi.mocked(editMessageReplyMarkup).mock.invocationCallOrder[0];
+      const answered = vi.mocked(answerCallbackQuery).mock.invocationCallOrder[0];
+      expect(edited).toBeDefined();
+      expect(answered).toBeGreaterThan(edited);
+    },
+  );
 
   it("does not persist or offer Confirm when checks fail", async () => {
     vi.mocked(extractFromText).mockResolvedValue([{
