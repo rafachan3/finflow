@@ -1513,6 +1513,16 @@ in media the extraction did not name.
   exists and is visible, so a row linked elsewhere since the offer keeps its
   link. More pages by the last row shown, not a page number, so rows linked
   from an earlier page do not shift what comes next.
+- **Stale keyboards: two guards and one accepted race.** A toggle answers the
+  tap only after the keyboard edit, so the button's spinner holds until the
+  tick shows. A Link selected that links nothing because every pick already
+  has a merchant (a Telegram retry, or a second tap on a stale copy) keeps the
+  message's summary and only pops `Nothing linked: those already have a
+  merchant.` What remains: an untick followed by Link selected before the
+  untick's edit reaches Telegram sends the old keyboard, so the unticked row
+  is linked. Accepted: the owner ticked that row once, it is one row, and
+  closing the window needs selection state on the server, which the stateless
+  Lambda rules out. A wrong link is fixed by hand in the SQL editor.
 - **Media is re-read once, by a script, not by the Lambda.** `ingestions.media_merchant`
   (migration 0011) holds the business a re-read of the archived photo or voice
   note names. `npm run backfill:media-merchant` fills it for confirmed photos

@@ -170,5 +170,6 @@ export function linkedSummary(r: { name: string; linked: number; picked: number;
 }
 
 export const PICK_FIRST = "Tap the ones to link first, or Skip.";
+export const ALREADY_LINKED = "Nothing linked: those already have a merchant.";
 export const MERCHANT_GONE = "Nothing linked: that merchant was deleted or hidden.";
 export const NO_MORE = "Nothing more to check.";

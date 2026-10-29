@@ -50,6 +50,7 @@ import {
 } from "./extraction.js";
 import { extractFromPhoto, extractFromText, extractFromVoice, patchExtraction } from "./gemini.js";
 import {
+  ALREADY_LINKED,
   linkedSummary,
   MERCHANT_GONE,
   mentionsMessage,
@@ -353,11 +354,12 @@ async function handleMentionTap(
   const keyboard = cb.message?.reply_markup?.inline_keyboard ?? [];
   if (tap.kind === "toggle" || tap.kind === "all") {
     const next = tap.kind === "toggle" ? toggle(keyboard, cb.data!) : selectAll(keyboard);
-    await answerCallbackQuery(botToken, cb.id);
     // Telegram refuses an edit that changes nothing.
     if (JSON.stringify(next) !== JSON.stringify(keyboard)) {
       await editMessageReplyMarkup(botToken, chatId, messageId, { inline_keyboard: next });
     }
+    // Answered after the edit, so the button's spinner holds until the tick shows.
+    await answerCallbackQuery(botToken, cb.id);
   } else if (tap.kind === "skip") {
     await answerCallbackQuery(botToken, cb.id, "Skipped.");
     await editMessageReplyMarkup(botToken, chatId, messageId, { inline_keyboard: [] });
@@ -374,6 +376,12 @@ async function handleMentionTap(
       return ok("ok");
     }
     const result = await linkMentions(tap.merchantId, picked.ids);
+    if (result && result.linked === 0) {
+      // Every pick already has a merchant: most likely a retried or repeated
+      // Link, so the summary the first one wrote stays.
+      await answerCallbackQuery(botToken, cb.id, ALREADY_LINKED);
+      return ok("ok");
+    }
     await answerCallbackQuery(botToken, cb.id, result ? "Linked." : "Nothing linked.");
     const text = result
       ? linkedSummary({ name: result.name, linked: result.linked, picked: picked.ids.length, shown: picked.shown })

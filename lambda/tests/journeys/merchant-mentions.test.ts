@@ -151,6 +151,20 @@ describe("/addmerchant review of transactions that mention the merchant", () => 
     expect(chat.current(review).text).toBe("Linked 1 of 2 to Maple Kiosk. 1 already had a merchant.");
   });
 
+  it("a retried Link selected keeps the first summary instead of reporting zero linked", async () => {
+    await ledger.importRow("Coffee at Maple Kiosk");
+    await ledger.importRow("Maple Kiosk muffin");
+    const [, review] = await send("/addmerchant Maple Kiosk");
+    await chat.tap(review, "Select all");
+    await chat.tap(review, "Link selected");
+    expect(chat.current(review)).toMatchObject({ text: "Linked 2 of 2 to Maple Kiosk.", buttons: [] });
+
+    await chat.retry();
+    expect(chat.current(review)).toMatchObject({ text: "Linked 2 of 2 to Maple Kiosk.", buttons: [] });
+    expect(chat.acks().at(-1)).toBe("Nothing linked: those already have a merchant.");
+    expect(await merchants()).toEqual({ "Coffee at Maple Kiosk": "Maple Kiosk", "Maple Kiosk muffin": "Maple Kiosk" });
+  });
+
   it("a mention offered for a merchant deleted before the tap is not linked", async () => {
     await ledger.importRow("Coffee at Maple Kiosk");
     const [, review] = await send("/addmerchant Maple Kiosk");
