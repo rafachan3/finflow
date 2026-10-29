@@ -715,6 +715,26 @@ describe("findMentions and linkMentions", () => {
       [other]: null,
     });
   });
+
+  it("links only rows that mention the merchant, whatever ids the tap carries", async () => {
+    const acme = await merchantId("Acme Mart");
+    const inDescription = await imported("Acme Mart run");
+    await said(970, { caption: "lunch at acme mart" }, "Lunch out");
+    const [{ id: inCaption }] = await sql<{ id: string }>(
+      "select id::text from transactions where description = 'Lunch out'",
+    );
+    const unrelated = await imported("Groceries");
+
+    expect(await db.linkMentions(acme, [inDescription, inCaption, unrelated])).toEqual({ name: "Acme Mart", linked: 2 });
+    const rows = await sql<{ id: string; merchant: string | null }>(
+      "select t.id::text, m.name as merchant from transactions t left join merchants m on m.id = t.merchant_id",
+    );
+    expect(Object.fromEntries(rows.map((r) => [r.id, r.merchant]))).toEqual({
+      [inDescription]: "Acme Mart",
+      [inCaption]: "Acme Mart",
+      [unrelated]: null,
+    });
+  });
 });
 
 describe("findFrequentMerchant", () => {

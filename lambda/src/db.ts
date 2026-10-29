@@ -188,19 +188,13 @@ export async function findMentions(
   after: string | null,
 ): Promise<{ name: string; total: number; rows: Mention[] } | null> {
   const db = await getPool();
-  const merchant = await db.query<{ name: string }>(
-    "SELECT name FROM merchants WHERE id = $1 AND hidden_at IS NULL",
-    [merchantId],
-  );
-  const name = merchant.rows[0]?.name;
+  const name = await visibleMerchantName(db, merchantId);
   if (name === undefined) return null;
   const res = await db.query<Mention & { total: number }>(
     `WITH hits AS (
        SELECT t.id, t.occurred_on, t.created_at, t.amount, t.description,
               (SELECT s.said
-               FROM ingestions i,
-                    LATERAL (SELECT coalesce(i.raw_payload #>> '{message,text}',
-                                             i.raw_payload #>> '{message,caption}') AS said) s
+               FROM ingestions i, LATERAL (SELECT ${SAID} AS said) s
                WHERE i.transaction_id = t.id AND ${MERCHANT_KEY("s.said")} ~ $1
                LIMIT 1) AS said
        FROM transactions t
@@ -223,25 +217,44 @@ export async function findMentions(
   };
 }
 
+/** The message text or caption of ingestion `i`, where findMentions looks for a mention. */
+const SAID = "coalesce(i.raw_payload #>> '{message,text}', i.raw_payload #>> '{message,caption}')";
+
+async function visibleMerchantName(db: Pool, merchantId: number): Promise<string | undefined> {
+  const res = await db.query<{ name: string }>(
+    "SELECT name FROM merchants WHERE id = $1 AND hidden_at IS NULL",
+    [merchantId],
+  );
+  return res.rows[0]?.name;
+}
+
 /**
- * Links the picked transactions that still have no merchant to a visible
- * merchant. Null when it is gone or hidden; then nothing is written.
+ * Links the picked transactions that still have no merchant and mention it
+ * (findMentions' match, so only a row the review could offer is ever linked,
+ * whatever ids a tap carries) to a visible merchant. Null when it is gone or
+ * hidden; then nothing is written.
  */
 export async function linkMentions(
   merchantId: number,
   transactionIds: string[],
 ): Promise<{ name: string; linked: number } | null> {
   const db = await getPool();
+  const name = await visibleMerchantName(db, merchantId);
+  if (name === undefined) return null;
+  // The merchant is re-checked under lock: a /delmerchant since the lookup links nothing.
   const res = await db.query<{ name: string; linked: number }>(
     `WITH m AS (SELECT id, name FROM merchants WHERE id = $1 AND hidden_at IS NULL FOR UPDATE),
      linked AS (
        UPDATE transactions t SET merchant_id = m.id
        FROM m
        WHERE t.id = ANY($2::uuid[]) AND t.merchant_id IS NULL
+         AND (${MERCHANT_KEY("t.description")} ~ $3
+              OR EXISTS (SELECT 1 FROM ingestions i
+                         WHERE i.transaction_id = t.id AND ${MERCHANT_KEY(SAID)} ~ $3))
        RETURNING t.id
      )
      SELECT name, (SELECT count(*)::int FROM linked) AS linked FROM m`,
-    [merchantId, transactionIds],
+    [merchantId, transactionIds, mentionPattern(name)],
   );
   return res.rows[0] ?? null;
 }
