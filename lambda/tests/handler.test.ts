@@ -149,7 +149,7 @@ beforeEach(() => {
     mimeType: "image/jpeg",
   });
   vi.mocked(putReceipt).mockResolvedValue(
-    "11111111-1111-1111-1111-111111111111.jpg",
+    "photo/2026-10/11111111-1111-1111-1111-111111111111.jpg",
   );
 });
 
@@ -450,6 +450,7 @@ describe("handler", () => {
     );
     expect(putReceipt).toHaveBeenCalledWith({
       bucket: "finflow-receipts-test",
+      source: "photo",
       ingestionId: "11111111-1111-1111-1111-111111111111",
       body: Buffer.from([0xff, 0xd8, 0xff]),
       contentType: "image/jpeg",
@@ -458,7 +459,7 @@ describe("handler", () => {
       expect.objectContaining({
         id: "11111111-1111-1111-1111-111111111111",
         source: "photo",
-        mediaPath: "11111111-1111-1111-1111-111111111111.jpg",
+        mediaPath: "photo/2026-10/11111111-1111-1111-1111-111111111111.jpg",
         telegramUpdateId: 16,
         extraction: expect.objectContaining({
           date: "2026-08-17",
@@ -542,7 +543,7 @@ describe("handler", () => {
       mimeType: "audio/ogg",
     });
     vi.mocked(putReceipt).mockResolvedValue(
-      "11111111-1111-1111-1111-111111111111.ogg",
+      "voice/2026-10/11111111-1111-1111-1111-111111111111.ogg",
     );
 
     await handler(
@@ -570,6 +571,7 @@ describe("handler", () => {
     );
     expect(putReceipt).toHaveBeenCalledWith({
       bucket: "finflow-receipts-test",
+      source: "voice",
       ingestionId: "11111111-1111-1111-1111-111111111111",
       body: ogg,
       contentType: "audio/ogg",
@@ -578,7 +580,7 @@ describe("handler", () => {
       expect.objectContaining({
         id: "11111111-1111-1111-1111-111111111111",
         source: "voice",
-        mediaPath: "11111111-1111-1111-1111-111111111111.ogg",
+        mediaPath: "voice/2026-10/11111111-1111-1111-1111-111111111111.ogg",
         telegramUpdateId: 19,
         extraction: expect.objectContaining({
           date: "2026-08-17",
@@ -605,7 +607,7 @@ describe("handler", () => {
       mimeType: "audio/ogg",
     });
     vi.mocked(putReceipt).mockResolvedValue(
-      "11111111-1111-1111-1111-111111111111.ogg",
+      "voice/2026-10/11111111-1111-1111-1111-111111111111.ogg",
     );
     vi.spyOn(crypto, "randomUUID").mockReturnValue(
       "11111111-1111-1111-1111-111111111111",
@@ -946,8 +948,8 @@ describe("multi-event messages", () => {
     );
     const rows = vi.mocked(insertPendingIngestions).mock.calls[0][0];
     expect(rows.map((r) => r.mediaPath)).toEqual([
-      "11111111-1111-1111-1111-111111111111.jpg",
-      "11111111-1111-1111-1111-111111111111.jpg",
+      "photo/2026-10/11111111-1111-1111-1111-111111111111.jpg",
+      "photo/2026-10/11111111-1111-1111-1111-111111111111.jpg",
     ]);
   });
 

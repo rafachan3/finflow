@@ -260,7 +260,7 @@ create table ingestions (
   event_index        smallint not null default 0  -- order within the update
                      check (event_index >= 0),
   raw_payload        jsonb not null,              -- full Telegram update
-  media_path         text,                        -- S3 object key
+  media_path         text,                        -- S3 object key: {source}/{yyyy-mm}/{id}.{ext}; older rows are flat {id}.{ext}
   extraction         jsonb,                       -- LLM structured output
   status             text not null default 'pending'
                      check (status in ('pending','awaiting_date','awaiting_edit','confirmed','discarded')),

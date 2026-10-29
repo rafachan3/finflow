@@ -349,6 +349,7 @@ async function offerEvents(args: {
     const mediaPath = args.media
       ? await putReceipt({
           bucket: args.config.receiptsBucket,
+          source: args.source as "photo" | "voice",
           ingestionId: persisted[0].id,
           body: args.media.bytes,
           contentType: args.media.mimeType,

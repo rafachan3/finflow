@@ -8,13 +8,29 @@ function extensionFor(contentType: string): string {
   return "jpg";
 }
 
+/** `{source}/{yyyy-mm}/{id}.{ext}`; the month is Toronto's, so 03:00Z on Nov 1 is still October. */
+export function mediaKey(args: {
+  source: "photo" | "voice";
+  ingestionId: string;
+  contentType: string;
+  now?: Date;
+}): string {
+  const month = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Toronto",
+    year: "numeric",
+    month: "2-digit",
+  }).format(args.now ?? new Date());
+  return `${args.source}/${month}/${args.ingestionId}.${extensionFor(args.contentType)}`;
+}
+
 export async function putReceipt(args: {
   bucket: string;
+  source: "photo" | "voice";
   ingestionId: string;
   body: Buffer;
   contentType: string;
 }): Promise<string> {
-  const key = `${args.ingestionId}.${extensionFor(args.contentType)}`;
+  const key = mediaKey(args);
   await client.send(
     new PutObjectCommand({
       Bucket: args.bucket,

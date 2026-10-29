@@ -12,7 +12,7 @@ Living state of the project. Read this first; update it whenever work lands.
 - [x] Phase 1 — Supabase project, schema migrations, Notion history import (2026-08-13)
 - [x] Taxonomy tweak — Hygiene + Beauty → Personal care (Health and wellness); buckets untouched (2026-08-13)
 - [x] Phase 2 — Telegram bot walking skeleton (text only, no LLM) (2026-08-17)
-- [x] Phase 3 — Gemini extraction (text → photo → voice) — **3a + 3b + 3c phone-tested; funding source applied; Edit phone-tested; context notes phone-tested; multi-event accepted by the Phase 3.6 journeys** (2026-10-28; the S3 key prefix stays an optional leftover)
+- [x] Phase 3 — Gemini extraction (text → photo → voice) — **3a + 3b + 3c phone-tested; funding source applied; Edit phone-tested; context notes phone-tested; multi-event accepted by the Phase 3.6 journeys** (2026-10-28; S3 key prefix landed 2026-10-29)
 - [x] Phase 3.6 — Regression test suite — **accepted 2026-10-29: deliberate-break PR #48 blocked (unit + inventory failed, BLOCKED), clean PRs #46/#47 green, smoke step green on deploy run 40803017809, `main` protected** (2026-10-29)
 - [ ] Phase 3.5 — Ingestion follow-ons (item tags; duplicate warning, merchant commands and the frequent-merchant hint done 2026-10-29)
 - [ ] Phase 4 — dbt semantic layer + MetricFlow
@@ -167,8 +167,9 @@ Owner decision: if receipts still fail after this, move ingestion to
 the paid tier. Merged as #26; the receipt that had failed went
 through after deploy.
 
-PDF/document and S3 key prefixes remain later. Media still lands at
-the bucket root as `{id}.{ext}`; source/month prefixes are a leftover.
+PDF/document remain later. New media lands at
+`{source}/{yyyy-mm}/{id}.{ext}` (see the S3 key note below); older
+objects keep flat `{id}.{ext}` keys.
 
 First photo after merge failed with no Telegram reply: the Supabase
 project was `INACTIVE` (paused). Pooler error
@@ -402,8 +403,13 @@ baseline agreement figure.
 Watch the first nightly runs: the summary's quota line names
 Flash-Lite's daily limit once it runs out.
 
-Optional leftover: S3 keys `{source}/{yyyy-mm}/{id}.{ext}` in the existing
-bucket.
+S3 keys (2026-10-29): new media is archived at
+`{source}/{yyyy-mm}/{id}.{ext}` in the same bucket, e.g.
+`photo/2026-10/<uuid>.jpg` or `voice/2026-10/<uuid>.ogg`; the month is
+America/Toronto at persist time. Existing rows keep flat `{id}.{ext}` keys, no
+migration. Readers must use the stored `ingestions.media_path`, never
+rebuild the key. The Lambda role's `s3:PutObject` is on `bucket/*`, so no
+infra change.
 
 ## Open questions
 
