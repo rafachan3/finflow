@@ -688,6 +688,16 @@ describe("findMentions and linkMentions", () => {
     expect(rest).toMatchObject({ total: 1, rows: [{ date: "2026-07-01" }] });
   });
 
+  it("matches a name with regex characters literally in Postgres", async () => {
+    await sql("insert into merchants (name) values ('A+B (C.)')");
+    await imported("lunch at A+B (C.) today");
+    await imported("AAB (CX)");
+    await imported("aab cx");
+
+    const found = await db.findMentions(await merchantId("A+B (C.)"), null);
+    expect(found!.rows.map((r) => r.description)).toEqual(["lunch at A+B (C.) today"]);
+  });
+
   it("finds nothing for a hidden merchant", async () => {
     await imported("Acme Mart run");
     await sql("update merchants set hidden_at = now() where name = 'Acme Mart'");
