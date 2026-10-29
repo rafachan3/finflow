@@ -195,10 +195,9 @@ rationale for its shape:
 ### Semantic layer — dbt-core + SEMANTIC_LAYER.md
 - dbt project in `dbt/`: `staging/` (light renames from raw tables) →
   `marts/` (fct_monthly_spend, fct_category_month, dim views).
-- Canonical metric definitions in `docs/SEMANTIC_LAYER.md`, e.g.
-  **discretionary spend** = expenses with funding source 'self' AND
-  subcategory ≠ Rent; **savings rate** = transfers / income per month. Both dbt models
-  and the agent reference this file so numbers agree everywhere.
+- Canonical metric definitions (formulas, grain, month boundaries, mart
+  columns) live only in `docs/SEMANTIC_LAYER.md`. Both dbt models and the
+  agent reference that file so numbers agree everywhere.
 - Runs free on GitHub Actions nightly cron (public repo = unlimited minutes).
 
 ### Consumption — Grafana Cloud + Supabase Studio

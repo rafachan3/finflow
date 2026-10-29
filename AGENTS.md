@@ -39,7 +39,7 @@ free tier (1M req/month) is perpetual, not a 12-month trial.
 | `docs/ARCHITECTURE.md` | System diagram, component rationale, security | A component choice changes |
 | `docs/DATA_MODEL.md` | Full DDL, Notion → Postgres mapping | Schema changes (with the migration) |
 | `docs/TAXONOMY.md` | Category/subcategory/item-type contract, classification rules | Taxonomy changes (with the seed migration) |
-| `docs/SEMANTIC_LAYER.md` | Canonical metric definitions *(created in Phase 4)* | A metric is added or redefined |
+| `docs/SEMANTIC_LAYER.md` | Canonical metric definitions, formulas, mart columns | A metric is added or redefined |
 | `docs/TESTING.md` | Behaviour inventory (behaviour → guarding tests), how to run each test layer, eval key setup | A behaviour is added or changed |
 | `docs/DECISIONS.md` | Dated log of decisions and what they ruled out | A decision is made or reversed |
 
