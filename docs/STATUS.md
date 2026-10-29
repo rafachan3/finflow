@@ -13,7 +13,7 @@ Living state of the project. Read this first; update it whenever work lands.
 - [x] Taxonomy tweak — Hygiene + Beauty → Personal care (Health and wellness); buckets untouched (2026-08-13)
 - [x] Phase 2 — Telegram bot walking skeleton (text only, no LLM) (2026-08-17)
 - [x] Phase 3 — Gemini extraction (text → photo → voice) — **3a + 3b + 3c phone-tested; funding source applied; Edit phone-tested; context notes phone-tested; multi-event accepted by the Phase 3.6 journeys** (2026-10-28; the S3 key prefix stays an optional leftover)
-- [ ] Phase 3.6 — Regression test suite — **in progress: integration tests (#32), chat journeys (#33), live eval (#37) and the inventory check with a coverage floor done**
+- [ ] Phase 3.6 — Regression test suite — **in progress: integration tests (#32), chat journeys (#33), live eval (#37) the inventory check with a coverage floor, and the post-deploy smoke step (PR 5) done; the smoke needs the owner's `terraform apply`**
 - [ ] Phase 3.5 — Ingestion follow-ons (item tags, duplicate warning, merchant commands)
 - [ ] Phase 4 — dbt semantic layer + MetricFlow
 - [ ] Phase 4.5 — Proactive nudges (recurring reminders, merchant recommendations)
@@ -312,8 +312,9 @@ main checkout, then run `npm --prefix lambda run eval:buckets` for a
 baseline agreement figure.
 
 Watch the first nightly runs: the summary's quota line names
-Flash-Lite's daily limit once it runs out. Then Phase 3.6 PR 5, the
-post-deploy smoke step.
+Flash-Lite's daily limit once it runs out. Owner: run `terraform apply` in
+`infra/` so the deploy role gets `lambda:GetFunctionUrlConfig`; until then
+the post-deploy smoke step in `deploy-ingest.yml` fails on AccessDenied.
 
 Optional leftover: S3 keys `{source}/{yyyy-mm}/{id}.{ext}` in the existing
 bucket.

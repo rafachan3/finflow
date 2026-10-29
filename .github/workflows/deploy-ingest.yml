@@ -45,3 +45,16 @@ jobs:
           aws lambda update-function-code \
             --function-name finflow-ingest \
             --zip-file fileb://ingest.zip
+      - name: Smoke test (wrong secret must get 401)
+        run: |
+          aws lambda wait function-updated --function-name finflow-ingest
+          url=$(aws lambda get-function-url-config \
+            --function-name finflow-ingest \
+            --query FunctionUrl --output text)
+          echo "::add-mask::$url"
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$url" \
+            -H 'content-type: application/json' \
+            -H 'x-telegram-bot-api-secret-token: smoke-test-wrong-secret' \
+            -d '{}')
+          echo "wrong-secret request returned HTTP $code"
+          test "$code" = 401
