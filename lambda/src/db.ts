@@ -596,7 +596,11 @@ async function insertTags(
   for (const tag of tags) {
     const tagId = await lookupId(client, `SELECT id FROM tags WHERE name = $1`, [tag]);
     if (tagId === null) throw new Error(`unknown tag at Confirm: ${tag}`);
-    await client.query(`INSERT INTO ${table} (${column}, tag_id) VALUES ($1, $2)`, [rowId, tagId]);
+    // Rows stored before canonicalTags can repeat a header tag.
+    await client.query(
+      `INSERT INTO ${table} (${column}, tag_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+      [rowId, tagId],
+    );
   }
 }
 

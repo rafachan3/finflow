@@ -159,6 +159,14 @@ describe("confirmIngestion", () => {
     expect(await count("transaction_item_tags")).toBe(0);
   });
 
+  it("confirms a row stored before tags were deduplicated, with a repeated header tag", async () => {
+    const [id] = await save(210, expense({ tags: ["Social", "Social"] }));
+    await expect(db.confirmIngestion(id)).resolves.toBe("confirmed");
+    expect(
+      await sql("select g.name from transaction_tags tt join tags g on g.id = tt.tag_id"),
+    ).toEqual([{ name: "Social" }]);
+  });
+
   it("rolls back Confirm on a line tag that is not in the Tags list", async () => {
     // Stored without normalizeTaxonomyNames, which would have dropped it.
     const [milk, cookies] = expense().items;
