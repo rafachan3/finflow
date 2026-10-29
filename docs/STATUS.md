@@ -14,7 +14,7 @@ Living state of the project. Read this first; update it whenever work lands.
 - [x] Phase 2 — Telegram bot walking skeleton (text only, no LLM) (2026-08-17)
 - [x] Phase 3 — Gemini extraction (text → photo → voice) — **3a + 3b + 3c phone-tested; funding source applied; Edit phone-tested; context notes phone-tested; multi-event accepted by the Phase 3.6 journeys** (2026-10-28; the S3 key prefix stays an optional leftover)
 - [x] Phase 3.6 — Regression test suite — **accepted 2026-10-29: deliberate-break PR #48 blocked (unit + inventory failed, BLOCKED), clean PRs #46/#47 green, smoke step green on deploy run 40803017809, `main` protected** (2026-10-29)
-- [ ] Phase 3.5 — Ingestion follow-ons (item tags, merchant commands; duplicate warning done 2026-10-29)
+- [ ] Phase 3.5 — Ingestion follow-ons (item tags; duplicate warning, merchant commands and the frequent-merchant hint done 2026-10-29)
 - [ ] Phase 4 — dbt semantic layer + MetricFlow
 - [ ] Phase 4.5 — Proactive nudges (recurring reminders, merchant recommendations)
 - [ ] Phase 5 — Grafana dashboards
@@ -360,9 +360,17 @@ every message) and a deleted or hidden one is not; no prompt text changed.
 Commands run before the wait, from the allowlisted chat only, and never
 reach Gemini.
 
-Migration 0010 (`merchants.hidden_at`, nullable) is **not yet applied to
-production**. Apply it with `supabase db push` before merging the
-hide-and-backfill PR: merging deploys, and the new code reads the column.
+Migration 0010 (`merchants.hidden_at`, nullable) was applied to production on
+2026-10-29, before the hide-and-backfill PR (#61) merged.
+
+Frequent-merchant hint (Phase 3.5; DECISIONS.md 2026-10-29): a saved card
+whose merchant is in no `merchants` row (visible or hidden) while 3 or more
+confirmed purchases name it gets one `💡 You've bought from X n times. Send
+/addmerchant X to track it.` line, on every render (new message, `/pending`,
+Fix date, Edit). Counts bot-era confirmed ingestions only (Notion imports have
+no merchant names), with the link-on-add normalisation, excluding the card's
+own message. Fail-open like the duplicate check; no Gemini call, prompt change
+or migration.
 
 Command menu (DECISIONS.md 2026-10-29): `src/commands.ts` is the one command
 table. The handler's run table is typed against it, and the last step of the
