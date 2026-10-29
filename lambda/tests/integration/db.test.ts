@@ -516,6 +516,64 @@ describe("merchants", () => {
   });
 });
 
+describe("findFrequentMerchant", () => {
+  let nextUpdate = 700;
+
+  async function saveOne(extraction: Extraction): Promise<string> {
+    const [id] = await save(nextUpdate++, extraction);
+    return id;
+  }
+
+  /** Confirms `n` purchases, one message each, naming the merchant as typed. */
+  async function bought(merchant: string | null, n: number): Promise<void> {
+    for (let i = 0; i < n; i++) await db.confirmIngestion(await saveOne(expense({ merchant })));
+  }
+
+  it("counts confirmed purchases that name the card's merchant, ignoring case and spaces", async () => {
+    await bought("maple   KIOSK", 1);
+    await bought(" Maple Kiosk ", 2);
+    await bought("Corner Store", 5);
+    const card = await saveOne(expense({ merchant: "Maple  Kiosk" }));
+
+    expect(await db.findFrequentMerchant(card, 3)).toEqual({ name: "Maple Kiosk", count: 3 });
+  });
+
+  it("is empty below the minimum, and counts neither pending, discarded nor the card's own update", async () => {
+    await bought("Maple Kiosk", 2);
+    await saveOne(expense({ merchant: "Maple Kiosk" }));
+    await db.discardIngestion(await saveOne(expense({ merchant: "Maple Kiosk" })));
+    // Two events of one message: confirmed or not, they never count each other.
+    const [a, b] = await save(nextUpdate++, expense({ merchant: "Maple Kiosk" }), expense({ merchant: "Maple Kiosk" }));
+    await db.confirmIngestion(b);
+
+    expect(await db.findFrequentMerchant(a, 3)).toBeNull();
+    expect(await db.findFrequentMerchant(a, 2)).toEqual({ name: "Maple Kiosk", count: 2 });
+  });
+
+  it("is empty for a merchant in the lookup, in any case, and for a hidden one", async () => {
+    await bought("Acme Mart", 3);
+    await bought("Example Online", 3);
+    expect(await db.findFrequentMerchant(await saveOne(expense({ merchant: "Acme Mart" })), 3)).toBeNull();
+    expect(await db.findFrequentMerchant(await saveOne(expense({ merchant: "acme  MART" })), 3)).toBeNull();
+
+    await sql("update merchants set hidden_at = now() where name = 'Example Online'");
+    expect(await db.findFrequentMerchant(await saveOne(expense({ merchant: "Example Online" })), 3)).toBeNull();
+  });
+
+  it("is empty for a card with no merchant", async () => {
+    await bought("Maple Kiosk", 3);
+    expect(await db.findFrequentMerchant(await saveOne(expense({ merchant: null })), 3)).toBeNull();
+  });
+
+  it("stops once the merchant is added", async () => {
+    await bought("Maple Kiosk", 3);
+    const card = await saveOne(expense({ merchant: "Maple Kiosk" }));
+    expect(await db.findFrequentMerchant(card, 3)).not.toBeNull();
+    await db.addMerchant("Maple Kiosk");
+    expect(await db.findFrequentMerchant(card, 3)).toBeNull();
+  });
+});
+
 describe("loadTaxonomy", () => {
   it("returns the generic seed plus the example overlay, nothing personal", async () => {
     const t = await db.loadTaxonomy();
