@@ -68,6 +68,17 @@ export type CheckResult =
   | { ok: true; errors: string[]; warnings: string[] }
   | { ok: false; errors: string[]; warnings: string[] };
 
+/** A likely earlier copy of a saved card: the same photo, or the same money event. */
+export type DuplicateMatch = {
+  rule: "photo" | "amount";
+  /** saved = a confirmed transaction; pending = a card still open. */
+  status: "saved" | "pending";
+  /** The match's date; for a photo match, the day its card was sent. */
+  date: string;
+  amount: Money;
+  description: string;
+};
+
 const CENTS = /^(\d+)\.(\d{2})$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const MONTHS: Record<string, number> = {

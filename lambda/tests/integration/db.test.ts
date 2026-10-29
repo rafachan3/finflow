@@ -296,6 +296,130 @@ describe("listPendingIngestions", () => {
   });
 });
 
+describe("findDuplicates", () => {
+  let nextUpdate = 600;
+
+  /** Saves one message from the owner's chat; a photo message carries its sizes' unique ids. */
+  async function card(
+    events: Extraction[],
+    photo?: { file_unique_id: string; file_size: number }[],
+  ): Promise<string[]> {
+    const updateId = nextUpdate++;
+    const message = photo ? { chat: { id: 1001 }, photo } : { chat: { id: 1001 } };
+    const result = await db.insertPendingIngestions(
+      events.map((e, i) => ({
+        ...pending(updateId, e, i),
+        source: photo ? ("photo" as const) : ("text" as const),
+        rawPayload: { update_id: updateId, message },
+      })),
+    );
+    if (result === "duplicate") throw new Error("unexpected duplicate");
+    return result.map((r) => r.id);
+  }
+
+  async function confirmed(extraction: Extraction): Promise<string> {
+    const [id] = await card([extraction]);
+    await db.confirmIngestion(id);
+    return id;
+  }
+
+  it("matches the same type and amount 3 days apart, but not 4", async () => {
+    await confirmed(expense({ date: "2026-10-20" }));
+    const [near] = await card([expense({ date: "2026-10-23" })]);
+    expect(await db.findDuplicates(near)).toEqual([
+      { rule: "amount", status: "saved", date: "2026-10-20", amount: "12.50", description: "groceries" },
+    ]);
+
+    await db.discardIngestion(near);
+    const [far] = await card([expense({ date: "2026-10-24" })]);
+    expect(await db.findDuplicates(far)).toEqual([]);
+  });
+
+  it("an income from another source does not match, the same source does", async () => {
+    await confirmed(income());
+    const [refund] = await card([income({ income_source: "Refund" })]);
+    expect(await db.findDuplicates(refund)).toEqual([]);
+
+    await db.discardIngestion(refund);
+    const [salary] = await card([income({ date: "2026-10-22" })]);
+    expect(await db.findDuplicates(salary)).toMatchObject([
+      { rule: "amount", status: "saved", date: "2026-10-20", amount: "200.00" },
+    ]);
+  });
+
+  it("a transfer matches", async () => {
+    await confirmed(transfer());
+    const [again] = await card([transfer({ date: "2026-10-21" })]);
+    expect(await db.findDuplicates(again)).toMatchObject([
+      { rule: "amount", status: "saved", amount: "50.00", description: "to savings" },
+    ]);
+  });
+
+  it("finds confirmed and pending matches, nearest first and saved ahead of pending on a tie", async () => {
+    await confirmed(expense({ date: "2026-10-20", description: "saved one" }));
+    await card([expense({ date: "2026-10-20", description: "open one" })]);
+    await card([expense({ date: "2026-10-23", description: "open nearer" })]);
+    const [current] = await card([expense({ date: "2026-10-22" })]);
+
+    expect(
+      (await db.findDuplicates(current)).map((m) => [m.status, m.date, m.description]),
+    ).toEqual([
+      ["pending", "2026-10-23", "open nearer"],
+      ["saved", "2026-10-20", "saved one"],
+      ["pending", "2026-10-20", "open one"],
+    ]);
+  });
+
+  it("events of the same message never match each other, saved or not", async () => {
+    const [first, second] = await card([expense(), expense()]);
+    expect(await db.findDuplicates(second)).toEqual([]);
+
+    await db.confirmIngestion(first);
+    expect(await db.findDuplicates(second)).toEqual([]);
+  });
+
+  it("a discarded card is not a match", async () => {
+    const [dropped] = await card([expense()]);
+    await db.discardIngestion(dropped);
+    const [current] = await card([expense()]);
+    expect(await db.findDuplicates(current)).toEqual([]);
+  });
+
+  it("a dateless card uses the day it was sent in Toronto, on either side", async () => {
+    await confirmed(expense({ date: "2026-10-17" }));
+    const [dateless] = await card([expense({ date: "", date_source: "missing" })]);
+    // 02:00 UTC on the 21st is still the 20th in Toronto: 3 days from the 17th.
+    await sql("update ingestions set created_at = '2026-10-21T02:00:00Z' where id = $1", [dateless]);
+    expect(await db.findDuplicates(dateless)).toMatchObject([
+      { status: "saved", date: "2026-10-17" },
+    ]);
+
+    const [dated] = await card([expense({ date: "2026-10-23" })]);
+    expect(await db.findDuplicates(dated)).toMatchObject([
+      { status: "pending", date: "2026-10-20" },
+    ]);
+  });
+
+  it("a photo whose largest size was sent before matches by photo, ahead of amount matches", async () => {
+    const sizes = (large: string) => [
+      { file_unique_id: "small-u", file_size: 10 },
+      { file_unique_id: large, file_size: 900 },
+    ];
+    const [first] = await card([expense({ amount: "30.00", items: [] })], sizes("large-u"));
+    await sql("update ingestions set created_at = '2026-10-26T15:00:00Z' where id = $1", [first]);
+    await confirmed(expense());
+
+    const [again] = await card([expense()], sizes("large-u"));
+    expect(await db.findDuplicates(again)).toMatchObject([
+      { rule: "photo", status: "pending", date: "2026-10-26" },
+      { rule: "amount", status: "saved" },
+    ]);
+
+    const [other] = await card([expense({ amount: "40.00" })], sizes("other-u"));
+    expect(await db.findDuplicates(other)).toEqual([]);
+  });
+});
+
 describe("loadTaxonomy", () => {
   it("returns the generic seed plus the example overlay, nothing personal", async () => {
     const t = await db.loadTaxonomy();
