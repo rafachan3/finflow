@@ -79,7 +79,10 @@ dbt models and the agent read it, so numbers agree everywhere.
   request) → validate → persist pending → reply. Photos and voice
   download media first; S3 archive happens only on persist (UUID, then
   PutObject, then INSERT). All state lives in Postgres, so it stays
-  stateless.
+  stateless. The `/pending` command skips extraction and comes before
+  the date/correction wait: it resends the card of every row still
+  `pending` in that chat (rows are saved before their cards are sent, so
+  a failed send leaves a row with no card).
 - Idempotency: one Telegram update may yield several `ingestions` rows
   (one per event), unique on `(telegram_update_id, event_index)`. Telegram
   retries webhooks, and a retry re-runs Gemini, which can return a
