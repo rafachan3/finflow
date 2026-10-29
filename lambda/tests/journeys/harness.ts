@@ -253,9 +253,10 @@ export const chat = {
   },
   photo(caption = "") {
     telegram.files = { "photo-large": "photos/file_1.jpg" };
+    // file_unique_id is stable for a stored file, so re-sending this photo repeats it.
     const photo = [
-      { file_id: "photo-small", file_size: 10 },
-      { file_id: "photo-large", file_size: 900 },
+      { file_id: "photo-small", file_unique_id: "photo-small-u", file_size: 10 },
+      { file_id: "photo-large", file_unique_id: "photo-large-u", file_size: 900 },
     ];
     return deliver(message(caption ? { photo, caption } : { photo }));
   },

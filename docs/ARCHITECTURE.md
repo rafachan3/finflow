@@ -76,7 +76,10 @@ dbt models and the agent read it, so numbers agree everywhere.
   GB-seconds per month, against a workload of ~150 invocations. Ingestion
   compute is $0 indefinitely, not $0 until a trial expires.
 - The handler is intentionally thin: authenticate → extract (one Gemini
-  request) → validate → persist pending → reply. Photos and voice
+  request) → validate → persist pending → duplicate check → reply. The
+  duplicate check is one read-only query per saved card (also on
+  `/pending`, Fix date and Edit), adds at most one `!` warning line, and
+  never removes Confirm; if it fails the card goes out without it. Photos and voice
   download media first; S3 archive happens only on persist (UUID, then
   PutObject, then INSERT). All state lives in Postgres, so it stays
   stateless. The `/pending` command skips extraction and comes before

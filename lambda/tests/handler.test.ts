@@ -17,6 +17,7 @@ vi.mock("../src/db.js", () => ({
   applyIngestionDate: vi.fn(),
   setIngestionAwaitingEdit: vi.fn(),
   applyIngestionEdit: vi.fn(),
+  findDuplicates: vi.fn(),
 }));
 vi.mock("../src/gemini.js", () => ({
   extractFromText: vi.fn(),
@@ -26,7 +27,6 @@ vi.mock("../src/gemini.js", () => ({
 }));
 vi.mock("../src/telegram.js", () => ({
   answerCallbackQuery: vi.fn(),
-  confirmDiscardKeyboard: vi.fn((id: string) => ({ confirm: id })),
   reviewKeyboard: vi.fn((id: string) => ({ confirm: id })),
   discardKeyboard: vi.fn((id: string) => ({ discard: id })),
   sendMessage: vi.fn(),
@@ -43,6 +43,7 @@ import {
   applyIngestionDate,
   applyIngestionEdit,
   findAwaitingIngestion,
+  findDuplicates,
   insertPendingIngestions,
   loadTaxonomy,
   setIngestionAwaitingDate,
@@ -139,6 +140,7 @@ beforeEach(() => {
   vi.mocked(extractFromVoice).mockResolvedValue([extraction]);
   vi.mocked(insertPendingIngestions).mockResolvedValue([{ id: "ing-1" }]);
   vi.mocked(findAwaitingIngestion).mockResolvedValue(null);
+  vi.mocked(findDuplicates).mockResolvedValue([]);
   vi.mocked(downloadTelegramFile).mockResolvedValue({
     bytes: Buffer.from([0xff, 0xd8, 0xff]),
     mimeType: "image/jpeg",
@@ -200,6 +202,36 @@ describe("handler", () => {
       { confirm: "ing-1" },
     );
     expect(String(vi.mocked(sendMessage).mock.calls[0][2]).split("\n")[0]).not.toMatch(/of 1\)/);
+  });
+
+  it("adds a likely duplicate to a saved card's checks and keeps Confirm", async () => {
+    vi.mocked(findDuplicates).mockResolvedValue([
+      { rule: "amount", status: "saved", date: "2026-08-16", amount: "12.50", description: "lunch" },
+    ]);
+
+    await handler(event({ update_id: 30, message: { chat: { id: 1 }, text: "12.50 lunch" } }));
+
+    expect(findDuplicates).toHaveBeenCalledWith("ing-1");
+    const text = String(vi.mocked(sendMessage).mock.calls[0][2]);
+    expect(text).toContain('! Possible duplicate: CAD 12.50 on 2026-08-16, "lunch" (saved)');
+    expect(text).toContain("Confirm to save");
+    expect(reviewKeyboard).toHaveBeenCalledWith("ing-1", { confirm: true });
+  });
+
+  it("sends a saved card without the warning when the duplicate check fails", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.mocked(findDuplicates).mockRejectedValue(new Error("db down"));
+
+    await handler(event({ update_id: 31, message: { chat: { id: 1 }, text: "12.50 lunch" } }));
+
+    expect(error).toHaveBeenCalledWith("duplicate check error", expect.any(Error));
+    expect(sendMessage).toHaveBeenCalledWith(
+      "t",
+      1,
+      expect.not.stringContaining("duplicate"),
+      { confirm: "ing-1" },
+    );
+    error.mockRestore();
   });
 
   it("does not persist or offer Confirm when checks fail", async () => {

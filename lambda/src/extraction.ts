@@ -68,6 +68,17 @@ export type CheckResult =
   | { ok: true; errors: string[]; warnings: string[] }
   | { ok: false; errors: string[]; warnings: string[] };
 
+/** A likely earlier copy of a saved card: the same photo, or the same money event. */
+export type DuplicateMatch = {
+  rule: "photo" | "amount";
+  /** saved = a confirmed transaction; pending = a card still open. */
+  status: "saved" | "pending";
+  /** The match's date; for a photo match, the day its card was sent. */
+  date: string;
+  amount: Money;
+  description: string;
+};
+
 const CENTS = /^(\d+)\.(\d{2})$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const MONTHS: Record<string, number> = {
@@ -394,6 +405,21 @@ const HEADER_POSITION = /( \(\d+ of \d+\))$/;
 export function withPosition(ack: string, cardText?: string): string {
   const label = cardText?.split("\n")[0].match(HEADER_POSITION)?.[1] ?? "";
   return ack + label;
+}
+
+/** At most one card warning for findDuplicates' ordered matches: a photo match wins. */
+export function duplicateWarnings(matches: DuplicateMatch[]): string[] {
+  const [first] = matches;
+  if (!first) return [];
+  const status = first.status === "saved" ? "saved" : "still pending";
+  if (first.rule === "photo") {
+    return [`Same photo as a card from ${first.date} (${status})`];
+  }
+  // Photo matches sort first, so every match here is an amount match.
+  const more = matches.length > 1 ? ` (+${matches.length - 1} more)` : "";
+  return [
+    `Possible duplicate: CAD ${first.amount} on ${first.date}, "${first.description}" (${status})${more}`,
+  ];
 }
 
 export function formatPreview(

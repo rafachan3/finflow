@@ -3,6 +3,7 @@ import { getConfig } from "./config.js";
 import {
   fundingSourceToPersist,
   validateExtraction,
+  type DuplicateMatch,
   type Extraction,
   type TaxonomySnapshot,
 } from "./extraction.js";
@@ -188,6 +189,83 @@ export async function listPendingIngestions(
      WHERE status = 'pending' AND raw_payload #>> '{message,chat,id}' = $1
      ORDER BY created_at, event_index`,
     [String(chatId)],
+  );
+  return result.rows;
+}
+
+/** A card's day: its date, or the day it was sent when it has none yet. */
+const CARD_DAY = (row: string) =>
+  `coalesce(nullif(${row}.extraction->>'date', '')::date, (${row}.created_at AT TIME ZONE 'America/Toronto')::date)`;
+
+/**
+ * Likely earlier copies of a saved card, strongest first: an earlier card with
+ * the same largest photo, then the same type and amount (and income source)
+ * within 3 days among confirmed transactions and this chat's open cards,
+ * nearest first, saved ahead of pending. Nothing from the card's own
+ * Telegram update matches, so one message's events never flag each other.
+ */
+export async function findDuplicates(ingestionId: string): Promise<DuplicateMatch[]> {
+  const db = await getPool();
+  const result = await db.query<DuplicateMatch>(
+    `WITH self AS (
+       SELECT i.created_at, i.telegram_update_id,
+              i.raw_payload #>> '{message,chat,id}' AS chat,
+              i.extraction->>'type' AS type,
+              (i.extraction->>'amount')::numeric AS amount,
+              i.extraction->>'income_source' AS income_source,
+              ${CARD_DAY("i")} AS day,
+              CASE WHEN i.source = 'photo' THEN (
+                SELECT p->>'file_unique_id'
+                FROM jsonb_array_elements(i.raw_payload #> '{message,photo}') WITH ORDINALITY AS t(p, n)
+                ORDER BY coalesce((p->>'file_size')::numeric, -1) DESC, n DESC
+                LIMIT 1
+              ) END AS photo_id
+       FROM ingestions i WHERE i.id = $1
+     ),
+     others AS (
+       SELECT o.*, ${CARD_DAY("o")} AS day
+       FROM ingestions o, self s
+       WHERE o.telegram_update_id <> s.telegram_update_id AND o.status <> 'discarded'
+     ),
+     matches AS (
+       SELECT 'photo' AS rule,
+              CASE WHEN o.status = 'confirmed' THEN 'saved' ELSE 'pending' END AS status,
+              (o.created_at AT TIME ZONE 'America/Toronto')::date AS day,
+              (o.extraction->>'amount')::numeric(12,2) AS amount,
+              o.extraction->>'description' AS description,
+              0 AS gap
+       FROM others o, self s
+       WHERE s.photo_id IS NOT NULL AND o.created_at < s.created_at
+         AND o.raw_payload -> 'message' -> 'photo'
+             @> jsonb_build_array(jsonb_build_object('file_unique_id', s.photo_id))
+       UNION ALL
+       SELECT 'amount', 'saved', t.occurred_on, t.amount, t.description,
+              abs(t.occurred_on - s.day)
+       FROM transactions t
+       CROSS JOIN self s
+       LEFT JOIN income_sources src ON src.id = t.income_source_id
+       WHERE t.type::text = s.type AND t.amount = s.amount
+         AND abs(t.occurred_on - s.day) <= 3
+         AND (s.type <> 'income' OR src.name IS NOT DISTINCT FROM s.income_source)
+         AND NOT EXISTS (
+           SELECT 1 FROM ingestions x
+           WHERE x.transaction_id = t.id AND x.telegram_update_id = s.telegram_update_id
+         )
+       UNION ALL
+       SELECT 'amount', 'pending', o.day, (o.extraction->>'amount')::numeric(12,2),
+              o.extraction->>'description', abs(o.day - s.day)
+       FROM others o, self s
+       WHERE o.status IN ('pending', 'awaiting_date', 'awaiting_edit')
+         AND o.raw_payload #>> '{message,chat,id}' = s.chat
+         AND o.extraction->>'type' = s.type
+         AND (o.extraction->>'amount')::numeric = s.amount
+         AND abs(o.day - s.day) <= 3
+         AND (s.type <> 'income' OR o.extraction->>'income_source' IS NOT DISTINCT FROM s.income_source)
+     )
+     SELECT rule, status, day::text AS date, amount::text AS amount, description
+     FROM matches
+     ORDER BY rule = 'photo' DESC, gap, status = 'saved' DESC, day DESC`,
+    [ingestionId],
   );
   return result.rows;
 }

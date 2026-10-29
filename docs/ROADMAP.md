@@ -172,9 +172,10 @@ Settled before Phase 4 so the dbt models are built on the final grain.
       that line only; whole-message context still tags every line.
       Tags move from the header to the line grain (migration +
       DATA_MODEL.md).
-- [ ] Duplicate warning: the preview flags a likely duplicate (same
-      amount within a few days, or the same Telegram photo
-      `file_unique_id`). Warning only — Confirm stays.
+- [x] Duplicate warning: the preview flags a likely duplicate (same
+      type and amount within 3 days, or the same Telegram photo
+      `file_unique_id`). Covers expenses, income (same source too) and
+      transfers. Warning only — Confirm stays.
 - [ ] Merchant commands in Telegram: add and delete a merchant from the
       phone.
 
