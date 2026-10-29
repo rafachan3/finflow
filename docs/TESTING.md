@@ -93,10 +93,13 @@ Run from `lambda/`.
 | Inventory | `node scripts/check-inventory.mjs` (repo root) | nothing |
 
 A throwaway Postgres for the database layers: start Docker, run
-`npm run db:up`, then
-`export TEST_DATABASE_URL=postgres://postgres:postgres@localhost:54329/postgres`.
-The harness recreates a `finflow_test` database on it and refuses any other
-host. `npm run db:down` stops it.
+`npm run db:up` in `lambda/`. Each checkout (worktree) gets its own container,
+`finflow-test-db-<hash of the repo path>`, on a port in 54330-54429, so parallel
+agents never share or stop each other's database. `db:up` prints the
+`TEST_DATABASE_URL=...` to use; `TEST_DATABASE_URL=$(npm run -s db:url) npm test`
+runs the suite against it. The harness recreates a `finflow_test` database on it
+and refuses any other host. `npm run db:down` stops only this checkout's
+container.
 
 CI (`.github/workflows/ci.yml`) reports four jobs on every PR: `unit`,
 `integration`, `eval` and `inventory`. `inventory` runs the inventory check
