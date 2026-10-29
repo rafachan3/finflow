@@ -8,10 +8,15 @@ import {
 } from "../src/commands.js";
 
 describe("merchant command replies", () => {
-  it("lists the merchants with their count, says so when there are none, and cuts a list Telegram would refuse", () => {
-    expect(formatMerchants(["A", "B"])).toBe("Merchants (2): A, B");
-    expect(formatMerchants([])).toBe("No merchants.");
-    const long = formatMerchants(Array.from({ length: 800 }, (_, i) => `Merchant number ${i}`));
+  it("lists the visible merchants with their count and the hidden count, says so when there are none, and cuts a list Telegram would refuse", () => {
+    expect(formatMerchants({ names: ["A", "B"], hidden: 0 })).toBe("Merchants (2): A, B");
+    expect(formatMerchants({ names: ["A"], hidden: 2 })).toBe("Merchants (1, 2 hidden): A");
+    expect(formatMerchants({ names: [], hidden: 0 })).toBe("No merchants.");
+    expect(formatMerchants({ names: [], hidden: 1 })).toBe("No merchants (1 hidden).");
+    const long = formatMerchants({
+      names: Array.from({ length: 800 }, (_, i) => `Merchant number ${i}`),
+      hidden: 0,
+    });
     expect(long).toHaveLength(4096);
     expect(long.endsWith("…")).toBe(true);
   });
@@ -29,19 +34,25 @@ describe("merchant command replies", () => {
   });
 
   it("answers an add and a delete in each outcome, with 'transaction' singular for one", () => {
-    expect(addReply({ added: "Maple Kiosk" })).toBe(
+    expect(addReply({ added: "Maple Kiosk", unhid: false, linked: 0 })).toBe(
       "Added merchant: Maple Kiosk. The next message will use it.",
+    );
+    expect(addReply({ added: "Maple Kiosk", unhid: false, linked: 1 })).toBe(
+      "Added merchant: Maple Kiosk. Linked 1 past transaction. The next message will use it.",
+    );
+    expect(addReply({ added: "Acme Mart", unhid: true, linked: 7 })).toBe(
+      "Unhid merchant: Acme Mart. Linked 7 past transactions. The next message will use it.",
     );
     expect(addReply({ exists: "Acme Mart" })).toBe("Already a merchant: Acme Mart.");
     expect(deleteReply({ deleted: "Maple Kiosk" }, "maple kiosk")).toBe("Deleted merchant: Maple Kiosk.");
     expect(deleteReply({ missing: true }, "Nowhere")).toBe(
       "No merchant named Nowhere. Send /merchants for the list.",
     );
-    expect(deleteReply({ inUse: 1, name: "Acme Mart" }, "acme mart")).toBe(
-      "Acme Mart is on 1 saved transaction, so it stays.",
+    expect(deleteReply({ hidden: "Acme Mart", uses: 1 }, "acme mart")).toBe(
+      "Hid Acme Mart: it stays on 1 saved transaction but won't be suggested.",
     );
-    expect(deleteReply({ inUse: 3, name: "Acme Mart" }, "acme mart")).toBe(
-      "Acme Mart is on 3 saved transactions, so it stays.",
+    expect(deleteReply({ hidden: "Acme Mart", uses: 12 }, "acme mart")).toBe(
+      "Hid Acme Mart: it stays on 12 saved transactions but won't be suggested.",
     );
   });
 });

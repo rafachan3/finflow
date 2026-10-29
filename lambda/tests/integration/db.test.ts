@@ -421,13 +421,17 @@ describe("findDuplicates", () => {
 });
 
 describe("merchants", () => {
-  it("lists the merchants sorted by name", async () => {
-    await sql("insert into merchants (name) values ('Maple Kiosk')");
-    expect(await db.listMerchants()).toEqual(["Acme Mart", "Example Online", "Maple Kiosk"]);
+  it("lists the visible merchants sorted by name, and counts the hidden ones", async () => {
+    await sql("insert into merchants (name) values ('Maple Kiosk'), ('Old Shop')");
+    await sql("update merchants set hidden_at = now() where name = 'Old Shop'");
+    expect(await db.listMerchants()).toEqual({
+      names: ["Acme Mart", "Example Online", "Maple Kiosk"],
+      hidden: 1,
+    });
   });
 
   it("adds a merchant with no aliases, and the next taxonomy load has it", async () => {
-    expect(await db.addMerchant("Maple Kiosk")).toEqual({ added: "Maple Kiosk" });
+    expect(await db.addMerchant("Maple Kiosk")).toEqual({ added: "Maple Kiosk", unhid: false, linked: 0 });
     expect(await sql("select aliases from merchants where name = 'Maple Kiosk'")).toEqual([
       { aliases: [] },
     ]);
@@ -443,7 +447,7 @@ describe("merchants", () => {
   it("deletes a merchant that no transaction uses, whatever the case", async () => {
     await db.addMerchant("Maple Kiosk");
     expect(await db.deleteMerchant("maple kiosk")).toEqual({ deleted: "Maple Kiosk" });
-    expect(await db.listMerchants()).toEqual(["Acme Mart", "Example Online"]);
+    expect((await db.listMerchants()).names).toEqual(["Acme Mart", "Example Online"]);
   });
 
   it("reports a name that is not a merchant", async () => {
@@ -451,12 +455,64 @@ describe("merchants", () => {
     expect(await count("merchants")).toBe(2);
   });
 
-  it("refuses to delete a merchant that saved transactions use, and says how many", async () => {
+  it("hides a merchant that saved transactions use: it keeps their links, leaves the taxonomy, and a later Confirm does not link it", async () => {
     const [a, b] = await save(901, expense({ merchant: "Acme Mart" }), expense({ merchant: "Acme Mart" }));
     await db.confirmIngestion(a);
     await db.confirmIngestion(b);
-    expect(await db.deleteMerchant("ACME MART")).toEqual({ inUse: 2, name: "Acme Mart" });
-    expect(await db.listMerchants()).toContain("Acme Mart");
+    expect(await db.deleteMerchant("ACME MART")).toEqual({ hidden: "Acme Mart", uses: 2 });
+    expect(await db.listMerchants()).toEqual({ names: ["Example Online"], hidden: 1 });
+    expect((await db.loadTaxonomy()).merchants).toEqual(["Example Online"]);
+
+    const [c] = await save(902, expense({ merchant: "Acme Mart" }));
+    await db.confirmIngestion(c);
+    const rows = await sql<{ merchant: string | null }>(
+      `select m.name as merchant from transactions t
+       left join merchants m on m.id = t.merchant_id order by t.created_at`,
+    );
+    expect(rows.map((r) => r.merchant)).toEqual(["Acme Mart", "Acme Mart", null]);
+
+    expect(await db.deleteMerchant("Acme Mart")).toEqual({ hidden: "Acme Mart", uses: 2 });
+  });
+
+  it("adding a hidden merchant's name, in any case, unhides it and links what was confirmed while hidden", async () => {
+    await sql("update merchants set hidden_at = now() where name = 'Acme Mart'");
+    const [a] = await save(903, expense({ merchant: "Acme Mart" }));
+    await db.confirmIngestion(a);
+    expect(await db.addMerchant("acme mart")).toEqual({ added: "Acme Mart", unhid: true, linked: 1 });
+    expect(await sql("select count(*)::int n from transactions where merchant_id is null")).toEqual([{ n: 0 }]);
+    expect(await db.listMerchants()).toEqual({ names: ["Acme Mart", "Example Online"], hidden: 0 });
+    expect(await db.addMerchant("Acme Mart")).toEqual({ exists: "Acme Mart" });
+  });
+
+  it("adding a merchant links past transactions whose extraction names it, ignoring case and spaces, and leaves linked ones alone", async () => {
+    const ids = await save(
+      904,
+      expense({ merchant: " maple   KIOSK " }),
+      expense({ merchant: "Maple Kiosk" }),
+      expense({ merchant: "Maple Kiosk" }),
+      expense({ merchant: "Corner Store" }),
+      expense({ merchant: null }),
+    );
+    for (const id of ids) await db.confirmIngestion(id);
+    // The owner linked this one by hand to another merchant: it must stay.
+    await sql(
+      `update transactions set merchant_id = (select id from merchants where name = 'Acme Mart')
+       where id = (select transaction_id from ingestions where id = $1)`,
+      [ids[2]],
+    );
+    const [stillPending] = await save(905, expense({ merchant: "Maple Kiosk" }));
+
+    expect(await db.addMerchant("Maple Kiosk")).toEqual({ added: "Maple Kiosk", unhid: false, linked: 2 });
+
+    const rows = await sql<{ merchant: string | null }>(
+      `select m.name as merchant from ingestions i
+       join transactions t on t.id = i.transaction_id
+       left join merchants m on m.id = t.merchant_id
+       order by i.event_index`,
+    );
+    expect(rows.map((r) => r.merchant)).toEqual(["Maple Kiosk", "Maple Kiosk", "Acme Mart", null, null]);
+    expect(await status(stillPending)).toBe("pending");
+    expect(await db.addMerchant("maple kiosk")).toEqual({ exists: "Maple Kiosk" });
   });
 });
 

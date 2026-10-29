@@ -343,15 +343,26 @@ purchases (spec risk; the fix would be "same merchant when both have
 one").
 
 Merchant commands (Phase 3.5; DECISIONS.md 2026-10-29): `/merchants` lists
-them sorted, `/addmerchant Name` adds one, `/delmerchant Name` deletes one.
-Each writes at once; the typed command is the confirmation. Names match
-ignoring case; an add trims and collapses spaces and refuses an empty,
-over-100-character or comma name (a comma would split one merchant in the
-prompt's list). `/delmerchant` refuses a merchant that saved transactions
-use and says how many. A merchant added at 12:00 is in the 12:01 Gemini
-request (`loadTaxonomy` reads the table on every message) and a deleted one
-is not; no prompt text changed. Commands run before the wait, from the
-allowlisted chat only, and never reach Gemini.
+the visible ones sorted, with a hidden count, `/addmerchant Name` adds one,
+`/delmerchant Name` deletes one. Each writes at once; the typed command is
+the confirmation. Names match ignoring case; an add trims and collapses
+spaces and refuses an empty, over-100-character or comma name (a comma would
+split one merchant in the prompt's list). `/delmerchant` on a merchant that
+saved transactions use hides it (`merchants.hidden_at`, migration 0010):
+it stays on them, leaves the `Merchants:` line, and Confirm no longer links
+it. `/addmerchant` on a hidden name unhides it. A new or unhidden merchant
+is linked to every saved transaction with no merchant whose stored
+extraction names it, and the reply gives the count; this is the backfill
+path (a read-only report ranks candidate names, the owner adds the ones
+worth it). Merchants are never created on Confirm. A merchant added at
+12:00 is in the 12:01 Gemini request (`loadTaxonomy` reads the table on
+every message) and a deleted or hidden one is not; no prompt text changed.
+Commands run before the wait, from the allowlisted chat only, and never
+reach Gemini.
+
+Migration 0010 (`merchants.hidden_at`, nullable) is **not yet applied to
+production**. Apply it with `supabase db push` before merging the
+hide-and-backfill PR: merging deploys, and the new code reads the column.
 
 Command menu (DECISIONS.md 2026-10-29): `src/commands.ts` is the one command
 table. The handler's run table is typed against it, and the last step of the
