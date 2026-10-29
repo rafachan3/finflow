@@ -60,6 +60,7 @@ included.
 | Merchants | A merchant that saved transactions use is not deleted, and the reply says how many transactions use it | `a merchant on saved transactions is not deleted, and the reply says how many`<br>`refuses to delete a merchant that saved transactions use, and says how many`<br>`answers an add and a delete in each outcome, with 'transaction' singular for one` |
 | Merchants | `/merchants` lists them sorted (cut to Telegram's limit), and a command with an empty, over-long or comma name, or an unknown one to delete, gets a hint and writes nothing | `/merchants lists them sorted, and a command with no usable name gets a hint, not a write`<br>`lists the merchants sorted by name`<br>`reports a name that is not a merchant`<br>`lists the merchants with their count, says so when there are none, and cuts a list Telegram would refuse`<br>`collapses spaces in a merchant name and refuses an empty, over-long or comma name with a reason` |
 | Commands | A known slash command (every one in the menu) runs before the wait, so it is never taken as a date or a correction, and never reaches Gemini; one from a chat off the allowlist is ignored | `a merchant command while a card waits for a correction is not sent to Gemini`<br>`a merchant command from a chat that is not on the allowlist does nothing`<br>`every command in the menu is answered without asking Gemini`<br>`reads a known slash command with or without @botname, in any case, and its argument`<br>`returns nothing for plain text, an unknown command, or a longer word` |
+| Commands | The Telegram command menu is built from the same table the handler routes on, in the shape Telegram accepts, and is registered with `setMyCommands` | `lists exactly the commands the handler routes on, in Telegram's allowed shape`<br>`registers that menu with setMyCommands` |
 | Gemini | A 503 or 429 retries down the model chain; other errors do not retry | `retries a 503 on the fallback model and records which model answered`<br>`retries a non-JSON 503 body too`<br>`gives up after three attempts with the HTTP status in the error`<br>`moves to the next model on a 429, since free-tier quota is per model`<br>`does not retry a bad request` |
 | Gemini | A card read by the Lite model warns to check categories and buckets, and only then | `only the lighter model answered: the card says to check categories and buckets`<br>`flags a card that a Lite model read, and only then` |
 | Gemini | A message is one request with the buckets included, and the rules never reach the logs | `makes one call that returns buckets, with the rules after the taxonomy`<br>`reads needs from the item and maps anything else to wants`<br>`never logs the system prompt, so the rules stay out of CloudWatch`<br>`sends the API key in a header, not the URL` |
@@ -97,6 +98,10 @@ raise it, never lower it). The deploy workflow runs only after CI succeeds
 on `main`, then POSTs a wrong webhook secret to the deployed Function URL
 (read with `get-function-url-config`, never committed) and fails unless it
 gets 401. That smoke step has no inventory row: it is not a test file.
+A last deploy step reads the bot token from SSM, masks it, and runs
+`npm run telegram:commands` to set the command menu. It is not a test either;
+its payload is the unit-tested `commandMenu()`. A failure there turns the run
+red but leaves the deployed code in place.
 
 ## The eval and its key
 

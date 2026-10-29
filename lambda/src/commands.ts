@@ -12,6 +12,11 @@ export const COMMANDS = {
 
 export type CommandName = keyof typeof COMMANDS;
 
+/** The setMyCommands payload for the table. */
+export function commandMenu(): { command: string; description: string }[] {
+  return Object.entries(COMMANDS).map(([command, description]) => ({ command, description }));
+}
+
 // Telegram appends @botname to a command in a group or when it is picked from the menu.
 const COMMAND = /^\/(\w+)(?:@\w+)?(?:\s+([\s\S]*))?$/;
 
