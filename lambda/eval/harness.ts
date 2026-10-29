@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { mismatches, recordedEvents, type Golden } from "../tests/golden/golden.js";
 
 /**
@@ -164,11 +165,45 @@ export function problems(g: Pick<Golden, "input" | "expect">, raw: unknown): str
   return mismatches(recordedEvents({ ...g, recorded: raw } as Golden), g.expect.events);
 }
 
-/** The golden file with `recorded` replaced, or null when `raw` misses `expect`. */
-export function recordedFile(text: string, raw: unknown): string | null {
+/**
+ * The golden file with `recorded` and the hash of the request that produced
+ * it replaced, or null when `raw` misses `expect`.
+ */
+export function recordedFile(text: string, raw: unknown, hash: string): string | null {
   const g = JSON.parse(text);
   if (problems(g, raw).length > 0) return null;
-  return `${JSON.stringify({ ...g, recorded: raw }, null, 2)}\n`;
+  return `${JSON.stringify({ ...g, recorded: raw, request_sha256: hash }, null, 2)}\n`;
+}
+
+/**
+ * Identifies a Gemini request: the exact body production sends (prompt,
+ * taxonomy, rules, schema, generationConfig, inline media) and the model
+ * chain it falls through. The API key travels in a header, so it is not in it.
+ */
+export function requestHash(models: string[], body: string): string {
+  return createHash("sha256").update(`${models.join("\n")}\n\n${body}`).digest("hex");
+}
+
+/**
+ * Runs `call` with every Gemini request answered by `recorded`, no network.
+ * Each request body is pushed to `bodies`, even when `call` then throws.
+ */
+export async function replay<T>(
+  recorded: unknown,
+  call: () => Promise<T>,
+  bodies: string[] = [],
+): Promise<T> {
+  const before = globalThis.fetch;
+  globalThis.fetch = async (_input, init) => {
+    bodies.push(String(init?.body));
+    const text = JSON.stringify(recorded);
+    return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text }] } }] }));
+  };
+  try {
+    return await call();
+  } finally {
+    globalThis.fetch = before;
+  }
 }
 
 export type Answer = { raw: unknown; model: string | undefined };
@@ -200,7 +235,14 @@ export async function captureAnswer(call: () => Promise<unknown>): Promise<Answe
   return { raw: await first, model };
 }
 
-export type CaseRow = { name: string; attempts: number; model: string | undefined; passed: boolean };
+export type CaseRow = {
+  name: string;
+  attempts: number;
+  model: string | undefined;
+  passed: boolean;
+  /** Its request matched a recorded pass, so the recording was checked instead of calling Gemini. */
+  replayed?: boolean;
+};
 
 /** Markdown for the job summary: one row per case, then primary vs fallback counts. */
 export function summary(rows: CaseRow[], primary: string): string {
@@ -209,12 +251,14 @@ export function summary(rows: CaseRow[], primary: string): string {
     "| case | attempts | answering model | result |",
     "| --- | --- | --- | --- |",
     ...rows.map(
-      (r) => `| ${r.name} | ${r.attempts} | ${r.model ?? "none"} | ${r.passed ? "pass" : "fail"} |`,
+      (r) =>
+        `| ${r.name} | ${r.attempts} | ${r.replayed ? "replayed, no call" : (r.model ?? "none")} | ${r.passed ? "pass" : "fail"} |`,
     ),
     "",
     `Answered by the primary ${primary}: ${count((r) => r.model === primary)} of ${rows.length}. ` +
       `By a fallback: ${count((r) => !!r.model && r.model !== primary)}. ` +
-      `By no model: ${count((r) => !r.model)}.`,
+      `By no model: ${count((r) => !r.model && !r.replayed)}. ` +
+      `Replayed without a call: ${count((r) => !!r.replayed)}.`,
     "",
   ].join("\n");
 }

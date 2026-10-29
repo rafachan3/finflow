@@ -6,6 +6,8 @@ import {
   isRelevant,
   outageWaiter,
   recordedFile,
+  replay,
+  requestHash,
   retryOnce,
   shouldRun,
   summary,
@@ -167,27 +169,91 @@ describe("recordedFile", () => {
     events: [{ ...golden.recorded.events[0], description: "Coffee, live" }],
   };
 
-  it("rewrites only `recorded`, in the file's own format", () => {
-    const next = recordedFile(text, live);
+  it("rewrites only the recording and the request hash, in the file's own format", () => {
+    const next = recordedFile(text, live, "abc");
     expect(next).not.toBeNull();
-    expect(JSON.parse(next!)).toEqual({ ...golden, recorded: live });
+    expect(JSON.parse(next!)).toEqual({ ...golden, recorded: live, request_sha256: "abc" });
     expect(next!.endsWith("}\n")).toBe(true);
-    expect(recordedFile(text, golden.recorded)).toBe(text);
+    const same = { ...golden, request_sha256: "abc" };
+    expect(recordedFile(`${JSON.stringify(same, null, 2)}\n`, golden.recorded, "abc")).toBe(
+      `${JSON.stringify(same, null, 2)}\n`,
+    );
   });
 
   it("refuses an answer that breaks the expectation", () => {
     const twoLines = {
       events: [{ ...live.events[0], items: [...live.events[0].items, { amount: "0.00" }] }],
     };
-    expect(recordedFile(text, twoLines)).toBeNull();
-    expect(recordedFile(text, { events: [] })).toBeNull();
+    expect(recordedFile(text, twoLines, "abc")).toBeNull();
+    expect(recordedFile(text, { events: [] }, "abc")).toBeNull();
   });
 
   it("records an edit as the single patched extraction", () => {
     const editText = readFileSync(new URL("./golden/edit-amount.json", import.meta.url), "utf8");
     const edit = JSON.parse(editText);
-    expect(recordedFile(editText, edit.recorded)).toBe(editText);
-    expect(recordedFile(editText, { events: [edit.recorded] })).toBeNull();
+    expect(recordedFile(editText, edit.recorded, "abc")).not.toBeNull();
+    expect(recordedFile(editText, { events: [edit.recorded] }, "abc")).toBeNull();
+  });
+});
+
+describe("requestHash", () => {
+  const chain = ["gemini-3.6-flash", "gemini-3.5-flash", "gemini-3.5-flash-lite"];
+
+  it("is the same for the same body and model chain", () => {
+    expect(requestHash(chain, '{"a":1}')).toBe(requestHash([...chain], '{"a":1}'));
+    expect(requestHash(chain, '{"a":1}')).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it("changes when one byte of the body or any model in the chain changes", () => {
+    const hash = requestHash(chain, '{"a":1}');
+    expect(requestHash(chain, '{"a":2}')).not.toBe(hash);
+    expect(requestHash(["gemini-4-flash", ...chain.slice(1)], '{"a":1}')).not.toBe(hash);
+    expect(requestHash(chain.slice(0, 2), '{"a":1}')).not.toBe(hash);
+  });
+});
+
+describe("replay", () => {
+  const realFetch = globalThis.fetch;
+  afterEach(() => {
+    globalThis.fetch = realFetch;
+  });
+  const url = "https://generativelanguage.googleapis.com/v1beta/models/m:generateContent";
+
+  it("answers every Gemini request with the recording, without the network, and keeps the bodies", async () => {
+    const network = vi.fn(async () => new Response("network", { status: 500 }));
+    globalThis.fetch = network as typeof fetch;
+    const bodies: string[] = [];
+
+    const text = await replay(
+      { events: ["recorded"] },
+      async () => {
+        const res = await fetch(url, { method: "POST", body: '{"exact":1}' });
+        return (await res.json()).candidates[0].content.parts[0].text;
+      },
+      bodies,
+    );
+
+    expect(JSON.parse(text)).toEqual({ events: ["recorded"] });
+    expect(bodies).toEqual(['{"exact":1}']);
+    expect(network).not.toHaveBeenCalled();
+    expect(globalThis.fetch).toBe(network);
+  });
+
+  it("keeps the body and puts fetch back when the current code rejects the recording", async () => {
+    const before = globalThis.fetch;
+    const bodies: string[] = [];
+    await expect(
+      replay(
+        {},
+        async () => {
+          await fetch(url, { method: "POST", body: "sent" });
+          throw new Error("Gemini returned no events");
+        },
+        bodies,
+      ),
+    ).rejects.toThrow("no events");
+    expect(bodies).toEqual(["sent"]);
+    expect(globalThis.fetch).toBe(before);
   });
 });
 
@@ -380,9 +446,18 @@ describe("summary", () => {
         "| expense-and-income | 2 | gemini-3.5-flash-lite | pass |",
         "| two-stores | 2 | none | fail |",
         "",
-        "Answered by the primary gemini-3.6-flash: 1 of 3. By a fallback: 1. By no model: 1.",
+        "Answered by the primary gemini-3.6-flash: 1 of 3. By a fallback: 1. By no model: 1. Replayed without a call: 0.",
         "",
       ].join("\n"),
     );
+  });
+
+  it("marks a replayed case and counts it apart from live answers", () => {
+    const md = summary(
+      [{ name: "transfer", attempts: 0, model: undefined, replayed: true, passed: true }],
+      "gemini-3.6-flash",
+    );
+    expect(md).toContain("| transfer | 0 | replayed, no call | pass |");
+    expect(md).toContain("By no model: 0. Replayed without a call: 1.");
   });
 });

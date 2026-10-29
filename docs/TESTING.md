@@ -56,6 +56,7 @@ included.
 | Gemini | A message is one request with the buckets included, and the rules never reach the logs | `makes one call that returns buckets, with the rules after the taxonomy`<br>`reads needs from the item and maps anything else to wants`<br>`never logs the system prompt, so the rules stay out of CloudWatch`<br>`sends the API key in a header, not the URL` |
 | Gemini | Token usage is stored on the first event of a message only | `persists the valid event, previews the invalid one without buttons, and moves usage` |
 | Taxonomy | The taxonomy comes from the database and rejects a subcategory or item type that is not in it | `returns the generic seed plus the example overlay, nothing personal`<br>`rejects an item_type from a different category than the subcategory`<br>`accepts a balanced expense with live taxonomy` |
+| Eval | A golden case whose Gemini request is byte-for-byte the one recorded as passing replays its recording through today's code instead of calling Gemini | `answers every Gemini request with the recording, without the network, and keeps the bodies`<br>`keeps the body and puts fetch back when the current code rejects the recording`<br>`changes when one byte of the body or any model in the chain changes`<br>`rewrites only the recording and the request hash, in the file's own format`<br>`marks a replayed case and counts it apart from live answers` |
 | Safety | Tests refuse any database that is not on this machine, and the read-only role writes nothing | `refuses a database that is not on this machine`<br>`can read every public table and write none of them`<br>`is refused a write when it tries one` |
 
 ## Running each layer
@@ -86,11 +87,31 @@ on `main`.
 
 ## The eval and its key
 
-`npm run eval` sends every golden case to live Gemini through the production
-extraction code and checks the answer against the case's `expect`. It passes
-without calling Gemini when no path that changes the request or the judging
-moved since the base commit. Add `-- --record` to refresh a golden's
-`recorded` from a live answer that satisfies `expect`.
+`npm run eval` runs every golden case through the production extraction
+code and checks Gemini's answer against the case's `expect`. It passes
+without running when no path that changes the request or the judging moved
+since the base commit.
+
+Each case first builds its exact Gemini request with no network call, from
+its `recorded` answer, and hashes it with the model chain
+(`requestHash`). When that hash equals the case's `request_sha256`, Gemini
+already passed that exact request, so the recording goes through today's
+code and is checked against `expect`, with no Gemini call. Any other case
+calls Gemini. The eval pins "today" to a fixed date so the request does not
+change daily, and an edit case patches its base case's recording, so every
+case is at most one request.
+
+Add `-- --record` to write each live pass back to its golden: the answer
+into `recorded`, the request's hash into `request_sha256`. Locally the key
+comes from the environment or the repo-root `.env`. CI records too but cannot commit, so after a
+PR's eval calls Gemini, commit its refreshed goldens in the same PR:
+
+```sh
+gh run download <run-id> -n goldens -D lambda/tests/golden
+npm test   # journeys replay the new recordings
+```
+
+The next push then replays those cases without a call.
 
 Key setup, once:
 
@@ -98,8 +119,9 @@ Key setup, once:
    bot's**, and an API key in it. Free-tier quota is counted per project (20
    requests a day on each Flash model), so a key from the production project
    would spend the bot's daily requests.
-2. Add the key as the `GEMINI_EVAL_API_KEY` Actions secret. Export it to run
-   the eval locally.
+2. Add the key as the `GEMINI_EVAL_API_KEY` Actions secret. To run the eval
+   locally, export it or add `GEMINI_EVAL_API_KEY=<key>` to the repo-root
+   `.env`.
 
 A case answered by a fallback model passes when its answer satisfies
 `expect`: a real message sent that day would have been answered by the same

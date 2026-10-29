@@ -35,6 +35,8 @@ export type Golden = {
   /** A ruleset file in this directory, sent where production sends the owner's rules. */
   rules?: string;
   recorded: unknown;
+  /** Hash of the request whose answer is `recorded` (eval/harness.ts requestHash). */
+  request_sha256?: string;
 };
 
 export type RawEvent = {

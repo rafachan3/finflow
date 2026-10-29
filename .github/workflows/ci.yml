@@ -56,8 +56,9 @@ jobs:
       - run: npm ci
       - run: npm run test:integration
 
-  # Live Gemini over the golden cases. Always reports; calls Gemini only
-  # when the diff touches a path in lambda/eval/harness.ts (RELEVANT).
+  # The golden cases. Always reports; runs only when the diff touches a path
+  # in lambda/eval/harness.ts (RELEVANT), and then calls Gemini only for a
+  # case whose request differs from its recorded pass (docs/TESTING.md).
   eval:
     runs-on: ubuntu-latest
     # Cases plus up to 20 minutes waiting out a Gemini outage.
@@ -92,9 +93,17 @@ jobs:
           cache-dependency-path: lambda/package-lock.json
       - run: npm ci
       # Only this step sees the key, not checkout or npm ci's install scripts.
-      - run: npm run eval
+      # --record rewrites each live pass's golden; CI cannot commit, so the
+      # files go up as the `goldens` artifact for the PR to commit.
+      - run: npm run eval -- --record
         env:
           GEMINI_EVAL_API_KEY: ${{ secrets.GEMINI_EVAL_API_KEY }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: goldens
+          path: lambda/tests/golden/*.json
+          retention-days: 7
 
   # Every behaviour in docs/TESTING.md cites a test that exists, and the
   # whole suite stays above the coverage floor in lambda/vitest.config.ts.
