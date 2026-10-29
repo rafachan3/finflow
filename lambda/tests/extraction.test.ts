@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   applyDatePolicy,
   formatPreview,
+  withPosition,
   fundingSourceToPersist,
   normalizeTaxonomyNames,
   parseCents,
@@ -337,6 +338,15 @@ describe("formatPreview", () => {
       "Expense · 2026-08-17 · CAD 27.60",
     );
     expect(formatPreview(e, checks).split("\n")[0]).toBe("Expense · 2026-08-17 · CAD 27.60");
+  });
+
+  it("adds the card's (k of n) to an ack only when its header carries one", () => {
+    const header = "Expense · 2026-08-17 · CAD 27.60";
+    expect(withPosition("Saved.", `${header} (2 of 3)\nBurger`)).toBe("Saved. (2 of 3)");
+    expect(withPosition("Discarded.", `${header} (1 of 2)`)).toBe("Discarded. (1 of 2)");
+    expect(withPosition("Saved.", `${header}\nBurger (2 of 3)`)).toBe("Saved.");
+    expect(withPosition("Saved.", header)).toBe("Saved.");
+    expect(withPosition("Saved.", undefined)).toBe("Saved.");
   });
 
   it("shows the note under the description, and no Note line without one", () => {

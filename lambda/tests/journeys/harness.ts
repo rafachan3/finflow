@@ -273,7 +273,7 @@ export const chat = {
       callback_query: {
         id: `cb-${++callbackId}`,
         data: button.data,
-        message: { message_id: 1, chat: { id: from } },
+        message: { message_id: 1, chat: { id: from }, text: reply.text },
       },
     });
   },

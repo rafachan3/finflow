@@ -315,6 +315,13 @@ covers a card whose send failed after its row was saved. Not added to
 the Telegram command menu (no `setMyCommands` in the repo); typing it
 works.
 
+Batch position in acks (#30; DECISIONS.md 2026-10-28): confirming or
+discarding a card from a batch of 2+ replies `Saved. (k of n)` /
+`Discarded. (k of n)`, in the toast and the chat message. The position is
+read back from the tapped card's header, so a card resent by `/pending`
+(no label) and a single card keep plain `Saved.` / `Discarded.`.
+"Already handled." never carries it.
+
 ## Next concrete step
 
 Phase 3.6 is closed. Start Phase 3.5 (item-level tags first, per

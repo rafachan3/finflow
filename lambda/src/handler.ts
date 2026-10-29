@@ -23,6 +23,7 @@ import {
   normalizeTaxonomyNames,
   parseDateReply,
   validateExtraction,
+  withPosition,
   type CheckResult,
   type Extraction,
   type TaxonomySnapshot,
@@ -518,7 +519,7 @@ async function handleCallback(
   let ack: string;
   if (action === "c") {
     const result = await confirmIngestion(ingestionId);
-    ack = result === "confirmed" ? "Saved." : "Already handled.";
+    ack = result === "confirmed" ? withPosition("Saved.", cb.message?.text) : "Already handled.";
   } else if (action === "f") {
     const started = await setIngestionAwaitingDate(ingestionId);
     if (started === "busy") return busyWaiting(botToken, cb.id, chatId);
@@ -553,7 +554,7 @@ async function handleCallback(
     return ok("ok");
   } else {
     const result = await discardIngestion(ingestionId);
-    ack = result === "discarded" ? "Discarded." : "Already handled.";
+    ack = result === "discarded" ? withPosition("Discarded.", cb.message?.text) : "Already handled.";
   }
 
   await answerCallbackQuery(botToken, cb.id, ack);

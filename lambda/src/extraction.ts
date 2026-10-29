@@ -381,6 +381,21 @@ export function fundingSourceToPersist(
   return type === "expense" ? fundedBy : null;
 }
 
+/** The " (k of n)" a card header shows; empty unless the message made 2+ cards. */
+function positionLabel(position?: { index: number; count: number }): string {
+  return position && position.count > 1
+    ? ` (${position.index + 1} of ${position.count})`
+    : "";
+}
+
+const HEADER_POSITION = /( \(\d+ of \d+\))$/;
+
+/** An ack with the position its card's header shows; unchanged for an unlabelled card. */
+export function withPosition(ack: string, cardText?: string): string {
+  const label = cardText?.split("\n")[0].match(HEADER_POSITION)?.[1] ?? "";
+  return ack + label;
+}
+
 export function formatPreview(
   extraction: Extraction,
   checks: CheckResult,
@@ -389,10 +404,7 @@ export function formatPreview(
   const lines: string[] = [];
   const title =
     extraction.type.charAt(0).toUpperCase() + extraction.type.slice(1);
-  const label =
-    position && position.count > 1
-      ? ` (${position.index + 1} of ${position.count})`
-      : "";
+  const label = positionLabel(position);
   lines.push(
     `${title} · ${extraction.date} · ${extraction.currency} ${extraction.amount}${label}`,
   );

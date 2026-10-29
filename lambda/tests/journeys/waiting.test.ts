@@ -40,7 +40,7 @@ describe("a card waiting for a date", () => {
     await chat.tap(first, "Fix date");
     await chat.tap(second, "Confirm");
 
-    expect(chat.acks()).toEqual(["Send the date.", "Saved."]);
+    expect(chat.acks()).toEqual(["Send the date.", "Saved. (2 of 2)"]);
     expect(await ledger.transactions()).toMatchObject([{ amount: "5.00" }]);
   });
 
@@ -89,6 +89,6 @@ describe("a card waiting for a date", () => {
     await chat.tap(first, "Discard");
     await chat.tap(second, "Fix date");
 
-    expect(chat.acks()).toEqual(["Send the date.", "Discarded.", "Send the date."]);
+    expect(chat.acks()).toEqual(["Send the date.", "Discarded. (1 of 2)", "Send the date."]);
   });
 });
