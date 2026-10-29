@@ -229,6 +229,11 @@ describe("validateExtraction", () => {
     expect(result.warnings.some((w) => /merchant/i.test(w))).toBe(true);
   });
 
+  it("finds a listed merchant whatever its case, spacing or apostrophe", () => {
+    const result = validateExtraction(expense({ merchant: " MCDONALD’S " }), taxonomy);
+    expect(result.warnings.some((w) => /merchant/i.test(w))).toBe(false);
+  });
+
   it("requires income_source and no lines on income", () => {
     const result = validateExtraction(
       expense({

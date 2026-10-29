@@ -1,4 +1,4 @@
-import { cleanMerchantName } from "./commands.js";
+import { cleanMerchantName, merchantKey } from "./commands.js";
 
 export type Money = string;
 export type Bucket = "needs" | "wants";
@@ -310,7 +310,7 @@ export function validateExtraction(
 
   if (
     extraction.merchant !== null &&
-    !hasName(taxonomy.merchants, extraction.merchant)
+    !taxonomy.merchants.some((m) => merchantKey(m) === merchantKey(extraction.merchant!))
   ) {
     warnings.push(
       `merchant "${extraction.merchant}" is not in lookup; will save without merchant`,

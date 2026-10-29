@@ -1,4 +1,5 @@
 import { Pool, type PoolClient } from "pg";
+import { APOSTROPHE_VARIANTS } from "./commands.js";
 import { getConfig } from "./config.js";
 import {
   fundingSourceToPersist,
@@ -102,25 +103,30 @@ export async function listMerchants(): Promise<{ names: string[]; hidden: number
 
 /** A merchant name as the lookups compare it: spaces collapsed, ends trimmed. */
 const MERCHANT_SPACED = (name: string) => `btrim(regexp_replace(${name}, '\\s+', ' ', 'g'))`;
-/** The same, ignoring case: two spellings with one key are one merchant. */
-const MERCHANT_KEY = (name: string) => `lower(${MERCHANT_SPACED(name)})`;
+/**
+ * The same, ignoring case and apostrophe style: spellings with one key are one
+ * merchant. commands.ts's merchantKey is this rule in TypeScript.
+ */
+export const MERCHANT_KEY = (name: string) =>
+  `lower(translate(${MERCHANT_SPACED(name)}, '${APOSTROPHE_VARIANTS}', '${"''".repeat(APOSTROPHE_VARIANTS.length)}'))`;
 
 /**
- * Adds a merchant, or unhides one with that name, and links the saved
- * transactions with no merchant whose stored extraction names it. The unique
- * constraint is case-sensitive, so a name matching in another case is matched here.
+ * Adds a merchant, unhides one with that name, or finds it already visible; then
+ * links the saved transactions with no merchant that name it. A bot-saved
+ * transaction names it in its stored extraction; a history import has no
+ * ingestion, so its whole description must be the name. The unique constraint is
+ * case-sensitive, so a name matching in another case or apostrophe is matched here.
  */
 export async function addMerchant(
   name: string,
-): Promise<{ added: string; unhid: boolean; linked: number } | { exists: string }> {
+): Promise<{ added: string; unhid: boolean; linked: number } | { exists: string; linked: number }> {
   const db = await getPool();
-  // One statement: insert unless a merchant matches ignoring case; unhide that one if
-  // it is hidden; else report it. A new or unhidden merchant fills only a NULL
-  // merchant_id, matching the extraction's name as cleanMerchantName and the
-  // lookup do: spaces collapsed, case ignored.
-  const res = await db.query<{ name: string; added: boolean; unhid: boolean; linked: number }>(
+  // One statement: insert unless a merchant matches by key; unhide that one if it is
+  // hidden. Whichever merchant results only ever fills a NULL merchant_id.
+  const res = await db.query<{ name: string; kind: string; linked: number }>(
     `WITH m AS (
-       SELECT id, name, hidden_at FROM merchants WHERE lower(name) = lower($1) FOR UPDATE
+       SELECT id, name, hidden_at FROM merchants
+       WHERE ${MERCHANT_KEY("name")} = ${MERCHANT_KEY("$1::text")} FOR UPDATE
      ),
      ins AS (
        INSERT INTO merchants (name)
@@ -133,28 +139,36 @@ export async function addMerchant(
        RETURNING id, name
      ),
      target AS (
-       SELECT id, name, false AS unhid FROM ins
+       SELECT id, name, 'added' AS kind FROM ins
        UNION ALL
-       SELECT id, name, true FROM unhid
+       SELECT id, name, 'unhid' FROM unhid
+       UNION ALL
+       SELECT id, name, 'exists' FROM m WHERE hidden_at IS NULL
      ),
      linked AS (
        UPDATE transactions t SET merchant_id = target.id
-       FROM target, ingestions i
-       WHERE i.transaction_id = t.id
-         AND t.merchant_id IS NULL
-         AND ${MERCHANT_KEY("i.extraction->>'merchant'")} = lower(target.name)
+       FROM target
+       WHERE t.merchant_id IS NULL
+         AND (
+           EXISTS (
+             SELECT 1 FROM ingestions i
+             WHERE i.transaction_id = t.id
+               AND ${MERCHANT_KEY("i.extraction->>'merchant'")} = ${MERCHANT_KEY("target.name")}
+           )
+           OR (
+             NOT EXISTS (SELECT 1 FROM ingestions i WHERE i.transaction_id = t.id)
+             AND ${MERCHANT_KEY("t.description")} = ${MERCHANT_KEY("target.name")}
+           )
+         )
        RETURNING t.id
      )
-     SELECT name, true AS added, unhid, (SELECT count(*)::int FROM linked) AS linked
-     FROM target
-     UNION ALL
-     SELECT name, false, false, 0 FROM m WHERE hidden_at IS NULL`,
+     SELECT name, kind, (SELECT count(*)::int FROM linked) AS linked FROM target`,
     [name],
   );
   const row = res.rows[0];
-  return row.added
-    ? { added: row.name, unhid: row.unhid, linked: row.linked }
-    : { exists: row.name };
+  return row.kind === "exists"
+    ? { exists: row.name, linked: row.linked }
+    : { added: row.name, unhid: row.kind === "unhid", linked: row.linked };
 }
 
 /**
@@ -169,7 +183,7 @@ export async function deleteMerchant(
   // The foreign key still refuses the delete if a Confirm links the merchant after the count.
   const res = await db.query<{ name: string; n: number; deleted: boolean }>(
     `WITH m AS (
-       SELECT id, name FROM merchants WHERE lower(name) = lower($1) FOR UPDATE
+       SELECT id, name FROM merchants WHERE ${MERCHANT_KEY("name")} = ${MERCHANT_KEY("$1::text")} FOR UPDATE
      ),
      used AS (
        SELECT count(*)::int AS n FROM transactions WHERE merchant_id IN (SELECT id FROM m)
@@ -399,7 +413,7 @@ export async function findFrequentMerchant(
       AND o.telegram_update_id <> s.telegram_update_id
       AND ${MERCHANT_KEY("o.extraction->>'merchant'")} = s.key
      WHERE s.key <> ''
-       AND NOT EXISTS (SELECT 1 FROM merchants m WHERE lower(m.name) = s.key)
+       AND NOT EXISTS (SELECT 1 FROM merchants m WHERE ${MERCHANT_KEY("m.name")} = s.key)
      GROUP BY s.name
      HAVING count(o.id) >= $2`,
     [ingestionId, min],
@@ -532,7 +546,9 @@ export async function confirmIngestion(
         ? null
         : await lookupId(
             client,
-            `SELECT id FROM merchants WHERE name = $1 AND hidden_at IS NULL`,
+            `SELECT id FROM merchants
+             WHERE ${MERCHANT_KEY("name")} = ${MERCHANT_KEY("$1::text")} AND hidden_at IS NULL
+             ORDER BY (name = $1::text) DESC, id LIMIT 1`,
             [extraction.merchant],
           );
 

@@ -1376,3 +1376,39 @@ no `merchants` row but is named by 3 or more confirmed purchases gets one
 **Ruled out:** auto-creating the merchant on the third purchase (merchants stay
 hand-created); a button on the card (a callback and a new write path for a
 command the owner can already type); counting pending cards.
+
+## 2026-10-29 — Merchant matching ignores apostrophe style; adding links history imports and an existing merchant
+
+**Amends** "An in-use merchant is hidden, not kept; adding one links past
+transactions" (same day). Found in production: `/addmerchant` for a merchant
+linked 1 past transaction, but 4 Notion-imported rows were left, because their
+`description` spelled the apostrophe as U+2019.
+
+- **One key everywhere.** The merchant key is now spaces collapsed, case
+  ignored, and ’ ‘ ´ and the backtick read as an apostrophe. The SQL expression `MERCHANT_KEY` in
+  `db.ts` drives link-on-add, the frequent-merchant hint and its lookup check,
+  the duplicate-name check in `addMerchant` and `deleteMerchant`, and
+  Confirm's merchant lookup (an exact spelling still wins a tie). `merchantKey`
+  in `commands.ts` is the same rule in TypeScript and drives the card's "not in
+  lookup" warning; an integration test runs both over the same strings so they
+  cannot drift. The stored name keeps the spelling the owner typed.
+- **A history import row is linked when its whole description is the name.**
+  A transaction with no `ingestions` row (the Notion import writes none) and
+  no merchant is linked when `MERCHANT_KEY(description)` equals the key of the
+  merchant being added. Equality only, never substring or prefix: "Metro
+  ticket" and "Bixi Monthly Pass" stay unlinked for "Metro" and "Bixi" alone.
+- **Why equality is safe for these rows.** A Notion description is the owner's
+  own title for the purchase. Where it is exactly a business name, the row is a
+  purchase there; a longer title adds words that may mean something else, so it
+  is left for the owner. A wrong link costs more than a missed one: it still
+  needs a hand fix, while a missed one is a one-line re-run. Rows with an
+  ingestion are never matched on description; their stored extraction decides.
+  An existing link is never overwritten.
+- **`/addmerchant` on a visible merchant links too.** It replies `Already a
+  merchant: X. Linked N past transactions.` (just `Already a merchant: X.` when
+  nothing links), so the owner can re-run it after a matching fix without
+  deleting anything.
+
+**Ruled out:** a separate relink command (re-running `/addmerchant` is it);
+substring, prefix or fuzzy description matching; a migration that rewrites the
+imported descriptions; matching ingestion-backed rows on `description`.

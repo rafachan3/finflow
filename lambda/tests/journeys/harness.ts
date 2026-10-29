@@ -318,6 +318,15 @@ export const chat = {
 };
 
 export const ledger = {
+  /** A Notion-style history row: a saved expense with no ingestion and no merchant. */
+  async importRow(description: string): Promise<void> {
+    await sql(
+      `insert into transactions (occurred_on, type, amount, description, funding_source_id)
+       values ('2026-07-01', 'expense', 9.99, $1,
+               (select id from funding_sources where name = 'self'))`,
+      [description],
+    );
+  },
   ingestions() {
     return sql<{
       id: string;
