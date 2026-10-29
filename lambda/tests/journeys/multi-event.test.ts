@@ -101,7 +101,7 @@ describe("several purchases in one message", () => {
       [1, "photo"],
     ]);
     expect(uploads()).toEqual([
-      expect.objectContaining({ Bucket: BUCKET, Key: `${rows[0].id}.jpg`, ContentType: "image/jpeg" }),
+      expect.objectContaining({ Bucket: BUCKET, Key: rows[0].media_path, ContentType: "image/jpeg" }),
     ]);
     expect(rows[1].media_path).toBe(rows[0].media_path);
   });

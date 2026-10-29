@@ -128,9 +128,9 @@ describe("receipts and voice notes", () => {
 
     const [row] = await ledger.ingestions();
     expect(uploads()).toEqual([
-      expect.objectContaining({ Bucket: BUCKET, Key: `${row.id}.jpg` }),
+      expect.objectContaining({ Bucket: BUCKET, Key: row.media_path }),
     ]);
-    expect(row.media_path).toBe(`${row.id}.jpg`);
+    expect(row.media_path).toMatch(new RegExp(`^photo/\\d{4}-\\d{2}/${row.id}\\.jpg$`));
     expect(labels(chat.last())).toEqual(REVIEW);
   });
 
@@ -158,8 +158,9 @@ describe("receipts and voice notes", () => {
     const [row] = await ledger.ingestions();
     expect(row.source).toBe("voice");
     expect(uploads()).toEqual([
-      expect.objectContaining({ Key: `${row.id}.ogg`, ContentType: "audio/ogg" }),
+      expect.objectContaining({ Key: row.media_path, ContentType: "audio/ogg" }),
     ]);
+    expect(row.media_path).toMatch(new RegExp(`^voice/\\d{4}-\\d{2}/${row.id}\\.ogg$`));
     const header = chat.last().text.split("\n")[0];
     expect(header).toMatch(/^Expense · \d{4}-\d{2}-\d{2} · CAD 3\.25$/);
     expect([before, after]).toContain(header.split(" · ")[1]);

@@ -92,10 +92,11 @@ skeleton everything else hangs on. Ship the smallest loop first.*
 - [x] Date HITL: text with no date defaults to today (warning); photo with
       no date blocks Confirm; Fix date → `ingestions.status = awaiting_date`
       *(phone-tested 2026-08-18)*
-- [ ] S3 media keys: one bucket, prefix `{source}/{yyyy-mm}/{id}.{ext}`
+- [x] S3 media keys: one bucket, prefix `{source}/{yyyy-mm}/{id}.{ext}`
       (persist month, America/Toronto). Existing flat `{id}.{ext}` keys
       stay. Do not add a second bucket; do not rename
       `finflow-receipts-*` (AWS has no rename).
+      *(landed 2026-10-29)*
 - [x] Funding source is expense-only: `funding_source_id` nullable;
       CHECK expense ⇒ not null, income/transfer ⇒ null. Backfill
       existing income and transfer rows to null. Confirm preview
