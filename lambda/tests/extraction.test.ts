@@ -3,6 +3,7 @@ import {
   applyDatePolicy,
   duplicateWarnings,
   formatPreview,
+  merchantHint,
   withPosition,
   fundingSourceToPersist,
   normalizeTaxonomyNames,
@@ -341,6 +342,15 @@ describe("formatPreview", () => {
     expect(formatPreview(e, checks).split("\n")[0]).toBe("Expense · 2026-08-17 · CAD 27.60");
   });
 
+  it("shows a merchant hint after the warnings and before the Confirm line", () => {
+    const e = expense();
+    const checks = { ...validateExtraction(e, taxonomy), warnings: ["Possible duplicate: x"] };
+    const lines = formatPreview(e, checks, undefined, "Try this.").split("\n");
+    expect(lines.indexOf("💡 Try this.")).toBe(lines.indexOf("! Possible duplicate: x") + 1);
+    expect(lines.indexOf("💡 Try this.")).toBeLessThan(lines.indexOf("Confirm to save · Discard to drop"));
+    expect(formatPreview(e, checks)).not.toContain("💡");
+  });
+
   it("adds the card's (k of n) to an ack only when its header carries one", () => {
     const header = "Expense · 2026-08-17 · CAD 27.60";
     expect(withPosition("Saved.", `${header} (2 of 3)\nBurger`)).toBe("Saved. (2 of 3)");
@@ -423,6 +433,20 @@ describe("fundingSourceToPersist", () => {
     expect(fundingSourceToPersist("income", "self")).toBeNull();
     expect(fundingSourceToPersist("transfer", "dad")).toBeNull();
     expect(fundingSourceToPersist("income", null)).toBeNull();
+  });
+});
+
+describe("merchantHint", () => {
+  it("names the merchant, the count and the command to send", () => {
+    expect(merchantHint({ name: "Maple Kiosk", count: 4 })).toBe(
+      "You've bought from Maple Kiosk 4 times. Send /addmerchant Maple Kiosk to track it.",
+    );
+  });
+
+  it("says nothing without a frequent merchant, or for a name /addmerchant would refuse", () => {
+    expect(merchantHint(null)).toBeUndefined();
+    expect(merchantHint({ name: "Shop, Inc", count: 4 })).toBeUndefined();
+    expect(merchantHint({ name: "x".repeat(101), count: 4 })).toBeUndefined();
   });
 });
 
