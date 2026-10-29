@@ -280,6 +280,10 @@ is part of any rebuild, and the "deploy your own" guide must say so.
 - Lambda's IAM role is least-privilege: `s3:PutObject` scoped to the receipts
   bucket prefix, `ssm:GetParameter` scoped to the project's parameter path,
   `kms:Decrypt` for those parameters, and CloudWatch Logs write. No wildcards.
+- The GitHub Actions deploy role may update the one function, and read exactly
+  one parameter, `/finflow/telegram/bot-token` (`ssm:GetParameter` on its ARN,
+  plus `kms:Decrypt` on the `aws/ssm` key via Parameter Store only), so a
+  deploy step can register the bot's command menu.
 - S3 bucket: Block Public Access enabled, default encryption on, no bucket
   policy granting anything to `*`.
 - The MCP database role is read-only (`GRANT SELECT` on marts only).

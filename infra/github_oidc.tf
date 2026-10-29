@@ -63,3 +63,37 @@ resource "aws_iam_role_policy" "ingest_deploy" {
     }]
   })
 }
+
+# The deploy workflow registers the Telegram command menu after each deploy,
+# so it reads the bot token. Exactly one parameter, never a path wildcard.
+data "aws_kms_alias" "ssm" {
+  name = "alias/aws/ssm"
+}
+
+resource "aws_iam_role_policy" "ingest_deploy_bot_token" {
+  name = "read-bot-token"
+  role = aws_iam_role.ingest_deploy.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = ["ssm:GetParameter"]
+        Resource = aws_ssm_parameter.telegram_bot_token.arn
+      },
+      {
+        # The parameter uses the default aws/ssm key. Scoped to that key and
+        # to use through Parameter Store only.
+        Effect   = "Allow"
+        Action   = ["kms:Decrypt"]
+        Resource = data.aws_kms_alias.ssm.target_key_arn
+        Condition = {
+          StringEquals = {
+            "kms:ViaService" = "ssm.ca-central-1.amazonaws.com"
+          }
+        }
+      },
+    ]
+  })
+}

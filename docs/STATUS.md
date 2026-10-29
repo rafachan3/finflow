@@ -378,3 +378,8 @@ bucket.
   until they send `/pending`); a retried photo/voice still uploads an extra S3 object
   before the insert decides; migration 0009 is forward-only once any
   update has `event_index > 0`.
+
+Deploy role reads the bot token (DECISIONS.md 2026-10-29): the deploy role
+may `ssm:GetParameter` exactly `/finflow/telegram/bot-token`, so a later
+deploy step can register the command menu. Terraform only; it takes effect
+when the owner applies. The workflow step is the next PR.

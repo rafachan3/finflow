@@ -1206,3 +1206,21 @@ call to allocate tax and tip (free-tier quota, and the prompt suffices);
 allocating in code after extraction (the model already returns per-line
 amounts, and the lines-sum check catches a miss).
 
+
+## 2026-10-29 — Command menu registered by a deploy step; deploy role reads only the bot token
+
+The Telegram command menu (`setMyCommands`) is registered by a CI step after
+each Lambda deploy, reading the bot token from SSM Parameter Store. The deploy
+role therefore gets `ssm:GetParameter` on exactly
+`/finflow/telegram/bot-token`, and nothing else in the `/finflow/*` path.
+
+- **`kms:Decrypt` is granted anyway.** The parameter uses the default
+  `aws/ssm` key. AWS's Parameter Store page says `kms:Decrypt` is needed to
+  read a SecureString and that access to `aws/ssm` cannot be managed by policy;
+  it does not say an IAM grant is unnecessary. The grant is scoped to that one
+  key and to `ssm.ca-central-1.amazonaws.com`, as the Lambda role's is.
+
+**Ruled out:** registering the menu from the Lambda at cold start (adds a
+Telegram call to the request path); storing the token as a GitHub Actions
+secret (a second copy to rotate); `parameter/finflow/*` for the deploy role
+(it would also expose the database URL and Gemini key).
