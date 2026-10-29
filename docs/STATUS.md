@@ -3,7 +3,7 @@
 Living state of the project. Read this first; update it whenever work lands.
 
 **Last updated:** 2026-10-29
-**Current phase:** Phase 4 — Semantic layer, roles migration open (see [ROADMAP.md](ROADMAP.md))
+**Current phase:** Phase 4 — Semantic layer, roles migration merged, dbt staging models in CI (see [ROADMAP.md](ROADMAP.md))
 
 ## Phase progress
 
@@ -433,12 +433,21 @@ Phase 4 — Semantic layer (see ROADMAP.md). The metric contract is in
 [SEMANTIC_LAYER.md](SEMANTIC_LAYER.md) (2026-10-29): twelve metrics with
 formulas, mart columns and edge cases, and DECISIONS.md records the owner's
 rulings. PR-B (migration 0013, the `finflow_dbt` and `finflow_analyst` roles,
-`staging` and `marts` schemas) is open and merge-ready. Before anything uses
-it: run `supabase db push`, set both role passwords out of band, then check
-from the owner's machine as `finflow_dbt` through the pooler that
+`staging` and `marts` schemas) merged as #73. Before anything uses it in
+production: run `supabase db push`, set both role passwords out of band, then
+check from the owner's machine as `finflow_dbt` through the pooler that
 `select count(*) from transactions` works, an insert is refused, and
-`create table marts.t(); drop table marts.t;` works. The dbt project skeleton
-and staging models follow.
+`create table marts.t(); drop table marts.t;` works. Next: the marts (PR-D).
+
+dbt staging (PR-C, 2026-10-29): `dbt/` holds the dbt project (dbt-core
+1.12.6, dbt-postgres 1.11.0, Python 3.12), three staging views in schema
+`staging` (`stg_transactions`, `stg_transaction_items`, `stg_item_tags`)
+and the ledger invariant tests, cited in TESTING.md as `dbt:<name>`. The CI
+job `dbt` builds them as `finflow_dbt` on every PR against a synthetic
+fixture, and proves that a line moved by 0.01 fails
+`expense_lines_sum_to_header` and nothing else. Owner: add `dbt` to the
+required checks on `main` once it has run stable. No marts yet, so nothing
+has run against production.
 
 Phase 3.5 acceptance (2026-10-29): the journey tests are the check, not a
 phone test. Against a throwaway Postgres (`cd lambda && npm run db:up`), then
