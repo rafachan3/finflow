@@ -1,0 +1,56 @@
+{
+  "name": "a correction to the tip changes the amount paid and keeps the tip in the items",
+  "input": {
+    "kind": "edit",
+    "base": "receipt-with-tip",
+    "correction": "the tip was 6.00, not 4.50"
+  },
+  "expect": {
+    "events": [
+      {
+        "type": "expense",
+        "lines": 2,
+        "amount": "34.74",
+        "merchant": true,
+        "date": true
+      }
+    ]
+  },
+  "recorded": {
+    "type": "expense",
+    "amount": "34.74",
+    "currency": "CAD",
+    "date": "2026-10-24",
+    "description": "Club sandwich and garden salad at Riverside Diner",
+    "merchant": "Riverside Diner",
+    "venue": null,
+    "tags": [],
+    "is_recurring": false,
+    "income_source": null,
+    "to_account": null,
+    "items": [
+      {
+        "description": "Club sandwich",
+        "amount": "22.24",
+        "category": "Food and drink",
+        "subcategory": "Restaurants",
+        "item_type": "Meals & Prepared Food",
+        "bucket_why": "default wants hint for Restaurants",
+        "bucket": "wants"
+      },
+      {
+        "description": "Garden salad",
+        "amount": "12.50",
+        "category": "Food and drink",
+        "subcategory": "Restaurants",
+        "item_type": "Meals & Prepared Food",
+        "bucket_why": "default wants hint for Restaurants",
+        "bucket": "wants"
+      }
+    ],
+    "confidence": 1,
+    "funded_by": "self",
+    "notes": null
+  },
+  "request_sha256": "8f8f41ca1c713d18c85403f4769592e1143777d4ff42c31764cf1cd208898d0f"
+}

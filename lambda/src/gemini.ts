@@ -56,10 +56,16 @@ const SPLIT_EVENTS =
 const BUCKETS =
   "For each expense line set bucket_why (one short clause naming the rule applied), then bucket (needs or wants). Apply the owner's needs/wants rules at the end of this prompt. They override the (hint …) on subcategories. If no rule fits or context is missing, choose wants. Income and transfer events have no lines: return an empty items list.";
 
+// Tax is allocated into the lines (DECISIONS 2026-08-13) and a tip follows
+// it: the taxonomy has no tip subcategory, so a tip line has nowhere to go
+// (#31). Shared by every prompt so an Edit keeps the same rule.
+const LINE_AMOUNTS =
+  "Amounts are strings with exactly two decimal places. For an expense, the header amount is the total paid, including tax and any tip (pourboire, gratuity) on the receipt or in the message, even when the tip is printed or written below the total. Never add a tax or tip line. Fold tax and tip into the item lines in proportion to each line's price, putting any leftover cent on the largest line, so the line amounts MUST sum to the header amount.";
+
 const EXTRACTOR_STATIC_PROMPT = [
   "You extract Canadian personal-finance transactions from a short text.",
   "Today is YYYY-MM-DD (America/Toronto). Currency is CAD.",
-  "Amounts are strings with exactly two decimal places. Line amounts include tax and MUST sum to the header amount.",
+  LINE_AMOUNTS,
   "Item types must belong to the same category as the subcategory.",
   "category, subcategory, and item_type are separate fields. Never repeat the category inside subcategory or item_type. Example: category='Food and drink', subcategory='Takeout / Quick Service', item_type='Meals & Prepared Food'.",
   "Use Other … subcategories only when nothing more specific fits.",
@@ -75,7 +81,7 @@ const EXTRACTOR_STATIC_PROMPT = [
 const PHOTO_EXTRACTOR_STATIC_PROMPT = [
   "You extract Canadian personal-finance transactions from a receipt photo.",
   "Today is YYYY-MM-DD (America/Toronto). Currency is CAD.",
-  "Amounts are strings with exactly two decimal places. Line amounts include tax and MUST sum to the header amount.",
+  LINE_AMOUNTS,
   "Item types must belong to the same category as the subcategory.",
   "category, subcategory, and item_type are separate fields. Never repeat the category inside subcategory or item_type. Example: category='Food and drink', subcategory='Takeout / Quick Service', item_type='Meals & Prepared Food'.",
   "Use Other … subcategories only when nothing more specific fits.",
@@ -91,7 +97,7 @@ const PHOTO_EXTRACTOR_STATIC_PROMPT = [
 const VOICE_EXTRACTOR_STATIC_PROMPT = [
   "You extract Canadian personal-finance transactions from a voice note.",
   "Today is YYYY-MM-DD (America/Toronto). Currency is CAD.",
-  "Amounts are strings with exactly two decimal places. Line amounts include tax and MUST sum to the header amount.",
+  LINE_AMOUNTS,
   "Item types must belong to the same category as the subcategory.",
   "category, subcategory, and item_type are separate fields. Never repeat the category inside subcategory or item_type. Example: category='Food and drink', subcategory='Takeout / Quick Service', item_type='Meals & Prepared Food'.",
   "Use Other … subcategories only when nothing more specific fits.",
@@ -110,7 +116,7 @@ const PATCH_EXTRACTOR_STATIC_PROMPT = [
   "The user message is the current extraction as JSON, then the correction.",
   "Keep every field the correction does not change.",
   "Keep date unless the correction changes the calendar date. Never guess today's date.",
-  "Amounts are strings with exactly two decimal places. Line amounts include tax and MUST sum to the header amount.",
+  LINE_AMOUNTS,
   "Item types must belong to the same category as the subcategory.",
   "category, subcategory, and item_type are separate fields. Never repeat the category inside subcategory or item_type. Example: category='Food and drink', subcategory='Takeout / Quick Service', item_type='Meals & Prepared Food'.",
   "Use Other … subcategories only when nothing more specific fits.",

@@ -1021,6 +1021,29 @@ describe("multi-event extraction", () => {
     expect(body.systemInstruction.parts[0].text).toMatch(/one event per merchant or place/i);
   });
 
+  it("tells text, photo, voice and Edit to fold tax and a tip into the lines, with no tip line", async () => {
+    const fetchMock = vi.fn().mockImplementation(async () => ({
+      ok: true,
+      json: async () => geminiJson(events(extracted)),
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    const base = { apiKey: "k", taxonomy, bucketRules: "", today: "2026-08-17" };
+    const media = { ...base, caption: "", mimeType: "image/jpeg" };
+    await extractFromText({ ...base, text: "lunch 20 plus 3 tip" });
+    await extractFromPhoto({ ...media, image: Buffer.from([0xff]) });
+    await extractFromVoice({ ...media, mimeType: "audio/ogg", audio: Buffer.from([0x4f]) });
+    fetchMock.mockImplementationOnce(async () => ({ ok: true, json: async () => geminiJson(extracted) }));
+    await patchExtraction({ ...base, current, correction: "the tip was 5" });
+
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+    for (const [, init] of fetchMock.mock.calls) {
+      const system = JSON.parse(init.body as string).systemInstruction.parts[0].text as string;
+      expect(system).toContain("including tax and any tip (pourboire, gratuity)");
+      expect(system).toContain("Never add a tax or tip line.");
+      expect(system).toContain("the line amounts MUST sum to the header amount");
+    }
+  });
+
   it("throws when Gemini returns no events", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => geminiJson(events()) }));
     await expect(

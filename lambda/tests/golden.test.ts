@@ -58,6 +58,14 @@ describe("mismatches", () => {
     ).toEqual(["event 0: lines sum 3.00 != 9.00"]);
   });
 
+  it("reports a header amount other than the expected one", () => {
+    const event = { type: "expense", amount: "28.74", items: [{ amount: "28.74" }] };
+    expect(mismatches([event], [{ type: "expense", lines: 1, amount: "33.24" }])).toEqual([
+      "event 0: amount 28.74 != 33.24",
+    ]);
+    expect(mismatches([event], [{ type: "expense", lines: 1, amount: "28.74" }])).toEqual([]);
+  });
+
   it("reports each line whose bucket differs from the expected one", () => {
     const event = {
       type: "expense",

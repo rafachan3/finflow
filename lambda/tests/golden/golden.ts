@@ -13,6 +13,8 @@ export type GoldenInput =
 export type ExpectedEvent = {
   type: "expense" | "income" | "transfer";
   lines: number;
+  /** The header amount, when the case is about what was paid (a tip, a correction). */
+  amount?: string;
   merchant?: boolean;
   date?: boolean;
   note?: boolean;
@@ -94,6 +96,9 @@ export function mismatches(events: RawEvent[], expected: ExpectedEvent[]): strin
     const items = Array.isArray(got.items) ? got.items : [];
     if (got.type !== want.type) out.push(`${at}: type ${String(got.type)} != ${want.type}`);
     if (items.length !== want.lines) out.push(`${at}: ${items.length} lines != ${want.lines}`);
+    if (want.amount !== undefined && got.amount !== want.amount) {
+      out.push(`${at}: amount ${String(got.amount)} != ${want.amount}`);
+    }
     const flags = [
       ["merchant", want.merchant, got.merchant],
       ["date", want.date, got.date],

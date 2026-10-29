@@ -9,6 +9,7 @@ Regenerate on macOS from this directory:
 ```sh
 rsvg-convert receipt.svg -o receipt.png
 rsvg-convert receipt-no-date.svg -o receipt-no-date.png
+rsvg-convert receipt-tip.svg -o receipt-tip.png
 say -o note.aiff "Three twenty five for a coffee at Coffee Cart."
 afconvert -f caff -d opus@48000 -b 32000 -c 1 note.aiff note.caf
 python3 caf2ogg.py note.caf note.ogg  # OGG/Opus, like a Telegram voice note
