@@ -1445,3 +1445,36 @@ state).
 6.00") does not tell the model the old one, which the stored extraction
 does not keep. The model can only guess there; the card shows the new
 total before Confirm.
+
+## 2026-10-29 — The nightly eval runs after the quota reset, on the one eval key
+
+Supersedes the second-key entry from #65 (reverted) and reinstates the
+2026-10-28 ruling against a second project for more quota. The nightly
+eval shares `GEMINI_EVAL_API_KEY` with the PR evals again, and moves from
+before the Gemini daily reset to just after it.
+
+- **Why the second key goes.** Google APIs Terms §2(d), "API Limitations"
+  (https://developers.google.com/terms): "You agree to, and will not
+  attempt to circumvent, such limitations documented with each API." A
+  second free project used by the same app to get more quota reads as
+  circumvention. A suspension would also take down production extraction.
+  The owner deleted the secret `GEMINI_NIGHTLY_API_KEY` and the extra
+  project; its setup steps are gone from `docs/TESTING.md`.
+- **The reschedule.** The cron went from `7 6 * * *` to `15 8 * * *`. The
+  quota resets at midnight Pacific, so the run now gets a fresh 20 requests
+  on each Flash model before any PR eval that day, instead of whatever the
+  day's PR evals left. Cron is UTC and ignores DST: 08:15 UTC is 01:15 PDT
+  (UTC-7) and 00:15 PST (UTC-8), after the reset in both. :15 keeps off
+  the top-of-hour load on which GitHub delays scheduled runs.
+- **Rotation unchanged.** The rotation shift is the UTC day number plus the
+  case index. At 08:15 UTC the day number still advances exactly once per
+  night, so each case still meets every model over three nights. No code or
+  test change.
+- **Trade-off.** The nightly now spends the day's Flash quota first, so on a
+  busy day PR evals get less Flash and fall through to Flash-Lite, which
+  counts as a pass (2026-10-28 ruling). The nightly's unused quota no
+  longer expires unspent, but it is no longer free of the PRs' budget.
+
+**Ruled out:** a second project or key for the nightly (Google's terms,
+§2(d)); keeping the pre-reset slot (it measured only Lite on any day with
+prompt-changing PRs, run 40829256766).

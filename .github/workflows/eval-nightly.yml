@@ -1,17 +1,18 @@
 name: Eval nightly
 
 # Every golden case against live Gemini, with the model chain rotated per
-# case (lambda/eval/golden.eval.ts). It spends the eval project's daily
-# quota just before it resets at midnight Pacific.
+# case (lambda/eval/golden.eval.ts). It runs just after the eval project's
+# daily quota resets at midnight Pacific, so it gets fresh Flash quota
+# before any PR eval that day.
 #
-# 06:07 UTC is 23:07 Pacific in summer (PDT) and 22:07 in winter (PST), so
-# it lands before the reset in both. At 07:xx UTC it would spend the next
-# day's quota every summer night. :07 avoids the top-of-hour load on which
-# GitHub delays or drops scheduled runs, and leaves 53 minutes of delay
-# before the summer reset.
+# 08:15 UTC is 01:15 Pacific in summer (PDT, UTC-7) and 00:15 in winter
+# (PST, UTC-8), so it lands after the reset in both. :15 avoids the
+# top-of-hour load on which GitHub delays or drops scheduled runs. The
+# rotation day is the UTC day number, which advances once per night at
+# this hour, so one run a day still moves every case to the next model.
 on:
   schedule:
-    - cron: "7 6 * * *"
+    - cron: "15 8 * * *"
   workflow_dispatch:
 
 permissions:

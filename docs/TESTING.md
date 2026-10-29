@@ -158,8 +158,9 @@ Key setup, once:
 
 ## The nightly eval
 
-`.github/workflows/eval-nightly.yml` runs at 06:07 UTC, before the eval
-project's quota resets at midnight Pacific, and on demand
+`.github/workflows/eval-nightly.yml` runs at 08:15 UTC (01:15 PDT, 00:15
+PST), just after the eval project's quota resets at midnight Pacific, so it
+gets fresh Flash quota before that day's PR evals, and on demand
 (`gh workflow run eval-nightly.yml`). It calls Gemini for every case, with
 no replay, so it catches model drift that a replay cannot. Case i (in run
 order) starts on model (i + day) mod 3 of production's chain and falls
