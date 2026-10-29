@@ -2,8 +2,8 @@
 
 Living state of the project. Read this first; update it whenever work lands.
 
-**Last updated:** 2026-10-28
-**Current phase:** Phase 3.6 — Regression test suite (see [ROADMAP.md](ROADMAP.md))
+**Last updated:** 2026-10-29
+**Current phase:** Phase 3.5 — Ingestion follow-ons (see [ROADMAP.md](ROADMAP.md))
 
 ## Phase progress
 
@@ -13,7 +13,7 @@ Living state of the project. Read this first; update it whenever work lands.
 - [x] Taxonomy tweak — Hygiene + Beauty → Personal care (Health and wellness); buckets untouched (2026-08-13)
 - [x] Phase 2 — Telegram bot walking skeleton (text only, no LLM) (2026-08-17)
 - [x] Phase 3 — Gemini extraction (text → photo → voice) — **3a + 3b + 3c phone-tested; funding source applied; Edit phone-tested; context notes phone-tested; multi-event accepted by the Phase 3.6 journeys** (2026-10-28; the S3 key prefix stays an optional leftover)
-- [ ] Phase 3.6 — Regression test suite — **in progress: integration tests (#32), chat journeys (#33), live eval (#37) the inventory check with a coverage floor, and the post-deploy smoke step (PR 5) done; the smoke needs the owner's `terraform apply`**
+- [x] Phase 3.6 — Regression test suite — **accepted 2026-10-29: deliberate-break PR #48 blocked (unit + inventory failed, BLOCKED), clean PRs #46/#47 green, smoke step green on deploy run 40803017809, `main` protected** (2026-10-29)
 - [ ] Phase 3.5 — Ingestion follow-ons (item tags, duplicate warning, merchant commands)
 - [ ] Phase 4 — dbt semantic layer + MetricFlow
 - [ ] Phase 4.5 — Proactive nudges (recurring reminders, merchant recommendations)
@@ -307,15 +307,15 @@ runs every case live with the model chain rotated per case, reports each
 
 ## Next concrete step
 
+Phase 3.6 is closed. Start Phase 3.5 (item-level tags first, per
+ROADMAP.md); ship each behaviour with its TESTING.md row and journey.
+
 Owner: add `GEMINI_EVAL_API_KEY=<eval key>` to the gitignored `.env` in the
 main checkout, then run `npm --prefix lambda run eval:buckets` for a
 baseline agreement figure.
 
 Watch the first nightly runs: the summary's quota line names
-Flash-Lite's daily limit once it runs out. Owner: run `terraform apply` in
-`infra/` so the deploy role gets `lambda:GetFunctionUrlConfig` and `lambda:GetFunctionConfiguration` (the
-`function-updated` waiter); until then
-the post-deploy smoke step in `deploy-ingest.yml` fails on AccessDenied.
+Flash-Lite's daily limit once it runs out.
 
 Optional leftover: S3 keys `{source}/{yyyy-mm}/{id}.{ext}` in the existing
 bucket.
