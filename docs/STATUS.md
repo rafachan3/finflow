@@ -3,7 +3,7 @@
 Living state of the project. Read this first; update it whenever work lands.
 
 **Last updated:** 2026-10-29
-**Current phase:** Phase 4 — Semantic layer, metric contract written (see [ROADMAP.md](ROADMAP.md))
+**Current phase:** Phase 4 — Semantic layer, roles migration open (see [ROADMAP.md](ROADMAP.md))
 
 ## Phase progress
 
@@ -432,8 +432,13 @@ red; the code stays deployed.
 Phase 4 — Semantic layer (see ROADMAP.md). The metric contract is in
 [SEMANTIC_LAYER.md](SEMANTIC_LAYER.md) (2026-10-29): twelve metrics with
 formulas, mart columns and edge cases, and DECISIONS.md records the owner's
-rulings. Next: migration 0013 for the `finflow_dbt` and `finflow_analyst`
-roles, then the dbt project skeleton and staging models.
+rulings. PR-B (migration 0013, the `finflow_dbt` and `finflow_analyst` roles,
+`staging` and `marts` schemas) is open and merge-ready. Before anything uses
+it: run `supabase db push`, set both role passwords out of band, then check
+from the owner's machine as `finflow_dbt` through the pooler that
+`select count(*) from transactions` works, an insert is refused, and
+`create table marts.t(); drop table marts.t;` works. The dbt project skeleton
+and staging models follow.
 
 Phase 3.5 acceptance (2026-10-29): the journey tests are the check, not a
 phone test. Against a throwaway Postgres (`cd lambda && npm run db:up`), then
