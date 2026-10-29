@@ -1323,3 +1323,29 @@ table the handler routes on.
 **Ruled out:** a hand-run script (nothing would catch a menu that drifted from
 the table); registering from the Lambda at cold start (a Telegram call in the
 request path); a GitHub secret for the token (a second copy to rotate).
+
+## 2026-10-29 — An in-use merchant is hidden, not kept; adding one links past transactions
+
+**Supersedes** the "`/delmerchant` refuses a merchant that saved transactions
+use" part of "Merchant commands write directly and refuse an in-use delete"
+(same day). Owner decisions. The rest of that entry stands.
+
+- **`/delmerchant` hides a merchant that saved transactions use.** Refusing
+  made the command nearly useless: a merchant worth removing has usually been
+  used. `merchants.hidden_at` (migration 0010) is set; the merchant keeps its
+  links on past transactions, leaves `loadTaxonomy` (so the next `Merchants:`
+  line drops it), and Confirm's lookup skips it. A merchant no transaction
+  uses is still deleted. `/addmerchant` on a hidden name unhides it.
+- **Adding a merchant links past transactions.** A new or unhidden merchant
+  fills `merchant_id` on every saved transaction where it is NULL and the
+  stored extraction (`ingestions.extraction->>'merchant'` of the ingestion
+  that produced it) names the merchant, spaces collapsed and case ignored.
+  It never overwrites a link. This is the backfill: a read-only report ranks
+  candidate names and the owner adds the ones worth keeping. Insert or
+  unhide and link are one statement.
+- **Merchants stay hand-created.** Confirm never creates one, so a misheard
+  or one-off name does not grow the prompt's list.
+
+**Ruled out:** auto-creating a merchant on Confirm; unlinking past
+transactions on delete; a separate backfill command (adding the name is the
+backfill); matching extractions by aliases or fuzzy similarity.
