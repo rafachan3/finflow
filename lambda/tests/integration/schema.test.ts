@@ -52,6 +52,26 @@ describe("migrations", () => {
     );
     expect(n).toBe(2);
   });
+
+  it("keep a line's own tags once each, and drop them with the line", async () => {
+    const [{ id: tx }] = await sql<{ id: string }>(
+      `insert into transactions (occurred_on, type, amount, description, funding_source_id)
+       values ('2026-10-20', 'expense', 10, 'x', ${SELF}) returning id::text`,
+    );
+    const [{ id: line }] = await sql<{ id: string }>(
+      `insert into transaction_items (transaction_id, description, amount, subcategory_id, bucket)
+       values ($1, 'Bananas', 10, (select min(id) from subcategories), 'wants') returning id::text`,
+      [tx],
+    );
+    const tag = `insert into transaction_item_tags (transaction_item_id, tag_id)
+                 values ('${line}', (select id from tags where name = 'Travel'))`;
+    await sql(tag);
+    expect(await errorCode(tag)).toBe("23505");
+
+    await sql("delete from transactions where id = $1", [tx]);
+    const [{ n }] = await sql<{ n: number }>("select count(*)::int n from transaction_item_tags");
+    expect(n).toBe(0);
+  });
 });
 
 describe("constraints", () => {
