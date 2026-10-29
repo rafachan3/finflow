@@ -1574,7 +1574,9 @@ storage.
   header tag. A wrong guess about who one line was for is not worth losing the
   whole receipt to a card with no Confirm (constraint 6). An unknown tag on
   the event is a separate check in `validateExtraction` and is unchanged: it
-  fails checks. The prompt's
+  fails checks. Confirm's `insertTags` throws `unknown tag at Confirm` rather
+  than skip a name it cannot find, so a tag that slips past both checks
+  rolls the transaction back instead of saving without it. The prompt's
   example names no real tag (`"the bananas were for <a name from the Tags
   list>"`): the seed's example name is not in the production list, and a
   copied one would only be dropped.

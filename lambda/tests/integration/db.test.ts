@@ -159,6 +159,16 @@ describe("confirmIngestion", () => {
     expect(await count("transaction_item_tags")).toBe(0);
   });
 
+  it("rolls back Confirm on a line tag that is not in the Tags list", async () => {
+    // Stored without normalizeTaxonomyNames, which would have dropped it.
+    const [milk, cookies] = expense().items;
+    const [id] = await save(209, expense({ items: [milk, { ...cookies, tags: ["NotATag"] }] }));
+    await expect(db.confirmIngestion(id)).rejects.toThrow("unknown tag at Confirm: NotATag");
+    expect(await count("transactions")).toBe(0);
+    expect(await count("transaction_item_tags")).toBe(0);
+    expect(await status(id)).toBe("pending");
+  });
+
   it("writes income and transfer tags on the transaction", async () => {
     await db.confirmIngestion((await save(207, income({ tags: ["Travel"] })))[0]);
     await db.confirmIngestion((await save(208, transfer({ tags: ["Travel"] })))[0]);

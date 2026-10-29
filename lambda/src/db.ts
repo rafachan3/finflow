@@ -581,7 +581,11 @@ async function lookupId(
   return res.rows[0]?.id ?? null;
 }
 
-/** Links each known tag to one row; validation has already refused unknown ones. */
+/**
+ * Links each tag to one row. Validation refuses an unknown event tag and
+ * normalizeTaxonomyNames drops an unknown line tag, so one reaching here is a
+ * bug: throw, and Confirm rolls back, rather than save without it.
+ */
 async function insertTags(
   client: PoolClient,
   table: "transaction_tags" | "transaction_item_tags",
@@ -591,7 +595,7 @@ async function insertTags(
 ): Promise<void> {
   for (const tag of tags) {
     const tagId = await lookupId(client, `SELECT id FROM tags WHERE name = $1`, [tag]);
-    if (tagId === null) continue;
+    if (tagId === null) throw new Error(`unknown tag at Confirm: ${tag}`);
     await client.query(`INSERT INTO ${table} (${column}, tag_id) VALUES ($1, $2)`, [rowId, tagId]);
   }
 }
