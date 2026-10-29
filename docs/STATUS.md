@@ -305,6 +305,16 @@ full live run is 16 requests for 16 cases. CI writes live passes' request hashes
 runs every case live with the model chain rotated per case, reports each
 429's `quotaValue`, and keeps one `eval-nightly` issue open while it fails.
 
+`/pending` (#29; DECISIONS.md 2026-10-28): the owner sends `/pending`
+and the bot resends the card of every row of that chat still `pending`,
+oldest first, with the buttons its checks allow today; with none it
+replies "No pending cards.". It asks Gemini nothing and runs before the
+date/correction wait, so it cannot be taken as a date or a correction.
+A card that fails to resend is logged and the rest still go out. This
+covers a card whose send failed after its row was saved. Not added to
+the Telegram command menu (no `setMyCommands` in the repo); typing it
+works.
+
 ## Next concrete step
 
 Phase 3.6 is closed. Start Phase 3.5 (item-level tags first, per
@@ -349,6 +359,7 @@ bucket.
   read…" message, not the overload one: a daily quota would make "send
   it again in a minute" wrong.
 - Multi-event gaps: a failed send of card 2 leaves that row pending
-  without a card (logged as `card send error`; no reply to the owner); a retried photo/voice still uploads an extra S3 object
+  without a card (logged as `card send error`; no reply to the owner
+  until they send `/pending`); a retried photo/voice still uploads an extra S3 object
   before the insert decides; migration 0009 is forward-only once any
   update has `event_index > 0`.

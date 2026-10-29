@@ -1139,3 +1139,30 @@ runs every case against live Gemini, with no replay, at 06:07 UTC.
 
 **Ruled out:** rotating models on PRs; a second project for more quota
 (Google's terms).
+
+## 2026-10-28 — `/pending` resends cards; no scheduled resend yet
+
+Rows are saved before their cards go out (the buttons carry the row id),
+so a Telegram send that fails leaves a `pending` row the owner never sees
+(#29). The owner now sends `/pending` and the bot resends the card of
+every row of that chat still `pending`, oldest first, through the same
+`sendCard` the first send uses, so the buttons follow today's checks (a
+dateless receipt still has no Confirm). With none it replies "No pending
+cards.".
+
+- **Which rows.** `status = 'pending'` only. A card waiting for a date or
+  a correction already has its prompt and keeps the single wait. The chat
+  is read from the saved update (`raw_payload #>> '{message,chat,id}'`),
+  so a second allowlisted chat never sees another chat's purchases; no
+  `chat_id` column or migration.
+- **Order in the handler.** After the allowlist, before the wait: while a
+  card waits for a correction, `/pending` would otherwise go to Gemini as
+  the correction.
+- **No labels.** Resent cards drop "(i of n)": the numbering belonged to
+  the original message.
+- **Menu.** Not registered with `setMyCommands`; the repo registers no
+  commands and typing the command works.
+
+**Ruled out for now:** the Phase 4.5 scheduled Lambda resending rows still
+pending after an hour (issue #29 option 2): it needs new infrastructure,
+and `/pending` covers the gap.

@@ -10,6 +10,7 @@ import {
   discardIngestion,
   findAwaitingIngestion,
   insertPendingIngestions,
+  listPendingIngestions,
   loadTaxonomy,
   type PendingIngestion,
   setIngestionAwaitingDate,
@@ -22,6 +23,7 @@ import {
   normalizeTaxonomyNames,
   parseDateReply,
   validateExtraction,
+  type CheckResult,
   type Extraction,
   type TaxonomySnapshot,
 } from "./extraction.js";
@@ -72,6 +74,10 @@ const WAITING_EDIT =
 
 const BUSY_WAITING =
   "Another card is waiting for a date or correction. Send it, or tap Discard on that card, then try again.";
+
+/** Telegram appends @botname to a command in a group or when picked from the menu. */
+const PENDING_COMMAND = /^\/pending(@\w+)?$/i;
+const NOTHING_PENDING = "No pending cards.";
 
 const GEMINI_OVERLOADED =
   "Gemini is overloaded right now. Send it again in a minute.";
@@ -246,6 +252,46 @@ async function handleAwaitingEdit(
   }
 }
 
+/** A saved row's card: the preview with the buttons its checks allow. */
+async function sendCard(
+  botToken: string,
+  chatId: number,
+  ingestionId: string,
+  extraction: Extraction,
+  checks: CheckResult,
+  position?: { index: number; count: number },
+): Promise<void> {
+  const { confirm } = previewOffer(extraction, checks);
+  await sendMessage(
+    botToken,
+    chatId,
+    formatPreview(extraction, checks, position),
+    reviewKeyboard(ingestionId, { confirm }),
+  );
+}
+
+/** Resends the card of every pending row, e.g. one whose first send failed after saving. */
+async function resendPendingCards(
+  chatId: number,
+  botToken: string,
+): Promise<APIGatewayProxyResultV2> {
+  const rows = await listPendingIngestions(chatId);
+  if (rows.length === 0) {
+    await sendMessage(botToken, chatId, NOTHING_PENDING);
+    return ok("ok");
+  }
+  const taxonomy = await loadTaxonomy();
+  for (const row of rows) {
+    try {
+      await sendCard(botToken, chatId, row.id, row.extraction, validateExtraction(row.extraction, taxonomy));
+    } catch (err) {
+      // One bad card must not hide the rest; /pending again retries it.
+      console.error("card send error", err);
+    }
+  }
+  return ok("ok");
+}
+
 /** Check, persist, and present every event of one message, in order. */
 async function offerEvents(args: {
   update: TelegramUpdate;
@@ -292,13 +338,13 @@ async function offerEvents(args: {
   }
 
   for (const [index, o] of offers.entries()) {
-    const preview = formatPreview(o.extraction, o.checks, { index, count: offers.length });
+    const position = { index, count: offers.length };
     const savedId = savedIds.get(o);
     try {
       if (savedId) {
-        await sendMessage(args.config.botToken, chatId, preview, reviewKeyboard(savedId, { confirm: o.offer.confirm }));
+        await sendCard(args.config.botToken, chatId, savedId, o.extraction, o.checks, position);
       } else {
-        await sendMessage(args.config.botToken, chatId, preview);
+        await sendMessage(args.config.botToken, chatId, formatPreview(o.extraction, o.checks, position));
       }
     } catch (err) {
       // Rows are saved: a "Couldn't parse" reply would make the owner resend and duplicate them.
@@ -386,6 +432,11 @@ async function handleMessage(
   const message = update.message!;
   if (!config.allowedChatIds.has(message.chat.id)) {
     return ok("ignored");
+  }
+
+  // Before the wait: "/pending" is never a date or a correction to send to Gemini.
+  if (PENDING_COMMAND.test(message.text?.trim() ?? "")) {
+    return await resendPendingCards(message.chat.id, config.botToken);
   }
 
   const awaiting = await findAwaitingIngestion();

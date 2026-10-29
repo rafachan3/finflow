@@ -178,6 +178,20 @@ export async function findAwaitingIngestion(): Promise<{
   return result.rows[0] ?? null;
 }
 
+/** Rows still waiting for Confirm or Discard, oldest first; the chat comes from the saved update. */
+export async function listPendingIngestions(
+  chatId: number,
+): Promise<{ id: string; extraction: Extraction }[]> {
+  const db = await getPool();
+  const result = await db.query<{ id: string; extraction: Extraction }>(
+    `SELECT id, extraction FROM ingestions
+     WHERE status = 'pending' AND raw_payload #>> '{message,chat,id}' = $1
+     ORDER BY created_at, event_index`,
+    [String(chatId)],
+  );
+  return result.rows;
+}
+
 export type AwaitStart = "started" | "already_handled" | "busy";
 
 /** One outstanding wait: a reply is routed to the single waiting row. */

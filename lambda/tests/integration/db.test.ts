@@ -269,6 +269,33 @@ describe("waiting for a date or a correction", () => {
   });
 });
 
+describe("listPendingIngestions", () => {
+  async function saveFrom(chatId: number, updateId: number, ...events: Extraction[]) {
+    const rawPayload = { update_id: updateId, message: { chat: { id: chatId } } };
+    const result = await db.insertPendingIngestions(
+      events.map((e, i) => ({ ...pending(updateId, e, i), rawPayload })),
+    );
+    if (result === "duplicate") throw new Error("unexpected duplicate");
+    return result.map((r) => r.id);
+  }
+
+  it("lists the chat's pending rows oldest first, skipping handled, waiting and other chats' rows", async () => {
+    const [a, confirmed] = await saveFrom(1001, 400, expense(), income());
+    await db.confirmIngestion(confirmed);
+    const [waiting] = await saveFrom(1001, 401, transfer());
+    await db.setIngestionAwaitingDate(waiting);
+    await saveFrom(2002, 402, expense({ description: "not yours" }));
+    const [b, c] = await saveFrom(1001, 403, expense({ description: "later" }), income());
+
+    const rows = await db.listPendingIngestions(1001);
+    expect(rows.map((r) => [r.id, r.extraction.description])).toEqual([
+      [a, "groceries"],
+      [b, "later"],
+      [c, "paycheque"],
+    ]);
+  });
+});
+
 describe("loadTaxonomy", () => {
   it("returns the generic seed plus the example overlay, nothing personal", async () => {
     const t = await db.loadTaxonomy();
