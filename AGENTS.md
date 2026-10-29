@@ -78,8 +78,10 @@ the table above — not appended here.
   job fails a row with no test or a cited test that does not exist.
 - Work one roadmap phase at a time. Do not start a phase until the previous
   phase's acceptance check in `docs/ROADMAP.md` actually passes.
-- The ingestion Lambda stays stateless: validate → persist raw → archive media
-  → extract → reply. All state lives in Postgres.
+- The ingestion Lambda stays stateless: all state lives in Postgres. It writes
+  nothing to Postgres or S3 until extraction and validation pass, so a Gemini
+  error gets a failure reply and no row. The handler order is in
+  `docs/ARCHITECTURE.md`; keep to it.
 - Terraform in `infra/` provisions infrastructure only. Database schema belongs
   to `supabase/migrations/`; secret values are written to Parameter Store out
   of band and referenced, never passed as Terraform variables.
