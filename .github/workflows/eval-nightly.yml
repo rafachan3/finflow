@@ -54,7 +54,7 @@ jobs:
           cache: npm
           cache-dependency-path: lambda/package-lock.json
       - run: npm ci
-      - run: npm run eval -- --record
+      - run: npm run eval -- --hashes
         env:
           GEMINI_EVAL_API_KEY: ${{ secrets.GEMINI_EVAL_API_KEY }}
           EVAL_SUMMARY_FILE: ${{ runner.temp }}/summary.md

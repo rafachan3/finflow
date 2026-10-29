@@ -93,9 +93,10 @@ jobs:
           cache-dependency-path: lambda/package-lock.json
       - run: npm ci
       # Only this step sees the key, not checkout or npm ci's install scripts.
-      # --record rewrites each live pass's golden; CI cannot commit, so the
-      # files go up as the `goldens` artifact for the PR to commit.
-      - run: npm run eval -- --record
+      # --hashes writes each live pass's request hash into its golden; CI
+      # cannot commit, so the files go up as the `goldens` artifact for the
+      # PR to commit.
+      - run: npm run eval -- --hashes
         env:
           GEMINI_EVAL_API_KEY: ${{ secrets.GEMINI_EVAL_API_KEY }}
       - uses: actions/upload-artifact@v4

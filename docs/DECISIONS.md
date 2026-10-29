@@ -1079,12 +1079,19 @@ model randomness or drift on Google's side, which the nightly run covers.
   same locally, in CI and on any branch. `actions/cache` was ruled out:
   entries are evicted after 7 days unused, a PR cannot read another PR's
   entries, nothing is reviewable, and a cache miss quietly spends quota.
-- **Refresh without committing from CI.** `npm run eval -- --record` writes
-  each live pass's answer and hash (the key from the environment or the
-  repo-root `.env`). CI runs the eval with `--record` and uploads the
-  goldens as the `goldens` artifact; the PR that changed the request
-  commits them, and its next push replays. Until then a stale or missing
-  hash only means that case calls Gemini, one request, within the cap.
+- **Refresh without committing from CI.** `npm run eval -- --hashes`
+  writes each live pass's request hash and keeps `recorded`; `--record`
+  also replaces `recorded` (the key from the environment or the repo-root
+  `.env`). CI runs `--hashes` and uploads the goldens as the `goldens`
+  artifact; the PR that changed the request commits them, and its next
+  push replays. Until then a stale or missing hash only means that case
+  calls Gemini, one request, within the cap.
+- **The hash and the recording need not come from the same call.** The
+  replay checks code after the response, and any recording that satisfies
+  `expect` serves; golden.test.ts guarantees that. Re-recording from CI
+  would churn the journeys, which quote the recordings, and on a day the
+  Flash quota is spent it would swap in Flash-Lite's terser answers (the
+  first run of this PR did exactly that).
 - **"Today" is pinned in the eval** (2026-10-28). The system prompt carries
   the date, so a real date would change every request daily. `expect`
   checks only whether a date is set.

@@ -1,12 +1,16 @@
-// `npm run eval [-- --record]`. Vitest rejects unknown flags, so --record
-// travels to the eval as EVAL_RECORD.
+// `npm run eval [-- --record | --hashes]`. Vitest rejects unknown flags, so
+// they travel to the eval as EVAL_RECORD.
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { parseEnv } from "node:util";
 import { startVitest } from "vitest/node";
 
-process.env.EVAL_RECORD = process.argv.includes("--record") ? "1" : "";
+process.env.EVAL_RECORD = process.argv.includes("--record")
+  ? "1"
+  : process.argv.includes("--hashes")
+    ? "hash"
+    : "";
 
 // A local run may keep the key in the main checkout's .env (gitignored),
 // which a worktree shares. The environment wins.

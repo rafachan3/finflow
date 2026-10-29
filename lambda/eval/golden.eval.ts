@@ -43,7 +43,8 @@ import {
 } from "./harness.js";
 
 const GOLDEN_DIR = new URL("../tests/golden/", import.meta.url);
-const RECORD = process.env.EVAL_RECORD === "1";
+// "1": write each live pass's answer and request hash; "hash": the hash only.
+const RECORD = process.env.EVAL_RECORD;
 const CHAIN = [GEMINI_MODEL, GEMINI_FALLBACK_MODEL, GEMINI_LITE_MODEL];
 // Pinned so a case's request bytes do not change with the calendar, which
 // would defeat the replay below. `expect` only checks whether a date is set.
@@ -177,7 +178,10 @@ describe.skipIf(inject("evalSkip"))("live Gemini", () => {
     rows.push({ name: g.file, attempts, model: answer?.model, passed: found.length === 0 });
     if (RECORD && found.length === 0 && hash) {
       const file = new URL(`${g.file}.json`, GOLDEN_DIR);
-      const next = recordedFile(readFileSync(file, "utf8"), answer!.raw, hash);
+      // --hashes keeps the recording the journeys assert on; the old one
+      // satisfies `expect` too (golden.test.ts).
+      const raw = RECORD === "hash" ? g.recorded : answer!.raw;
+      const next = recordedFile(readFileSync(file, "utf8"), raw, hash);
       if (next) writeFileSync(file, next);
     }
     expect(found).toEqual([]);

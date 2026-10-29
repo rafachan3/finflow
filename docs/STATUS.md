@@ -300,7 +300,7 @@ Eval budget (2026-10-28; DECISIONS.md, TESTING.md): the eval replays a
 case whose exact Gemini request (hashed with the model chain, stored as
 `request_sha256` in its golden) already passed, and calls Gemini only for
 the rest. "Today" is pinned and an edit patches its base's recording, so a
-full live run is 16 requests for 16 cases. CI records live passes into the
+full live run is 16 requests for 16 cases. CI writes live passes' request hashes into the
 `goldens` artifact for the PR to commit. A nightly workflow at 06:07 UTC
 runs every case live with the model chain rotated per case, reports each
 429's `quotaValue`, and keeps one `eval-nightly` issue open while it fails.

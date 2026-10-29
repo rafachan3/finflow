@@ -103,14 +103,19 @@ calls Gemini. The eval pins "today" to a fixed date so the request does not
 change daily, and an edit case patches its base case's recording, so every
 case is at most one request.
 
-Add `-- --record` to write each live pass back to its golden: the answer
-into `recorded`, the request's hash into `request_sha256`. Locally the key
-comes from the environment or the repo-root `.env`. CI records too but cannot commit, so after a
-PR's eval calls Gemini, commit its refreshed goldens in the same PR:
+Add `-- --hashes` to write each live pass's request hash into its
+golden's `request_sha256`, keeping `recorded` (the journeys assert on it).
+`-- --record` also replaces `recorded` with the live answer; update the
+journeys that quote it in the same commit. Locally the key comes from the
+environment or the repo-root `.env`.
+
+CI runs with `--hashes` but cannot commit, so after a PR's eval calls
+Gemini, commit the hashes in the same PR (gh will not overwrite files, hence
+the scratch directory):
 
 ```sh
-gh run download <run-id> -n goldens -D lambda/tests/golden
-npm test   # journeys replay the new recordings
+gh run download <run-id> -n goldens -D /tmp/goldens
+cp /tmp/goldens/*.json lambda/tests/golden/
 ```
 
 The next push then replays those cases without a call.
