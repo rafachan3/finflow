@@ -1,6 +1,7 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Extraction } from "../../src/extraction.js";
 import { closeHelpers, resetData, sql } from "./db-helpers.js";
+import { merchantKey } from "../../src/commands.js";
 import { expense, income, pending, transfer } from "./fixtures.js";
 
 vi.mock("../../src/config.js", async () => {
@@ -439,8 +440,8 @@ describe("merchants", () => {
   });
 
   it("will not add a name that matches a merchant in another case, and reports the existing spelling", async () => {
-    expect(await db.addMerchant("acme MART")).toEqual({ exists: "Acme Mart" });
-    expect(await db.addMerchant("Acme Mart")).toEqual({ exists: "Acme Mart" });
+    expect(await db.addMerchant("acme MART")).toEqual({ exists: "Acme Mart", linked: 0 });
+    expect(await db.addMerchant("Acme Mart")).toEqual({ exists: "Acme Mart", linked: 0 });
     expect(await count("merchants")).toBe(2);
   });
 
@@ -481,7 +482,7 @@ describe("merchants", () => {
     expect(await db.addMerchant("acme mart")).toEqual({ added: "Acme Mart", unhid: true, linked: 1 });
     expect(await sql("select count(*)::int n from transactions where merchant_id is null")).toEqual([{ n: 0 }]);
     expect(await db.listMerchants()).toEqual({ names: ["Acme Mart", "Example Online"], hidden: 0 });
-    expect(await db.addMerchant("Acme Mart")).toEqual({ exists: "Acme Mart" });
+    expect(await db.addMerchant("Acme Mart")).toEqual({ exists: "Acme Mart", linked: 0 });
   });
 
   it("adding a merchant links past transactions whose extraction names it, ignoring case and spaces, and leaves linked ones alone", async () => {
@@ -512,7 +513,104 @@ describe("merchants", () => {
     );
     expect(rows.map((r) => r.merchant)).toEqual(["Maple Kiosk", "Maple Kiosk", "Acme Mart", null, null]);
     expect(await status(stillPending)).toBe("pending");
-    expect(await db.addMerchant("maple kiosk")).toEqual({ exists: "Maple Kiosk" });
+    expect(await db.addMerchant("maple kiosk")).toEqual({ exists: "Maple Kiosk", linked: 0 });
+  });
+
+  /** A Notion-style row: a saved transaction with no ingestion behind it. */
+  async function imported(description: string, merchant: string | null = null): Promise<void> {
+    await sql(
+      `insert into transactions (occurred_on, type, amount, description, funding_source_id, merchant_id)
+       values ('2026-07-01', 'expense', 9.99, $1,
+               (select id from funding_sources where name = 'self'),
+               (select id from merchants where name = $2))`,
+      [description, merchant],
+    );
+  }
+
+  async function merchantByDescription(): Promise<Record<string, string | null>> {
+    const rows = await sql<{ description: string; merchant: string | null }>(
+      `select t.description, m.name as merchant from transactions t
+       left join merchants m on m.id = t.merchant_id order by t.created_at`,
+    );
+    return rows.map((r) => [r.description, r.merchant]).reduce((o, [d, m]) => ({ ...o, [d!]: m }), {});
+  }
+
+  it("adding a merchant links imported rows whose whole description is its name, typographic apostrophes and case aside", async () => {
+    await imported("Joe\u2019s Diner");
+    await imported("  JOE'S   diner ");
+    await imported("Joe\u2019s Diner lunch");
+    await imported("Joes Diner");
+    await imported("Acme Mart lunch");
+    await imported("Joe\u2019s Diner", "Acme Mart");
+
+    expect(await db.addMerchant("Joe's Diner")).toEqual({ added: "Joe's Diner", unhid: false, linked: 2 });
+
+    expect(await sql("select description, merchant_id is null as unlinked from transactions order by created_at")).toEqual([
+      { description: "Joe\u2019s Diner", unlinked: false },
+      { description: "  JOE'S   diner ", unlinked: false },
+      { description: "Joe\u2019s Diner lunch", unlinked: true },
+      { description: "Joes Diner", unlinked: true },
+      { description: "Acme Mart lunch", unlinked: true },
+      { description: "Joe\u2019s Diner", unlinked: false },
+    ]);
+  });
+
+  it("never matches an imported row by part of its description", async () => {
+    await imported("Metro ticket");
+    await imported("Bixi Monthly Pass");
+    await imported("Bixi");
+    expect(await db.addMerchant("Metro")).toEqual({ added: "Metro", unhid: false, linked: 0 });
+    expect(await db.addMerchant("Bixi")).toEqual({ added: "Bixi", unhid: false, linked: 1 });
+    expect(await merchantByDescription()).toEqual({
+      "Metro ticket": null,
+      "Bixi Monthly Pass": null,
+      Bixi: "Bixi",
+    });
+  });
+
+  it("an imported-row match applies only to rows with no ingestion: a bot row is matched by its extraction", async () => {
+    const [a] = await save(950, expense({ merchant: "Corner Store", description: "Joe's Diner" }));
+    await db.confirmIngestion(a);
+    expect(await db.addMerchant("Joe's Diner")).toEqual({ added: "Joe's Diner", unhid: false, linked: 0 });
+  });
+
+  it("links past transactions whose extraction names the merchant with a curly apostrophe", async () => {
+    const [a, b] = await save(951, expense({ merchant: "Joe\u2019s Diner" }), expense({ merchant: "Joe\u2018s Diner" }));
+    await db.confirmIngestion(a);
+    await db.confirmIngestion(b);
+    expect(await db.addMerchant("Joe's Diner")).toEqual({ added: "Joe's Diner", unhid: false, linked: 2 });
+  });
+
+  it("adding a name that exists links what is still unlinked and reports the count", async () => {
+    await imported("Acme Mart");
+    await imported("acme mart");
+    expect(await db.addMerchant("ACME MART")).toEqual({ exists: "Acme Mart", linked: 2 });
+    expect(await db.addMerchant("Acme Mart")).toEqual({ exists: "Acme Mart", linked: 0 });
+  });
+
+  it("a name differing only by apostrophe style is the same merchant", async () => {
+    await sql("insert into merchants (name) values ('Joe\u2019s Diner')");
+    await imported("Joe's Diner");
+    expect(await db.addMerchant("Joe's Diner")).toEqual({ exists: "Joe\u2019s Diner", linked: 1 });
+    expect(await count("merchants")).toBe(3);
+    expect(await db.deleteMerchant("JOE'S DINER")).toEqual({ hidden: "Joe\u2019s Diner", uses: 1 });
+  });
+
+  it("Confirm links a merchant named with another apostrophe style, but not a hidden one", async () => {
+    await sql("insert into merchants (name) values ('Joe''s Diner')");
+    const [a] = await save(952, expense({ merchant: "Joe\u2019s Diner" }));
+    await db.confirmIngestion(a);
+    expect(await sql("select m.name from transactions t join merchants m on m.id = t.merchant_id")).toEqual([
+      { name: "Joe's Diner" },
+    ]);
+  });
+
+  it("the TypeScript key and the SQL key agree", async () => {
+    const samples = ["McDonald\u2019s", " MCDONALD'S ", "a\u2018b`c\u00b4d", "Caf\u00e9   Nuit", "Acme\tMart\n", "", "O\u2019Brien\u2019s  BAR"];
+    for (const raw of samples) {
+      const [row] = await sql<{ key: string }>(`select ${db.MERCHANT_KEY("$1::text")} as key`, [raw]);
+      expect(row.key, JSON.stringify(raw)).toBe(merchantKey(raw));
+    }
   });
 });
 
@@ -558,6 +656,17 @@ describe("findFrequentMerchant", () => {
 
     await sql("update merchants set hidden_at = now() where name = 'Example Online'");
     expect(await db.findFrequentMerchant(await saveOne(expense({ merchant: "Example Online" })), 3)).toBeNull();
+  });
+
+  it("counts apostrophe styles as one name, and finds a lookup row spelled with another", async () => {
+    await bought("Joe’s Diner", 1);
+    await bought("JOE'S DINER", 2);
+    expect(await db.findFrequentMerchant(await saveOne(expense({ merchant: "Joe‘s Diner" })), 3)).toEqual({
+      name: "Joe‘s Diner",
+      count: 3,
+    });
+    await sql("insert into merchants (name) values ('Joe’s Diner')");
+    expect(await db.findFrequentMerchant(await saveOne(expense({ merchant: "Joe's Diner" })), 3)).toBeNull();
   });
 
   it("is empty for a card with no merchant", async () => {

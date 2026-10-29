@@ -372,6 +372,15 @@ no merchant names), with the link-on-add normalisation, excluding the card's
 own message. Fail-open like the duplicate check; no Gemini call, prompt change
 or migration.
 
+Merchant matching fix (DECISIONS.md 2026-10-29): the merchant key now also
+ignores apostrophe style (`’ ‘ ´` and backtick read as `'`), in one SQL
+expression and its TypeScript twin. Link-on-add also links a transaction with
+no ingestion (a Notion import) and no merchant when its whole description
+equals the name, never part of it, and `/addmerchant` on a visible merchant
+runs the link and replies `Already a merchant: X. Linked N past transactions.`
+Owner action after deploy: re-run `/addmerchant McDonald's` to link the four
+imported rows. No migration, prompt or golden change.
+
 Command menu (DECISIONS.md 2026-10-29): `src/commands.ts` is the one command
 table. The handler's run table is typed against it, and the last step of the
 deploy workflow registers it with `setMyCommands` (`npm run telegram:commands`;

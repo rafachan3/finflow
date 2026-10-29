@@ -4,8 +4,19 @@ import {
   cleanMerchantName,
   deleteReply,
   formatMerchants,
+  merchantKey,
   parseCommand,
 } from "../src/commands.js";
+
+describe("merchant key", () => {
+  it("makes case, spacing and apostrophe or quote variants one key", () => {
+    const key = "joe's diner";
+    for (const raw of ["Joe's Diner", "Joe’s Diner", "JOE‘S  DINER", " joe`s diner\n", "Joe´s Diner"]) {
+      expect(merchantKey(raw)).toBe(key);
+    }
+    expect(merchantKey("Joes Diner")).not.toBe(key);
+  });
+});
 
 describe("merchant command replies", () => {
   it("lists the visible merchants with their count and the hidden count, says so when there are none, and cuts a list Telegram would refuse", () => {
@@ -43,7 +54,13 @@ describe("merchant command replies", () => {
     expect(addReply({ added: "Acme Mart", unhid: true, linked: 7 })).toBe(
       "Unhid merchant: Acme Mart. Linked 7 past transactions. The next message will use it.",
     );
-    expect(addReply({ exists: "Acme Mart" })).toBe("Already a merchant: Acme Mart.");
+    expect(addReply({ exists: "Acme Mart", linked: 0 })).toBe("Already a merchant: Acme Mart.");
+    expect(addReply({ exists: "Acme Mart", linked: 1 })).toBe(
+      "Already a merchant: Acme Mart. Linked 1 past transaction.",
+    );
+    expect(addReply({ exists: "Acme Mart", linked: 4 })).toBe(
+      "Already a merchant: Acme Mart. Linked 4 past transactions.",
+    );
     expect(deleteReply({ deleted: "Maple Kiosk" }, "maple kiosk")).toBe("Deleted merchant: Maple Kiosk.");
     expect(deleteReply({ missing: true }, "Nowhere")).toBe(
       "No merchant named Nowhere. Send /merchants for the list.",

@@ -109,6 +109,32 @@ describe("merchant commands", () => {
     expect(gemini.calls).toHaveLength(2);
   });
 
+  it("/addmerchant links an imported row named with a curly apostrophe, and leaves a longer description alone", async () => {
+    await ledger.importRow("Joe’s Diner");
+    await ledger.importRow("Joe’s Diner lunch");
+    await ledger.importRow("Bixi Monthly Pass");
+
+    expect(await send("/addmerchant Joe's Diner")).toEqual([
+      "Added merchant: Joe's Diner. Linked 1 past transaction. The next message will use it.",
+    ]);
+    expect(await ledger.transactions()).toMatchObject([
+      { description: "Joe’s Diner", merchant: "Joe's Diner" },
+      { description: "Joe’s Diner lunch", merchant: null },
+      { description: "Bixi Monthly Pass", merchant: null },
+    ]);
+  });
+
+  it("/addmerchant on an existing merchant links what is still unlinked, and says so only when it did", async () => {
+    await ledger.importRow("Acme Mart");
+    await ledger.importRow("ACME MART");
+
+    expect(await send("/addmerchant Acme Mart")).toEqual([
+      "Already a merchant: Acme Mart. Linked 2 past transactions.",
+    ]);
+    expect(await ledger.transactions()).toMatchObject([{ merchant: "Acme Mart" }, { merchant: "Acme Mart" }]);
+    expect(await send("/addmerchant Acme Mart")).toEqual(["Already a merchant: Acme Mart."]);
+  });
+
   it("/merchants lists them sorted, and a command with no usable name gets a hint, not a write", async () => {
     expect(await send("/merchants")).toEqual(["Merchants (2): Acme Mart, Example Online"]);
     expect(await send("/addmerchant")).toEqual(["Send /addmerchant Name"]);

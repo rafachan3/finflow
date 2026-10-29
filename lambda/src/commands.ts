@@ -40,6 +40,18 @@ export function collapseSpaces(s: string): string {
   return s.replace(/\s+/g, " ").trim();
 }
 
+/** Typographic apostrophes and quotes, which a key reads as a plain apostrophe. */
+export const APOSTROPHE_VARIANTS = "’‘`´";
+
+/**
+ * How two spellings of a merchant are compared: spaces collapsed, case and
+ * apostrophe style ignored. db.ts's MERCHANT_KEY is the same rule in SQL; an
+ * integration test keeps them equal.
+ */
+export function merchantKey(name: string): string {
+  return collapseSpaces(name.replace(new RegExp(`[${APOSTROPHE_VARIANTS}]`, "g"), "'")).toLowerCase();
+}
+
 /** The visible merchants; the hidden count goes before the names so a cut list keeps it. */
 export function formatMerchants({ names, hidden }: { names: string[]; hidden: number }): string {
   if (names.length === 0) return hidden > 0 ? `No merchants (${hidden} hidden).` : "No merchants.";
@@ -60,12 +72,12 @@ export function cleanMerchantName(raw: string): { name: string } | { error: stri
 }
 
 export function addReply(
-  result: { added: string; unhid: boolean; linked: number } | { exists: string },
+  result: { added: string; unhid: boolean; linked: number } | { exists: string; linked: number },
 ): string {
-  if ("exists" in result) return `Already a merchant: ${result.exists}.`;
-  const verb = result.unhid ? "Unhid" : "Added";
   const s = result.linked === 1 ? "" : "s";
   const linked = result.linked > 0 ? ` Linked ${result.linked} past transaction${s}.` : "";
+  if ("exists" in result) return `Already a merchant: ${result.exists}.${linked}`;
+  const verb = result.unhid ? "Unhid" : "Added";
   return `${verb} merchant: ${result.added}.${linked} The next message will use it.`;
 }
 
