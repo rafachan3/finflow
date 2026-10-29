@@ -13,6 +13,10 @@ current phase, what is done, what is next, and open questions. It is the file
 that lets a fresh session pick up where the last one stopped. If you finish
 something, update it before you finish your turn.
 
+Then run `gh issue list --label eval-nightly --state open`. An open issue
+means last night's live eval failed (its table names the cases); fixing it
+comes before any other work, and the next nightly pass closes it.
+
 ## Hard constraints
 
 1. **Total cost < $1/month.** Every component runs on a durable free tier.
