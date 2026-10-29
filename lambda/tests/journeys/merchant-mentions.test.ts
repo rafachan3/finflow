@@ -114,15 +114,15 @@ describe("/addmerchant review of transactions that mention the merchant", () => 
   });
 
   it("matches the name as a whole word or phrase, not inside a longer word", async () => {
-    await ledger.importRow("Metropolitan museum");
-    await ledger.importRow("Metro ticket");
-    await ledger.importRow("groceries (metro)");
+    await ledger.importRow("Larkspur museum");
+    await ledger.importRow("Lark ticket");
+    await ledger.importRow("groceries (lark)");
 
-    const [added, review] = await send("/addmerchant Metro");
-    expect(added.text).toBe("Added merchant: Metro. The next message will use it.");
+    const [added, review] = await send("/addmerchant Lark");
+    expect(added.text).toBe("Added merchant: Lark. The next message will use it.");
     expect(labels(review)).toEqual([
-      '☐ Jul 1 · 9.99 · "groceries (metro)"',
-      '☐ Jul 1 · 9.99 · "Metro ticket"',
+      '☐ Jul 1 · 9.99 · "groceries (lark)"',
+      '☐ Jul 1 · 9.99 · "Lark ticket"',
       ...ACTIONS,
     ]);
   });

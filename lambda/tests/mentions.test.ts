@@ -21,8 +21,8 @@ function mention(over: Partial<Mention> = {}): Mention {
 
 describe("mention labels", () => {
   it("shows the date, amount and the words around the match, from the message before the description", () => {
-    expect(mentionLabel(mention({ said: "4 burger from mcdonald’s" }), "McDonald's")).toBe(
-      '☐ Sep 15 · 12.50 · "4 burger from mcdonald’s"',
+    expect(mentionLabel(mention({ said: "4 burger from maple’s" }), "Maple's")).toBe(
+      '☐ Sep 15 · 12.50 · "4 burger from maple’s"',
     );
     expect(mentionLabel(mention({ description: "Coffee at Maple Kiosk" }), "maple kiosk")).toBe(
       '☐ Sep 15 · 12.50 · "Coffee at Maple Kiosk"',

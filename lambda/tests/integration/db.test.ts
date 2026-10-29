@@ -556,15 +556,15 @@ describe("merchants", () => {
   });
 
   it("never matches an imported row by part of its description", async () => {
-    await imported("Metro ticket");
-    await imported("Bixi Monthly Pass");
-    await imported("Bixi");
-    expect(await db.addMerchant("Metro")).toMatchObject({ added: "Metro", unhid: false, linked: 0 });
-    expect(await db.addMerchant("Bixi")).toMatchObject({ added: "Bixi", unhid: false, linked: 1 });
+    await imported("Lark ticket");
+    await imported("Wren Monthly Pass");
+    await imported("Wren");
+    expect(await db.addMerchant("Lark")).toMatchObject({ added: "Lark", unhid: false, linked: 0 });
+    expect(await db.addMerchant("Wren")).toMatchObject({ added: "Wren", unhid: false, linked: 1 });
     expect(await merchantByDescription()).toEqual({
-      "Metro ticket": null,
-      "Bixi Monthly Pass": null,
-      Bixi: "Bixi",
+      "Lark ticket": null,
+      "Wren Monthly Pass": null,
+      Wren: "Wren",
     });
   });
 
@@ -657,20 +657,20 @@ describe("findMentions and linkMentions", () => {
   }
 
   it("finds the name as a whole word in a message, a caption or a description, apostrophes and case aside", async () => {
-    await sql("insert into merchants (name) values ('McDonald''s')");
-    const id = await merchantId("McDonald's");
-    await said(960, { text: "4 burger from MCDONALD’S" }, "Burger");
-    await said(961, { caption: "fries, mcdonald's again" }, "Fries");
-    await imported("McDonald's drive-thru");
-    await imported("McDonald'sville trip");
+    await sql("insert into merchants (name) values ('Maple''s')");
+    const id = await merchantId("Maple's");
+    await said(960, { text: "4 burger from MAPLE’S" }, "Burger");
+    await said(961, { caption: "fries, maple's again" }, "Fries");
+    await imported("Maple's drive-thru");
+    await imported("Maple'sville trip");
     await imported("Lunch");
 
     const found = await db.findMentions(id, null);
-    expect(found).toMatchObject({ name: "McDonald's", total: 3 });
+    expect(found).toMatchObject({ name: "Maple's", total: 3 });
     expect(found!.rows.map((r) => [r.description, r.said])).toEqual([
-      ["Fries", "fries, mcdonald's again"],
-      ["Burger", "4 burger from MCDONALD’S"],
-      ["McDonald's drive-thru", null],
+      ["Fries", "fries, maple's again"],
+      ["Burger", "4 burger from MAPLE’S"],
+      ["Maple's drive-thru", null],
     ]);
     expect(found!.rows[0]).toMatchObject({ date: "2026-10-20", amount: "12.50" });
   });

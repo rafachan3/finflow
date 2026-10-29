@@ -1497,11 +1497,11 @@ in media the extraction did not name.
 - **Tier 2, offered for review: a mention.** The key appears as a whole word or
   phrase (non-alphanumeric on both sides, after the key's case, space and
   apostrophe rules) in the message text or caption (`raw_payload`) or in any
-  transaction's description. A mention is not a statement: "Metro" names a
-  grocery chain and a subway, and "coffee next to Maple Kiosk" is not a
+  transaction's description. A mention is not a statement: a one-word name like
+  "Lark" is also an everyday word, and "coffee next to Maple Kiosk" is not a
   purchase there. Constraint 3 (nothing written without confirmation) applies,
   so each row waits for the owner's pick. Substring matching was ruled out:
-  "Metro" would match "Metropolitan".
+  "Lark" would match "Larkspur".
 - **The review is one toggle per row, state in the keyboard.** Owner design:
   `☐ Sep 15 · 12.50 · "words around the match"`, tap to tick, then Link
   selected, Select all or Skip; 8 rows per message and More › for the rest. The
@@ -1524,8 +1524,8 @@ in media the extraction did not name.
   merchant. The script's prompt asks only "which business does this name?" It
   is not on the ingestion path, so it has no golden case and leaves the
   extraction prompt hashes alone.
-- **Aliases are deliberately not handled yet.** "mcdo" or "Tim's" for a
-  merchant named McDonald's or Tim Hortons match neither tier. `merchants.aliases`
+- **Aliases are deliberately not handled yet.** "MK" or "Maple's" for a
+  merchant named Maple Kiosk match neither tier. `merchants.aliases`
   exists but stays empty until the open question on seeding it is settled.
 
 **Ruled out:** auto-linking mentions; substring or fuzzy matching; a

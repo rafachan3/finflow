@@ -34,8 +34,8 @@ function escapeRegex(s: string): string {
 
 /**
  * The Postgres regex db.ts matches against MERCHANT_KEY(text): the merchant's
- * key as a whole word or phrase, so "metro" is found in "metro ticket" but not
- * in "metropolitan".
+ * key as a whole word or phrase, so "lark" is found in "lark ticket" but not
+ * in "larkspur".
  */
 export function mentionPattern(name: string): string {
   return `(^|[^[:alnum:]_])${escapeRegex(merchantKey(name))}($|[^[:alnum:]_])`;
