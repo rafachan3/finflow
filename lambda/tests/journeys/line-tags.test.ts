@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { golden } from "../golden/golden.js";
+import { sql } from "../integration/db-helpers.js";
 import { chat, gemini, labels, ledger, useJourneys } from "./harness.js";
 
 vi.mock("../../src/config.js", async () => {
@@ -15,6 +16,15 @@ type Event = { tags: string[]; items: Line[] };
 
 const CAPTION = "road trip snacks; the bananas were for Partner";
 const receipt = () => (golden("receipt-line-tag").recorded as { events: Event[] }).events[0];
+
+/** Makes every pending card look saved before line tags: its lines have no `tags` key. */
+async function asPreLineTagCards(): Promise<void> {
+  await sql(
+    `update ingestions set extraction = jsonb_set(extraction, '{items}',
+       (select coalesce(jsonb_agg(i - 'tags'), '[]') from jsonb_array_elements(extraction->'items') i))
+     where status = 'pending'`,
+  );
+}
 
 /** The receipt event with each line's own tags replaced. */
 function withLineTags(event: Event, tags: Record<string, string[]>): Event {
@@ -108,6 +118,42 @@ describe("tags for one line or the whole message", () => {
       ["Bananas", []],
       ["Rotisserie chicken", []],
       ["Sparkling water", ["Partner"]],
+    ]);
+  });
+
+  it("/pending resends a card saved before line tags, and it confirms with none on its lines", async () => {
+    gemini.extract = golden("receipt-line-tag").recorded;
+    await chat.photo(CAPTION);
+    await asPreLineTagCards();
+
+    await chat.text("/pending");
+    const card = chat.last().text.split("\n");
+    expect(card).toContain("• Bananas — 6.49");
+    expect(card.filter((l) => l.trim().startsWith("Tags:"))).toEqual(["Tags: Travel"]);
+    await chat.tap(chat.last(), "Confirm");
+    expect((await ledger.lineTags()).map((l) => [l.description, l.own, l.effective])).toEqual([
+      ["Bananas", [], ["Travel"]],
+      ["Rotisserie chicken", [], ["Travel"]],
+      ["Sparkling water", [], ["Travel"]],
+    ]);
+  });
+
+  it("an Edit of a card saved before line tags sends its lines with no tags, and takes the new ones", async () => {
+    gemini.extract = golden("receipt-line-tag").recorded;
+    await chat.photo(CAPTION);
+    await asPreLineTagCards();
+    await chat.text("/pending");
+    await chat.tap(chat.last(), "Edit");
+    gemini.patch = withLineTags(receipt(), { Bananas: ["Partner"] });
+    await chat.text("the bananas were for Partner");
+
+    const sent = JSON.parse(gemini.lastUserText[0]) as { items: { description: string; tags: string[] }[] };
+    expect(sent.items.map((i) => i.tags)).toEqual([[], [], []]);
+    await chat.tap(chat.last(), "Confirm");
+    expect((await ledger.lineTags()).map((l) => [l.description, l.own])).toEqual([
+      ["Bananas", ["Partner"]],
+      ["Rotisserie chicken", []],
+      ["Sparkling water", []],
     ]);
   });
 });

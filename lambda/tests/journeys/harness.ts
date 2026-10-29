@@ -104,6 +104,8 @@ export const gemini = {
   overloaded: new Set<string>(),
   /** The system instruction of the latest request, e.g. to read its Merchants: line. */
   lastSystem: "",
+  /** The text parts of the latest request; an Edit's first is the card it corrects. */
+  lastUserText: [] as string[],
   /** The merchants the latest extract request offered Gemini. */
   merchants(): string[] {
     const line = gemini.lastSystem.split("\n").find((l) => l.startsWith("Merchants: "));
@@ -179,6 +181,7 @@ const server = setupServer(
       const kind = props.events ? "extract" : "patch";
       gemini.calls.push({ model, kind });
       gemini.lastSystem = body.systemInstruction.parts[0].text;
+      gemini.lastUserText = body.contents[0].parts.flatMap((p) => (p.text === undefined ? [] : [p.text]));
       if (gemini.overloaded.has(model)) {
         return HttpResponse.json({ error: { message: "overloaded" } }, { status: 503 });
       }
@@ -228,6 +231,7 @@ export function useJourneys(): void {
     telegram.nextMessageId = 1;
     gemini.calls = [];
     gemini.lastSystem = "";
+    gemini.lastUserText = [];
     gemini.delays = [];
     retryWait.sleep = async (ms) => {
       gemini.delays.push(ms);
