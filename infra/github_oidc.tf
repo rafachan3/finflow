@@ -58,7 +58,7 @@ resource "aws_iam_role_policy" "ingest_deploy" {
     Version = "2012-10-17"
     Statement = [{
       Effect   = "Allow"
-      Action   = ["lambda:UpdateFunctionCode", "lambda:GetFunctionUrlConfig"]
+      Action   = ["lambda:UpdateFunctionCode", "lambda:GetFunctionUrlConfig", "lambda:GetFunctionConfiguration"]
       Resource = aws_lambda_function.ingest.arn
     }]
   })
