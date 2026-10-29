@@ -82,6 +82,7 @@ erDiagram
     jsonb raw_payload
     text media_path "nullable — S3 key"
     jsonb extraction "nullable — LLM output"
+    text media_merchant "nullable — business the archived media names"
     text status "pending | awaiting_date | awaiting_edit | confirmed | discarded"
     uuid transaction_id FK "nullable until confirmed"
     timestamptz created_at
@@ -262,6 +263,8 @@ create table ingestions (
   raw_payload        jsonb not null,              -- full Telegram update
   media_path         text,                        -- S3 object key: {source}/{yyyy-mm}/{id}.{ext}; older rows are flat {id}.{ext}
   extraction         jsonb,                       -- LLM structured output
+  media_merchant     text,                        -- business a re-read of the
+                                                  -- archived media names (backfill)
   status             text not null default 'pending'
                      check (status in ('pending','awaiting_date','awaiting_edit','confirmed','discarded')),
   transaction_id     uuid references transactions(id),
