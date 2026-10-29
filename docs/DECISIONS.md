@@ -1528,7 +1528,12 @@ in media the extraction did not name.
   note names. `npm run backfill:media-merchant` fills it for confirmed photos
   and voice notes whose extraction named no merchant, run by hand against
   production with `--dry-run` first. It skips a message that produced several
-  events: its media names one business, which may not be every event's. The
+  events: its media may name another event's business. An event that failed
+  validation is never saved, so a lone row does not prove a lone event: the
+  row must be event 0 (no earlier event dropped), and the script asks for every
+  business the media names and stores one only when exactly one is named and
+  it fits a merchant name (100 characters), so a dropped later event's
+  business cannot be linked to this purchase. The rest are counted as skipped. The
   Lambda never reads S3 (its role may only `PutObject`); new photos and voice
   notes need no re-read, because the extraction prompt already asks for the
   merchant. The script's prompt asks only "which business does this name?" It

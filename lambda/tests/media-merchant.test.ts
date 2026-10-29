@@ -14,13 +14,14 @@ function media(bytes: string) {
   return { Body: { transformToByteArray: async () => new TextEncoder().encode(bytes) } } as never;
 }
 
-function geminiSays(...merchants: (string | null)[]) {
+/** Gemini's answer per call: the businesses one piece of media names. */
+function geminiSays(...answers: unknown[]) {
   const fetchMock = vi.fn();
-  for (const merchant of merchants) {
+  for (const merchants of answers) {
     fetchMock.mockResolvedValueOnce({
       ok: true,
       json: async () => ({
-        candidates: [{ content: { parts: [{ text: JSON.stringify({ merchant }) }] } }],
+        candidates: [{ content: { parts: [{ text: JSON.stringify({ merchants }) }] } }],
       }),
     });
   }
@@ -63,6 +64,8 @@ function run(db: ReturnType<typeof fakeDb>, over: { dryRun?: boolean; limit?: nu
   return { done, lines };
 }
 
+const nothing = { candidates: 0, named: 0, written: 0, skipped: 0, failed: 0 };
+
 beforeEach(() => {
   s3.reset();
   retryWait.sleep = async () => {};
@@ -73,11 +76,11 @@ describe("media merchant backfill", () => {
   it("asks Gemini only which business the media names, with the media inline, and stores the answer", async () => {
     s3.on(GetObjectCommand, { Key: "1111.jpg" }).resolves(media("jpeg"));
     s3.on(GetObjectCommand, { Key: "2222.ogg" }).resolves(media("ogg"));
-    const fetchMock = geminiSays("  Maple   Kiosk ", null);
+    const fetchMock = geminiSays(["  Maple   Kiosk "], []);
     const db = fakeDb([photo, voice]);
 
     const { done, lines } = run(db);
-    expect(await done).toEqual({ candidates: 2, named: 1, written: 1, failed: 0 });
+    expect(await done).toEqual({ ...nothing, candidates: 2, named: 1, written: 1 });
 
     expect(s3.commandCalls(GetObjectCommand).map((c) => c.args[0].input)).toEqual([
       { Bucket: "receipts", Key: "1111.jpg" },
@@ -86,10 +89,10 @@ describe("media merchant backfill", () => {
     const bodies = fetchMock.mock.calls.map((c) => JSON.parse(c[1].body as string));
     expect(bodies[0].contents[0].parts).toEqual([
       { inlineData: { mimeType: "image/jpeg", data: Buffer.from("jpeg").toString("base64") } },
-      { text: "Which business does this name? null if none." },
+      { text: "Which businesses does this name? An empty list if none." },
     ]);
     expect(bodies[1].contents[0].parts[0].inlineData.mimeType).toBe("audio/ogg");
-    expect(Object.keys(bodies[0].generationConfig.responseSchema.properties)).toEqual(["merchant"]);
+    expect(Object.keys(bodies[0].generationConfig.responseSchema.properties)).toEqual(["merchants"]);
     expect(bodies[0].systemInstruction.parts[0].text).not.toMatch(/Subcategories|Merchants:/);
     expect(fetchMock.mock.calls[0][1].headers["x-goog-api-key"]).toBe("test-key");
 
@@ -97,24 +100,41 @@ describe("media merchant backfill", () => {
     expect(lines).toEqual([
       "11111111 photo: Maple Kiosk",
       "22222222 voice: (none)",
-      "2 candidates, 1 named, 1 written, 0 failed",
+      "2 candidates, 1 named, 1 written, 0 skipped, 0 failed",
+    ]);
+  });
+
+  it("skips media that names several businesses, or a name too long to be a merchant, and counts them", async () => {
+    s3.on(GetObjectCommand).resolves(media("ogg"));
+    geminiSays(["Maple Kiosk", "Lark"], ["x".repeat(101)], ["Maple Kiosk", " maple  KIOSK"]);
+    const third = { ...voice, id: "33333333-cccc-4ccc-8ccc-cccccccccccc" };
+    const db = fakeDb([voice, photo, third]);
+
+    const { done, lines } = run(db);
+    expect(await done).toEqual({ ...nothing, candidates: 3, named: 1, written: 1, skipped: 2 });
+    expect(db.writes).toEqual([[third.id, "Maple Kiosk"]]);
+    expect(lines).toEqual([
+      "22222222 voice: skipped, names several (Maple Kiosk; Lark)",
+      "11111111 photo: skipped, name over 100 characters",
+      "33333333 voice: Maple Kiosk",
+      "3 candidates, 1 named, 1 written, 2 skipped, 0 failed",
     ]);
   });
 
   it("a dry run reads and prints the proposed names but writes nothing", async () => {
     s3.on(GetObjectCommand).resolves(media("jpeg"));
-    geminiSays("Maple Kiosk");
+    geminiSays(["Maple Kiosk"]);
     const db = fakeDb([photo]);
 
     const { done, lines } = run(db, { dryRun: true });
-    expect(await done).toEqual({ candidates: 1, named: 1, written: 0, failed: 0 });
+    expect(await done).toEqual({ ...nothing, candidates: 1, named: 1 });
     expect(db.writes).toEqual([]);
-    expect(lines.at(-1)).toBe("1 candidates, 1 named, 0 written, 0 failed (dry run: nothing written)");
+    expect(lines.at(-1)).toBe("1 candidates, 1 named, 0 written, 0 skipped, 0 failed (dry run: nothing written)");
   });
 
   it("passes the limit to the candidate query, and no limit as null", async () => {
     const db = fakeDb([]);
-    expect(await run(db, { limit: 3 }).done).toEqual({ candidates: 0, named: 0, written: 0, failed: 0 });
+    expect(await run(db, { limit: 3 }).done).toEqual(nothing);
     await run(db).done;
     expect(db.selects).toEqual([[3], [null]]);
   });
@@ -129,20 +149,24 @@ describe("media merchant backfill", () => {
     const db = fakeDb([photo, voice]);
 
     const { done, lines } = run(db);
-    expect(await done).toEqual({ candidates: 2, named: 0, written: 0, failed: 2 });
+    expect(await done).toEqual({ ...nothing, candidates: 2, failed: 2 });
     expect(db.writes).toEqual([]);
     expect(lines).toEqual([
       "11111111 photo failed: gone",
       "22222222 voice failed: Gemini HTTP 400: bad audio",
-      "2 candidates, 0 named, 0 written, 2 failed",
+      "2 candidates, 0 named, 0 written, 0 skipped, 2 failed",
     ]);
   });
 
   it("treats a blank or non-text answer as no business", async () => {
     s3.on(GetObjectCommand).resolves(media("jpeg"));
-    geminiSays("   ", 42 as never);
-    const db = fakeDb([photo, { ...photo, id: "33333333-cccc-4ccc-8ccc-cccccccccccc" }]);
-    expect(await run(db).done).toEqual({ candidates: 2, named: 0, written: 0, failed: 0 });
+    geminiSays(["   "], [42], null);
+    const db = fakeDb([
+      photo,
+      { ...photo, id: "33333333-cccc-4ccc-8ccc-cccccccccccc" },
+      { ...photo, id: "44444444-dddd-4ddd-8ddd-dddddddddddd" },
+    ]);
+    expect(await run(db).done).toEqual({ ...nothing, candidates: 3 });
     expect(db.writes).toEqual([]);
   });
 

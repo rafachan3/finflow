@@ -395,12 +395,14 @@ message, 8 rows at a time, one toggle button per row (`☐ Sep 15 · 12.50 ·
 in the message's keyboard (stateless); Link selected writes only ticked rows
 still without a merchant. Migration 0011 adds `ingestions.media_merchant`; the
 one-off `npm run backfill:media-merchant` fills it from the archived photos and
-voice notes (about 16 rows qualified on 2026-10-29; multi-event messages are
-skipped). No extraction prompt or golden change. Aliases ("mcdo") are not
-handled yet.
+voice notes (about 16 rows qualified on 2026-10-29). It reads only a message's
+sole saved row, and only if that row is event 0; it asks for every business
+the media names and stores one only when exactly one is named (at most 100
+characters), counting the rest as skipped. No extraction prompt or golden
+change. Aliases ("MK" for Maple Kiosk) are not handled yet.
 
-Owner/CoS actions, in order: push migration 0011 to production, merge the PR
-(it auto-deploys code that reads the column), then from `lambda/`:
+Migration 0011 is applied to production. Owner/CoS actions, in order: merge
+the PR (it auto-deploys code that reads the column), then from `lambda/`:
 `RECEIPTS_BUCKET=finflow-receipts-$(aws sts get-caller-identity --query Account --output text) AWS_REGION=ca-central-1 npm run backfill:media-merchant -- --dry-run`,
 check the proposed names, and run it again without `--dry-run`. Then re-run
 `/addmerchant` for the merchants that matter to link and review.

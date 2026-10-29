@@ -13,6 +13,8 @@ vi.mock("../../src/config.js", async () => {
 
 const db = await import("../../src/db.js");
 const s3 = mockClient(S3Client);
+/** The businesses Gemini says each piece of media names. */
+let answer: string[];
 
 afterAll(async () => {
   s3.restore();
@@ -23,11 +25,14 @@ beforeEach(async () => {
   await resetData();
   s3.reset();
   s3.on(GetObjectCommand).resolves({ Body: { transformToByteArray: async () => new Uint8Array([1]) } } as never);
+  answer = ["Maple Kiosk"];
   vi.stubGlobal(
     "fetch",
     vi.fn().mockImplementation(async () => ({
       ok: true,
-      json: async () => ({ candidates: [{ content: { parts: [{ text: '{"merchant":"Maple Kiosk"}' }] } }] }),
+      json: async () => ({
+        candidates: [{ content: { parts: [{ text: JSON.stringify({ merchants: answer }) }] } }],
+      }),
     })),
   );
 });
@@ -78,10 +83,10 @@ describe("media merchant backfill candidates", () => {
     const [text] = await message(5, "text", [null]);
     const twoEvents = await message(6, "photo", [null, null]);
 
-    expect(await backfill(true)).toEqual({ candidates: 2, named: 2, written: 0, failed: 0 });
+    expect(await backfill(true)).toEqual({ candidates: 2, named: 2, written: 0, skipped: 0, failed: 0 });
     expect(Object.values(await mediaMerchants()).every((m) => m === null)).toBe(true);
 
-    expect(await backfill()).toEqual({ candidates: 2, named: 2, written: 2, failed: 0 });
+    expect(await backfill()).toEqual({ candidates: 2, named: 2, written: 2, skipped: 0, failed: 0 });
     expect(await mediaMerchants()).toEqual({
       [photo]: "Maple Kiosk",
       [voice]: "Maple Kiosk",
@@ -95,6 +100,21 @@ describe("media merchant backfill candidates", () => {
       "1.jpg", "2.jpg", "1.jpg", "2.jpg",
     ]);
 
-    expect(await backfill()).toEqual({ candidates: 0, named: 0, written: 0, failed: 0 });
+    expect(await backfill()).toEqual({ candidates: 0, named: 0, written: 0, skipped: 0, failed: 0 });
+  });
+
+  it("a message that dropped an event is read only through its first event, and skipped when it names two businesses", async () => {
+    // Event 0 failed validation and was never saved: the survivor is event 1.
+    const late = { ...pending(7, expense({ merchant: null }), 1, "7.ogg"), source: "voice" as const };
+    // Event 1 failed validation: the survivor is event 0, the only row of its message.
+    const early = { ...pending(8, expense({ merchant: null }), 0, "8.ogg"), source: "voice" as const };
+    const ids = await db.insertPendingIngestions([late, early]);
+    if (ids === "duplicate") throw new Error("unexpected duplicate");
+    for (const { id } of ids) await db.confirmIngestion(id);
+    answer = ["Maple Kiosk", "Lark"];
+
+    expect(await backfill()).toEqual({ candidates: 1, named: 0, written: 0, skipped: 1, failed: 0 });
+    expect(s3.commandCalls(GetObjectCommand).map((c) => c.args[0].input.Key)).toEqual(["8.ogg"]);
+    expect(Object.values(await mediaMerchants())).toEqual([null, null]);
   });
 });

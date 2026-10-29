@@ -34,7 +34,7 @@ export function parseCommand(
 export const DELETE_USAGE = "Send /delmerchant Name";
 
 const TELEGRAM_TEXT_MAX = 4096;
-const MERCHANT_NAME_MAX = 100;
+export const MERCHANT_NAME_MAX = 100;
 
 export function collapseSpaces(s: string): string {
   return s.replace(/\s+/g, " ").trim();
