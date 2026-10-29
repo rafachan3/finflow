@@ -7,10 +7,12 @@ vi.mock("../src/config.js", () => ({
   getConfig: vi.fn(async () => ({ databaseUrl: "postgres://x" })),
 }));
 vi.mock("pg", () => ({
-  Pool: vi.fn(() => ({
-    query,
-    connect: async () => ({ query, release: () => {} }),
-  })),
+  Pool: vi.fn(function () {
+    return {
+      query,
+      connect: async () => ({ query, release: () => {} }),
+    };
+  }),
 }));
 
 const {
