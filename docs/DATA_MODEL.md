@@ -291,6 +291,39 @@ create table ingestions (
 );
 ```
 
+## Roles and schemas
+
+Three login roles, all created without a password (set out of band, never in a
+tracked file). Migrations 0003 and 0013 create them.
+
+| Role | Reads | Writes | Used by |
+|---|---|---|---|
+| `postgres` (Supabase's migrating role) | everything | everything; owns `public`, `staging`, `marts` | migrations, the Lambda |
+| `finflow_readonly` (0003) | `public` | nothing | owner-local `eval:buckets` |
+| `finflow_dbt` (0013) | `public` | `staging` and `marts` only | dbt (nightly build) |
+| `finflow_analyst` (0013) | `marts` only | nothing | Grafana, Postgres MCP |
+
+- `staging` and `marts` are owned by the migrating role. `finflow_dbt` has
+  `USAGE, CREATE` on them: it can build, replace and drop the relations it
+  creates, but cannot drop either schema. It has `USAGE` on `public`, `SELECT`
+  on every table there, and no `CREATE`, `INSERT`, `UPDATE`, `DELETE` or
+  `TRUNCATE`. `ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON
+  TABLES TO finflow_dbt` keeps tables added by later migrations readable, as
+  0003 does for `finflow_readonly`.
+- `finflow_analyst` has `USAGE` on `marts` and
+  `ALTER DEFAULT PRIVILEGES FOR ROLE finflow_dbt IN SCHEMA marts GRANT SELECT
+  ON TABLES TO finflow_analyst`, so every relation dbt creates in `marts` is
+  readable at once and again after every drop and rebuild, with no grant step
+  in dbt. It holds nothing on `public` (so no raw Telegram payloads in
+  `ingestions`) and nothing on `staging`.
+- `ALTER DEFAULT PRIVILEGES FOR ROLE` requires the migrating role to be a
+  member of `finflow_dbt`. Supabase's `postgres` is not a superuser, so 0013
+  grants itself the membership for that statement and revokes it right after.
+- Roles are cluster-wide, so 0013 creates each only when absent.
+- Neither schema is in the Data API's exposed schemas, so PostgREST does not
+  serve them. Over the pooler the usernames are `finflow_dbt.<project-ref>` and
+  `finflow_analyst.<project-ref>`.
+
 ## Seed data: tracked template + personal overlay
 
 The repo is public and the seed data splits accordingly:
