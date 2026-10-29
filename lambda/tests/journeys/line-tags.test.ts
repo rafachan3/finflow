@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { golden } from "../golden/golden.js";
-import { chat, gemini, ledger, useJourneys } from "./harness.js";
+import { chat, gemini, labels, ledger, useJourneys } from "./harness.js";
 
 vi.mock("../../src/config.js", async () => {
   const { journeyConfig } = await import("./harness.js");
@@ -58,6 +58,24 @@ describe("tags for one line or the whole message", () => {
       [[], ["Travel"]],
       [[], ["Travel"]],
       [[], ["Travel"]],
+    ]);
+    expect(await ledger.transactionTags()).toEqual([{ type: "expense", tags: ["Travel"] }]);
+  });
+
+  it("a line tag missing from the Tags list is dropped with a warning, and the card still confirms", async () => {
+    gemini.extract = { events: [withLineTags(receipt(), { Bananas: ["Neighbour"] })] };
+    await chat.photo("road trip snacks; the bananas were for the neighbour");
+
+    const card = chat.last().text;
+    expect(card).toContain('! tag "Neighbour" is not in lookup; "Bananas" will save without it');
+    expect(card.split("\n").filter((l) => l.trim().startsWith("Tags:"))).toEqual(["Tags: Travel"]);
+    expect(labels(chat.last())).toContain("Confirm");
+
+    await chat.tap(chat.last(), "Confirm");
+    expect((await ledger.lineTags()).map((l) => [l.description, l.own])).toEqual([
+      ["Bananas", []],
+      ["Rotisserie chicken", []],
+      ["Sparkling water", []],
     ]);
     expect(await ledger.transactionTags()).toEqual([{ type: "expense", tags: ["Travel"] }]);
   });

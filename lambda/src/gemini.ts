@@ -53,7 +53,7 @@ const NOTES =
 // Line tags let one receipt line carry context the others do not (Phase 3.5).
 // normalizeTaxonomyNames moves a tag every line repeats to the event.
 const TAGS =
-  "tags on the event are context for the whole transaction (a trip, an occasion). A line's tags are context the owner gives for that line only (\"the bananas were for Partner\" tags the bananas line). Never repeat an event tag on a line. Use only names from the Tags list. Lines with no tag of their own return an empty list.";
+  "tags on the event are context for the whole transaction (a trip, an occasion). A line's tags are context the owner gives for that line only (\"the bananas were for <a name from the Tags list>\" tags the bananas line). Never repeat an event tag on a line. Use only names from the Tags list. Lines with no tag of their own return an empty list.";
 
 const SPLIT_EVENTS =
   "Return events: one event per separate transaction, in the order the owner mentioned them. Split by place: one event per merchant or place. Amounts at the same place, or with no place given, are one expense with several items. Income and transfers are always their own event. A receipt photo is one event; the caption may add others. A date or funder stated once applies to every event unless an event states its own. notes and tags belong to the event they describe.";

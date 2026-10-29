@@ -1565,6 +1565,19 @@ storage.
   a line drops tags the header has, and both lists lose repeats. The eval's
   `mismatches` judges tags through the same function, so the golden checks
   what Confirm stores, not the raw answer.
+- **An unknown line tag warns; an unknown header tag still blocks.** A line
+  tag missing from the owner's Tags list is dropped in
+  `normalizeTaxonomyNames`, before `canonicalTags`, and the card says
+  `tag "X" is not in lookup; "<line>" will save without it` (the line keeps
+  `dropped_tags` so `/pending` shows it again). Dropping first means a model
+  that copies an unknown tag onto a one-line receipt cannot turn it into a
+  header tag. A wrong guess about who one line was for is not worth losing the
+  whole receipt to a card with no Confirm (constraint 6). An unknown tag on
+  the event is a separate check in `validateExtraction` and is unchanged: it
+  fails checks. The prompt's
+  example names no real tag (`"the bananas were for <a name from the Tags
+  list>"`): the seed's example name is not in the production list, and a
+  copied one would only be dropped.
 - **One request still.** The `TAGS` rule is in all four prompts (text,
   photo, voice, Edit), and the item schema's `tags` sits between
   `item_type` and `bucket_why`, so who a line was for is settled before

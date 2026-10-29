@@ -19,7 +19,7 @@ const taxonomy: TaxonomySnapshot = {
     { category: "Food and drink", name: "Meals & Prepared Food" },
   ],
   venues: ["Fast Food"],
-  tags: ["Social"],
+  tags: ["Social", "Travel"],
   fundingSources: ["self"],
   merchants: ["Chipotle"],
   incomeSources: [],
@@ -1092,9 +1092,11 @@ describe("multi-event extraction", () => {
     expect(fetchMock).toHaveBeenCalledTimes(4);
     for (const [, init] of fetchMock.mock.calls) {
       const body = JSON.parse(init.body as string);
-      expect(body.systemInstruction.parts[0].text).toContain(
-        "A line's tags are context the owner gives for that line only",
-      );
+      const system = body.systemInstruction.parts[0].text as string;
+      expect(system).toContain("A line's tags are context the owner gives for that line only");
+      // The example names no real tag: a copied seed name would not be in the owner's Tags list.
+      expect(system).toContain('"the bananas were for <a name from the Tags list>"');
+      expect(system).toContain("Use only names from the Tags list.");
       const schema = body.generationConfig.responseSchema;
       const item = (schema.properties.events?.items ?? schema).properties.items.items;
       expect(item.properties.tags).toEqual({ type: "ARRAY", items: { type: "STRING" } });

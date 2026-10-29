@@ -200,15 +200,6 @@ describe("validateExtraction", () => {
     ).toBe(false);
   });
 
-  it("rejects an unknown line tag", () => {
-    const [burger, coke] = expense().items;
-    const result = validateExtraction(
-      expense({ items: [{ ...burger, tags: ["NotATag"] }, coke] }),
-      taxonomy,
-    );
-    expect(result.errors).toContain('unknown tag: NotATag on "Burger combo"');
-  });
-
   it("warns when the date was defaulted to today and still allows confirm", () => {
     const result = validateExtraction(
       expense({ date: "2026-08-18", date_source: "today_default" }),
@@ -336,6 +327,25 @@ describe("normalizeTaxonomyNames", () => {
     expect(normalized.tags).toEqual(["Social"]);
     expect(normalized.items.map((i) => i.tags)).toEqual([["Travel"], []]);
     expect(normalizeTaxonomyNames(normalized, taxonomy)).toEqual(normalized);
+  });
+
+  it("drops a line tag missing from the Tags list, even on every line, and warns instead of blocking", () => {
+    const [burger, coke] = expense().items;
+    const unknown = expense({
+      tags: [],
+      items: [{ ...burger, tags: ["NotATag", "Travel"] }, { ...coke, tags: ["NotATag"] }],
+    });
+    const normalized = normalizeTaxonomyNames(unknown, taxonomy);
+    expect(normalized.tags).toEqual([]);
+    expect(normalized.items.map((i) => i.tags)).toEqual([["Travel"], []]);
+    expect(normalizeTaxonomyNames(normalized, taxonomy)).toEqual(normalized);
+
+    const checks = validateExtraction(normalized, taxonomy);
+    expect(checks.ok).toBe(true);
+    expect(checks.warnings).toEqual([
+      'tag "NotATag" is not in lookup; "Burger combo" will save without it',
+      'tag "NotATag" is not in lookup; "Coke" will save without it',
+    ]);
   });
 
   it("moves a tag that every line carries to the header", () => {

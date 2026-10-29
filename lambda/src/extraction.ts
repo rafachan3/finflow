@@ -12,6 +12,8 @@ export type ExtractionItem = {
   item_type: string | null;
   /** Context for this line only; absent on rows extracted before line tags. */
   tags?: string[];
+  /** Line tags the model gave that are not in the Tags list; the card warns. */
+  dropped_tags?: string[];
   bucket: Bucket;
   bucket_why?: string;
 };
@@ -255,14 +257,21 @@ export function canonicalTags(
   return { tags, lineTags: lines.map((l) => [...new Set(l)].filter((t) => !tags.includes(t))) };
 }
 
-/** Gemini often repeats "Category / " inside subcategory and item_type; tags go canonical. */
+/**
+ * Gemini often repeats "Category / " inside subcategory and item_type; tags go
+ * canonical. A line tag missing from the Tags list is dropped before that, so
+ * one copied onto every line never becomes a header tag that blocks the card.
+ */
 export function normalizeTaxonomyNames(
   extraction: Extraction,
   taxonomy: TaxonomySnapshot,
 ): Extraction {
+  const unknown = extraction.items.map((item) =>
+    (item.tags ?? []).filter((t) => !hasName(taxonomy.tags, t)),
+  );
   const { tags, lineTags } = canonicalTags(
     extraction.tags,
-    extraction.items.map((item) => item.tags ?? []),
+    extraction.items.map((item) => (item.tags ?? []).filter((t) => hasName(taxonomy.tags, t))),
   );
   return {
     ...extraction,
@@ -285,6 +294,9 @@ export function normalizeTaxonomyNames(
         subcategory: sub?.name ?? subcategory,
         item_type: itemTypeRaw === null ? null : (it?.name ?? itemTypeRaw),
         tags: lineTags[i],
+        ...(unknown[i].length
+          ? { dropped_tags: [...new Set([...(item.dropped_tags ?? []), ...unknown[i]])] }
+          : {}),
       };
     }),
   };
@@ -371,10 +383,8 @@ export function validateExtraction(
           );
         }
       }
-      for (const tag of item.tags ?? []) {
-        if (!hasName(taxonomy.tags, tag)) {
-          errors.push(`unknown tag: ${tag} on "${item.description}"`);
-        }
+      for (const tag of item.dropped_tags ?? []) {
+        warnings.push(`tag "${tag}" is not in lookup; "${item.description}" will save without it`);
       }
       if (item.bucket !== "needs" && item.bucket !== "wants") {
         errors.push(`bucket must be needs or wants on "${item.description}"`);
