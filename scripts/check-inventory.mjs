@@ -1,6 +1,6 @@
 // Checks docs/TESTING.md against the tests: every behaviour row cites at
 // least one test, and every cited test exists. `node scripts/check-inventory.mjs`
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -30,8 +30,11 @@ export function testTitles(source) {
   return new Set([...code.matchAll(call)].map((m) => m[2].replace(/\\(.)/g, "$1")));
 }
 
-/** Problems with the inventory, one line each; empty when it holds. */
-export function checkInventory(rows, titles, goldens) {
+/**
+ * Problems with the inventory, one line each; empty when it holds.
+ * `dbtTests` holds the names of the singular dbt tests (`dbt/tests/<name>.sql`).
+ */
+export function checkInventory(rows, titles, goldens, dbtTests = new Set()) {
   if (rows.length === 0) return ["docs/TESTING.md has no behaviour inventory table"];
   const problems = [];
   for (const { area, behaviour, tests } of rows) {
@@ -42,6 +45,11 @@ export function checkInventory(rows, titles, goldens) {
         const name = test.slice("golden:".length);
         if (!goldens.has(name)) {
           problems.push(`${who} cites a golden case that does not exist: ${name}`);
+        }
+      } else if (test.startsWith("dbt:")) {
+        const name = test.slice("dbt:".length);
+        if (!dbtTests.has(name)) {
+          problems.push(`${who} cites a dbt test that does not exist: dbt/tests/${name}.sql`);
         }
       } else if (!titles.has(test)) {
         problems.push(`${who} cites a test that does not exist: ${test}`);
@@ -68,8 +76,14 @@ function main() {
       .filter((f) => f.endsWith(".json"))
       .map((f) => f.slice(0, -".json".length)),
   );
+  const dbtDir = join(root, "dbt/tests");
+  const dbtTests = new Set(
+    (existsSync(dbtDir) ? files(dbtDir) : [])
+      .filter((f) => f.endsWith(".sql"))
+      .map((f) => f.slice(dbtDir.length + 1, -".sql".length)),
+  );
   const rows = parseInventory(readFileSync(join(root, "docs/TESTING.md"), "utf8"));
-  const problems = checkInventory(rows, titles, goldens);
+  const problems = checkInventory(rows, titles, goldens, dbtTests);
   for (const p of problems) console.error(`inventory: ${p}`);
   if (problems.length > 0) process.exit(1);
   console.log(`inventory: ${rows.length} behaviours, every cited test exists`);

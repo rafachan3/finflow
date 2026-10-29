@@ -1696,3 +1696,33 @@ analyst (the MCP would read raw payloads and could write); relying on dbt's
 `+grants` alone for analyst reads (a mart built without the config, or a failed
 run between drop and re-grant, locks the analyst out); granting the analyst
 `SELECT` on `staging` (not part of the contract, and views there read the ledger).
+
+## 2026-10-29 — dbt's throwaway ledger is loaded by Python, into the integration suite's database
+
+Phase 4 PR-C (dbt project, staging models, ledger invariant tests). Three
+choices the Phase 4 design left open or did differently:
+
+- **`dbt/scripts/test_db.py`, not a `test-db.sh` that calls `psql`.** The
+  owner's machine has no `psql`, and `psycopg2` already ships with
+  dbt-postgres, so the loader needs nothing dbt does not. It does what
+  `lambda/tests/integration/global-setup.ts` does (drop and recreate
+  `finflow_test`, drop `finflow_readonly`, every migration in order, the
+  example seed), then the fixture, and prints the `FINFLOW_DBT_*` exports.
+  **Ruled out:** a second database on the same server. Migration 0003's
+  `create role finflow_readonly` is not idempotent, and a role that holds
+  grants in two databases cannot be dropped from either harness, so two
+  databases on one server would break whichever suite ran second. Sharing
+  `finflow_test` means each suite rebuilds it for itself.
+- **dbt runs as `finflow_dbt`, locally and in CI.** The loader sets that
+  role a throwaway password (its name) on the local server and prints it as
+  the dbt user, so every build proves dbt needs no privilege beyond
+  migration 0013's.
+- **`dbt/requirements.txt` pins dbt-core 1.12.6 and dbt-postgres 1.11.0
+  only.** dbt-metricflow joins it with the MetricFlow PR (PR-E). The pair
+  installs and runs together on Python 3.12 (verified 2026-10-29), and
+  dbt-core 1.12.6 already pulls `metricflow==0.213.0`.
+
+The invariant tests are singular tests, so `docs/TESTING.md` rows can cite
+them as `dbt:<name>`. Two of them (`expense_funding_rules`,
+`transfer_has_account`) restate CHECK constraints; they stay because a
+staging join that dropped a name would pass the constraint and fail them.

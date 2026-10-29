@@ -9,7 +9,8 @@ it ruled out: DECISIONS.md 2026-10-28.
 One row per behaviour. The Tests column cites each guarding test by its exact
 title in backticks, one per line. `golden:<name>` cites a case file in
 `lambda/tests/golden/`, which both the journeys replay and the live eval
-checks. `scripts/check-inventory.mjs` (CI job `inventory`) fails when a row
+checks. `dbt:<name>` cites a singular dbt test, `dbt/tests/<name>.sql`.
+`scripts/check-inventory.mjs` (CI job `inventory`) fails when a row
 cites no test or cites one that does not exist.
 
 A title that comes from `it.each` is cited as written in the source, `%s`
@@ -90,6 +91,11 @@ included.
 | Eval | A golden case whose Gemini request is byte-for-byte the one recorded as passing replays its recording through today's code instead of calling Gemini | `answers every Gemini request with the recording, without the network, and keeps the bodies`<br>`keeps the body and puts fetch back when the current code rejects the recording`<br>`changes when one byte of the body or any model in the chain changes`<br>`rewrites only the recording and the request hash, in the file's own format`<br>`marks a replayed case and counts it apart from live answers` |
 | Eval | The nightly run asks Gemini every case, case i starting on model (i + day) mod chain length, and reports each 429's quota limit | `starts case i on model (i + day) mod chain length and falls through the rest in order`<br>`covers every model with every case over chain-length nights`<br>`sends each request to the model the route picks and reports that model`<br>`keeps each 429's quotaValue by model and quota`<br>`lists the quota limits Gemini reported in its 429s` |
 | Safety | Tests refuse any database that is not on this machine, and the read-only role writes nothing | `refuses a database that is not on this machine`<br>`can read every public table and write none of them`<br>`is refused a write when it tries one` |
+| Ledger | Every expense's lines sum exactly to its amount; a line moved by 0.01 fails the `dbt` job | `dbt:expense_lines_sum_to_header` |
+| Ledger | Every expense has at least one line, and income and transfers have none | `dbt:expense_has_lines`<br>`dbt:no_lines_on_income_or_transfer` |
+| Ledger | A line's item type belongs to the same category as its subcategory | `dbt:item_type_matches_subcategory_category` |
+| Ledger | An expense has a funder, and income and transfers have none; a transfer names its account | `dbt:expense_funding_rules`<br>`dbt:transfer_has_account` |
+| Ledger | Warnings, not failures: a line tag that repeats its header tag, a transaction with two confirmed ingestions, a date past Toronto's tomorrow | `dbt:line_tag_not_on_header`<br>`dbt:one_confirmed_ingestion_per_transaction`<br>`dbt:occurred_on_not_in_future` |
 
 ## Running each layer
 
@@ -105,6 +111,7 @@ Run from `lambda/`.
 | Nightly eval (every case live, models rotated) | `EVAL_NIGHTLY=1 npm run eval` | the same |
 | Needs/wants accuracy (local only) | `npm run eval:buckets` | see [below](#the-needswants-accuracy-check) |
 | Inventory | `node scripts/check-inventory.mjs` (repo root) | nothing |
+| dbt (staging and ledger tests) | `dbt build` (from `dbt/`) | `TEST_DATABASE_URL` and the dbt virtualenv; see [below](#the-dbt-build) |
 
 A throwaway Postgres for the database layers: start Docker, run
 `npm run db:up` in `lambda/`. Each checkout (worktree) gets its own container,
@@ -115,8 +122,10 @@ runs the suite against it. The harness recreates a `finflow_test` database on it
 and refuses any other host. `npm run db:down` stops only this checkout's
 container.
 
-CI (`.github/workflows/ci.yml`) reports four jobs on every PR: `unit`,
-`integration`, `eval` and `inventory`. `inventory` runs the inventory check
+CI (`.github/workflows/ci.yml`) reports five jobs on every PR: `unit`,
+`integration`, `eval`, `inventory` and `dbt`. `unit`, `integration`, `eval`
+and `inventory` are required on `main`; `dbt` joins them once the owner has
+seen it run stable. `inventory` runs the inventory check
 and the coverage floor (lines 90, statements 90, branches 84, functions 98;
 raise it, never lower it). The deploy workflow runs only after CI succeeds
 on `main`, then POSTs a wrong webhook secret to the deployed Function URL
@@ -126,6 +135,39 @@ A last deploy step reads the bot token from SSM, masks it, and runs
 `npm run telegram:commands` to set the command menu. It is not a test either;
 its payload is the unit-tested `commandMenu()`. A failure there turns the run
 red but leaves the deployed code in place.
+
+## The dbt build
+
+`dbt/` is the semantic layer's dbt project (dbt-core and dbt-postgres,
+pinned in `dbt/requirements.txt`, Python 3.12). Its tests are generic tests
+in the models' YAML and singular tests in `dbt/tests/`, each a query that
+returns the rows breaking one ledger invariant. `dbt build` runs every model
+and test. It runs against a throwaway ledger, never production:
+`dbt/scripts/test_db.py` refuses any host but this machine, rebuilds the
+same `finflow_test` database the integration suite uses (every migration,
+then the example seed), loads the synthetic fixture
+`dbt/fixtures/synthetic.sql` (placeholder names only), and prints the
+`FINFLOW_DBT_*` variables `dbt/profiles.yml` reads. dbt connects as
+`finflow_dbt` (migration 0013) with a throwaway password the loader sets,
+so a build that needs more than that role's grants fails. Running either
+suite rebuilds that database for itself.
+
+```sh
+cd lambda && npm run db:up && cd ../dbt
+python3.12 -m venv .venv && .venv/bin/pip install -r requirements.txt   # once
+eval "$(TEST_DATABASE_URL=$(npm --prefix ../lambda run -s db:url) .venv/bin/python scripts/test_db.py)"
+.venv/bin/dbt build
+```
+
+Extra SQL files given to `test_db.py` load after the fixture.
+`dbt/fixtures/off_by_a_cent.sql` moves one receipt line by 0.01; with it,
+`dbt build` must fail on `expense_lines_sum_to_header` and nothing else.
+
+The CI job `dbt` runs both on every PR, against a `postgres:17` service:
+`dbt build` on the fixture must pass, then `dbt build` with the variant
+must fail, and `target/run_results.json` must name that one test as the
+only one not passing. So a lines-sum test that stopped biting fails the job.
+pip's download cache is keyed on `dbt/requirements.txt`.
 
 ## The eval and its key
 

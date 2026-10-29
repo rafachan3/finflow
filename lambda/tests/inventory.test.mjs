@@ -97,6 +97,15 @@ describe("checkInventory", () => {
     ]);
   });
 
+  it("resolves a dbt citation to a singular test, and fails one that has no file", () => {
+    const rows = [
+      { area: "Ledger", behaviour: "Lines sum", tests: ["dbt:lines_sum", "dbt:gone"] },
+    ];
+    expect(checkInventory(rows, titles, goldens, new Set(["lines_sum"]))).toEqual([
+      "Ledger: Lines sum cites a dbt test that does not exist: dbt/tests/gone.sql",
+    ]);
+  });
+
   it("fails an empty inventory, so a deleted table cannot pass", () => {
     expect(checkInventory([], titles, goldens)).toEqual([
       "docs/TESTING.md has no behaviour inventory table",

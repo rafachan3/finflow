@@ -1,0 +1,72 @@
+version: 2
+
+# Generic tests here; the cross-row ledger invariants are singular tests in
+# dbt/tests/. Foreign keys and CHECK constraints the database already
+# enforces are not repeated, except where a staging join could drop a name.
+
+models:
+  - name: stg_transactions
+    description: One row per transaction header, lookups named, entry_source from the confirmed ingestion.
+    columns:
+      - name: transaction_id
+        data_tests: [unique, not_null]
+      - name: type
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [income, expense, transfer]
+      - name: currency
+        description: The database has no CHECK on currency; CAD is the only one.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [CAD]
+      - name: entry_source
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [photo, voice, text, import]
+      - name: account_kind
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [savings, investment]
+      - name: income_source_name
+        data_tests:
+          - not_null:
+              config:
+                where: "type = 'income'"
+
+  - name: stg_transaction_items
+    description: One row per expense line, with its taxonomy named.
+    columns:
+      - name: item_id
+        data_tests: [unique, not_null]
+      - name: transaction_id
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('stg_transactions')
+                field: transaction_id
+      - name: bucket
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [needs, wants]
+
+  - name: stg_item_tags
+    description: >
+      Effective tags at line_key grain: each line's own tags (tag_scope
+      'line') plus its transaction's (tag_scope 'header'); income and
+      transfer rows are keyed by the transaction id.
+    columns:
+      - name: line_key
+        data_tests: [not_null]
+      - name: tag_name
+        data_tests: [not_null]
+      - name: transaction_id
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('stg_transactions')
+                field: transaction_id
