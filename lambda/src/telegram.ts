@@ -58,6 +58,18 @@ export async function sendMessage(
   await postTelegram(botToken, "sendMessage", body);
 }
 
+/**
+ * An edit. Telegram answers 400 "message is not modified" when the message
+ * already shows the result (a retried or double tap), so that counts as done.
+ */
+async function postEdit(botToken: string, method: string, body: Record<string, unknown>): Promise<void> {
+  try {
+    await postTelegram(botToken, method, body);
+  } catch (err) {
+    if (!/message is not modified/.test((err as Error).message)) throw err;
+  }
+}
+
 /** Replaces a sent message's inline keyboard; an empty one removes the buttons. */
 export async function editMessageReplyMarkup(
   botToken: string,
@@ -65,7 +77,7 @@ export async function editMessageReplyMarkup(
   messageId: number,
   replyMarkup: { inline_keyboard: unknown[][] },
 ): Promise<void> {
-  await postTelegram(botToken, "editMessageReplyMarkup", {
+  await postEdit(botToken, "editMessageReplyMarkup", {
     chat_id: chatId,
     message_id: messageId,
     reply_markup: replyMarkup,
@@ -79,7 +91,7 @@ export async function editMessageText(
   messageId: number,
   text: string,
 ): Promise<void> {
-  await postTelegram(botToken, "editMessageText", {
+  await postEdit(botToken, "editMessageText", {
     chat_id: chatId,
     message_id: messageId,
     text,
