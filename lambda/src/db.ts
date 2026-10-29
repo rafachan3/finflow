@@ -581,6 +581,21 @@ async function lookupId(
   return res.rows[0]?.id ?? null;
 }
 
+/** Links each known tag to one row; validation has already refused unknown ones. */
+async function insertTags(
+  client: PoolClient,
+  table: "transaction_tags" | "transaction_item_tags",
+  column: "transaction_id" | "transaction_item_id",
+  rowId: string,
+  tags: string[],
+): Promise<void> {
+  for (const tag of tags) {
+    const tagId = await lookupId(client, `SELECT id FROM tags WHERE name = $1`, [tag]);
+    if (tagId === null) continue;
+    await client.query(`INSERT INTO ${table} (${column}, tag_id) VALUES ($1, $2)`, [rowId, tagId]);
+  }
+}
+
 export async function confirmIngestion(
   ingestionId: string,
 ): Promise<"confirmed" | "already_handled"> {
@@ -715,10 +730,11 @@ export async function confirmIngestion(
           );
           itemTypeId = it.rows[0]?.id ?? null;
         }
-        await client.query(
+        const line = await client.query<{ id: string }>(
           `INSERT INTO transaction_items (
              transaction_id, description, amount, subcategory_id, item_type_id, bucket
-           ) VALUES ($1, $2, $3, $4, $5, $6)`,
+           ) VALUES ($1, $2, $3, $4, $5, $6)
+           RETURNING id`,
           [
             transactionId,
             item.description,
@@ -728,21 +744,12 @@ export async function confirmIngestion(
             item.bucket,
           ],
         );
+        // Rows stored before line tags have none.
+        await insertTags(client, "transaction_item_tags", "transaction_item_id", line.rows[0].id, item.tags ?? []);
       }
     }
 
-    for (const tag of extraction.tags) {
-      const tagId = await lookupId(
-        client,
-        `SELECT id FROM tags WHERE name = $1`,
-        [tag],
-      );
-      if (tagId === null) continue;
-      await client.query(
-        `INSERT INTO transaction_tags (transaction_id, tag_id) VALUES ($1, $2)`,
-        [transactionId, tagId],
-      );
-    }
+    await insertTags(client, "transaction_tags", "transaction_id", transactionId, extraction.tags);
 
     await client.query(
       `UPDATE ingestions

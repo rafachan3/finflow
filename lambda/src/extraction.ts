@@ -10,6 +10,8 @@ export type ExtractionItem = {
   category: string;
   subcategory: string;
   item_type: string | null;
+  /** Context for this line only; absent on rows extracted before line tags. */
+  tags?: string[];
   bucket: Bucket;
   bucket_why?: string;
 };
@@ -239,14 +241,33 @@ function stripCategoryPrefix(category: string, raw: string): string {
   return raw.startsWith(prefix) ? raw.slice(prefix.length) : raw;
 }
 
-/** Gemini often repeats "Category / " inside subcategory and item_type. */
+/**
+ * Each tag in one place: a tag every line carries is context for the whole
+ * transaction and moves to the header, and a line keeps only the tags the
+ * header lacks, once each.
+ */
+export function canonicalTags(
+  header: string[],
+  lines: string[][],
+): { tags: string[]; lineTags: string[][] } {
+  const everyLine = (lines[0] ?? []).filter((t) => lines.every((l) => l.includes(t)));
+  const tags = [...new Set([...header, ...everyLine])];
+  return { tags, lineTags: lines.map((l) => [...new Set(l)].filter((t) => !tags.includes(t))) };
+}
+
+/** Gemini often repeats "Category / " inside subcategory and item_type; tags go canonical. */
 export function normalizeTaxonomyNames(
   extraction: Extraction,
   taxonomy: TaxonomySnapshot,
 ): Extraction {
+  const { tags, lineTags } = canonicalTags(
+    extraction.tags,
+    extraction.items.map((item) => item.tags ?? []),
+  );
   return {
     ...extraction,
-    items: extraction.items.map((item) => {
+    tags,
+    items: extraction.items.map((item, i) => {
       const subcategory = stripCategoryPrefix(item.category, item.subcategory);
       const itemTypeRaw = item.item_type
         ? stripCategoryPrefix(item.category, item.item_type)
@@ -263,6 +284,7 @@ export function normalizeTaxonomyNames(
         ...item,
         subcategory: sub?.name ?? subcategory,
         item_type: itemTypeRaw === null ? null : (it?.name ?? itemTypeRaw),
+        tags: lineTags[i],
       };
     }),
   };
@@ -347,6 +369,11 @@ export function validateExtraction(
           errors.push(
             `item type "${item.item_type}" is not valid for ${item.category}`,
           );
+        }
+      }
+      for (const tag of item.tags ?? []) {
+        if (!hasName(taxonomy.tags, tag)) {
+          errors.push(`unknown tag: ${tag} on "${item.description}"`);
         }
       }
       if (item.bucket !== "needs" && item.bucket !== "wants") {
@@ -475,6 +502,7 @@ export function formatPreview(
         `  ${item.category} / ${item.subcategory}${type} / ${item.bucket}`,
       );
       if (item.bucket_why) lines.push(`  ${item.bucket_why}`);
+      if (item.tags?.length) lines.push(`  Tags: ${item.tags.join(", ")}`);
     }
   }
 

@@ -136,6 +136,39 @@ describe("confirmIngestion", () => {
     expect(ing).toEqual({ status: "confirmed", transaction_id: tx.id });
   });
 
+  it("writes a line's own tags on that line only, and the header's on the transaction", async () => {
+    const [milk, cookies] = expense().items;
+    const [id] = await save(205, expense({ items: [milk, { ...cookies, tags: ["Partner"] }] }));
+    await db.confirmIngestion(id);
+
+    const lineTags = await sql(
+      `select i.description, g.name as tag
+       from transaction_item_tags lt
+       join transaction_items i on i.id = lt.transaction_item_id
+       join tags g on g.id = lt.tag_id`,
+    );
+    expect(lineTags).toEqual([{ description: "cookies", tag: "Partner" }]);
+    expect(
+      await sql("select g.name from transaction_tags tt join tags g on g.id = tt.tag_id"),
+    ).toEqual([{ name: "Social" }]);
+  });
+
+  it("confirms a row stored before line tags, with no tags on its lines", async () => {
+    const [id] = await save(206, expense());
+    await expect(db.confirmIngestion(id)).resolves.toBe("confirmed");
+    expect(await count("transaction_item_tags")).toBe(0);
+  });
+
+  it("writes income and transfer tags on the transaction", async () => {
+    await db.confirmIngestion((await save(207, income({ tags: ["Travel"] })))[0]);
+    await db.confirmIngestion((await save(208, transfer({ tags: ["Travel"] })))[0]);
+    const [{ n }] = await sql<{ n: number }>(
+      "select count(*)::int n from transaction_tags tt join tags g on g.id = tt.tag_id where g.name = 'Travel'",
+    );
+    expect(n).toBe(2);
+    expect(await count("transaction_item_tags")).toBe(0);
+  });
+
   it("writes income with its source and no funder or lines", async () => {
     const [id] = await save(201, income());
     await db.confirmIngestion(id);
