@@ -156,20 +156,11 @@ Key setup, once:
    locally, export it or add `GEMINI_EVAL_API_KEY=<key>` to the repo-root
    `.env`.
 
-The nightly eval has its own key, so a day of PR evals cannot spend its
-quota (quotas are per project):
-
-1. In Google AI Studio create a **new** Google Cloud project, different from
-   both the bot's and the PR eval's, and an API key in it.
-2. Run `gh secret set GEMINI_NIGHTLY_API_KEY`; it prompts for the value.
-
-Until that secret exists the nightly falls back to `GEMINI_EVAL_API_KEY` and
-shares the PR quota. Its log and issue body say which key it used.
-
 ## The nightly eval
 
-`.github/workflows/eval-nightly.yml` runs at 06:07 UTC, before the eval
-project's quota resets at midnight Pacific, on its own key (above), and on demand
+`.github/workflows/eval-nightly.yml` runs at 08:15 UTC (01:15 PDT, 00:15
+PST), just after the eval project's quota resets at midnight Pacific, so it
+gets fresh Flash quota before that day's PR evals, and on demand
 (`gh workflow run eval-nightly.yml`). It calls Gemini for every case, with
 no replay, so it catches model drift that a replay cannot. Case i (in run
 order) starts on model (i + day) mod 3 of production's chain and falls
