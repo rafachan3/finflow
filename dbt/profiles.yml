@@ -1,0 +1,16 @@
+# One output, every value from the environment. Locally,
+# `eval "$(python scripts/test_db.py)"` sets them for the throwaway database
+# (docs/TESTING.md). Never put a real host or password in this file.
+finflow:
+  target: default
+  outputs:
+    default:
+      type: postgres
+      host: "{{ env_var('FINFLOW_DBT_HOST', 'localhost') }}"
+      port: "{{ env_var('FINFLOW_DBT_PORT', '54329') | as_number }}"
+      user: "{{ env_var('FINFLOW_DBT_USER', 'finflow_dbt') }}"
+      password: "{{ env_var('FINFLOW_DBT_PASSWORD', '') }}"
+      dbname: "{{ env_var('FINFLOW_DBT_DBNAME', 'postgres') }}"
+      schema: staging
+      sslmode: "{{ env_var('FINFLOW_DBT_SSLMODE', 'disable') }}"
+      threads: 4

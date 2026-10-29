@@ -29,3 +29,8 @@ supabase/.temp/
 
 # Needs/wants accuracy check detail: owner transactions, local only
 lambda/.eval-buckets/
+
+# dbt: local virtualenv and build output
+dbt/.venv/
+dbt/target/
+dbt/logs/

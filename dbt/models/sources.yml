@@ -1,0 +1,23 @@
+version: 2
+
+sources:
+  - name: ledger
+    description: >
+      The confirmed ledger the bot writes (supabase/migrations,
+      docs/DATA_MODEL.md). dbt only reads it.
+    schema: public
+    tables:
+      - name: transactions
+      - name: transaction_items
+      - name: transaction_tags
+      - name: transaction_item_tags
+      - name: ingestions
+      - name: categories
+      - name: subcategories
+      - name: item_types
+      - name: merchants
+      - name: venues
+      - name: income_sources
+      - name: accounts
+      - name: funding_sources
+      - name: tags
