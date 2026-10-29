@@ -14,7 +14,7 @@ Living state of the project. Read this first; update it whenever work lands.
 - [x] Phase 2 — Telegram bot walking skeleton (text only, no LLM) (2026-08-17)
 - [x] Phase 3 — Gemini extraction (text → photo → voice) — **3a + 3b + 3c phone-tested; funding source applied; Edit phone-tested; context notes phone-tested; multi-event accepted by the Phase 3.6 journeys** (2026-10-28; S3 key prefix landed 2026-10-29)
 - [x] Phase 3.6 — Regression test suite — **accepted 2026-10-29: deliberate-break PR #48 blocked (unit + inventory failed, BLOCKED), clean PRs #46/#47 green, smoke step green on deploy run 40803017809, `main` protected** (2026-10-29)
-- [ ] Phase 3.5 — Ingestion follow-ons (item tags; duplicate warning, merchant commands, the frequent-merchant hint and merchant evidence on add done 2026-10-29)
+- [ ] Phase 3.5 — Ingestion follow-ons (duplicate warning, merchant commands, the frequent-merchant hint and merchant evidence on add done 2026-10-29; item tags in review, migration 0012 to apply before merge)
 - [ ] Phase 4 — dbt semantic layer + MetricFlow
 - [ ] Phase 4.5 — Proactive nudges (recurring reminders, merchant recommendations)
 - [ ] Phase 5 — Grafana dashboards
@@ -407,6 +407,20 @@ the PR (it auto-deploys code that reads the column), then from `lambda/`:
 check the proposed names, and run it again without `--dry-run`. Then re-run
 `/addmerchant` for the merchants that matter to link and review.
 
+Item-level tags (Phase 3.5; DECISIONS.md 2026-10-29): a caption or voice
+note can tag one line ("the bananas were for Partner"). The card shows it
+indented under that line (`  Tags: Partner`), and Confirm writes it to
+`transaction_item_tags` (migration 0012) for that line only. Whole-message
+context ("road trip snacks" → Travel) stays on the header's `Tags:` line and
+`transaction_tags`, and a tag the model puts on every line is stored once
+there; income and transfer tags are unchanged. An Edit sends each line's
+tags back and can move one. All four prompts and the item schema changed,
+so every golden re-ran live; new golden `receipt-line-tag` (19 of 20).
+A line tag missing from the Tags list is dropped and the card warns
+(`! tag "X" is not in lookup; "Bananas" will save without it`) with Confirm
+still offered; an unknown event tag still fails checks. Confirm rolls back
+on a tag it cannot find, and an old card repeating a header tag confirms.
+
 Command menu (DECISIONS.md 2026-10-29): `src/commands.ts` is the one command
 table. The handler's run table is typed against it, and the last step of the
 deploy workflow registers it with `setMyCommands` (`npm run telegram:commands`;
@@ -415,9 +429,10 @@ red; the code stays deployed.
 
 ## Next concrete step
 
-Phase 3.5 continues: item-level tags (PR 3) is the one follow-on left; the
-duplicate warning and the merchant commands are in. Ship each behaviour with
-its TESTING.md row and journey.
+Phase 3.5 closes when the item-level tags PR merges: apply migration 0012
+(`supabase db push`, then `\d transaction_item_tags`) before merging, since
+the merged code writes that table on every Confirm and merging deploys. Then
+record the Done-when check here and tick Phase 3.5.
 
 Owner: add `GEMINI_EVAL_API_KEY=<eval key>` to the gitignored `.env` in the
 main checkout, then run `npm --prefix lambda run eval:buckets` for a

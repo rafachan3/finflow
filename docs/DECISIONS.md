@@ -1547,3 +1547,57 @@ in media the extraction did not name.
 server-side selection store (it would make the Lambda stateful); re-reading
 media in the Lambda on every `/addmerchant` (Gemini latency and free-tier quota on a
 command, and an S3 read grant for the ingest role); page-number paging.
+
+## 2026-10-29 — Line-only tags get their own table; header tags stay whole-transaction
+
+Phase 3.5 item-level tags. Owner decision (spec open question 1): additive
+storage.
+
+- **Two grains, each fact once.** `transaction_tags` keeps context for the
+  whole transaction ("road trip snacks" → Travel), and stays the only place
+  income and transfers (no lines) carry a tag. New `transaction_item_tags`
+  (migration 0012) holds context the owner gives for one line only ("the
+  bananas were for Partner"). A line's effective tags are both; Phase 4's
+  `stg_item_tags` model unions them.
+- **Canonical form, in code.** `normalizeTaxonomyNames` runs `canonicalTags`:
+  a tag every line of an expense carries moves to the header (a one-line
+  purchase "for Partner", or a model copying a header tag onto each line),
+  a line drops tags the header has, and both lists lose repeats. The eval's
+  `mismatches` judges tags through the same function, so the golden checks
+  what Confirm stores, not the raw answer.
+- **An unknown line tag warns; an unknown header tag still blocks.** A line
+  tag missing from the owner's Tags list is dropped in
+  `normalizeTaxonomyNames`, before `canonicalTags`, and the card says
+  `tag "X" is not in lookup; "<line>" will save without it` (the line keeps
+  `dropped_tags` so `/pending` shows it again). Dropping first means a model
+  that copies an unknown tag onto a one-line receipt cannot turn it into a
+  header tag. A wrong guess about who one line was for is not worth losing the
+  whole receipt to a card with no Confirm (constraint 6). An unknown tag on
+  the event is a separate check in `validateExtraction` and is unchanged: it
+  fails checks. Confirm's `insertTags` throws `unknown tag at Confirm` rather
+  than skip a name it cannot find, so a tag that slips past both checks
+  rolls the transaction back instead of saving without it. The prompt's
+  example names no real tag (`"the bananas were for <a name from the Tags
+  list>"`): the seed's example name is not in the production list, and a
+  copied one would only be dropped.
+- **One request still.** The `TAGS` rule is in all four prompts (text,
+  photo, voice, Edit), and the item schema's `tags` sits between
+  `item_type` and `bucket_why`, so who a line was for is settled before
+  the bucket reasoning. Every golden's request hash changes once.
+- **Deviations from the spec (written against 7a86bee).** The migration is
+  0012, not 0010: 0010 (`merchants.hidden_at`) and 0011 (merchant evidence)
+  landed first. `canonicalTags` also removes repeats from the header list,
+  which the spec did not name: a repeated header tag would break
+  `transaction_tags`' primary key at Confirm. The new golden's recording
+  and hash come from one local live run, so CI calls Gemini only for the
+  18 re-hashed cases. The ROADMAP
+  line "Tags move from the header to the line grain" is reworded to the
+  additive design. "An Edit can change a line tag" is a TESTING.md row
+  guarded by a scripted journey and a request-shape test, with no golden:
+  the cap is 20 and this PR brings the count to 19.
+
+**Ruled out:** moving every expense's tags to its lines (backfill and
+delete, N copies of one header fact, a deploy-order hazard where the old
+Lambda writes header rows the new invariant forbids, and not reversible);
+deterministic caption parsing (only the model can tell which line "the
+bananas" means).

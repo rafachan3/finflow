@@ -169,10 +169,10 @@ step; the inventory job passes, so every row maps to an existing test.*
 
 Settled before Phase 4 so the dbt models are built on the final grain.
 
-- [ ] Item-level tags: a caption like "this one was for <person>" tags
+- [x] Item-level tags: a caption like "this one was for <person>" tags
       that line only; whole-message context still tags every line.
-      Tags move from the header to the line grain (migration +
-      DATA_MODEL.md).
+      Line-only tags get a line table; header tags stay whole-transaction
+      (migration 0012 + DATA_MODEL.md).
 - [x] Duplicate warning: the preview flags a likely duplicate (same
       type and amount within 3 days, or the same Telegram photo
       `file_unique_id`). Covers expenses, income (same source too) and

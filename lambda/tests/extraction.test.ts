@@ -316,9 +316,69 @@ describe("normalizeTaxonomyNames", () => {
     expect(normalized.items[0].item_type).toBe("Meals & Prepared Food");
     expect(validateExtraction(normalized, taxonomy).ok).toBe(true);
   });
+
+  it("keeps a line tag on that line only, without repeats or a header tag", () => {
+    const [burger, coke] = expense().items;
+    const tagged = expense({
+      tags: ["Social"],
+      items: [{ ...burger, tags: ["Travel", "Social", "Travel"] }, coke],
+    });
+    const normalized = normalizeTaxonomyNames(tagged, taxonomy);
+    expect(normalized.tags).toEqual(["Social"]);
+    expect(normalized.items.map((i) => i.tags)).toEqual([["Travel"], []]);
+    expect(normalizeTaxonomyNames(normalized, taxonomy)).toEqual(normalized);
+  });
+
+  it("drops a line tag missing from the Tags list, even on every line, and warns instead of blocking", () => {
+    const [burger, coke] = expense().items;
+    const unknown = expense({
+      tags: [],
+      items: [{ ...burger, tags: ["NotATag", "Travel"] }, { ...coke, tags: ["NotATag"] }],
+    });
+    const normalized = normalizeTaxonomyNames(unknown, taxonomy);
+    expect(normalized.tags).toEqual([]);
+    expect(normalized.items.map((i) => i.tags)).toEqual([["Travel"], []]);
+    expect(normalizeTaxonomyNames(normalized, taxonomy)).toEqual(normalized);
+
+    const checks = validateExtraction(normalized, taxonomy);
+    expect(checks.ok).toBe(true);
+    expect(checks.warnings).toEqual([
+      'tag "NotATag" is not in lookup; "Burger combo" will save without it',
+      'tag "NotATag" is not in lookup; "Coke" will save without it',
+    ]);
+  });
+
+  it("moves a tag that every line carries to the header", () => {
+    const [burger, coke] = expense().items;
+    const everyLine = expense({
+      tags: [],
+      items: [{ ...burger, tags: ["Travel", "Social"] }, { ...coke, tags: ["Travel"] }],
+    });
+    const normalized = normalizeTaxonomyNames(everyLine, taxonomy);
+    expect(normalized.tags).toEqual(["Travel"]);
+    expect(normalized.items.map((i) => i.tags)).toEqual([["Social"], []]);
+  });
+
+  it("keeps income and transfer tags on the header, once each", () => {
+    const pay = expense({ type: "income", tags: ["Social", "Social"], items: [] });
+    expect(normalizeTaxonomyNames(pay, taxonomy).tags).toEqual(["Social"]);
+  });
 });
 
 describe("formatPreview", () => {
+  it("shows a line's own tags under that line only", () => {
+    const [burger, coke] = expense().items;
+    const e = expense({ items: [burger, { ...coke, tags: ["Travel"] }] });
+    const lines = formatPreview(e, validateExtraction(e, taxonomy)).split("\n");
+    const coke_ = lines.indexOf("• Coke — 8.05");
+    expect(lines.slice(coke_, coke_ + 3)).toEqual([
+      "• Coke — 8.05",
+      "  Food and drink / Takeout / Quick Service / Non-Alcoholic Beverages / wants",
+      "  Tags: Travel",
+    ]);
+    expect(lines.filter((l) => l.includes("Tags:"))).toEqual(["Tags: Social", "  Tags: Travel"]);
+  });
+
   it("shows header fields, tags, every line, and check results", () => {
     const checks = validateExtraction(expense(), taxonomy);
     const text = formatPreview(expense(), checks);

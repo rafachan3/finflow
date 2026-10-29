@@ -19,7 +19,7 @@ const taxonomy: TaxonomySnapshot = {
     { category: "Food and drink", name: "Meals & Prepared Food" },
   ],
   venues: ["Fast Food"],
-  tags: ["Social"],
+  tags: ["Social", "Travel"],
   fundingSources: ["self"],
   merchants: ["Chipotle"],
   incomeSources: [],
@@ -968,6 +968,34 @@ describe("patchExtraction", () => {
     expect(blob).toContain("overslept");
     expect(result.notes).toBe("overslept, couldn't pack lunch");
   });
+
+  it("sends each line's tags so a correction can keep or change them, and returns the new ones", async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce({
+      ok: true,
+      json: async () =>
+        geminiJson({
+          ...extracted,
+          tags: [],
+          items: [{ ...extracted.items[0], tags: ["Travel"] }, { ...extracted.items[0], description: "chips", tags: [] }],
+        }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const burrito = { ...current.items[0], tags: ["Social"] };
+
+    const result = await patchExtraction({
+      apiKey: "test-key",
+      current: { ...current, tags: [], items: [burrito, { ...burrito, description: "chips", tags: undefined }] },
+      correction: "the burrito was for the trip",
+      taxonomy,
+      bucketRules: "",
+      today: "2026-08-30",
+    });
+
+    const sent = JSON.parse(JSON.parse(fetchMock.mock.calls[0][1].body as string).contents[0].parts[0].text)
+      .items as { tags: string[] }[];
+    expect(sent.map((i) => i.tags)).toEqual([["Social"], []]);
+    expect(result.items[0].tags).toEqual(["Travel"]);
+  });
 });
 
 describe("multi-event extraction", () => {
@@ -1045,6 +1073,50 @@ describe("multi-event extraction", () => {
     const patchSystem = JSON.parse(fetchMock.mock.calls[3][1].body as string).systemInstruction.parts[0]
       .text as string;
     expect(patchSystem).toContain("A correction to the tip or tax replaces the old value, it does not add to it");
+  });
+
+  it("asks text, photo, voice and Edit for each line's own tags, before its bucket", async () => {
+    const fetchMock = vi.fn().mockImplementation(async () => ({
+      ok: true,
+      json: async () => geminiJson(events(extracted)),
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    const base = { apiKey: "k", taxonomy, bucketRules: "", today: "2026-08-17" };
+    const media = { ...base, caption: "", mimeType: "image/jpeg" };
+    await extractFromText({ ...base, text: "lunch 20" });
+    await extractFromPhoto({ ...media, image: Buffer.from([0xff]) });
+    await extractFromVoice({ ...media, mimeType: "audio/ogg", audio: Buffer.from([0x4f]) });
+    fetchMock.mockImplementationOnce(async () => ({ ok: true, json: async () => geminiJson(extracted) }));
+    await patchExtraction({ ...base, current, correction: "the burrito was for the trip" });
+
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+    for (const [, init] of fetchMock.mock.calls) {
+      const body = JSON.parse(init.body as string);
+      const system = body.systemInstruction.parts[0].text as string;
+      expect(system).toContain("A line's tags are context the owner gives for that line only");
+      // The example names no real tag: a copied seed name would not be in the owner's Tags list.
+      expect(system).toContain('"the bananas were for <a name from the Tags list>"');
+      expect(system).toContain("Use only names from the Tags list.");
+      const schema = body.generationConfig.responseSchema;
+      const item = (schema.properties.events?.items ?? schema).properties.items.items;
+      expect(item.properties.tags).toEqual({ type: "ARRAY", items: { type: "STRING" } });
+      expect(item.required).toContain("tags");
+      expect(item.propertyOrdering.slice(-4)).toEqual(["item_type", "tags", "bucket_why", "bucket"]);
+    }
+  });
+
+  it("returns each line's own tags, and none for a line without", async () => {
+    const tagged = { ...extracted.items[0], tags: ["Travel"] };
+    const plain = { ...extracted.items[0], description: "chips" };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => geminiJson(events({ ...extracted, tags: [], items: [tagged, plain] })),
+      }),
+    );
+    const [result] = await extractFromText({ apiKey: "k", text: "x", taxonomy, bucketRules: "", today: "2026-08-17" });
+    expect(result.items.map((i) => i.tags)).toEqual([["Travel"], []]);
   });
 
   it("throws when Gemini returns no events", async () => {

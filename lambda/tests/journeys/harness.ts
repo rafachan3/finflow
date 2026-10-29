@@ -104,6 +104,8 @@ export const gemini = {
   overloaded: new Set<string>(),
   /** The system instruction of the latest request, e.g. to read its Merchants: line. */
   lastSystem: "",
+  /** The text parts of the latest request; an Edit's first is the card it corrects. */
+  lastUserText: [] as string[],
   /** The merchants the latest extract request offered Gemini. */
   merchants(): string[] {
     const line = gemini.lastSystem.split("\n").find((l) => l.startsWith("Merchants: "));
@@ -179,6 +181,7 @@ const server = setupServer(
       const kind = props.events ? "extract" : "patch";
       gemini.calls.push({ model, kind });
       gemini.lastSystem = body.systemInstruction.parts[0].text;
+      gemini.lastUserText = body.contents[0].parts.flatMap((p) => (p.text === undefined ? [] : [p.text]));
       if (gemini.overloaded.has(model)) {
         return HttpResponse.json({ error: { message: "overloaded" } }, { status: 503 });
       }
@@ -228,6 +231,7 @@ export function useJourneys(): void {
     telegram.nextMessageId = 1;
     gemini.calls = [];
     gemini.lastSystem = "";
+    gemini.lastUserText = [];
     gemini.delays = [];
     retryWait.sleep = async (ms) => {
       gemini.delays.push(ms);
@@ -395,6 +399,28 @@ export const ledger = {
   items() {
     return sql<{ description: string; bucket: string }>(
       `select description, bucket::text from transaction_items order by description`,
+    );
+  },
+  /** Each line's own tags, and its effective tags (its own plus its transaction's). */
+  lineTags() {
+    return sql<{ description: string; own: string[]; effective: string[] }>(
+      `select i.description,
+              array(select g.name::text from transaction_item_tags lt join tags g on g.id = lt.tag_id
+                    where lt.transaction_item_id = i.id order by 1) as own,
+              array(select g.name::text from tags g
+                    where g.id in (select tag_id from transaction_item_tags where transaction_item_id = i.id)
+                       or g.id in (select tag_id from transaction_tags where transaction_id = i.transaction_id)
+                    order by 1) as effective
+       from transaction_items i order by i.description`,
+    );
+  },
+  /** Each transaction's whole-transaction tags, by type. */
+  transactionTags() {
+    return sql<{ type: string; tags: string[] }>(
+      `select t.type::text,
+              array(select g.name::text from transaction_tags tt join tags g on g.id = tt.tag_id
+                    where tt.transaction_id = t.id order by 1) as tags
+       from transactions t order by t.created_at`,
     );
   },
 };

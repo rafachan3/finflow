@@ -16,7 +16,8 @@ needs/wants `bucket`. Every expense has at least one line; a receipt with
 line-item detail has many, and lines from one receipt may belong to different
 categories. Merchants, venues, funding sources, income sources, and accounts
 are lookup tables; tags stay for free-form *context* only (Travel, Social,
-Avoidable…). Every Telegram message lands in `ingestions` before it can
+Avoidable…), on the header when they cover the whole transaction and on a
+line when the owner gives them for that line only. Every Telegram message lands in `ingestions` before it can
 become a confirmed transaction.
 
 ## Entity-relationship diagram
@@ -40,6 +41,8 @@ erDiagram
   funding_sources |o--o{ transactions : "paid by"
   transactions ||--o{ transaction_tags : ""
   tags ||--o{ transaction_tags : ""
+  transaction_items ||--o{ transaction_item_tags : ""
+  tags ||--o{ transaction_item_tags : ""
   transactions |o--o{ ingestions : "confirmed from"
 
   transactions {
@@ -71,6 +74,11 @@ erDiagram
 
   transaction_tags {
     uuid transaction_id PK,FK
+    smallint tag_id PK,FK
+  }
+
+  transaction_item_tags {
+    uuid transaction_item_id PK,FK
     smallint tag_id PK,FK
   }
 
@@ -247,10 +255,20 @@ create table transaction_items (
 create index on transaction_items (transaction_id);
 create index on transaction_items (subcategory_id);
 
+-- Whole-transaction context ("road trip snacks" -> Travel). The only place
+-- income and transfers, which have no lines, carry a tag.
 create table transaction_tags (
   transaction_id uuid     not null references transactions(id) on delete cascade,
   tag_id         smallint not null references tags(id),
   primary key (transaction_id, tag_id)
+);
+
+-- Context the owner gives for one line only ("the bananas were for
+-- Partner"). Migration 0012.
+create table transaction_item_tags (
+  transaction_item_id uuid     not null references transaction_items(id) on delete cascade,
+  tag_id              smallint not null references tags(id),
+  primary key (transaction_item_id, tag_id)
 );
 
 -- Audit + human-in-the-loop staging. Every Telegram message lands here first.
@@ -314,11 +332,11 @@ amount:
   "items": [
     { "description": "Burger combo", "amount": "19.55",
       "category": "Food and drink", "subcategory": "Takeout / Quick Service",
-      "item_type": "Meals & Prepared Food", "bucket": "wants",
+      "item_type": "Meals & Prepared Food", "tags": [], "bucket": "wants",
       "bucket_why": "takeout is discretionary" },
     { "description": "Coke", "amount": "8.05",
       "category": "Food and drink", "subcategory": "Takeout / Quick Service",
-      "item_type": "Non-Alcoholic Beverages", "bucket": "wants",
+      "item_type": "Non-Alcoholic Beverages", "tags": [], "bucket": "wants",
       "bucket_why": "soft drink" }
   ],
   "confidence": 0.91,
@@ -337,7 +355,9 @@ amount:
 `income_source` is required when `type` is `income`; `to_account` when `type`
 is `transfer`. `funded_by` is required when `type` is `expense` and must be
 null on income and transfer. The extraction call sets each line's `bucket`
-and `bucket_why`; on income and transfer lines the bucket is ignored. Tags are transaction-level, not per line. `date_source`
+and `bucket_why`; on income and transfer lines the bucket is ignored. The header's `tags` are
+context for the whole transaction; a line's `tags` are context for that line
+only, and rows extracted before line tags have none (read as `[]`). `date_source`
 is `stated` (user, caption, or receipt), `today_default` (text with no date),
 `missing` (photo with no date — Confirm omitted), or `fix` (owner typed a
 date after Fix date).
@@ -374,4 +394,8 @@ bump when SSM rules change.
   takes a per-update advisory lock and skips the update if any row for it
   already exists, so a webhook retry inserts nothing. The composite unique
   is the backstop.
+- A line's effective tags are its `transaction_item_tags` plus its
+  transaction's `transaction_tags`. A line tag never repeats a header tag,
+  and a tag on every line of an expense is stored once, on the header
+  (application logic: `normalizeTaxonomyNames`).
 - Migrations are never edited after merge; correct forward with a new one.

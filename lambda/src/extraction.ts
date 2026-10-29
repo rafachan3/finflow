@@ -10,6 +10,10 @@ export type ExtractionItem = {
   category: string;
   subcategory: string;
   item_type: string | null;
+  /** Context for this line only; absent on rows extracted before line tags. */
+  tags?: string[];
+  /** Line tags the model gave that are not in the Tags list; the card warns. */
+  dropped_tags?: string[];
   bucket: Bucket;
   bucket_why?: string;
 };
@@ -239,14 +243,40 @@ function stripCategoryPrefix(category: string, raw: string): string {
   return raw.startsWith(prefix) ? raw.slice(prefix.length) : raw;
 }
 
-/** Gemini often repeats "Category / " inside subcategory and item_type. */
+/**
+ * Each tag in one place: a tag every line carries is context for the whole
+ * transaction and moves to the header, and a line keeps only the tags the
+ * header lacks, once each.
+ */
+export function canonicalTags(
+  header: string[],
+  lines: string[][],
+): { tags: string[]; lineTags: string[][] } {
+  const everyLine = (lines[0] ?? []).filter((t) => lines.every((l) => l.includes(t)));
+  const tags = [...new Set([...header, ...everyLine])];
+  return { tags, lineTags: lines.map((l) => [...new Set(l)].filter((t) => !tags.includes(t))) };
+}
+
+/**
+ * Gemini often repeats "Category / " inside subcategory and item_type; tags go
+ * canonical. A line tag missing from the Tags list is dropped before that, so
+ * one copied onto every line never becomes a header tag that blocks the card.
+ */
 export function normalizeTaxonomyNames(
   extraction: Extraction,
   taxonomy: TaxonomySnapshot,
 ): Extraction {
+  const unknown = extraction.items.map((item) =>
+    (item.tags ?? []).filter((t) => !hasName(taxonomy.tags, t)),
+  );
+  const { tags, lineTags } = canonicalTags(
+    extraction.tags,
+    extraction.items.map((item) => (item.tags ?? []).filter((t) => hasName(taxonomy.tags, t))),
+  );
   return {
     ...extraction,
-    items: extraction.items.map((item) => {
+    tags,
+    items: extraction.items.map((item, i) => {
       const subcategory = stripCategoryPrefix(item.category, item.subcategory);
       const itemTypeRaw = item.item_type
         ? stripCategoryPrefix(item.category, item.item_type)
@@ -263,6 +293,10 @@ export function normalizeTaxonomyNames(
         ...item,
         subcategory: sub?.name ?? subcategory,
         item_type: itemTypeRaw === null ? null : (it?.name ?? itemTypeRaw),
+        tags: lineTags[i],
+        ...(unknown[i].length
+          ? { dropped_tags: [...new Set([...(item.dropped_tags ?? []), ...unknown[i]])] }
+          : {}),
       };
     }),
   };
@@ -348,6 +382,9 @@ export function validateExtraction(
             `item type "${item.item_type}" is not valid for ${item.category}`,
           );
         }
+      }
+      for (const tag of item.dropped_tags ?? []) {
+        warnings.push(`tag "${tag}" is not in lookup; "${item.description}" will save without it`);
       }
       if (item.bucket !== "needs" && item.bucket !== "wants") {
         errors.push(`bucket must be needs or wants on "${item.description}"`);
@@ -475,6 +512,7 @@ export function formatPreview(
         `  ${item.category} / ${item.subcategory}${type} / ${item.bucket}`,
       );
       if (item.bucket_why) lines.push(`  ${item.bucket_why}`);
+      if (item.tags?.length) lines.push(`  Tags: ${item.tags.join(", ")}`);
     }
   }
 
