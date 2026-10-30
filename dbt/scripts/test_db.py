@@ -5,8 +5,8 @@
 Reads TEST_DATABASE_URL and refuses any host but this machine. Builds the
 `finflow_test` database the way lambda/tests/integration/global-setup.ts
 does (every migration in order, then the example seed), loads
-fixtures/synthetic.sql and then each extra file, gives finflow_dbt a
-throwaway password, and prints the FINFLOW_DBT_* exports profiles.yml
+fixtures/synthetic.sql and then each extra file, gives finflow_dbt and
+finflow_analyst a throwaway password each (the role's name), and prints the FINFLOW_DBT_* exports profiles.yml
 reads. It shares the integration suite's database, so running either
 rebuilds it for that one.
 """
@@ -23,6 +23,7 @@ DBT = Path(__file__).resolve().parents[1]
 SUPABASE = DBT.parent / "supabase"
 TEST_DB = "finflow_test"
 DBT_ROLE = "finflow_dbt"
+ANALYST_ROLE = "finflow_analyst"
 
 
 def local_url():
@@ -62,6 +63,8 @@ def main(extra):
         # dbt runs as the role migration 0013 gives it, never as the
         # loader's superuser, so a build that needs more privilege fails.
         cur.execute(f"alter role {DBT_ROLE} with password '{DBT_ROLE}'")
+        # The analyst logs in the same way for CI's grant check.
+        cur.execute(f"alter role {ANALYST_ROLE} with password '{ANALYST_ROLE}'")
     db.close()
 
     exports = {

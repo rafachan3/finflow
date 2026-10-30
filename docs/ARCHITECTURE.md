@@ -20,7 +20,7 @@ flowchart TD
 
     subgraph SEM["SEMANTIC LAYER — dbt-core"]
         STG["staging/<br/>light renames"]
-        MRT["marts/<br/>fct_monthly_spend · fct_category_month"]
+        MRT["marts/<br/>fct_transactions · fct_monthly_summary<br/>fct_category_month · dim_date"]
     end
 
     subgraph OUT["CONSUMPTION"]
@@ -194,7 +194,10 @@ rationale for its shape:
 
 ### Semantic layer — dbt-core + SEMANTIC_LAYER.md
 - dbt project in `dbt/`: `staging/` (light renames from raw tables) →
-  `marts/` (fct_monthly_spend, fct_category_month, dim views).
+  `marts/` (tables in schema `marts`, rebuilt in full every run):
+  `fct_transactions` (one row per ledger line), `fct_monthly_summary` (one
+  row per month, one column per metric), `fct_category_month` (spend per
+  subcategory per month) and `dim_date` (the day spine).
 - Canonical metric definitions (formulas, grain, month boundaries, mart
   columns) live only in `docs/SEMANTIC_LAYER.md`. Both dbt models and the
   agent reference that file so numbers agree everywhere.

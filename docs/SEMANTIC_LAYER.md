@@ -41,7 +41,8 @@ time of its Confirm.
 
 **Today.** Only "now"-relative logic needs a zone, and it uses
 `(now() at time zone 'America/Toronto')::date`, never `current_date` (the
-session time zone is UTC in CI). It decides the last month in the marts and
+session time zone is UTC in CI). It decides the last month in the marts
+(unless a row is dated later, see "Grain") and
 `is_complete_month = month_start < date_trunc('month', <Toronto today>)`.
 The current month is always incomplete: read it as month-to-date.
 
@@ -101,7 +102,9 @@ transaction (the header stands in for its own line). Its `amount` is the line
 amount for an expense line and the header amount otherwise, so every metric
 below is a filtered `sum(amount)` over this one table.
 `fct_monthly_summary` has one row per month from the first data month to the
-current Toronto month, zero-filled, with one column per metric.
+current Toronto month, zero-filled, with one column per metric. If a row is
+already dated in a later month (a bill logged ahead), the list runs to that
+month instead, so no ledger row is left out of every month.
 `fct_category_month` has one row per (`month_start`, `subcategory_id`) with
 expense data.
 
@@ -185,9 +188,10 @@ from monthly m
 order by month_start;
 ```
 
-The running sum must run over the zero-filled month list, which this
-query does not produce; in the mart a month with no rows still carries the
-previous balance forward.
+The running sum must run over the zero-filled month list (see "Grain"), which
+this query does not produce; in the mart a month with no rows still carries
+the previous balance forward. The dbt test builds that list itself with
+`generate_series`, not from `dim_date`.
 
 ## Recipes
 

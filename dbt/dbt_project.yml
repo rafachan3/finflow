@@ -14,3 +14,10 @@ models:
     staging:
       +schema: staging
       +materialized: view
+    # Tables rebuilt in full on every run, never incremental: a late or
+    # backfilled row dated in a past month changes that month on the next
+    # build. The analyst's SELECT comes from migration 0013's default
+    # privilege, not from a dbt grants config (DECISIONS 2026-10-29).
+    marts:
+      +schema: marts
+      +materialized: table

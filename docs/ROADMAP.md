@@ -187,8 +187,9 @@ and a deleted one is not.
 
 ## Phase 4 — Semantic layer (≈2 evenings)
 
-- [ ] dbt project: staging models + marts (fct_transactions,
-      fct_category_month, fct_monthly_summary)
+- [x] dbt project: staging models + marts (fct_transactions,
+      fct_category_month, fct_monthly_summary) (2026-10-30; reconciled in
+      CI on the fixture, not yet run against production)
 - [ ] docs/SEMANTIC_LAYER.md: canonical metric definitions (discretionary
       spend, savings rate, needs/wants ratio, fixed base burn)
 - [ ] GitHub Action: nightly `dbt build` + tests (not_null, accepted_values,

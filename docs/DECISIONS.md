@@ -1726,3 +1726,47 @@ The invariant tests are singular tests, so `docs/TESTING.md` rows can cite
 them as `dbt:<name>`. Two of them (`expense_funding_rules`,
 `transfer_has_account`) restate CHECK constraints; they stay because a
 staging join that dropped a name would pass the constraint and fail them.
+
+## 2026-10-30 — The marts: ledger-line fact, full rebuild, reconciled to the contract's own SQL
+
+Phase 4 PR-D (`dim_date`, `fct_transactions`, `fct_category_month`,
+`fct_monthly_summary`).
+
+- **`fct_transactions` is one row per ledger line** (each expense line, plus
+  one row per income or transfer header), with each line's effective tags
+  (its own plus its header's). Every contract metric is then a filtered
+  `sum(amount)` over one table. **Ruled out:** a header fact plus an item
+  fact (every needs/wants number would need a join), and line arrays on a
+  header row (not additive).
+- **Every mart is a table rebuilt in full on every run, nothing
+  incremental by month.** The owner backfills past months through the bot
+  at any time, so no month is ever closed; at a few hundred rows a full
+  rebuild costs nothing.
+- **The month list runs past the current Toronto month when a row is
+  dated later.** The contract said "to the current Toronto month"; a bill
+  logged ahead (dated next month) would then sit in `fct_transactions` but
+  in no month of `fct_monthly_summary`. SEMANTIC_LAYER.md's Grain now says
+  the list runs to that later month. `dim_date` starts on the first day of
+  the first data month (the design said the first data day), so every
+  month in it is whole.
+- **`monthly_summary_matches_hand_written_sql` pastes the contract's
+  reference SQL unchanged** and builds its own month list with
+  `generate_series`, so neither `dim_date` nor any staging model sits on
+  both sides. It returns month and metric names, never amounts.
+- **The proof that it bites is a model mutation, not a fixture one.** Both
+  sides read the same ledger, so changing the data changes both alike and
+  can never make them disagree. CI instead adds 0.01 to the mart's
+  `transfers` and requires the reconciliation, and nothing else, to fail
+  (`transfers` is the one column no other test reads). The fixture's
+  existing off-by-a-cent variant still fails only
+  `expense_lines_sum_to_header`; the marts downstream of it are skipped.
+- **`fixture_sample_month_expected`** holds the fixture's 2026-06 as
+  literals worked out by hand (the arithmetic is in the test's header), to
+  catch a misreading the mart and the reference SQL share. It is tagged
+  `fixture` so the nightly on production can exclude it.
+- **No dbt `grants` config.** The design asked for one, but migration 0013
+  already gives the analyst `SELECT` on everything dbt creates in `marts`
+  (entry "dbt writes only its own schemas" above). The singular test
+  `analyst_reads_every_mart` checks it with `has_table_privilege` after
+  every rebuild, so it also runs nightly on production; CI additionally
+  logs in as `finflow_analyst` with the loader's throwaway password.

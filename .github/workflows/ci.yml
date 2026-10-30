@@ -173,6 +173,28 @@ jobs:
           env=$(python scripts/test_db.py)
           eval "$env"
           dbt build
+      - name: finflow_analyst logs in and reads every mart, and no staging or ledger table
+        run: |
+          python - <<'EOF'
+          import psycopg2
+          db = psycopg2.connect(host="localhost", port=5432, dbname="finflow_test",
+                                user="finflow_analyst", password="finflow_analyst")
+          db.autocommit = True
+          cur = db.cursor()
+          cur.execute("select tablename from pg_tables where schemaname = 'marts' order by 1")
+          marts = [r[0] for r in cur.fetchall()]
+          expected = ["dim_date", "fct_category_month", "fct_monthly_summary", "fct_transactions"]
+          assert marts == expected, f"marts holds {marts}"
+          for t in marts:
+              cur.execute(f"select 1 from marts.{t} limit 1")
+          for t in ("staging.stg_transactions", "public.ingestions"):
+              try:
+                  cur.execute(f"select 1 from {t} limit 1")
+              except psycopg2.errors.InsufficientPrivilege:
+                  continue
+              raise SystemExit(f"finflow_analyst can read {t}")
+          print(f"finflow_analyst reads {len(marts)} marts and no staging or ledger table")
+          EOF
       - name: a line off by 0.01 fails expense_lines_sum_to_header, and nothing else
         run: |
           env=$(python scripts/test_db.py fixtures/off_by_a_cent.sql)
@@ -181,5 +203,20 @@ jobs:
             echo "::error::dbt build passed with a line off by 0.01"
             exit 1
           fi
-          jq -e '[.results[] | select(.status != "pass" and .status != "success") | .unique_id]
+          # The marts downstream are skipped, not failed: dbt builds nothing
+          # on a ledger that breaks an invariant.
+          jq -e '[.results[] | select(.status == "fail" or .status == "error") | .unique_id]
             == ["test.finflow.expense_lines_sum_to_header"]' target/run_results.json
+      - name: a mart metric off by 0.01 fails the reconciliation, and nothing else
+        run: |
+          env=$(python scripts/test_db.py)
+          eval "$env"
+          sed -i 's/^    transfers::numeric(12, 2) as transfers,/    (transfers + 0.01)::numeric(12, 2) as transfers,/' \
+            models/marts/fct_monthly_summary.sql
+          # Without the fixture-only test, as the nightly runs on production.
+          if dbt build --exclude tag:fixture; then
+            echo "::error::dbt build passed with transfers off by 0.01"
+            exit 1
+          fi
+          jq -e '[.results[] | select(.status == "fail" or .status == "error") | .unique_id]
+            == ["test.finflow.monthly_summary_matches_hand_written_sql"]' target/run_results.json
