@@ -99,11 +99,11 @@ included.
 | Ledger | Every expense's lines sum exactly to its amount; a line moved by 0.01 fails the `dbt` job | `dbt:expense_lines_sum_to_header` |
 | Ledger | Every expense has at least one line, and income and transfers have none | `dbt:expense_has_lines`<br>`dbt:no_lines_on_income_or_transfer` |
 | Ledger | A line's item type belongs to the same category as its subcategory | `dbt:item_type_matches_subcategory_category` |
-| Ledger | An expense has a funder, and income and transfers have none; a transfer names its account | `dbt:expense_funding_rules`<br>`dbt:transfer_has_account` |
+| Ledger | An expense has a funder, and income and transfers have none; a transfer names the account it leaves, the one it enters or both (null is chequing), never the same one twice, so a withdrawal passes; only a transfer has a from account | `dbt:expense_funding_rules`<br>`dbt:transfer_has_account` |
 | Ledger | Warnings, not failures: a line tag that repeats its header tag, a transaction with two confirmed ingestions, a date past Toronto's tomorrow | `dbt:line_tag_not_on_header`<br>`dbt:one_confirmed_ingestion_per_transaction`<br>`dbt:occurred_on_not_in_future` |
 | Marts | `fct_transactions` drops and doubles no ledger line: per type, its amounts sum to the ledger's expense lines and income and transfer headers | `dbt:fct_amount_reconciles_to_ledger` |
 | Marts | Every metric of every month in `fct_monthly_summary` equals the contract's reference SQL run straight over `public`, months zero-filled; a mart metric off by 0.01 fails the `dbt` job | `dbt:monthly_summary_matches_hand_written_sql` |
-| Marts | The fixture's sample month 2026-06 has the values worked out by hand from the fixture | `dbt:fixture_sample_month_expected` |
+| Marts | The fixture's sample month 2026-06 has the values worked out by hand from the fixture, including interest paid into savings (`savings_income`), a withdrawal (`withdrawals`, adding to `unallocated_cash`) and a move between two accounts (in no metric) | `dbt:fixture_sample_month_expected` |
 | Marts | Needs plus wants is spend and fixed plus variable needs is needs, every month; the category months sum to the monthly summary | `dbt:needs_plus_wants_equals_spend`<br>`dbt:category_month_sums_to_summary` |
 
 ## Running each layer

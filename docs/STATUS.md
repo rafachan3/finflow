@@ -430,7 +430,7 @@ red; the code stays deployed.
 ## Next concrete step
 
 Phase 4 — Semantic layer (see ROADMAP.md). The metric contract is in
-[SEMANTIC_LAYER.md](SEMANTIC_LAYER.md) (2026-10-29): twelve metrics with
+[SEMANTIC_LAYER.md](SEMANTIC_LAYER.md) (2026-10-29; fourteen since 2026-10-30): metrics with
 formulas, mart columns and edge cases, and DECISIONS.md records the owner's
 rulings. PR-B (migration 0013, the `finflow_dbt` and `finflow_analyst` roles,
 `staging` and `marts` schemas) merged as #73. Before anything uses it in
@@ -477,12 +477,22 @@ card with `From account: Emergency fund` / `To account: chequing`; "moved
 is unchanged. The duplicate warning compares a transfer's two accounts. New
 golden `transfer-withdrawal` (20 of 20). Order: apply migration 0014 to
 production, put the owner's interest source's `deposit_account_id` in the
-overlay, then merge (it auto-deploys code that writes the column). PR 2
-(dbt staging and the SEMANTIC_LAYER.md contract) must land before a
-withdrawal is saved and dbt runs against production:
-`dbt:transfer_has_account` still requires `to_account_id` and would fail on
-it, and `transfers` and `unallocated_cash` do not yet net withdrawals or
-count deposited income.
+overlay, then merge (it auto-deploys code that writes the column).
+
+Withdrawals in the contract and the marts (PR 2 of 2, 2026-10-30;
+DECISIONS.md 2026-10-30): SEMANTIC_LAYER.md now has fourteen metrics.
+Chequing is the null side of `from_account_id`, `to_account_id` and
+`deposit_account_id`. New `savings_income` (income whose source lands in an
+account) and `withdrawals` (account to chequing); `transfers` is chequing
+to an account only; a move between two accounts is in no metric;
+`unallocated_cash = income − savings_income − spend − transfers +
+withdrawals` (its running sum follows); `savings_rate` is unchanged.
+`stg_transactions` and `fct_transactions` carry the from and deposit
+accounts; `fct_monthly_summary` adds both columns.
+`dbt:transfer_has_account` now encodes migration 0014's check, so a saved
+withdrawal passes. The fixture's June gains interest into savings, a
+withdrawal and a move; its hand-worked values were redone. A withdrawal can
+now be saved and dbt can run against production.
 
 Phase 3.5 acceptance (2026-10-29): the journey tests are the check, not a
 phone test. Against a throwaway Postgres (`cd lambda && npm run db:up`), then
