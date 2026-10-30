@@ -246,7 +246,8 @@ at 08:45 UTC (04:45 EDT, 03:45 EST), after Toronto's midnight all year, and
 on demand (`gh workflow run dbt-nightly.yml`). It has no `pull_request`
 trigger: its secrets `FINFLOW_DBT_HOST`, `FINFLOW_DBT_USER` and
 `FINFLOW_DBT_PASSWORD` reach only the three steps that connect, never PR
-code. It connects as `finflow_dbt` through Supabase's session pooler (port
+code. Only `main` reaches production: a dispatch on another branch skips
+the build job, so a branch's edited models never run there. It connects as `finflow_dbt` through Supabase's session pooler (port
 5432) with `sslmode=verify-full` against `supabase/prod-ca-2021.crt`
 (libpq's `PGSSLROOTCERT`), and runs `dbt debug --connection`, then
 `dbt build --exclude tag:fixture` (every model, invariant and the
@@ -254,13 +255,16 @@ reconciliation to `public`; not `fixture_sample_month_expected`), then
 `mf validate-configs` and `check_metrics.py`. The `finflow_analyst` login
 check stays in the PR `dbt` job: that role's password is not a CI secret.
 
-The log is public, so it shows names and statuses only. dbt's own output
-(row counts, failing-test counts, database error text that can quote a row)
-and `mf`'s go to a runner file that is never printed or uploaded; the log
+The log is public, so it shows names and statuses only. All of dbt's own
+output (`dbt debug` included: row counts, failing-test counts, database
+error text that can quote a row) and `mf`'s go to a runner file that is
+never printed or uploaded; the log says whether the connection worked,
 lists each node's status and unique id from `target/run_results.json`, and
-`check_metrics.py` prints metric and month names. A failure opens one issue
+`check_metrics.py` prints metric and month names. A failure, a step timeout
+(connect 3, build 12, metrics 4 minutes) or a cancel opens one issue
 labelled `dbt-nightly`, or comments on the open one, with a table naming the
-failed nodes or checks and the run URL; the next pass closes it. Without
+failed nodes or checks and the run URL, never empty; the next pass closes
+it. Without
 the secrets (a fork, or before they are set) the build job is skipped and
 the run is green.
 

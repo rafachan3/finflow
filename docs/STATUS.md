@@ -439,16 +439,25 @@ production and the `FINFLOW_DBT_HOST`, `FINFLOW_DBT_USER` and
 
 Nightly dbt on production (PR-F, 2026-10-30; DECISIONS.md, TESTING.md "The
 nightly dbt build"): `.github/workflows/dbt-nightly.yml` runs at 08:45 UTC
-and on dispatch, never on `pull_request`. As `finflow_dbt` through the
-session pooler with verified TLS, it runs `dbt build --exclude tag:fixture`,
-`mf validate-configs` and `check_metrics.py`; its public log shows node
-names and statuses only, and a failure keeps one `dbt-nightly` issue open.
-Without the secrets (forks) it skips green. **It has not run against
-production yet.** Next: after merge, `gh workflow run dbt-nightly.yml` on
-`main`; check the log shows no amounts or row counts, then tick the
-ROADMAP nightly item with the run id. Then prove the issue path: a dispatch
-on a throwaway branch with a deliberately failing singular test opens a
-`dbt-nightly` issue, and the next green dispatch on `main` closes it.
+and on dispatch from `main` only, never on `pull_request`. As `finflow_dbt`
+through the session pooler with verified TLS, it runs
+`dbt build --exclude tag:fixture`, `mf validate-configs` and
+`check_metrics.py`; its public log shows node names and statuses only, and
+a failure, step timeout or cancel keeps one `dbt-nightly` issue open.
+Without the secrets (forks) or off `main` it skips green. **It has not run
+against production yet.**
+
+Pre-run check of `finflow_dbt` (2026-10-30, `has_table_privilege` and
+`has_schema_privilege` over `verify-ca` TLS with the tracked CA, no writes): SELECT on `public.transactions` true;
+INSERT, UPDATE and DELETE on it false; CREATE on schema `public` false;
+CREATE on `staging` and on `marts` true.
+
+Next: after merge, `gh workflow run dbt-nightly.yml` on `main`; check the
+log shows no amounts or row counts, then tick the ROADMAP nightly item with
+the run id. A branch dispatch now skips the build, so the spec's
+throwaway-branch proof of the issue path no longer applies: the issue
+table and open/close logic were exercised locally with a stubbed `gh`, and
+the first real failure on `main` is the live proof.
 
 MetricFlow (PR-E, 2026-10-30; DECISIONS.md 2026-10-30): `fct_transactions`
 is a MetricFlow semantic model and `dim_date` its time spine, in
@@ -561,6 +570,9 @@ infra change.
   2026-08-27 (`INACTIVE`; bot silent). The nightly dbt workflow connects
   every day once merged, which should keep it warm; if it still pauses,
   restore from the dashboard.
+- GitHub disables scheduled workflows in a public repo after 60 days without
+  repository activity; the nightly dbt build and eval-nightly would then
+  stop silently.
 - Gemini free-tier quotas and model names change. Pinned to `gemini-3.6-flash`
   with `gemini-3.5-flash` and `gemini-3.5-flash-lite` as fallbacks (DECISIONS.md
   2026-08-17, 2026-10-12); `gemini-2.5-flash` rejected new keys with HTTP 404.
