@@ -208,6 +208,24 @@ describe("confirmIngestion", () => {
     expect(tx).toEqual({ type: "transfer", account: "Emergency fund", funding_source_id: null });
   });
 
+  it("writes a withdrawal and a move between accounts with the account each leaves", async () => {
+    const [withdrawal] = await save(209, transfer({ from_account: "Emergency fund", to_account: null }));
+    const [move] = await save(210, transfer({ from_account: "Emergency fund", to_account: "Retirement account" }));
+    await db.confirmIngestion(withdrawal);
+    await db.confirmIngestion(move);
+    const rows = await sql(
+      `select f.name as from_account, a.name as to_account
+       from transactions t
+       join accounts f on f.id = t.from_account_id
+       left join accounts a on a.id = t.to_account_id
+       order by a.name nulls first`,
+    );
+    expect(rows).toEqual([
+      { from_account: "Emergency fund", to_account: null },
+      { from_account: "Emergency fund", to_account: "Retirement account" },
+    ]);
+  });
+
   it("records who paid when someone else funded it", async () => {
     const [id] = await save(203, expense({ funded_by: "family" }));
     await db.confirmIngestion(id);

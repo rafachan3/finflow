@@ -292,6 +292,47 @@ describe("validateExtraction", () => {
     );
     expect(result.ok).toBe(true);
   });
+
+  describe("transfer accounts", () => {
+    const accounts = { ...taxonomy, accounts: ["Emergency Fund", "Retirement"] };
+    const move = (from_account: string | null, to_account: string | null) =>
+      expense({
+        type: "transfer",
+        amount: "50.00",
+        items: [],
+        from_account,
+        to_account,
+        merchant: null,
+        venue: null,
+        tags: [],
+        funded_by: null,
+      });
+
+    it.each([
+      ["a deposit (to only)", null, "Emergency Fund"],
+      ["a withdrawal (from only)", "Emergency Fund", null],
+      ["a move between two accounts", "Emergency Fund", "Retirement"],
+    ])("accepts a transfer that is %s", (_name, from, to) => {
+      expect(validateExtraction(move(from, to), accounts)).toMatchObject({ ok: true, errors: [] });
+    });
+
+    it.each([
+      ["no account on either side", null, null, "transfer requires from_account or to_account"],
+      ["an unknown from account", "Vacation", null, "unknown account: Vacation"],
+      ["an unknown to account", "Emergency Fund", "Vacation", "unknown account: Vacation"],
+      [
+        "the same account on both sides",
+        "Emergency Fund",
+        "Emergency Fund",
+        "transfer from and to the same account: Emergency Fund",
+      ],
+    ])("rejects a transfer with %s", (_name, from, to, error) => {
+      expect(validateExtraction(move(from, to), accounts)).toMatchObject({
+        ok: false,
+        errors: [error],
+      });
+    });
+  });
 });
 
 describe("normalizeTaxonomyNames", () => {
@@ -489,6 +530,27 @@ describe("formatPreview", () => {
     const text = formatPreview(move, validateExtraction(move, taxonomy));
     expect(text).toContain("To account: Emergency Fund");
     expect(text).not.toMatch(/Funded by/i);
+    expect(text).not.toMatch(/From account/);
+  });
+
+  it.each([
+    ["a withdrawal names chequing as where it goes", "Emergency Fund", null, "From account: Emergency Fund\nTo account: chequing"],
+    ["a move names both accounts", "Emergency Fund", "Retirement", "From account: Emergency Fund\nTo account: Retirement"],
+  ])("shows the account a transfer leaves: %s", (_name, from_account, to_account, shown) => {
+    const move = expense({
+      type: "transfer",
+      amount: "200.00",
+      items: [],
+      from_account,
+      to_account,
+      merchant: null,
+      venue: null,
+      tags: [],
+    });
+    const accounts = { ...taxonomy, accounts: ["Emergency Fund", "Retirement"] };
+    const text = formatPreview(move, validateExtraction(move, accounts));
+    expect(text).toContain(shown);
+    expect(text).toContain("Confirm to save");
   });
 });
 

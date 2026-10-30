@@ -690,12 +690,19 @@ export async function confirmIngestion(
             [extraction.to_account],
           );
 
+    // Absent on cards extracted before withdrawals; validation above checked the name.
+    const fromAccountId = extraction.from_account
+      ? await lookupId(client, `SELECT id FROM accounts WHERE name = $1`, [
+          extraction.from_account,
+        ])
+      : null;
+
     const tx = await client.query<{ id: string }>(
       `INSERT INTO transactions (
          occurred_on, type, amount, currency, description,
          merchant_id, venue_id, income_source_id, to_account_id,
-         funding_source_id, is_recurring, notes
-       ) VALUES ($1, $2, $3, 'CAD', $4, $5, $6, $7, $8, $9, $10, $11)
+         funding_source_id, is_recurring, notes, from_account_id
+       ) VALUES ($1, $2, $3, 'CAD', $4, $5, $6, $7, $8, $9, $10, $11, $12)
        RETURNING id`,
       [
         extraction.date,
@@ -709,6 +716,7 @@ export async function confirmIngestion(
         fundingId,
         extraction.is_recurring,
         extraction.notes ?? null,
+        fromAccountId,
       ],
     );
     const transactionId = tx.rows[0].id;

@@ -1,0 +1,68 @@
+{
+  "name": "taking money out of savings, and moving it between two accounts, are transfers",
+  "input": {
+    "kind": "text",
+    "text": "took 200 out of my emergency fund on Oct 27, and moved 500 from the emergency fund to my retirement account on Oct 28"
+  },
+  "expect": {
+    "events": [
+      {
+        "type": "transfer",
+        "lines": 0,
+        "amount": "200.00",
+        "date": true,
+        "fromAccount": "Emergency fund",
+        "toAccount": null
+      },
+      {
+        "type": "transfer",
+        "lines": 0,
+        "amount": "500.00",
+        "date": true,
+        "fromAccount": "Emergency fund",
+        "toAccount": "Retirement account"
+      }
+    ]
+  },
+  "recorded": {
+    "events": [
+      {
+        "type": "transfer",
+        "amount": "200.00",
+        "currency": "CAD",
+        "date": "2026-10-27",
+        "description": "Transfer from Emergency fund",
+        "merchant": null,
+        "venue": null,
+        "tags": [],
+        "is_recurring": false,
+        "income_source": null,
+        "from_account": "Emergency fund",
+        "to_account": null,
+        "items": [],
+        "confidence": 0.95,
+        "funded_by": null,
+        "notes": null
+      },
+      {
+        "type": "transfer",
+        "amount": "500.00",
+        "currency": "CAD",
+        "date": "2026-10-28",
+        "description": "Transfer from Emergency fund to Retirement account",
+        "merchant": null,
+        "venue": null,
+        "tags": [],
+        "is_recurring": false,
+        "income_source": null,
+        "from_account": "Emergency fund",
+        "to_account": "Retirement account",
+        "items": [],
+        "confidence": 0.95,
+        "funded_by": null,
+        "notes": null
+      }
+    ]
+  },
+  "request_sha256": "5a71491eef680a5440f3c7e3bb4af1a4d870d496b17cb8354774d5ab07375138"
+}

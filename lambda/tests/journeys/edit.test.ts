@@ -38,6 +38,22 @@ describe("correcting a card with Edit", () => {
     ]);
   });
 
+  it("an Edit that turns a deposit into a withdrawal saves the account it leaves", async () => {
+    gemini.extract = golden("transfer").recorded;
+    await chat.text("moved 50 to my emergency fund on Oct 26");
+    await chat.tap(chat.last(), "Edit");
+    const [deposit] = (golden("transfer").recorded as { events: object[] }).events;
+    gemini.patch = { ...deposit, from_account: "Emergency fund", to_account: null };
+    await chat.text("no, I took it out of the emergency fund");
+
+    const fixed = chat.last();
+    expect(fixed.text).toContain("From account: Emergency fund\nTo account: chequing");
+    await chat.tap(fixed, "Confirm");
+    expect(await ledger.transactions()).toMatchObject([
+      { type: "transfer", from_account: "Emergency fund", account: null },
+    ]);
+  });
+
   it("an Edit that says a line is a need changes its bucket in one request", async () => {
     const card = await lunchCard();
     await chat.tap(card, "Edit");

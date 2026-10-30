@@ -26,6 +26,9 @@ export type ExpectedEvent = {
   /** A copy-edit adds little; more words than this means facts were added. */
   noteMaxWords?: number;
   funder?: string;
+  /** A transfer's accounts; null is chequing. */
+  fromAccount?: string | null;
+  toAccount?: string | null;
   /** Each line's bucket, in order. Only meaningful with `rules`. */
   buckets?: ("needs" | "wants")[];
   /** The whole-transaction tags, as a set. */
@@ -53,6 +56,8 @@ export type RawEvent = {
   merchant?: unknown;
   notes?: unknown;
   funded_by?: unknown;
+  from_account?: unknown;
+  to_account?: unknown;
   tags?: unknown;
   items?: { amount?: unknown; description?: unknown; bucket?: unknown; tags?: unknown }[];
 };
@@ -132,6 +137,16 @@ export function mismatches(events: RawEvent[], expected: ExpectedEvent[]): strin
     }
     if (want.funder !== undefined && got.funded_by !== want.funder) {
       out.push(`${at}: funder ${String(got.funded_by)} != ${want.funder}`);
+    }
+    // A recording from before from_account has none: read it as null (chequing).
+    const accounts = [
+      ["from account", want.fromAccount, got.from_account ?? null],
+      ["to account", want.toAccount, got.to_account ?? null],
+    ] as const;
+    for (const [field, wanted, value] of accounts) {
+      if (wanted !== undefined && value !== wanted) {
+        out.push(`${at}: ${field} ${String(value)} != ${String(wanted)}`);
+      }
     }
     if (want.buckets !== undefined && items.length === want.lines) {
       want.buckets.forEach((bucket, j) => {
