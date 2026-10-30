@@ -10,6 +10,8 @@ One row per behaviour. The Tests column cites each guarding test by its exact
 title in backticks, one per line. `golden:<name>` cites a case file in
 `lambda/tests/golden/`, which both the journeys replay and the live eval
 checks. `dbt:<name>` cites a singular dbt test, `dbt/tests/<name>.sql`.
+`ci:<name>` cites a step by its `name:` in `.github/workflows/`, for a check
+that is a CI step rather than a test file.
 `scripts/check-inventory.mjs` (CI job `inventory`) fails when a row
 cites no test or cites one that does not exist.
 
