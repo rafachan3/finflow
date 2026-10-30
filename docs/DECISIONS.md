@@ -1839,3 +1839,65 @@ revisits this contract anyway).
 The deposit account belongs to the source, so changing it restates every
 past month of that source on the next full rebuild. Accepted: the marts
 are rebuilt in full every night anyway.
+
+## 2026-10-30 — MetricFlow: every contract metric, on the latest YAML spec, held to the mart by a script
+
+Phase 4 PR-E. `fct_transactions` is the one MetricFlow semantic model
+(primary entity `line`, `agg_time_dimension: occurred_on` at the model
+level) and `dim_date` the time spine, in `dbt/models/marts/_marts.yml`,
+written in dbt 1.12's latest metrics spec (no `type_params`, no measures).
+All fourteen metrics in SEMANTIC_LAYER.md are MetricFlow metrics of the
+same name; **none is excluded**. Pins: dbt-core 1.12.6, dbt-postgres
+1.11.0, dbt-metricflow 0.15.0 (pulls metricflow 0.213.0); `pip install`
+of the three together succeeds on Python 3.12, so no step-down was needed.
+
+Settled with `mf validate-configs` and `mf query` on those versions:
+
+- **Simple metrics take `filter:`**, a list of `{{ Dimension('line__…') }}`
+  conditions ANDed together, so the ten money metrics are `agg: sum` of
+  `amount` with the contract's filter, not `case when` expressions.
+- **`fill_nulls_with` is dropped** from latest-spec metrics by dbt 1.12.6's
+  parser (it reaches only legacy measures), so a simple metric is null, not
+  0, in a month with no matching rows. The derived metrics therefore
+  coalesce their inputs: `savings_rate` is
+  `round((income - coalesce(spend, 0)) / nullif(income, 0), 4)`.
+- **`needs_wants_ratio` is a derived metric, not `type: ratio`.** A ratio
+  metric cannot coalesce its numerator, so a month with wants and no needs
+  would read null where the contract says 0. The derived form is the
+  contract's formula, `round(... / nullif(wants_spend, 0), 4)`, on numeric,
+  so it matches the mart exactly (the 0.0001 tolerance is kept for safety).
+- **`unallocated_cash_cumulative` is a cumulative metric**
+  (`period_agg: last`, no window), so the month's value is the running sum
+  at its end, carried over empty months by the time spine. MetricFlow
+  0.213 validates a cumulative metric over a derived one but fails to
+  query it, so `unallocated_cash` is one simple signed sum (income landing
+  in chequing, minus own spend and deposits, plus withdrawals) rather than
+  a derived metric over five others. The check holds it to the mart's
+  composed formula every month.
+- `dimension: time` written as a string loses the column's `granularity`
+  in dbt 1.12.6; the mapping form `dimension: {type: time}` keeps it.
+- `mf` finds `dbt/profiles.yml` in the working directory; no
+  `DBT_PROFILES_DIR` is needed when it runs from `dbt/`.
+- dbt 1.12.6's partial parse registered an edited metric twice, so the
+  `dbt` job sets `DBT_PARTIAL_PARSE=false`.
+
+`dbt/scripts/check_metrics.py` (stdlib and psycopg2) is the comparison:
+the metric names in SEMANTIC_LAYER.md's table and in
+`target/semantic_manifest.json` must be the same set, then `mf query` over
+the mart's first to last month must equal `fct_monthly_summary` (money to
+the cent, ratios within 0.0001, an empty mf cell 0 for money and null for
+a ratio). It bounds the query to the mart's months because the cumulative
+metric otherwise runs to the spine's end, a year ahead, and it fails on
+any mf month the mart lacks. It prints metric and month only. The `dbt`
+job runs it and two edited-YAML variants that must fail. `ci:<step name>`
+is a new inventory citation, so a check that is a CI step, not a test
+file, can be cited in TESTING.md.
+
+**Ruled out:** excluding `unallocated_cash_cumulative` from MetricFlow
+(the cumulative type covers it once its input is simple); a hidden helper
+metric as the cumulative's input (it would sit in the manifest outside the
+contract and break the set comparison's plain equality); `fill_nulls_with`
+(silently ignored on this spec); the legacy `type_params` and measures YAML
+(deprecated in dbt 1.12); comparing every spine month (future months carry
+the cumulative balance and exist in no mart); a dbt singular test for the
+comparison (dbt cannot run `mf`).

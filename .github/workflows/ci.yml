@@ -157,6 +157,13 @@ jobs:
           --health-retries 10
     env:
       TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres
+      # What test_db.py prints, for the steps that reuse the built database.
+      FINFLOW_DBT_PORT: "5432"
+      FINFLOW_DBT_PASSWORD: finflow_dbt
+      FINFLOW_DBT_DBNAME: finflow_test
+      # dbt 1.12.6's partial parse registers a metric twice when the YAML
+      # changes between two parses, as the steps below make it do.
+      DBT_PARTIAL_PARSE: "false"
     defaults:
       run:
         working-directory: dbt
@@ -195,6 +202,38 @@ jobs:
               raise SystemExit(f"finflow_analyst can read {t}")
           print(f"finflow_analyst reads {len(marts)} marts and no staging or ledger table")
           EOF
+      - name: mf query matches fct_monthly_summary for every contract metric
+        run: |
+          mf validate-configs
+          python scripts/check_metrics.py
+      - name: spend without its self-funded filter fails check_metrics, naming spend and the month, with no values
+        run: |
+          perl -ni -e 'print unless /- name: spend$/../- name: needs_spend$/ and /line__is_self_funded/' \
+            models/marts/_marts.yml
+          dbt parse --quiet
+          if python scripts/check_metrics.py > out.txt; then
+            echo "::error::check_metrics.py passed with spend counting expenses someone else paid for"
+            exit 1
+          fi
+          cat out.txt
+          grep -qx 'mf query and fct_monthly_summary differ: spend, 2026-06' out.txt
+          if grep -qE '[0-9]\.[0-9]' out.txt; then
+            echo "::error::check_metrics.py printed a value"
+            exit 1
+          fi
+          git checkout -- models/marts/_marts.yml
+      - name: a metric in the YAML but not in SEMANTIC_LAYER.md fails check_metrics
+        run: |
+          perl -pi -e 's/^    metrics:\n/    metrics:\n      - {name: not_in_contract, type: simple, agg: sum, expr: amount}\n/' \
+            models/marts/_marts.yml
+          dbt parse --quiet
+          if python scripts/check_metrics.py > out.txt; then
+            echo "::error::check_metrics.py passed with a metric the contract lacks"
+            exit 1
+          fi
+          cat out.txt
+          grep -qx 'metric not_in_contract is in the MetricFlow YAML but not in SEMANTIC_LAYER.md' out.txt
+          git checkout -- models/marts/_marts.yml
       - name: a line off by 0.01 fails expense_lines_sum_to_header, and nothing else
         run: |
           env=$(python scripts/test_db.py fixtures/off_by_a_cent.sql)

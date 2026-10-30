@@ -30,11 +30,19 @@ export function testTitles(source) {
   return new Set([...code.matchAll(call)].map((m) => m[2].replace(/\\(.)/g, "$1")));
 }
 
+/** The `- name:` of every step in a workflow file. */
+export function ciStepNames(workflow) {
+  return new Set(
+    [...workflow.matchAll(/^\s*- name:\s*(.+?)\s*$/gm)].map((m) => m[1].replace(/^(["'])(.*)\1$/, "$2")),
+  );
+}
+
 /**
  * Problems with the inventory, one line each; empty when it holds.
- * `dbtTests` holds the names of the singular dbt tests (`dbt/tests/<name>.sql`).
+ * `dbtTests` holds the names of the singular dbt tests (`dbt/tests/<name>.sql`),
+ * `ciSteps` the step names in `.github/workflows/`.
  */
-export function checkInventory(rows, titles, goldens, dbtTests = new Set()) {
+export function checkInventory(rows, titles, goldens, dbtTests = new Set(), ciSteps = new Set()) {
   if (rows.length === 0) return ["docs/TESTING.md has no behaviour inventory table"];
   const problems = [];
   for (const { area, behaviour, tests } of rows) {
@@ -51,6 +59,9 @@ export function checkInventory(rows, titles, goldens, dbtTests = new Set()) {
         if (!dbtTests.has(name)) {
           problems.push(`${who} cites a dbt test that does not exist: dbt/tests/${name}.sql`);
         }
+      } else if (test.startsWith("ci:")) {
+        const name = test.slice("ci:".length);
+        if (!ciSteps.has(name)) problems.push(`${who} cites a CI step that does not exist: ${name}`);
       } else if (!titles.has(test)) {
         problems.push(`${who} cites a test that does not exist: ${test}`);
       }
@@ -82,8 +93,13 @@ function main() {
       .filter((f) => f.endsWith(".sql"))
       .map((f) => f.slice(dbtDir.length + 1, -".sql".length)),
   );
+  const ciSteps = new Set(
+    files(join(root, ".github/workflows"))
+      .filter((f) => /\.ya?ml$/.test(f))
+      .flatMap((f) => [...ciStepNames(readFileSync(f, "utf8"))]),
+  );
   const rows = parseInventory(readFileSync(join(root, "docs/TESTING.md"), "utf8"));
-  const problems = checkInventory(rows, titles, goldens, dbtTests);
+  const problems = checkInventory(rows, titles, goldens, dbtTests, ciSteps);
   for (const p of problems) console.error(`inventory: ${p}`);
   if (problems.length > 0) process.exit(1);
   console.log(`inventory: ${rows.length} behaviours, every cited test exists`);

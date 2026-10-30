@@ -3,7 +3,7 @@
 Living state of the project. Read this first; update it whenever work lands.
 
 **Last updated:** 2026-10-30
-**Current phase:** Phase 4 — Semantic layer, roles migration merged, dbt staging and marts in CI (see [ROADMAP.md](ROADMAP.md))
+**Current phase:** Phase 4 — Semantic layer, roles migration merged, dbt staging, marts and MetricFlow in CI (see [ROADMAP.md](ROADMAP.md))
 
 ## Phase progress
 
@@ -433,12 +433,28 @@ Phase 4 — Semantic layer (see ROADMAP.md). The metric contract is in
 [SEMANTIC_LAYER.md](SEMANTIC_LAYER.md) (2026-10-29; fourteen since 2026-10-30): metrics with
 formulas, mart columns and edge cases, and DECISIONS.md records the owner's
 rulings. PR-B (migration 0013, the `finflow_dbt` and `finflow_analyst` roles,
-`staging` and `marts` schemas) merged as #73. Before anything uses it in
-production: run `supabase db push`, set both role passwords out of band, then
-check from the owner's machine as `finflow_dbt` through the pooler that
+`staging` and `marts` schemas) merged as #73. Both role passwords are set in
+production and the `FINFLOW_DBT_HOST`, `FINFLOW_DBT_USER` and
+`FINFLOW_DBT_PASSWORD` GitHub Actions secrets exist, but **nothing connects
+to production yet**: no workflow reads those secrets, and every dbt and `mf`
+run so far was against CI's throwaway database. Before the first production
+run, check from the owner's machine as `finflow_dbt` through the pooler that
 `select count(*) from transactions` works, an insert is refused, and
-`create table marts.t(); drop table marts.t;` works. Next: MetricFlow
-(PR-E), then the nightly against production (PR-F).
+`create table marts.t(); drop table marts.t;` works. Next: the nightly
+against production (PR-F), the first thing that uses the secrets; it must
+never run on `pull_request`.
+
+MetricFlow (PR-E, 2026-10-30; DECISIONS.md 2026-10-30): `fct_transactions`
+is a MetricFlow semantic model and `dim_date` its time spine, in
+`dbt/models/marts/_marts.yml`; all fourteen contract metrics are MetricFlow
+metrics of the same name, none excluded (`unallocated_cash_cumulative` is a
+cumulative metric). `dbt/scripts/check_metrics.py` fails unless the metric
+names in SEMANTIC_LAYER.md and the semantic manifest are the same set and
+`mf query` equals `fct_monthly_summary` for every metric and month. The
+`dbt` job runs `mf validate-configs` and the check, and proves the check
+bites (`spend` without its self-funded filter, a metric missing from the
+contract). Pins: dbt-core 1.12.6, dbt-postgres 1.11.0, dbt-metricflow
+0.15.0 (metricflow 0.213.0), installed together on Python 3.12.
 
 dbt marts (PR-D, 2026-10-30): four tables in schema `marts`, rebuilt in full
 every run: `dim_date`, `fct_transactions` (one row per ledger line, with
@@ -450,8 +466,8 @@ values; `analyst_reads_every_mart` checks the analyst's grants after each
 rebuild. The `dbt` job proves the reconciliation bites (a mart metric moved
 by 0.01 fails it alone) and logs in as `finflow_analyst`. Contract change:
 the month list runs to a later month if a row is dated in it (DECISIONS
-2026-10-30). **Not yet run against production**: `finflow_dbt` has no
-password there. Every production month is partial until the owner says it
+2026-10-30). **Not yet run against production**: the role's password and
+secrets exist, but nothing connects until PR-F. Every production month is partial until the owner says it
 is complete (backfill under way); once one is, run
 `dbt build --exclude tag:fixture` as `finflow_dbt` and record which months
 passed, no amounts.
@@ -462,8 +478,8 @@ dbt staging (PR-C, 2026-10-29): `dbt/` holds the dbt project (dbt-core
 and the ledger invariant tests, cited in TESTING.md as `dbt:<name>`. The CI
 job `dbt` builds them as `finflow_dbt` on every PR against a synthetic
 fixture, and proves that a line moved by 0.01 fails
-`expense_lines_sum_to_header` and nothing else. Owner: add `dbt` to the
-required checks on `main` once it has run stable.
+`expense_lines_sum_to_header` and nothing else. `dbt` is now one of the
+five required checks on `main`.
 
 Withdrawals and income deposit accounts (PR 1 of 2, 2026-10-30;
 DECISIONS.md 2026-10-30): the two known limits of `unallocated_cash`.
@@ -492,7 +508,7 @@ accounts; `fct_monthly_summary` adds both columns.
 `dbt:transfer_has_account` now encodes migration 0014's check, so a saved
 withdrawal passes. The fixture's June gains interest into savings, a
 withdrawal and a move; its hand-worked values were redone. A withdrawal can
-now be saved and dbt can run against production.
+now be saved. dbt has still never run against production (see above).
 
 Phase 3.5 acceptance (2026-10-29): the journey tests are the check, not a
 phone test. Against a throwaway Postgres (`cd lambda && npm run db:up`), then

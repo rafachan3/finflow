@@ -6,8 +6,12 @@ version: 2
 models:
   - name: dim_date
     description: One row per day from the first data month to a year past Toronto's today.
+    # MetricFlow's time spine: metric_time joins here.
+    time_spine:
+      standard_granularity_column: date_day
     columns:
       - name: date_day
+        granularity: day
         data_tests: [unique, not_null]
       - name: month_start
         data_tests: [not_null]
@@ -20,13 +24,25 @@ models:
       the line's effective tags (its own plus its transaction's). A null
       account name is chequing: deposit_account_name on income,
       from_account_name and to_account_name on a transfer.
+    # The MetricFlow semantic model: every metric in docs/SEMANTIC_LAYER.md,
+    # by the same name. dbt/scripts/check_metrics.py compares `mf query`
+    # with fct_monthly_summary month by month.
+    semantic_model: true
+    agg_time_dimension: occurred_on
     columns:
       - name: line_key
+        entity:
+          type: primary
+          name: line
         data_tests: [unique, not_null]
       - name: transaction_id
         data_tests: [not_null]
       - name: occurred_on
         description: Every ledger date falls inside the time spine.
+        # The mapping form: dbt 1.12.6 drops granularity from `dimension: time`.
+        dimension:
+          type: time
+        granularity: day
         data_tests:
           - not_null
           - relationships:
@@ -36,6 +52,7 @@ models:
       - name: amount
         data_tests: [not_null]
       - name: type
+        dimension: categorical
         data_tests:
           - not_null
           - accepted_values:
@@ -47,6 +64,7 @@ models:
               arguments:
                 values: [CAD]
       - name: bucket
+        dimension: categorical
         data_tests:
           - not_null:
               config:
@@ -54,7 +72,10 @@ models:
           - accepted_values:
               arguments:
                 values: [needs, wants]
+      - name: is_recurring
+        dimension: categorical
       - name: is_self_funded
+        dimension: categorical
         data_tests:
           - not_null:
               config:
@@ -64,14 +85,22 @@ models:
           - not_null:
               config:
                 where: "type = 'expense'"
+      - name: deposit_account_name
+        dimension: categorical
+      - name: from_account_name
+        dimension: categorical
+      - name: to_account_name
+        dimension: categorical
       - name: account_kind
         description: Kind of the account a transfer enters (to_account_name).
+        dimension: categorical
         data_tests:
           - accepted_values:
               arguments:
                 values: [savings, investment]
       - name: from_account_kind
         description: Kind of the account a transfer leaves (from_account_name).
+        dimension: categorical
         data_tests:
           - accepted_values:
               arguments:
@@ -84,6 +113,119 @@ models:
                 values: [photo, voice, text, import]
       - name: tags
         data_tests: [not_null]
+    # One metric per row of docs/SEMANTIC_LAYER.md's metric table, with the
+    # same filter as its formula. A simple metric is null, not 0, in a month
+    # with no matching rows: dbt 1.12.6 drops fill_nulls_with from metrics
+    # written in this YAML spec. So the metrics built on others coalesce
+    # their inputs, and a reader treats a null money metric as 0.
+    metrics:
+      - name: income
+        type: simple
+        agg: sum
+        expr: amount
+        filter: "{{ Dimension('line__type') }} = 'income'"
+      - name: savings_income
+        type: simple
+        agg: sum
+        expr: amount
+        filter:
+          - "{{ Dimension('line__type') }} = 'income'"
+          - "{{ Dimension('line__deposit_account_name') }} is not null"
+      - name: spend
+        type: simple
+        agg: sum
+        expr: amount
+        filter:
+          - "{{ Dimension('line__type') }} = 'expense'"
+          - "{{ Dimension('line__is_self_funded') }}"
+      - name: needs_spend
+        type: simple
+        agg: sum
+        expr: amount
+        filter:
+          - "{{ Dimension('line__type') }} = 'expense'"
+          - "{{ Dimension('line__is_self_funded') }}"
+          - "{{ Dimension('line__bucket') }} = 'needs'"
+      - name: wants_spend
+        type: simple
+        agg: sum
+        expr: amount
+        filter:
+          - "{{ Dimension('line__type') }} = 'expense'"
+          - "{{ Dimension('line__is_self_funded') }}"
+          - "{{ Dimension('line__bucket') }} = 'wants'"
+      - name: fixed_base_burn
+        type: simple
+        agg: sum
+        expr: amount
+        filter:
+          - "{{ Dimension('line__type') }} = 'expense'"
+          - "{{ Dimension('line__is_self_funded') }}"
+          - "{{ Dimension('line__bucket') }} = 'needs'"
+          - "{{ Dimension('line__is_recurring') }}"
+      - name: variable_needs
+        type: simple
+        agg: sum
+        expr: amount
+        filter:
+          - "{{ Dimension('line__type') }} = 'expense'"
+          - "{{ Dimension('line__is_self_funded') }}"
+          - "{{ Dimension('line__bucket') }} = 'needs'"
+          - "not {{ Dimension('line__is_recurring') }}"
+      - name: external_spend
+        type: simple
+        agg: sum
+        expr: amount
+        filter:
+          - "{{ Dimension('line__type') }} = 'expense'"
+          - "not {{ Dimension('line__is_self_funded') }}"
+      - name: transfers
+        type: simple
+        agg: sum
+        expr: amount
+        filter:
+          - "{{ Dimension('line__type') }} = 'transfer'"
+          - "{{ Dimension('line__from_account_name') }} is null"
+          - "{{ Dimension('line__to_account_name') }} is not null"
+      - name: withdrawals
+        type: simple
+        agg: sum
+        expr: amount
+        filter:
+          - "{{ Dimension('line__type') }} = 'transfer'"
+          - "{{ Dimension('line__from_account_name') }} is not null"
+          - "{{ Dimension('line__to_account_name') }} is null"
+      - name: savings_rate
+        type: derived
+        expr: round((income - coalesce(spend, 0)) / nullif(income, 0), 4)
+        input_metrics: [income, spend]
+      # income - savings_income - spend - transfers + withdrawals, written as
+      # one signed sum: MetricFlow 0.213 cannot query a cumulative metric
+      # over a derived one, and unallocated_cash_cumulative needs this as
+      # its input. check_metrics.py holds it to the mart's composed formula.
+      - name: unallocated_cash
+        type: simple
+        agg: sum
+        expr: >
+          case
+            when type = 'income' and deposit_account_name is null then amount
+            when type = 'expense' and is_self_funded then -amount
+            when type = 'transfer' and from_account_name is null
+              and to_account_name is not null then -amount
+            when type = 'transfer' and from_account_name is not null
+              and to_account_name is null then amount
+            else 0
+          end
+      - name: unallocated_cash_cumulative
+        type: cumulative
+        input_metric: unallocated_cash
+        period_agg: last
+      # Derived, not `type: ratio`: a ratio metric cannot coalesce its
+      # numerator, so a month with wants and no needs would be null, not 0.
+      - name: needs_wants_ratio
+        type: derived
+        expr: round(coalesce(needs_spend, 0) / nullif(wants_spend, 0), 4)
+        input_metrics: [needs_spend, wants_spend]
 
   - name: fct_category_month
     description: >
