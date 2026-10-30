@@ -51,6 +51,7 @@ def mart_months(names):
         password=environ.get("FINFLOW_DBT_PASSWORD", ""),
         dbname=environ.get("FINFLOW_DBT_DBNAME", "postgres"),
         sslmode=environ.get("FINFLOW_DBT_SSLMODE", "disable"),
+        connect_timeout=10,
     )
     with db, db.cursor() as cur:
         # names passed the contract regex, so they are plain identifiers.

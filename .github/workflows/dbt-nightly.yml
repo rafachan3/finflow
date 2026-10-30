@@ -7,7 +7,8 @@ name: dbt nightly
 # Only schedule and workflow_dispatch: the FINFLOW_DBT_* secrets must never
 # be reachable from pull_request code (the repo is public and takes fork
 # PRs). Never add a pull_request, pull_request_target or workflow_run
-# trigger here.
+# trigger here. A dispatch on any ref but main skips the build job, so a
+# branch's edited models or tests never run against production.
 #
 # 08:45 UTC is 04:45 EDT and 03:45 EST, so Toronto's day has turned in both
 # and the run is done before the owner's morning. It is 30 minutes after
@@ -22,9 +23,7 @@ on:
     - cron: "45 8 * * *"
   workflow_dispatch:
 
-permissions:
-  contents: read
-  issues: write
+permissions: {}
 
 concurrency: dbt-nightly
 
@@ -35,6 +34,7 @@ jobs:
   secrets:
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions: {}
     outputs:
       present: ${{ steps.check.outputs.present }}
     steps:
@@ -47,9 +47,14 @@ jobs:
 
   build:
     needs: secrets
-    if: needs.secrets.outputs.present == 'true'
+    if: needs.secrets.outputs.present == 'true' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # A backstop: each connecting step has its own, shorter timeout, so a
+    # hang fails that step and the issue step still runs.
+    timeout-minutes: 25
+    permissions:
+      contents: read
+      issues: write
     env:
       # Supabase's session pooler; TLS verified against its public root CA.
       # libpq reads PGSSLROOTCERT for dbt, mf and check_metrics.py alike.
@@ -57,8 +62,6 @@ jobs:
       FINFLOW_DBT_DBNAME: postgres
       FINFLOW_DBT_SSLMODE: verify-full
       PGSSLROOTCERT: ${{ github.workspace }}/supabase/prod-ca-2021.crt
-      GH_TOKEN: ${{ github.token }}
-      GH_REPO: ${{ github.repository }}
       RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
     defaults:
       run:
@@ -79,6 +82,7 @@ jobs:
       # project ref inside the user name is masked on its own as well.
       - name: Connect to production as finflow_dbt
         id: connect
+        timeout-minutes: 3
         env:
           FINFLOW_DBT_HOST: ${{ secrets.FINFLOW_DBT_HOST }}
           FINFLOW_DBT_USER: ${{ secrets.FINFLOW_DBT_USER }}
@@ -88,13 +92,19 @@ jobs:
           echo "::add-mask::$FINFLOW_DBT_USER"
           echo "::add-mask::${FINFLOW_DBT_USER#*.}"
           echo "::add-mask::$FINFLOW_DBT_PASSWORD"
-          dbt debug --connection
+          if dbt debug --connection > "$RUNNER_TEMP/dbt-debug.log" 2>&1; then
+            echo "connection as finflow_dbt: ok"
+          else
+            echo "connection as finflow_dbt: failed; dbt's output is withheld from this public log"
+            exit 1
+          fi
 
       # The fixture tag marks tests that compare against the synthetic
       # fixture's hand-worked values; the invariants and the reconciliation
       # to public run here.
       - name: dbt build on production, without the fixture tests
         id: build
+        timeout-minutes: 12
         env:
           FINFLOW_DBT_HOST: ${{ secrets.FINFLOW_DBT_HOST }}
           FINFLOW_DBT_USER: ${{ secrets.FINFLOW_DBT_USER }}
@@ -112,6 +122,7 @@ jobs:
 
       - name: mf validate-configs and check_metrics.py on production
         id: metrics
+        timeout-minutes: 4
         env:
           FINFLOW_DBT_HOST: ${{ secrets.FINFLOW_DBT_HOST }}
           FINFLOW_DBT_USER: ${{ secrets.FINFLOW_DBT_USER }}
@@ -125,53 +136,67 @@ jobs:
           # (mf's error text) is withheld.
           python scripts/check_metrics.py 2> "$RUNNER_TEMP/metrics.err" | tee "$RUNNER_TEMP/metrics.txt"
 
-      # One open issue at most: a failure opens it or comments on it, a pass
-      # closes it. GitHub notifies the owner of both. Names only, no values.
+      # One open issue at most: a failure, a timeout or a cancel opens it or
+      # comments on it, a pass closes it. GitHub notifies the owner of both.
+      # Names only, no values. The lookup is the REST issues endpoint, which
+      # also lists PRs, so items with a pull_request key are skipped.
       - name: Open or update the dbt-nightly issue
-        if: failure()
+        if: (failure() || cancelled()) && github.ref == 'refs/heads/main'
         env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
           CONNECT: ${{ steps.connect.outcome }}
           BUILD: ${{ steps.build.outcome }}
           METRICS: ${{ steps.metrics.outcome }}
           SUMMARY: ${{ runner.temp }}/summary.md
         run: |
+          rows="$RUNNER_TEMP/rows.md"
+          {
+            case "$CONNECT" in failure|cancelled) echo "| connection as finflow_dbt | $CONNECT |" ;; esac
+            case "$BUILD" in
+              failure)
+                failed=""
+                [ ! -f target/run_results.json ] || failed=$(jq -r '.results[]
+                  | select(.status == "fail" or .status == "error")
+                  | "| `\(.unique_id)` | \(.status) |"' target/run_results.json)
+                if [ -n "$failed" ]; then echo "$failed"; else echo "| dbt build | failure |"; fi
+                ;;
+              cancelled) echo "| dbt build | cancelled |" ;;
+            esac
+            case "$METRICS" in
+              failure|cancelled)
+                if [ -s "$RUNNER_TEMP/metrics.txt" ]; then
+                  sed "s/^/| /; s/\$/ | $METRICS |/" "$RUNNER_TEMP/metrics.txt"
+                else
+                  echo "| mf validate-configs and check_metrics.py | $METRICS |"
+                fi
+                ;;
+            esac
+          } > "$rows"
+          [ -s "$rows" ] || echo "| a setup step, or the run was cancelled (see the run) | failure |" > "$rows"
           {
             echo "The nightly production dbt build failed. Names only; rerun it locally with the FINFLOW_DBT_* variables (docs/TESTING.md, \"The nightly dbt build\") to see the detail."
             echo
             echo "| Failed | Status |"
             echo "|---|---|"
-            [ "$CONNECT" != failure ] || echo "| connection as finflow_dbt | failure |"
-            if [ "$BUILD" = failure ]; then
-              if [ -f target/run_results.json ]; then
-                jq -r '.results[] | select(.status == "fail" or .status == "error")
-                  | "| `\(.unique_id)` | \(.status) |"' target/run_results.json
-              else
-                echo "| dbt build (no run_results.json) | failure |"
-              fi
-            fi
-            if [ "$METRICS" = failure ]; then
-              if [ -s "$RUNNER_TEMP/metrics.txt" ]; then
-                sed 's/^/| /; s/$/ | failure |/' "$RUNNER_TEMP/metrics.txt"
-              else
-                echo "| check_metrics.py | failure |"
-              fi
-            fi
-            case "$CONNECT$BUILD$METRICS" in
-              *failure*) ;;
-              *) echo "| a setup step (see the run) | failure |" ;;
-            esac
+            cat "$rows"
             printf '\n%s\n' "Run: $RUN_URL"
           } > "$SUMMARY"
           gh label create dbt-nightly --color B60205 --description "The nightly production dbt build failed" --force
-          issue=$(gh issue list --label dbt-nightly --state open --json number --jq '.[0].number')
+          issue=$(gh api "repos/$GITHUB_REPOSITORY/issues?labels=dbt-nightly&state=open" \
+            --jq '[.[] | select(has("pull_request") | not)][0].number // empty')
           if [ -n "$issue" ]; then
             gh issue comment "$issue" --body-file "$SUMMARY"
           else
             gh issue create --label dbt-nightly --title "Nightly dbt build failing" --body-file "$SUMMARY"
           fi
       - name: Close the dbt-nightly issue
-        if: success()
+        if: success() && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         run: |
-          for issue in $(gh issue list --label dbt-nightly --state open --json number --jq '.[].number'); do
+          for issue in $(gh api "repos/$GITHUB_REPOSITORY/issues?labels=dbt-nightly&state=open" \
+            --jq '.[] | select(has("pull_request") | not) | .number'); do
             gh issue close "$issue" --reason completed --comment "Passed: $RUN_URL"
           done
