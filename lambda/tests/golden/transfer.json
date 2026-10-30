@@ -9,7 +9,9 @@
       {
         "type": "transfer",
         "lines": 0,
-        "date": true
+        "date": true,
+        "fromAccount": null,
+        "toAccount": "Emergency fund"
       }
     ]
   },
@@ -34,5 +36,5 @@
       }
     ]
   },
-  "request_sha256": "02e9e98730b1714988a26d3eef62ee0e17733e37acfeab0080c06d84921eecd9"
+  "request_sha256": "57def0eda183348525c9d9e46219a9dd4524b03e409bd9cc76bdf3a80831ae88"
 }

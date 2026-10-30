@@ -66,6 +66,17 @@ describe("mismatches", () => {
     expect(mismatches([event], [{ type: "expense", lines: 1, amount: "28.74" }])).toEqual([]);
   });
 
+  it("reports a transfer's accounts, reading a recording without from_account as chequing", () => {
+    const want: ExpectedEvent = { type: "transfer", lines: 0, fromAccount: "Savings", toAccount: null };
+    const deposit = { type: "transfer", items: [], to_account: "Savings" };
+    expect(mismatches([deposit], [want])).toEqual([
+      "event 0: from account null != Savings",
+      "event 0: to account Savings != null",
+    ]);
+    const withdrawal = { type: "transfer", items: [], from_account: "Savings", to_account: null };
+    expect(mismatches([withdrawal], [want])).toEqual([]);
+  });
+
   it("reports each line whose bucket differs from the expected one", () => {
     const event = {
       type: "expense",

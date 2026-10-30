@@ -20,6 +20,11 @@ insert into income_sources (name) values
   ('Salary'),
   ('Refund');
 
+-- Income paid straight into a savings or investment account (interest, say)
+-- names that account; every other source lands in chequing (null).
+-- insert into income_sources (name, deposit_account_id) values
+--   ('Savings interest', (select id from accounts where name = 'Emergency fund'));
+
 -- Who pays besides you ('self' is already seeded by migration 0002).
 insert into funding_sources (name) values
   ('family');

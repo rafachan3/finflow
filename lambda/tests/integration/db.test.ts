@@ -208,6 +208,24 @@ describe("confirmIngestion", () => {
     expect(tx).toEqual({ type: "transfer", account: "Emergency fund", funding_source_id: null });
   });
 
+  it("writes a withdrawal and a move between accounts with the account each leaves", async () => {
+    const [withdrawal] = await save(209, transfer({ from_account: "Emergency fund", to_account: null }));
+    const [move] = await save(210, transfer({ from_account: "Emergency fund", to_account: "Retirement account" }));
+    await db.confirmIngestion(withdrawal);
+    await db.confirmIngestion(move);
+    const rows = await sql(
+      `select f.name as from_account, a.name as to_account
+       from transactions t
+       join accounts f on f.id = t.from_account_id
+       left join accounts a on a.id = t.to_account_id
+       order by a.name nulls first`,
+    );
+    expect(rows).toEqual([
+      { from_account: "Emergency fund", to_account: null },
+      { from_account: "Emergency fund", to_account: "Retirement account" },
+    ]);
+  });
+
   it("records who paid when someone else funded it", async () => {
     const [id] = await save(203, expense({ funded_by: "family" }));
     await db.confirmIngestion(id);
@@ -405,6 +423,17 @@ describe("findDuplicates", () => {
     expect(await db.findDuplicates(again)).toMatchObject([
       { rule: "amount", status: "saved", amount: "50.00", description: "to savings" },
     ]);
+  });
+
+  it("a transfer between other accounts does not match, saved or pending; the same accounts do", async () => {
+    await confirmed(transfer());
+    await card([transfer({ from_account: "Emergency fund", to_account: "Retirement account" })]);
+    const [withdrawal] = await card([transfer({ from_account: "Emergency fund", to_account: null })]);
+    expect(await db.findDuplicates(withdrawal)).toEqual([]);
+    const [move] = await card([
+      transfer({ date: "2026-10-21", from_account: "Emergency fund", to_account: "Retirement account" }),
+    ]);
+    expect(await db.findDuplicates(move)).toMatchObject([{ rule: "amount", status: "pending" }]);
   });
 
   it("finds confirmed and pending matches, nearest first and saved ahead of pending on a tie", async () => {

@@ -45,6 +45,9 @@ export type Extraction = {
   funded_by: string | null;
   is_recurring: boolean;
   income_source: string | null;
+  /** Account a transfer leaves; null = chequing. Absent on rows extracted before withdrawals. */
+  from_account?: string | null;
+  /** Account a transfer enters; null = chequing. */
   to_account: string | null;
   /** Owner's stated why/circumstance; absent on rows extracted before notes. */
   notes?: string | null;
@@ -409,15 +412,21 @@ export function validateExtraction(
   ) {
     errors.push(`unknown income source: ${extraction.income_source}`);
   }
-  if (extraction.type === "transfer" && !extraction.to_account) {
-    errors.push("transfer requires to_account");
-  }
-  if (
-    extraction.type === "transfer" &&
-    extraction.to_account &&
-    !hasName(taxonomy.accounts, extraction.to_account)
-  ) {
-    errors.push(`unknown account: ${extraction.to_account}`);
+  if (extraction.type === "transfer") {
+    // A null side is chequing: from only is a withdrawal, to only a deposit.
+    const from = extraction.from_account ?? null;
+    const to = extraction.to_account;
+    if (!from && !to) {
+      errors.push("transfer requires from_account or to_account");
+    }
+    for (const account of [from, to]) {
+      if (account && !hasName(taxonomy.accounts, account)) {
+        errors.push(`unknown account: ${account}`);
+      }
+    }
+    if (from && from === to) {
+      errors.push(`transfer from and to the same account: ${from}`);
+    }
   }
 
   return { ok: errors.length === 0, errors, warnings };
@@ -498,8 +507,11 @@ export function formatPreview(
   if (extraction.income_source) {
     lines.push(`Income source: ${extraction.income_source}`);
   }
-  if (extraction.to_account) {
-    lines.push(`To account: ${extraction.to_account}`);
+  if (extraction.from_account) {
+    lines.push(`From account: ${extraction.from_account}`);
+  }
+  if (extraction.to_account || extraction.from_account) {
+    lines.push(`To account: ${extraction.to_account ?? "chequing"}`);
   }
 
   if (extraction.items.length) {

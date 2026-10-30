@@ -465,6 +465,25 @@ fixture, and proves that a line moved by 0.01 fails
 `expense_lines_sum_to_header` and nothing else. Owner: add `dbt` to the
 required checks on `main` once it has run stable.
 
+Withdrawals and income deposit accounts (PR 1 of 2, 2026-10-30;
+DECISIONS.md 2026-10-30): the two known limits of `unallocated_cash`.
+Migration 0014 adds `transactions.from_account_id` (null = chequing) and
+`income_sources.deposit_account_id` (null = chequing), and replaces the
+"transfer needs `to_account_id`" check with "a transfer names at least one
+account, not the same one twice; only a transfer has `from_account_id`".
+The bot extracts `from_account`: "took 200 out of Emergency fund" gives a
+card with `From account: Emergency fund` / `To account: chequing`; "moved
+500 from Emergency fund to Retirement account" names both; a deposit's card
+is unchanged. The duplicate warning compares a transfer's two accounts. New
+golden `transfer-withdrawal` (20 of 20). Order: apply migration 0014 to
+production, put the owner's interest source's `deposit_account_id` in the
+overlay, then merge (it auto-deploys code that writes the column). PR 2
+(dbt staging and the SEMANTIC_LAYER.md contract) must land before a
+withdrawal is saved and dbt runs against production:
+`dbt:transfer_has_account` still requires `to_account_id` and would fail on
+it, and `transfers` and `unallocated_cash` do not yet net withdrawals or
+count deposited income.
+
 Phase 3.5 acceptance (2026-10-29): the journey tests are the check, not a
 phone test. Against a throwaway Postgres (`cd lambda && npm run db:up`), then
 `TEST_DATABASE_URL=$(npm run -s db:url) npm test -- tests/journeys/line-tags.test.ts tests/journeys/duplicates.test.ts tests/journeys/merchants.test.ts`,

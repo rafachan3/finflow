@@ -1105,6 +1105,54 @@ describe("multi-event extraction", () => {
     }
   });
 
+  it("asks text, photo, voice and Edit for the account a transfer leaves, with null as chequing", async () => {
+    const fetchMock = vi.fn().mockImplementation(async () => ({
+      ok: true,
+      json: async () => geminiJson(events(extracted)),
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    const base = { apiKey: "k", taxonomy, bucketRules: "", today: "2026-08-17" };
+    const media = { ...base, caption: "", mimeType: "image/jpeg" };
+    await extractFromText({ ...base, text: "took 200 out of savings" });
+    await extractFromPhoto({ ...media, image: Buffer.from([0xff]) });
+    await extractFromVoice({ ...media, mimeType: "audio/ogg", audio: Buffer.from([0x4f]) });
+    fetchMock.mockImplementationOnce(async () => ({ ok: true, json: async () => geminiJson(extracted) }));
+    const withdrawal = { ...current, type: "transfer" as const, items: [], from_account: "Savings", to_account: null };
+    await patchExtraction({ ...base, current: withdrawal, correction: "it was 250" });
+
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+    for (const [, init] of fetchMock.mock.calls) {
+      const body = JSON.parse(init.body as string);
+      const system = body.systemInstruction.parts[0].text as string;
+      expect(system).toContain("from_account is the account the money leaves and to_account the account it enters");
+      expect(system).toContain("each null when that side is chequing");
+      const schema = body.generationConfig.responseSchema;
+      const event = schema.properties.events?.items ?? schema;
+      expect(event.properties.from_account).toEqual({ type: "STRING", nullable: true });
+      expect(event.required).toContain("from_account");
+    }
+    const sent = JSON.parse(JSON.parse(fetchMock.mock.calls[3][1].body as string).contents[0].parts[0].text);
+    expect(sent).toMatchObject({ from_account: "Savings", to_account: null });
+  });
+
+  it("reads a transfer's from_account and drops one Gemini puts on any other type", async () => {
+    const transfer = { ...extracted, type: "transfer", items: [], from_account: "Savings", to_account: null };
+    const spend = { ...extracted, from_account: "Savings" };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({ ok: true, json: async () => geminiJson(events(transfer, spend)) }),
+    );
+    const [move, purchase] = await extractFromText({
+      apiKey: "k",
+      text: "x",
+      taxonomy,
+      bucketRules: "",
+      today: "2026-08-17",
+    });
+    expect(move).toMatchObject({ from_account: "Savings", to_account: null });
+    expect(purchase.from_account).toBeNull();
+  });
+
   it("returns each line's own tags, and none for a line without", async () => {
     const tagged = { ...extracted.items[0], tags: ["Travel"] };
     const plain = { ...extracted.items[0], description: "chips" };

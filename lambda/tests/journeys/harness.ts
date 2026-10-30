@@ -386,12 +386,13 @@ export const ledger = {
     return sql<Record<string, unknown>>(
       `select t.occurred_on::text as date, t.type::text, t.amount::text,
               t.description, t.notes, m.name as merchant, f.name as funder,
-              s.name as income_source, a.name as account,
+              s.name as income_source, fa.name as from_account, a.name as account,
               (select count(*)::int from transaction_items i where i.transaction_id = t.id) as lines
        from transactions t
        left join merchants m on m.id = t.merchant_id
        left join funding_sources f on f.id = t.funding_source_id
        left join income_sources s on s.id = t.income_source_id
+       left join accounts fa on fa.id = t.from_account_id
        left join accounts a on a.id = t.to_account_id
        order by t.created_at, t.amount`,
     );

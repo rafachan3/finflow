@@ -41,6 +41,10 @@ const ENGLISH_DESCRIPTIONS =
 const FUNDED_BY =
   "funded_by is who paid for an expense. Set it only when type is expense. For income and transfer return null.";
 
+// Chequing is not in the Accounts list, so a null side means chequing.
+const TRANSFER_ACCOUNTS =
+  "A transfer moves money between chequing and the Accounts list: from_account is the account the money leaves and to_account the account it enters, each null when that side is chequing (\"took 200 out of <account>\" sets only from_account; \"moved 50 to <account>\" sets only to_account), and both are null for income and expenses.";
+
 // The taxonomy says "Classify using ONLY these names" above the Merchants
 // list. Without this line Flash-Lite often returned no merchant for a spoken
 // name missing from that list (the voice-note golden's "Coffee Cart").
@@ -77,6 +81,7 @@ const EXTRACTOR_STATIC_PROMPT = [
   ENGLISH_DESCRIPTIONS,
   MERCHANT,
   FUNDED_BY,
+  TRANSFER_ACCOUNTS,
   NOTES,
   TAGS,
   SPLIT_EVENTS,
@@ -94,6 +99,7 @@ const PHOTO_EXTRACTOR_STATIC_PROMPT = [
   ENGLISH_DESCRIPTIONS,
   MERCHANT,
   FUNDED_BY,
+  TRANSFER_ACCOUNTS,
   NOTES,
   TAGS,
   SPLIT_EVENTS,
@@ -111,6 +117,7 @@ const VOICE_EXTRACTOR_STATIC_PROMPT = [
   ENGLISH_DESCRIPTIONS,
   MERCHANT,
   FUNDED_BY,
+  TRANSFER_ACCOUNTS,
   NOTES,
   TAGS,
   SPLIT_EVENTS,
@@ -133,6 +140,7 @@ const PATCH_EXTRACTOR_STATIC_PROMPT = [
   "Use Other … subcategories only when nothing more specific fits.",
   ENGLISH_DESCRIPTIONS,
   FUNDED_BY,
+  TRANSFER_ACCOUNTS,
   NOTES,
   TAGS,
   BUCKETS,
@@ -204,6 +212,7 @@ const EXTRACTOR_SCHEMA = {
     funded_by: { type: "STRING", nullable: true },
     is_recurring: { type: "BOOLEAN" },
     income_source: { type: "STRING", nullable: true },
+    from_account: { type: "STRING", nullable: true },
     to_account: { type: "STRING", nullable: true },
     notes: { type: "STRING", nullable: true },
     items: {
@@ -229,6 +238,7 @@ const EXTRACTOR_SCHEMA = {
     "tags",
     "is_recurring",
     "income_source",
+    "from_account",
     "to_account",
     "items",
     "confidence",
@@ -373,6 +383,8 @@ function asExtraction(raw: unknown): Extraction {
     funded_by: type === "expense" ? (fundedBy ?? "self") : fundedBy,
     is_recurring: Boolean(o.is_recurring),
     income_source: asString(o.income_source),
+    // Only a transfer leaves an account (a CHECK refuses it elsewhere).
+    from_account: type === "transfer" ? asString(o.from_account) : null,
     to_account: asString(o.to_account),
     notes: asString(o.notes),
     items,
@@ -465,6 +477,7 @@ function extractionForPatch(current: Extraction): unknown {
     funded_by: current.funded_by,
     is_recurring: current.is_recurring,
     income_source: current.income_source,
+    from_account: current.from_account ?? null,
     to_account: current.to_account,
     notes: current.notes ?? null,
     items: current.items.map((item) => ({

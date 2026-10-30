@@ -1770,3 +1770,35 @@ Phase 4 PR-D (`dim_date`, `fct_transactions`, `fct_category_month`,
   `analyst_reads_every_mart` checks it with `has_table_privilege` after
   every rebuild, so it also runs nightly on production; CI additionally
   logs in as `finflow_analyst` with the loader's throwaway password.
+
+## 2026-10-30 — A transfer names the account it leaves; an income source names where it lands
+
+`unallocated_cash` (SEMANTIC_LAYER.md, #72) had two known limits: interest
+paid straight into a savings account counted as income that never reached
+chequing, and a withdrawal from savings could not be recorded because a
+transfer had only `to_account_id`. PR 1 of 2 changes the data model and
+the bot; PR 2 changes dbt and the metric contract.
+
+- **`income_sources.deposit_account_id`, nullable, null = chequing.** Where
+  income from that source lands. The source already identifies it (an
+  interest source belongs to one account), so no bot, prompt or card change.
+  The owner's mapping lives in the untracked overlay.
+- **`transactions.from_account_id`, nullable, null = chequing.** A transfer
+  names `from_account_id`, `to_account_id` or both, never the same account
+  twice (CHECK `transactions_transfer_accounts`), and only a transfer has a
+  from account (`transactions_from_account_transfer_only`). A withdrawal is
+  from set, to null. Rows saved before stay valid (from null, to set).
+- **The bot extracts `from_account` beside `to_account`** with one shared
+  prompt sentence in all four prompts. The card prints `From account` only
+  when set and `To account` for every transfer that names one, chequing for
+  the side left out, so a deposit's card is unchanged. No extra step.
+- **The duplicate warning compares a transfer's two accounts**, so taking
+  out what was just deposited is not flagged.
+
+**Ruled out:** a deposit account per income transaction (the bot would
+have to ask or guess on every paycheque, a friction regression, for a fact
+that belongs to the source); a separate withdrawals table (a withdrawal is
+a transfer in the other direction, and a second table would split every
+transfer query and the duplicate check in two); a `chequing` row in
+`accounts` (`accounts.kind` is savings or investment, and every existing
+transfer would need a backfill).

@@ -113,10 +113,55 @@ describe("logging one purchase", () => {
     await chat.text("moved 50 to my emergency fund on Oct 26");
 
     expect(chat.last().text).toContain("To account: Emergency fund");
+    expect(chat.last().text).not.toContain("From account");
     await chat.tap(chat.last(), "Confirm");
     expect(await ledger.transactions()).toMatchObject([
-      { type: "transfer", account: "Emergency fund", funder: null, lines: 0 },
+      { type: "transfer", from_account: null, account: "Emergency fund", funder: null, lines: 0 },
     ]);
+  });
+
+  it("taking money out of savings and moving it between accounts are saved with the account each leaves", async () => {
+    gemini.extract = golden("transfer-withdrawal").recorded;
+    await chat.text(
+      "took 200 out of my emergency fund on Oct 27, and moved 500 from the emergency fund to my retirement account on Oct 28",
+    );
+
+    const [withdrawal, move] = chat.replies().slice(-2);
+    expect(withdrawal.text.split("\n").slice(0, 5)).toEqual([
+      "Transfer · 2026-10-27 · CAD 200.00 (1 of 2)",
+      "Transfer from Emergency fund",
+      "Recurring: no",
+      "From account: Emergency fund",
+      "To account: chequing",
+    ]);
+    expect(labels(withdrawal)).toEqual(REVIEW);
+    expect(move.text).toContain("From account: Emergency fund\nTo account: Retirement account");
+    expect(labels(move)).toEqual(REVIEW);
+
+    await chat.tap(withdrawal, "Confirm");
+    await chat.tap(move, "Confirm");
+    expect(await ledger.transactions()).toMatchObject([
+      { type: "transfer", amount: "200.00", from_account: "Emergency fund", account: null, lines: 0 },
+      { type: "transfer", amount: "500.00", from_account: "Emergency fund", account: "Retirement account", lines: 0 },
+    ]);
+  });
+
+  it.each([
+    ["names no account", { from_account: null, to_account: null }, "✗ transfer requires from_account or to_account"],
+    ["names an account that is not in the list", { from_account: "Vacation fund" }, "✗ unknown account: Vacation fund"],
+    [
+      "leaves and enters the same account",
+      { from_account: "Emergency fund", to_account: "Emergency fund" },
+      "✗ transfer from and to the same account: Emergency fund",
+    ],
+  ])("a transfer that %s gets a card without Confirm and saves nothing", async (_name, over, error) => {
+    const [withdrawal] = (golden("transfer-withdrawal").recorded as { events: object[] }).events;
+    gemini.extract = { events: [{ ...withdrawal, ...over }] };
+    await chat.text("took 200 out of savings");
+
+    expect(chat.last().text).toContain(error);
+    expect(labels(chat.last())).not.toContain("Confirm");
+    expect(await ledger.ingestions()).toEqual([]);
   });
 });
 
