@@ -69,6 +69,18 @@ describe("duplicate warning", () => {
     expect(labels(chat.last())).toEqual(REVIEW);
   });
 
+  it("taking out what was just moved to savings does not warn", async () => {
+    gemini.extract = golden("transfer").recorded;
+    await chat.text("moved 50 to my emergency fund on Oct 26");
+    await chat.tap(chat.last(), "Confirm");
+
+    const [deposit] = (golden("transfer").recorded as { events: object[] }).events;
+    gemini.extract = { events: [{ ...deposit, from_account: "Emergency fund", to_account: null }] };
+    await chat.text("took the 50 back out of my emergency fund on Oct 26");
+    expect(chat.last().text).toContain("From account: Emergency fund");
+    expect(warnings(chat.last().text)).toEqual([]);
+  });
+
   it("a purchase still pending warns the next identical one", async () => {
     gemini.extract = golden("text-with-note").recorded;
     await chat.text("14 lunch at Sandwich Shop on Oct 25");

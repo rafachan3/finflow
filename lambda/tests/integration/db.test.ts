@@ -425,6 +425,17 @@ describe("findDuplicates", () => {
     ]);
   });
 
+  it("a transfer between other accounts does not match, saved or pending; the same accounts do", async () => {
+    await confirmed(transfer());
+    await card([transfer({ from_account: "Emergency fund", to_account: "Retirement account" })]);
+    const [withdrawal] = await card([transfer({ from_account: "Emergency fund", to_account: null })]);
+    expect(await db.findDuplicates(withdrawal)).toEqual([]);
+    const [move] = await card([
+      transfer({ date: "2026-10-21", from_account: "Emergency fund", to_account: "Retirement account" }),
+    ]);
+    expect(await db.findDuplicates(move)).toMatchObject([{ rule: "amount", status: "pending" }]);
+  });
+
   it("finds confirmed and pending matches, nearest first and saved ahead of pending on a tie", async () => {
     await confirmed(expense({ date: "2026-10-20", description: "saved one" }));
     await card([expense({ date: "2026-10-20", description: "open one" })]);

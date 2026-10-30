@@ -405,8 +405,8 @@ const CARD_DAY = (row: string) =>
 
 /**
  * Likely earlier copies of a saved card, strongest first: an earlier card with
- * the same largest photo, then the same type and amount (and income source)
- * within 3 days among confirmed transactions and this chat's open cards,
+ * the same largest photo, then the same type and amount (and income source,
+ * or a transfer's two accounts) within 3 days among confirmed transactions and this chat's open cards,
  * nearest first, saved ahead of pending. Nothing from the card's own
  * Telegram update matches, so one message's events never flag each other.
  */
@@ -419,6 +419,8 @@ export async function findDuplicates(ingestionId: string): Promise<DuplicateMatc
               i.extraction->>'type' AS type,
               (i.extraction->>'amount')::numeric AS amount,
               i.extraction->>'income_source' AS income_source,
+              i.extraction->>'from_account' AS from_account,
+              i.extraction->>'to_account' AS to_account,
               ${CARD_DAY("i")} AS day,
               CASE WHEN i.source = 'photo' THEN (
                 SELECT p->>'file_unique_id'
@@ -450,9 +452,13 @@ export async function findDuplicates(ingestionId: string): Promise<DuplicateMatc
        FROM transactions t
        CROSS JOIN self s
        LEFT JOIN income_sources src ON src.id = t.income_source_id
+       LEFT JOIN accounts fa ON fa.id = t.from_account_id
+       LEFT JOIN accounts ta ON ta.id = t.to_account_id
        WHERE t.type::text = s.type AND t.amount = s.amount
          AND abs(t.occurred_on - s.day) <= 3
          AND (s.type <> 'income' OR src.name IS NOT DISTINCT FROM s.income_source)
+         AND (s.type <> 'transfer' OR (fa.name IS NOT DISTINCT FROM s.from_account
+                                       AND ta.name IS NOT DISTINCT FROM s.to_account))
          AND NOT EXISTS (
            SELECT 1 FROM ingestions x
            WHERE x.transaction_id = t.id AND x.telegram_update_id = s.telegram_update_id
@@ -467,6 +473,8 @@ export async function findDuplicates(ingestionId: string): Promise<DuplicateMatc
          AND (o.extraction->>'amount')::numeric = s.amount
          AND abs(o.day - s.day) <= 3
          AND (s.type <> 'income' OR o.extraction->>'income_source' IS NOT DISTINCT FROM s.income_source)
+         AND (s.type <> 'transfer' OR (o.extraction->>'from_account' IS NOT DISTINCT FROM s.from_account
+                                       AND o.extraction->>'to_account' IS NOT DISTINCT FROM s.to_account))
      )
      SELECT rule, status, day::text AS date, amount::text AS amount, description
      FROM matches
