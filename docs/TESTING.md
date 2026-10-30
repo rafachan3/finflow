@@ -197,6 +197,25 @@ from `dbt/`. After editing the metric YAML, parse with
 `DBT_PARTIAL_PARSE=false`: dbt 1.12.6's partial parse can register an
 edited metric twice.
 
+### Browse the dbt docs locally
+
+dbt's generated docs site shows each model's lineage graph and column
+descriptions. It is not hosted anywhere (DECISIONS.md, 2026-10-30); you
+generate and serve it on your machine, from the throwaway fixture database
+after the build above, with the same `FINFLOW_DBT_*` variables in the shell:
+
+```sh
+.venv/bin/dbt build            # the catalog reads the built relations
+.venv/bin/dbt docs generate    # writes target/index.html, catalog.json, manifest.json
+.venv/bin/dbt docs serve       # http://localhost:8080; --port N to change it
+```
+
+`target/` is gitignored. The site covers lineage and column docs only: the
+metric definitions stay in [SEMANTIC_LAYER.md](SEMANTIC_LAYER.md). Generate
+it from the fixture, never from production: the catalog step reads the
+database, and the site embeds what it finds. Stop the fixture database with
+`cd lambda && npm run db:down` when you are done.
+
 Extra SQL files given to `test_db.py` load after the fixture.
 `dbt/fixtures/off_by_a_cent.sql` moves one receipt line by 0.01; with it,
 `dbt build` must fail on `expense_lines_sum_to_header` and nothing else

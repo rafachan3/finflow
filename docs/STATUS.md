@@ -456,6 +456,10 @@ bites (`spend` without its self-funded filter, a metric missing from the
 contract). Pins: dbt-core 1.12.6, dbt-postgres 1.11.0, dbt-metricflow
 0.15.0 (metricflow 0.213.0), installed together on Python 3.12.
 
+The dbt docs site is not hosted; browse it locally with `dbt docs generate`
+and `dbt docs serve` (TESTING.md, "Browse the dbt docs locally"; DECISIONS.md
+2026-10-30).
+
 dbt marts (PR-D, 2026-10-30): four tables in schema `marts`, rebuilt in full
 every run: `dim_date`, `fct_transactions` (one row per ledger line, with
 effective tags), `fct_category_month` and `fct_monthly_summary` (one column
