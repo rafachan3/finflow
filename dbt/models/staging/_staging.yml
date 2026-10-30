@@ -6,7 +6,11 @@ version: 2
 
 models:
   - name: stg_transactions
-    description: One row per transaction header, lookups named, entry_source from the confirmed ingestion.
+    description: >
+      One row per transaction header, lookups named, entry_source from the
+      confirmed ingestion. A null account is chequing: from_account_id and
+      to_account_id on a transfer, deposit_account_id on income (where its
+      source's money lands).
     columns:
       - name: transaction_id
         data_tests: [unique, not_null]
@@ -27,6 +31,13 @@ models:
               arguments:
                 values: [photo, voice, text, import]
       - name: account_kind
+        description: Kind of to_account_id, the account a transfer enters.
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [savings, investment]
+      - name: from_account_kind
+        description: Kind of from_account_id, the account a transfer leaves.
         data_tests:
           - accepted_values:
               arguments:

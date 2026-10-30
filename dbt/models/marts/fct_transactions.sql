@@ -3,7 +3,9 @@
 -- stands in for its own line. line_key is the line's id or the
 -- transaction's (both uuids, so they never collide). amount sums back to
 -- transactions.amount per transaction, so every contract metric is a
--- filtered sum(amount) over this table.
+-- filtered sum(amount) over this table. A null account name is chequing:
+-- deposit_account_name (income), from_account_name and to_account_name
+-- (transfers).
 with lines as (
     select
         item_id as line_key,
@@ -66,6 +68,9 @@ select
     t.merchant_name,
     t.venue_name,
     t.income_source_name,
+    t.deposit_account_name,
+    t.from_account_name,
+    t.from_account_kind,
     t.to_account_name,
     t.account_kind,
     t.entry_source,
