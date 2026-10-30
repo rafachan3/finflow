@@ -107,6 +107,7 @@ included.
 | Marts | Every metric of every month in `fct_monthly_summary` equals the contract's reference SQL run straight over `public`, months zero-filled; a mart metric off by 0.01 fails the `dbt` job | `dbt:monthly_summary_matches_hand_written_sql` |
 | Marts | The fixture's sample month 2026-06 has the values worked out by hand from the fixture, including interest paid into savings (`savings_income`), a withdrawal (`withdrawals`, adding to `unallocated_cash`) and a move between two accounts (in no metric) | `dbt:fixture_sample_month_expected` |
 | Marts | Needs plus wants is spend and fixed plus variable needs is needs, every month; the category months sum to the monthly summary | `dbt:needs_plus_wants_equals_spend`<br>`dbt:category_month_sums_to_summary` |
+| Marts | The MetricFlow metrics are exactly the contract's: a metric in the YAML but not in SEMANTIC_LAYER.md, or the reverse, fails the `dbt` job. `mf query` gives every metric of every month in `fct_monthly_summary` (money to the cent, ratios within 0.0001); `spend` without its self-funded filter fails, naming the metric and month and printing no value | `ci:mf query matches fct_monthly_summary for every contract metric`<br>`ci:spend without its self-funded filter fails check_metrics, naming spend and the month, with no values`<br>`ci:a metric in the YAML but not in SEMANTIC_LAYER.md fails check_metrics` |
 
 ## Running each layer
 
@@ -169,6 +170,7 @@ cd lambda && npm run db:up && cd ../dbt
 python3.12 -m venv .venv && .venv/bin/pip install -r requirements.txt   # once
 eval "$(TEST_DATABASE_URL=$(npm --prefix ../lambda run -s db:url) .venv/bin/python scripts/test_db.py)"
 .venv/bin/dbt build
+.venv/bin/mf validate-configs && .venv/bin/python scripts/check_metrics.py
 ```
 
 Models: three staging views in schema `staging`, and four mart tables in
@@ -182,6 +184,20 @@ the fixture's 2026-06 against hand-worked literals; it means nothing on
 production, so a run there uses `dbt build --exclude tag:fixture`. If you
 change the fixture's June rows, redo the arithmetic in that test's header.
 
+MetricFlow (`dbt-metricflow`, same requirements file) reads the semantic
+model and the metrics in `models/marts/_marts.yml`. After `dbt build`,
+`mf validate-configs` checks them against the database, and
+`scripts/check_metrics.py` (stdlib and psycopg2) holds them to the contract:
+the metric names in SEMANTIC_LAYER.md's metric table and in
+`target/semantic_manifest.json` must be the same set, and `mf query` for
+every metric by `metric_time__month`, over the mart's months, must equal
+`fct_monthly_summary`: money to the cent, ratios within 0.0001, an empty mf
+cell is 0 for money and null for a ratio. A mismatch prints the metric and
+month only. `mf` finds `profiles.yml` in the working directory, so run both
+from `dbt/`. After editing the metric YAML, parse with
+`DBT_PARTIAL_PARSE=false`: dbt 1.12.6's partial parse can register an
+edited metric twice.
+
 Extra SQL files given to `test_db.py` load after the fixture.
 `dbt/fixtures/off_by_a_cent.sql` moves one receipt line by 0.01; with it,
 `dbt build` must fail on `expense_lines_sum_to_header` and nothing else
@@ -191,7 +207,11 @@ The CI job `dbt` runs on every PR, against a `postgres:17` service:
 `dbt build` on the fixture must pass; `finflow_analyst` (throwaway password
 from the loader, the role's name) logs in, must find exactly the four
 marts and read each, and must be refused `staging.stg_transactions` and
-`public.ingestions`; then `dbt build` with the variant
+`public.ingestions`; `mf validate-configs` and `check_metrics.py` must
+pass; with `_marts.yml` edited on the runner (`perl`), `check_metrics.py`
+must fail naming `spend` and 2026-06 and printing no value when `spend`
+loses its self-funded filter, and must name a metric added to the YAML
+alone; then `dbt build` with the variant
 must fail, and `target/run_results.json` must name that one test as the
 only failure; then, with `fct_monthly_summary.sql` edited on the runner
 (`sed`) to move `transfers` by 0.01, `dbt build --exclude tag:fixture` must fail
