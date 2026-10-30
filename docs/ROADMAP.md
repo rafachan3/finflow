@@ -194,10 +194,12 @@ and a deleted one is not.
       spend, savings rate, needs/wants ratio, fixed base burn)
 - [ ] GitHub Action: nightly `dbt build` + tests (not_null, accepted_values,
       relationships)
-- [ ] MetricFlow (local `mf` CLI, dbt-core): semantic models + metrics in
+- [x] MetricFlow (local `mf` CLI, dbt-core): semantic models + metrics in
       YAML are the executable form of SEMANTIC_LAYER.md. Grafana still
       reads marts (the hosted Semantic Layer APIs are dbt Cloud only), so
-      one test compares `mf query` against the marts.
+      one test compares `mf query` against the marts. (2026-10-30; all
+      fourteen metrics, checked in CI on the fixture, not yet run against
+      production)
 
 **Done when:** `dbt build` is green in CI, marts match hand-written SQL for
 one sample month, and `mf query` matches the marts for every metric in

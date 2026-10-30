@@ -135,9 +135,8 @@ and refuses any other host. `npm run db:down` stops only this checkout's
 container.
 
 CI (`.github/workflows/ci.yml`) reports five jobs on every PR: `unit`,
-`integration`, `eval`, `inventory` and `dbt`. `unit`, `integration`, `eval`
-and `inventory` are required on `main`; `dbt` joins them once the owner has
-seen it run stable. `inventory` runs the inventory check
+`integration`, `eval`, `inventory` and `dbt`, and all five are required on
+`main`. `inventory` runs the inventory check
 and the coverage floor (lines 90, statements 90, branches 84, functions 98;
 raise it, never lower it). The deploy workflow runs only after CI succeeds
 on `main`, then POSTs a wrong webhook secret to the deployed Function URL
