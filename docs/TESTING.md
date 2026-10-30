@@ -124,6 +124,7 @@ Run from `lambda/`.
 | Needs/wants accuracy (local only) | `npm run eval:buckets` | see [below](#the-needswants-accuracy-check) |
 | Inventory | `node scripts/check-inventory.mjs` (repo root) | nothing |
 | dbt (staging, marts and their tests) | `dbt build` (from `dbt/`) | `TEST_DATABASE_URL` and the dbt virtualenv; see [below](#the-dbt-build) |
+| Nightly dbt on production | `dbt build --exclude tag:fixture`, then `mf validate-configs` and `python scripts/check_metrics.py` (from `dbt/`) | the production `FINFLOW_DBT_*` variables; see [below](#the-nightly-dbt-build) |
 
 A throwaway Postgres for the database layers: start Docker, run
 `npm run db:up` in `lambda/`. Each checkout (worktree) gets its own container,
@@ -237,6 +238,37 @@ only failure; then, with `fct_monthly_summary.sql` edited on the runner
 test or a reconciliation that stopped biting fails the job. A fixture
 change cannot prove the reconciliation: both sides read the same ledger.
 pip's download cache is keyed on `dbt/requirements.txt`.
+
+## The nightly dbt build
+
+`.github/workflows/dbt-nightly.yml` runs the dbt build against production
+at 08:45 UTC (04:45 EDT, 03:45 EST), after Toronto's midnight all year, and
+on demand (`gh workflow run dbt-nightly.yml`). It has no `pull_request`
+trigger: its secrets `FINFLOW_DBT_HOST`, `FINFLOW_DBT_USER` and
+`FINFLOW_DBT_PASSWORD` reach only the three steps that connect, never PR
+code. It connects as `finflow_dbt` through Supabase's session pooler (port
+5432) with `sslmode=verify-full` against `supabase/prod-ca-2021.crt`
+(libpq's `PGSSLROOTCERT`), and runs `dbt debug --connection`, then
+`dbt build --exclude tag:fixture` (every model, invariant and the
+reconciliation to `public`; not `fixture_sample_month_expected`), then
+`mf validate-configs` and `check_metrics.py`. The `finflow_analyst` login
+check stays in the PR `dbt` job: that role's password is not a CI secret.
+
+The log is public, so it shows names and statuses only. dbt's own output
+(row counts, failing-test counts, database error text that can quote a row)
+and `mf`'s go to a runner file that is never printed or uploaded; the log
+lists each node's status and unique id from `target/run_results.json`, and
+`check_metrics.py` prints metric and month names. A failure opens one issue
+labelled `dbt-nightly`, or comments on the open one, with a table naming the
+failed nodes or checks and the run URL; the next pass closes it. Without
+the secrets (a fork, or before they are set) the build job is skipped and
+the run is green.
+
+To see the detail behind an issue, run the same commands from `dbt/` with
+the production `FINFLOW_DBT_*` variables in your shell (keep them in the
+gitignored `.env`, never in a tracked file), plus `FINFLOW_DBT_PORT=5432`,
+`FINFLOW_DBT_SSLMODE=verify-full` and
+`PGSSLROOTCERT=../supabase/prod-ca-2021.crt`.
 
 ## The eval and its key
 

@@ -1924,3 +1924,50 @@ not in a docs site.
 
 **Reconsider if** the model count grows a lot, or other people need to read
 the models.
+
+---
+
+## 2026-10-30 — dbt runs on production nightly, names-only logs, one issue
+
+`.github/workflows/dbt-nightly.yml` is the only thing that connects dbt to
+production (Phase 4 PR-F). PR CI keeps the synthetic fixture.
+
+- **Triggers.** `schedule` at 08:45 UTC and `workflow_dispatch`, nothing
+  else. 08:45 UTC is after Toronto's midnight in EDT and EST, so the run
+  sees the whole previous day; it is 30 minutes after eval-nightly (they
+  share nothing) and off the top of the hour. Late and backfilled rows need
+  no special timing: the marts are rebuilt in full every run.
+- **Secrets stay off PR code.** `FINFLOW_DBT_HOST`, `FINFLOW_DBT_USER` and
+  `FINFLOW_DBT_PASSWORD` are set on the three steps that connect, not on
+  checkout or `pip install`, and the workflow has no `pull_request`,
+  `pull_request_target` or `workflow_run` trigger. A first job checks the
+  secrets are set (a job's `if` cannot read secrets); without them the
+  build job is skipped and the run is green, so forks do not fail.
+- **Connection.** Session pooler port 5432, `sslmode=verify-full` against
+  the tracked public CA `supabase/prod-ca-2021.crt` (2026-10-28), given to
+  libpq as `PGSSLROOTCERT` so dbt, `mf` and `check_metrics.py` all verify
+  without a profile or script change.
+- **What runs.** `dbt build --exclude tag:fixture`: every model, invariant
+  and the reconciliation to `public`, but not the fixture's hand-worked
+  month. Then `mf validate-configs` and `check_metrics.py`. The
+  `finflow_analyst` login check stays in the PR job: that role's password
+  is not a CI secret.
+- **Names-only logs.** The repo and its Actions logs are public. dbt's
+  output carries row counts, failing-test counts and database error text,
+  which can quote a row (a constraint error's DETAIL), so it and `mf`'s go
+  to a runner file that is never printed or uploaded. The log lists each
+  node's status and unique id from `run_results.json`; `check_metrics.py`
+  already prints names only and its stderr is withheld. Secret values are
+  masked by GitHub and again with `::add-mask::`, and so is the project
+  ref inside the user name.
+- **Failure.** Copied from eval-nightly: one open `dbt-nightly` issue,
+  opened or commented on with a table of the failed node ids or checks and
+  the run URL; the next pass closes it. `AGENTS.md`'s read-first step checks
+  the label.
+
+**Ruled out:** any PR trigger with the secrets (fork PRs would reach
+production); printing dbt's log or uploading `target/` (row counts and
+error text in a public log); secrets at job level (pip's install scripts would see them); a
+sslrootcert setting in `profiles.yml` and `check_metrics.py` (libpq's
+environment variable covers all three tools); running the fixture test on
+production (its literals describe the fixture).

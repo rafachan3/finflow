@@ -193,7 +193,8 @@ and a deleted one is not.
 - [ ] docs/SEMANTIC_LAYER.md: canonical metric definitions (discretionary
       spend, savings rate, needs/wants ratio, fixed base burn)
 - [ ] GitHub Action: nightly `dbt build` + tests (not_null, accepted_values,
-      relationships)
+      relationships) (`dbt-nightly.yml`, 2026-10-30; ticked once a
+      dispatch on `main` is green against production)
 - [x] MetricFlow (local `mf` CLI, dbt-core): semantic models + metrics in
       YAML are the executable form of SEMANTIC_LAYER.md. Grafana still
       reads marts (the hosted Semantic Layer APIs are dbt Cloud only), so
