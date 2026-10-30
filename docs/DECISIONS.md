@@ -1924,3 +1924,69 @@ not in a docs site.
 
 **Reconsider if** the model count grows a lot, or other people need to read
 the models.
+
+---
+
+## 2026-10-30 — dbt runs on production nightly, names-only logs, one issue
+
+`.github/workflows/dbt-nightly.yml` is the only thing that connects dbt to
+production (Phase 4 PR-F). PR CI keeps the synthetic fixture.
+
+- **Triggers.** `schedule` at 08:45 UTC and `workflow_dispatch`, nothing
+  else. 08:45 UTC is after Toronto's midnight in EDT and EST, so the run
+  sees the whole previous day; it is 30 minutes after eval-nightly (they
+  share nothing) and off the top of the hour. Late and backfilled rows need
+  no special timing: the marts are rebuilt in full every run.
+- **Secrets stay off PR code.** `FINFLOW_DBT_HOST`, `FINFLOW_DBT_USER` and
+  `FINFLOW_DBT_PASSWORD` are set on the three steps that connect, not on
+  checkout or `pip install`, and the workflow has no `pull_request`,
+  `pull_request_target` or `workflow_run` trigger. A first job checks the
+  secrets are set (a job's `if` cannot read secrets); without them the
+  build job is skipped and the run is green, so forks do not fail.
+- **Main only.** The build job and both issue steps also require
+  `github.ref == 'refs/heads/main'`, so a dispatch on a branch never runs
+  that branch's models or tests against production. The secrets are
+  repository-level, so in principle a workflow pushed to a same-repo
+  branch could read them; only the owner and agents acting for the owner
+  push here. The accepted control for this one-owner repo is that rule
+  (`AGENTS.md`: dbt reaches production only in `dbt-nightly.yml`) plus the
+  main-only gate, not a GitHub Environment with branch protection, which
+  is an owner-level setting.
+- **Connection.** Session pooler port 5432, `sslmode=verify-full` against
+  the tracked public CA `supabase/prod-ca-2021.crt` (2026-10-28), given to
+  libpq as `PGSSLROOTCERT` so dbt, `mf` and `check_metrics.py` all verify
+  without a TLS setting in the profile or the script.
+- **What runs.** `dbt build --exclude tag:fixture`: every model, invariant
+  and the reconciliation to `public`, but not the fixture's hand-worked
+  month. Then `mf validate-configs` and `check_metrics.py`. The
+  `finflow_analyst` login check stays in the PR job: that role's password
+  is not a CI secret.
+- **Names-only logs.** The repo and its Actions logs are public. dbt's
+  output carries row counts, failing-test counts and database error text,
+  which can quote a row (a constraint error's DETAIL), so all of it
+  (`dbt debug` included) and `mf`'s go to a runner file that is never
+  printed or uploaded. The log says whether the connection worked and lists
+  each node's status and unique id from `run_results.json`; `check_metrics.py`
+  already prints names only and its stderr is withheld. Secret values are
+  masked by GitHub and again with `::add-mask::`, and so is the project
+  ref inside the user name.
+- **Failure.** Adapted from eval-nightly: one open `dbt-nightly` issue,
+  opened or commented on with a table of the failed node ids or checks and
+  the run URL (never empty: a failed build with no failed node reads
+  `dbt build | failure`); the next pass closes it. The connect, build and
+  metrics steps have their own timeouts (3, 12, 4 minutes) under the job's
+  25, and the issue step runs on `failure() || cancelled()`, so a hang
+  still opens the issue; `check_metrics.py` connects with a 10-second
+  timeout. The open issue is found through the REST issues endpoint,
+  skipping pull requests, not `gh issue list`. `issues: write` and
+  `GH_TOKEN` are scoped to the build job and its two issue steps.
+  `AGENTS.md`'s read-first step checks the label.
+
+**Ruled out:** any PR trigger with the secrets (fork PRs would reach
+production); a dispatch from a branch running against production (its
+edited models would write the production marts); printing dbt's log or
+uploading `target/` (row counts and error text in a public log); secrets at
+job level (pip's install scripts would see them); a
+sslrootcert setting in `profiles.yml` and `check_metrics.py` (libpq's
+environment variable covers all three tools); running the fixture test on
+production (its literals describe the fixture).

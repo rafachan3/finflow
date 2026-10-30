@@ -7,9 +7,11 @@ current phase, what is done, what is next, and open questions. It is the file
 that lets a fresh session pick up where the last one stopped. If you finish
 something, update it before you finish your turn.
 
-Then run `gh issue list --label eval-nightly --state open`. An open issue
-means last night's live eval failed (its table names the cases); fixing it
-comes before any other work, and the next nightly pass closes it.
+Then run `gh issue list --label eval-nightly --state open` and
+`gh issue list --label dbt-nightly --state open`. An open issue means last
+night's live eval or production dbt build failed (its table names the cases,
+models or tests); fixing it comes before any other work, and the next
+nightly pass closes it.
 
 ## Hard constraints
 
@@ -75,7 +77,8 @@ the table above — not appended here.
 ## Verification
 
 The test harness refuses any host other than `localhost`, so it cannot reach
-production.
+production. dbt reaches production only in `dbt-nightly.yml`, on schedule and
+dispatch; keep its `FINFLOW_DBT_*` secrets out of every `pull_request` job.
 
 A phase's acceptance check in `docs/ROADMAP.md` decides "done": say which
 check you ran and what it output.
