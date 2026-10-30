@@ -17,7 +17,9 @@ models:
       One row per ledger line: each expense line, plus one row per income or
       transfer transaction (its header stands in for its line). amount is the
       line amount, or the header amount for income and transfers. tags holds
-      the line's effective tags (its own plus its transaction's).
+      the line's effective tags (its own plus its transaction's). A null
+      account name is chequing: deposit_account_name on income,
+      from_account_name and to_account_name on a transfer.
     columns:
       - name: line_key
         data_tests: [unique, not_null]
@@ -63,6 +65,13 @@ models:
               config:
                 where: "type = 'expense'"
       - name: account_kind
+        description: Kind of the account a transfer enters (to_account_name).
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [savings, investment]
+      - name: from_account_kind
+        description: Kind of the account a transfer leaves (from_account_name).
         data_tests:
           - accepted_values:
               arguments:
@@ -121,6 +130,8 @@ models:
         data_tests: [unique, not_null]
       - name: income
         data_tests: [not_null]
+      - name: savings_income
+        data_tests: [not_null]
       - name: spend
         data_tests: [not_null]
       - name: needs_spend
@@ -134,6 +145,8 @@ models:
       - name: external_spend
         data_tests: [not_null]
       - name: transfers
+        data_tests: [not_null]
+      - name: withdrawals
         data_tests: [not_null]
       - name: savings_rate
         data_tests:

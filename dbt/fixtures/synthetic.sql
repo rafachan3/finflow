@@ -11,7 +11,9 @@
 -- for; a three-line receipt with mixed buckets, one line tag and one header
 -- tag; transfers to both account kinds, one tagged; imported rows and
 -- photo, voice and text rows; an expense dated 06-30 confirmed from a
--- message sent 07-01 03:00 UTC (still 06-30 in Toronto).
+-- message sent 07-01 03:00 UTC (still 06-30 in Toronto); interest paid
+-- straight into savings, a withdrawal back to chequing and a move between
+-- two accounts (migration 0014, a...13 to a...15).
 -- 2026-07: one expense on 07-01. 2026-08: income only. 2026-09: needs
 -- spend only, no income.
 
@@ -41,6 +43,25 @@ left join income_sources as s on s.name = v.income_source
 left join accounts as a on a.name = v.account
 left join merchants as m on m.name = v.merchant
 left join venues as ve on ve.name = v.venue;
+
+-- Money that does not start or end in chequing (null is chequing): a
+-- source whose income lands in savings, a withdrawal (from set, to null)
+-- and a move between two accounts that never touches chequing.
+insert into income_sources (name, deposit_account_id)
+select 'Savings interest', id from accounts where name = 'Emergency fund';
+
+insert into transactions (
+    id, occurred_on, type, amount, description, income_source_id, from_account_id, to_account_id
+)
+select v.id::uuid, v.occurred_on::date, v.type::transaction_type, v.amount, v.description, s.id, fa.id, ta.id
+from (values
+    ('a0000000-0000-0000-0000-000000000013', '2026-06-30', 'income',     4.12, 'Interest',                  'Savings interest', null::text,       null::text),
+    ('a0000000-0000-0000-0000-000000000014', '2026-06-27', 'transfer', 150.00, 'Out of emergency fund',     null,               'Emergency fund', null),
+    ('a0000000-0000-0000-0000-000000000015', '2026-06-29', 'transfer', 200.00, 'Emergency to retirement',   null,               'Emergency fund', 'Retirement account')
+) as v (id, occurred_on, type, amount, description, income_source, from_account, to_account)
+left join income_sources as s on s.name = v.income_source
+left join accounts as fa on fa.name = v.from_account
+left join accounts as ta on ta.name = v.to_account;
 
 insert into transaction_items (id, transaction_id, description, amount, subcategory_id, item_type_id, bucket)
 select v.id::uuid, v.transaction_id::uuid, v.description, v.amount, sc.id, it.id, v.bucket::bucket_type

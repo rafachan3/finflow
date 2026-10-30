@@ -9,21 +9,25 @@ with ledger as (
     select date_trunc('month', t.occurred_on)::date as month_start,
            'expense' as type, i.amount, i.bucket::text as bucket,
            t.is_recurring, f.name = 'self' as is_self_funded,
-           null::text as account_kind
+           null::boolean as from_chequing, null::boolean as to_chequing
     from {{ source('ledger', 'transactions') }} t
     join {{ source('ledger', 'transaction_items') }} i on i.transaction_id = t.id
     join {{ source('ledger', 'funding_sources') }} f   on f.id = t.funding_source_id
     where t.type = 'expense'
     union all
-    -- income and transfer headers
+    -- income and transfer headers; a null account is chequing
     select date_trunc('month', t.occurred_on)::date, t.type::text, t.amount,
-           null, t.is_recurring, null, a.kind
+           null, t.is_recurring, null,
+           t.from_account_id is null,
+           case when t.type = 'income' then s.deposit_account_id
+                else t.to_account_id end is null
     from {{ source('ledger', 'transactions') }} t
-    left join {{ source('ledger', 'accounts') }} a on a.id = t.to_account_id
+    left join {{ source('ledger', 'income_sources') }} s on s.id = t.income_source_id
     where t.type <> 'expense'
 ), monthly as (
   select month_start,
     coalesce(sum(amount) filter (where type = 'income'), 0) as income,
+    coalesce(sum(amount) filter (where type = 'income' and not to_chequing), 0) as savings_income,
     coalesce(sum(amount) filter (where type = 'expense' and is_self_funded), 0) as spend,
     coalesce(sum(amount) filter (where type = 'expense' and is_self_funded
                                    and bucket = 'needs'), 0) as needs_spend,
@@ -35,7 +39,9 @@ with ledger as (
                                    and bucket = 'needs' and not is_recurring), 0) as variable_needs,
     coalesce(sum(amount) filter (where type = 'expense' and not is_self_funded), 0) as external_spend,
     coalesce(sum(amount) filter (where type = 'transfer'
-                                   and account_kind in ('savings', 'investment')), 0) as transfers
+                                   and from_chequing and not to_chequing), 0) as transfers,
+    coalesce(sum(amount) filter (where type = 'transfer'
+                                   and not from_chequing and to_chequing), 0) as withdrawals
   from ledger
   group by month_start
 ),
@@ -56,6 +62,7 @@ expected as (
     select
         s.month_start,
         coalesce(m.income, 0) as income,
+        coalesce(m.savings_income, 0) as savings_income,
         coalesce(m.spend, 0) as spend,
         coalesce(m.needs_spend, 0) as needs_spend,
         coalesce(m.wants_spend, 0) as wants_spend,
@@ -63,10 +70,12 @@ expected as (
         coalesce(m.variable_needs, 0) as variable_needs,
         coalesce(m.external_spend, 0) as external_spend,
         coalesce(m.transfers, 0) as transfers,
+        coalesce(m.withdrawals, 0) as withdrawals,
         round((m.income - m.spend) / nullif(m.income, 0), 4) as savings_rate,
-        coalesce(m.income - m.spend - m.transfers, 0) as unallocated_cash,
-        sum(coalesce(m.income - m.spend - m.transfers, 0)) over (order by s.month_start)
-            as unallocated_cash_cumulative,
+        coalesce(m.income - m.savings_income - m.spend - m.transfers + m.withdrawals, 0)
+            as unallocated_cash,
+        sum(coalesce(m.income - m.savings_income - m.spend - m.transfers + m.withdrawals, 0))
+            over (order by s.month_start) as unallocated_cash_cumulative,
         round(m.needs_spend / nullif(m.wants_spend, 0), 4) as needs_wants_ratio
     from months as s
     left join monthly as m on m.month_start = s.month_start
@@ -82,6 +91,7 @@ compared as (
         e.month_start is null or a.month_start is null as month_mismatch,
         array_remove(array[
             case when e.income is distinct from a.income then 'income' end,
+            case when e.savings_income is distinct from a.savings_income then 'savings_income' end,
             case when e.spend is distinct from a.spend then 'spend' end,
             case when e.needs_spend is distinct from a.needs_spend then 'needs_spend' end,
             case when e.wants_spend is distinct from a.wants_spend then 'wants_spend' end,
@@ -89,6 +99,7 @@ compared as (
             case when e.variable_needs is distinct from a.variable_needs then 'variable_needs' end,
             case when e.external_spend is distinct from a.external_spend then 'external_spend' end,
             case when e.transfers is distinct from a.transfers then 'transfers' end,
+            case when e.withdrawals is distinct from a.withdrawals then 'withdrawals' end,
             case when e.savings_rate is distinct from a.savings_rate then 'savings_rate' end,
             case when e.unallocated_cash is distinct from a.unallocated_cash then 'unallocated_cash' end,
             case when e.unallocated_cash_cumulative is distinct from a.unallocated_cash_cumulative

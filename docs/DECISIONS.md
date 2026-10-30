@@ -1802,3 +1802,40 @@ a transfer in the other direction, and a second table would split every
 transfer query and the duplicate check in two); a `chequing` row in
 `accounts` (`accounts.kind` is savings or investment, and every existing
 transfer would need a backfill).
+
+## 2026-10-30 — Chequing is the null account: withdrawals and savings income in the contract
+
+PR 2 of 2 after migration 0014. `docs/SEMANTIC_LAYER.md` reads chequing as
+the null side of `transactions.from_account_id`, `transactions.to_account_id`
+and `income_sources.deposit_account_id`, and every own expense as paid from
+chequing. Fourteen metrics, two new:
+
+- **`savings_income`**: income whose source's `deposit_account_id` is set.
+  It stays inside `income`, so `savings_rate` counts interest as income not
+  spent, as before.
+- **`withdrawals`**: transfers with a from account and no to account.
+- **`transfers`** narrows to chequing into an account (from null, to set).
+  Every transfer saved before 0014 is one, so past months do not change.
+- **A move between two accounts is in no metric.** It never touches
+  chequing.
+- **`unallocated_cash = income − savings_income − spend − transfers +
+  withdrawals`**, chequing's net flow; `unallocated_cash_cumulative` is its
+  running sum. `savings_rate = (income − spend) / income` is unchanged:
+  moving money is neither saving nor spending it.
+
+**Ruled out:** treating interest paid into savings as a transfer (it is
+income the owner earned; making it a transfer would drop it from `income`
+and `savings_rate`); `income` excluding savings income (it would understate
+what came in, and the savings rate with it); netting withdrawals into
+`transfers` as a negative amount (one signed column hides a month that both
+moved money out and took it back, which is what the owner wants to see);
+counting a move between accounts as a transfer and a withdrawal at once
+(it would cancel in `unallocated_cash` but inflate both columns); keeping
+`accounts.kind in ('savings', 'investment')` as the transfer filter (the
+null test is the one rule the schema states; the kind check already limits
+`accounts` to those two kinds, and a new kind needs a migration that
+revisits this contract anyway).
+
+The deposit account belongs to the source, so changing it restates every
+past month of that source on the next full rebuild. Accepted: the marts
+are rebuilt in full every night anyway.
