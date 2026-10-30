@@ -1764,3 +1764,9 @@ Phase 4 PR-D (`dim_date`, `fct_transactions`, `fct_category_month`,
   literals worked out by hand (the arithmetic is in the test's header), to
   catch a misreading the mart and the reference SQL share. It is tagged
   `fixture` so the nightly on production can exclude it.
+- **No dbt `grants` config.** The design asked for one, but migration 0013
+  already gives the analyst `SELECT` on everything dbt creates in `marts`
+  (entry "dbt writes only its own schemas" above). The singular test
+  `analyst_reads_every_mart` checks it with `has_table_privilege` after
+  every rebuild, so it also runs nightly on production; CI additionally
+  logs in as `finflow_analyst` with the loader's throwaway password.

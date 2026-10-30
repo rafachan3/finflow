@@ -173,6 +173,28 @@ jobs:
           env=$(python scripts/test_db.py)
           eval "$env"
           dbt build
+      - name: finflow_analyst logs in and reads every mart, and no staging or ledger table
+        run: |
+          python - <<'EOF'
+          import psycopg2
+          db = psycopg2.connect(host="localhost", port=5432, dbname="finflow_test",
+                                user="finflow_analyst", password="finflow_analyst")
+          db.autocommit = True
+          cur = db.cursor()
+          cur.execute("select tablename from pg_tables where schemaname = 'marts' order by 1")
+          marts = [r[0] for r in cur.fetchall()]
+          expected = ["dim_date", "fct_category_month", "fct_monthly_summary", "fct_transactions"]
+          assert marts == expected, f"marts holds {marts}"
+          for t in marts:
+              cur.execute(f"select 1 from marts.{t} limit 1")
+          for t in ("staging.stg_transactions", "public.ingestions"):
+              try:
+                  cur.execute(f"select 1 from {t} limit 1")
+              except psycopg2.errors.InsufficientPrivilege:
+                  continue
+              raise SystemExit(f"finflow_analyst can read {t}")
+          print(f"finflow_analyst reads {len(marts)} marts and no staging or ledger table")
+          EOF
       - name: a line off by 0.01 fails expense_lines_sum_to_header, and nothing else
         run: |
           env=$(python scripts/test_db.py fixtures/off_by_a_cent.sql)
