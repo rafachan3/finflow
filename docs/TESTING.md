@@ -97,6 +97,9 @@ included.
 | Ledger | An expense has a funder, and income and transfers have none; a transfer names its account | `dbt:expense_funding_rules`<br>`dbt:transfer_has_account` |
 | Ledger | Warnings, not failures: a line tag that repeats its header tag, a transaction with two confirmed ingestions, a date past Toronto's tomorrow | `dbt:line_tag_not_on_header`<br>`dbt:one_confirmed_ingestion_per_transaction`<br>`dbt:occurred_on_not_in_future` |
 | Marts | `fct_transactions` drops and doubles no ledger line: per type, its amounts sum to the ledger's expense lines and income and transfer headers | `dbt:fct_amount_reconciles_to_ledger` |
+| Marts | Every metric of every month in `fct_monthly_summary` equals the contract's reference SQL run straight over `public`, months zero-filled; a mart metric off by 0.01 fails the `dbt` job | `dbt:monthly_summary_matches_hand_written_sql` |
+| Marts | The fixture's sample month 2026-06 has the values worked out by hand from the fixture | `dbt:fixture_sample_month_expected` |
+| Marts | Needs plus wants is spend and fixed plus variable needs is needs, every month; the category months sum to the monthly summary | `dbt:needs_plus_wants_equals_spend`<br>`dbt:category_month_sums_to_summary` |
 
 ## Running each layer
 
@@ -112,7 +115,7 @@ Run from `lambda/`.
 | Nightly eval (every case live, models rotated) | `EVAL_NIGHTLY=1 npm run eval` | the same |
 | Needs/wants accuracy (local only) | `npm run eval:buckets` | see [below](#the-needswants-accuracy-check) |
 | Inventory | `node scripts/check-inventory.mjs` (repo root) | nothing |
-| dbt (staging and ledger tests) | `dbt build` (from `dbt/`) | `TEST_DATABASE_URL` and the dbt virtualenv; see [below](#the-dbt-build) |
+| dbt (staging, marts and their tests) | `dbt build` (from `dbt/`) | `TEST_DATABASE_URL` and the dbt virtualenv; see [below](#the-dbt-build) |
 
 A throwaway Postgres for the database layers: start Docker, run
 `npm run db:up` in `lambda/`. Each checkout (worktree) gets its own container,
@@ -160,14 +163,30 @@ eval "$(TEST_DATABASE_URL=$(npm --prefix ../lambda run -s db:url) .venv/bin/pyth
 .venv/bin/dbt build
 ```
 
+Models: three staging views in schema `staging`, and four mart tables in
+`marts` (`dim_date`, `fct_transactions`, `fct_category_month`,
+`fct_monthly_summary`), all rebuilt in full every run.
+`monthly_summary_matches_hand_written_sql` is the acceptance check: it runs
+[SEMANTIC_LAYER.md](SEMANTIC_LAYER.md)'s reference SQL over `public` and
+compares every metric of every month with the mart, printing month and
+metric names only. `fixture_sample_month_expected` (tag `fixture`) checks
+the fixture's 2026-06 against hand-worked literals; it means nothing on
+production, so a run there uses `dbt build --exclude tag:fixture`. If you
+change the fixture's June rows, redo the arithmetic in that test's header.
+
 Extra SQL files given to `test_db.py` load after the fixture.
 `dbt/fixtures/off_by_a_cent.sql` moves one receipt line by 0.01; with it,
-`dbt build` must fail on `expense_lines_sum_to_header` and nothing else.
+`dbt build` must fail on `expense_lines_sum_to_header` and nothing else
+(the marts downstream are skipped, not built).
 
-The CI job `dbt` runs both on every PR, against a `postgres:17` service:
-`dbt build` on the fixture must pass, then `dbt build` with the variant
+The CI job `dbt` runs on every PR, against a `postgres:17` service:
+`dbt build` on the fixture must pass; then `dbt build` with the variant
 must fail, and `target/run_results.json` must name that one test as the
-only one not passing. So a lines-sum test that stopped biting fails the job.
+only failure; then, with `fct_monthly_summary.sql` edited on the runner
+(`sed`) to move `transfers` by 0.01, `dbt build --exclude tag:fixture` must fail
+`monthly_summary_matches_hand_written_sql` and nothing else. So a lines-sum
+test or a reconciliation that stopped biting fails the job. A fixture
+change cannot prove the reconciliation: both sides read the same ledger.
 pip's download cache is keyed on `dbt/requirements.txt`.
 
 ## The eval and its key

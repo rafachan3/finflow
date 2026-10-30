@@ -75,3 +75,86 @@ models:
                 values: [photo, voice, text, import]
       - name: tags
         data_tests: [not_null]
+
+  - name: fct_category_month
+    description: >
+      One row per (month_start, subcategory_id) with expense lines. spend,
+      needs_spend and wants_spend use own spend lines; external_spend is
+      the expenses someone else paid for; line_count counts both.
+    data_tests:
+      - unique:
+          arguments:
+            column_name: "month_start || '|' || subcategory_id"
+    columns:
+      - name: month_start
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_date')
+                field: date_day
+      - name: subcategory_id
+        data_tests: [not_null]
+      - name: category_name
+        data_tests: [not_null]
+      - name: subcategory_name
+        data_tests: [not_null]
+      - name: spend
+        data_tests: [not_null]
+      - name: needs_spend
+        data_tests: [not_null]
+      - name: wants_spend
+        data_tests: [not_null]
+      - name: external_spend
+        data_tests: [not_null]
+      - name: line_count
+        data_tests: [not_null]
+
+  - name: fct_monthly_summary
+    description: >
+      One row per month from the first data month to the current Toronto
+      month (or a later month a row is dated in), zero-filled, with one
+      column per metric in docs/SEMANTIC_LAYER.md. savings_rate and
+      needs_wants_ratio are null when their denominator is 0.
+    columns:
+      - name: month_start
+        data_tests: [unique, not_null]
+      - name: income
+        data_tests: [not_null]
+      - name: spend
+        data_tests: [not_null]
+      - name: needs_spend
+        data_tests: [not_null]
+      - name: wants_spend
+        data_tests: [not_null]
+      - name: fixed_base_burn
+        data_tests: [not_null]
+      - name: variable_needs
+        data_tests: [not_null]
+      - name: external_spend
+        data_tests: [not_null]
+      - name: transfers
+        data_tests: [not_null]
+      - name: savings_rate
+        data_tests:
+          - not_null:
+              config:
+                where: "income <> 0"
+      - name: unallocated_cash
+        data_tests: [not_null]
+      - name: unallocated_cash_cumulative
+        data_tests: [not_null]
+      - name: needs_wants_ratio
+        data_tests:
+          - not_null:
+              config:
+                where: "wants_spend <> 0"
+      - name: transaction_count
+        data_tests: [not_null]
+      - name: is_complete_month
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [true, false]
+                quote: false

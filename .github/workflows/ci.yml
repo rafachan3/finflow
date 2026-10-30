@@ -181,5 +181,20 @@ jobs:
             echo "::error::dbt build passed with a line off by 0.01"
             exit 1
           fi
-          jq -e '[.results[] | select(.status != "pass" and .status != "success") | .unique_id]
+          # The marts downstream are skipped, not failed: dbt builds nothing
+          # on a ledger that breaks an invariant.
+          jq -e '[.results[] | select(.status == "fail" or .status == "error") | .unique_id]
             == ["test.finflow.expense_lines_sum_to_header"]' target/run_results.json
+      - name: a mart metric off by 0.01 fails the reconciliation, and nothing else
+        run: |
+          env=$(python scripts/test_db.py)
+          eval "$env"
+          sed -i 's/^    transfers::numeric(12, 2) as transfers,/    (transfers + 0.01)::numeric(12, 2) as transfers,/' \
+            models/marts/fct_monthly_summary.sql
+          # Without the fixture-only test, as the nightly runs on production.
+          if dbt build --exclude tag:fixture; then
+            echo "::error::dbt build passed with transfers off by 0.01"
+            exit 1
+          fi
+          jq -e '[.results[] | select(.status == "fail" or .status == "error") | .unique_id]
+            == ["test.finflow.monthly_summary_matches_hand_written_sql"]' target/run_results.json
