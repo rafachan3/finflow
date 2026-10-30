@@ -1901,3 +1901,26 @@ contract and break the set comparison's plain equality); `fill_nulls_with`
 (deprecated in dbt 1.12); comparing every spine month (future months carry
 the cumulative balance and exist in no mart); a dbt singular test for the
 comparison (dbt cannot run `mf`).
+
+## 2026-10-30 — dbt docs are browsed locally, not hosted
+
+**Chosen:** `dbt docs generate && dbt docs serve` on the throwaway fixture
+database, documented in TESTING.md ("Browse the dbt docs locally"). Nothing
+is hosted.
+
+**Ruled out:**
+
+- GitHub Pages: the repo is public, so the site would be public too.
+- Cloudflare Pages behind Cloudflare Access: it works, but only after editing
+  the Access apps Pages creates to cover the `<project>.pages.dev` host and
+  adding a wildcard app. The Zero Trust free plan costs $0 for up to 50
+  users but needs payment details on file, so one wrong click puts the
+  under-$1/month constraint at risk. It also adds a CI deploy job, two
+  secrets and generic setup docs to maintain.
+
+**Why:** all of that is for about seven models whose contract already lives in
+SEMANTIC_LAYER.md and `_marts.yml`. Real numbers belong in Phase 5 Grafana,
+not in a docs site.
+
+**Reconsider if** the model count grows a lot, or other people need to read
+the models.
