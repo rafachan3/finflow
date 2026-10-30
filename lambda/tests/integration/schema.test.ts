@@ -15,6 +15,8 @@ async function errorCode(text: string): Promise<string | undefined> {
 
 const SELF = "(select id from funding_sources where name = 'self')";
 const SALARY = "(select id from income_sources where name = 'Salary')";
+const SAVINGS = "(select id from accounts where name = 'Emergency fund')";
+const INVESTMENT = "(select id from accounts where name = 'Retirement account')";
 
 describe("migrations", () => {
   it("leave ingestions unique per update and event", async () => {
@@ -53,6 +55,32 @@ describe("migrations", () => {
     expect(n).toBe(2);
   });
 
+  it("accept a deposit, a withdrawal and a move between two accounts as transfers", async () => {
+    await sql(
+      `insert into transactions (occurred_on, type, amount, description, from_account_id, to_account_id)
+       values ('2026-10-20', 'transfer', 10, 'deposit', null, ${SAVINGS}),
+              ('2026-10-20', 'transfer', 10, 'withdrawal', ${SAVINGS}, null),
+              ('2026-10-20', 'transfer', 10, 'move', ${SAVINGS}, ${INVESTMENT})`,
+    );
+    const [{ n }] = await sql<{ n: number }>("select count(*)::int n from transactions");
+    expect(n).toBe(3);
+  });
+
+  it("let an income source name the account its income lands in", async () => {
+    await withClient(async (client) => {
+      await client.query("begin");
+      await client.query(
+        `update income_sources set deposit_account_id = ${SAVINGS} where name = 'Salary'`,
+      );
+      const { rows } = await client.query(
+        `select a.name as account from income_sources s
+         join accounts a on a.id = s.deposit_account_id where s.name = 'Salary'`,
+      );
+      await client.query("rollback");
+      expect(rows).toEqual([{ account: "Emergency fund" }]);
+    });
+  });
+
   it("keep a line's own tags once each, and drop them with the line", async () => {
     const [{ id: tx }] = await sql<{ id: string }>(
       `insert into transactions (occurred_on, type, amount, description, funding_source_id)
@@ -87,6 +115,29 @@ describe("constraints", () => {
       `insert into transactions (occurred_on, type, amount, description)
        values ('2026-10-20', 'transfer', 10, 'x')`,
       "23514",
+    ],
+    [
+      "a transfer from and to the same account",
+      `insert into transactions (occurred_on, type, amount, description, from_account_id, to_account_id)
+       values ('2026-10-20', 'transfer', 10, 'x', ${SAVINGS}, ${SAVINGS})`,
+      "23514",
+    ],
+    [
+      "an expense with a from account",
+      `insert into transactions (occurred_on, type, amount, description, funding_source_id, from_account_id)
+       values ('2026-10-20', 'expense', 10, 'x', ${SELF}, ${SAVINGS})`,
+      "23514",
+    ],
+    [
+      "income with a from account",
+      `insert into transactions (occurred_on, type, amount, description, income_source_id, from_account_id)
+       values ('2026-10-20', 'income', 10, 'x', ${SALARY}, ${SAVINGS})`,
+      "23514",
+    ],
+    [
+      "an income source landing in an account that does not exist",
+      `update income_sources set deposit_account_id = 32000 where name = 'Salary'`,
+      "23503",
     ],
     [
       "an expense without a funder",

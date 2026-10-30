@@ -38,6 +38,8 @@ erDiagram
   venues |o--o{ transactions : "bought at"
   income_sources |o--o{ transactions : "earned from"
   accounts |o--o{ transactions : "transferred to"
+  accounts |o--o{ transactions : "transferred from"
+  accounts |o--o{ income_sources : "deposited into"
   funding_sources |o--o{ transactions : "paid by"
   transactions ||--o{ transaction_tags : ""
   tags ||--o{ transaction_tags : ""
@@ -55,7 +57,8 @@ erDiagram
     integer merchant_id FK "nullable"
     smallint venue_id FK "nullable"
     smallint income_source_id FK "required if income"
-    smallint to_account_id FK "required if transfer"
+    smallint from_account_id FK "transfer only; null = chequing"
+    smallint to_account_id FK "null = chequing"
     smallint funding_source_id FK "required if expense"
     boolean is_recurring
     text notes "nullable"
@@ -129,6 +132,7 @@ erDiagram
   income_sources {
     smallint id PK
     text name UK
+    smallint deposit_account_id FK "nullable; null = chequing"
   }
 
   accounts {
@@ -192,15 +196,19 @@ create table venues (
   name text not null unique
 );
 
-create table income_sources (
-  id   smallint generated always as identity primary key,
-  name text not null unique                       -- values seeded locally
-);
-
 create table accounts (
   id   smallint generated always as identity primary key,
   name text not null unique,                      -- values seeded locally
   kind text not null check (kind in ('savings', 'investment'))
+);
+
+-- deposit_account_id is where income from this source lands (interest paid
+-- into a savings account); null means chequing. Set in the seed overlay, not
+-- per transaction: the source already says where its money goes.
+create table income_sources (
+  id                 smallint generated always as identity primary key,
+  name               text not null unique,        -- values seeded locally
+  deposit_account_id smallint references accounts(id)
 );
 
 -- Who paid for an expense. Null on income and transfer. The tracked seed
@@ -228,13 +236,21 @@ create table transactions (
   merchant_id       integer  references merchants(id),
   venue_id          smallint references venues(id),
   income_source_id  smallint references income_sources(id),
-  to_account_id     smallint references accounts(id),
+  from_account_id   smallint references accounts(id),  -- null = chequing
+  to_account_id     smallint references accounts(id),  -- null = chequing
   funding_source_id smallint references funding_sources(id),
   is_recurring      boolean not null default false,
   notes             text,
   created_at        timestamptz not null default now(),
   check (type <> 'income'   or income_source_id is not null),
-  check (type <> 'transfer' or to_account_id    is not null),
+  -- A transfer names at least one account, and not the same one twice:
+  -- to set is a deposit, from set a withdrawal, both a move between accounts.
+  constraint transactions_transfer_accounts check (
+    type <> 'transfer'
+    or (coalesce(from_account_id, to_account_id) is not null
+        and from_account_id is distinct from to_account_id)),
+  constraint transactions_from_account_transfer_only
+    check (type = 'transfer' or from_account_id is null),
   check (type <> 'expense'  or funding_source_id is not null),
   check (type =  'expense'  or funding_source_id is null)
 );
@@ -361,6 +377,7 @@ amount:
   "funded_by": "self",
   "is_recurring": false,
   "income_source": null,
+  "from_account": null,
   "to_account": null,
   "items": [
     { "description": "Burger combo", "amount": "19.55",
@@ -385,8 +402,11 @@ amount:
 }
 ```
 
-`income_source` is required when `type` is `income`; `to_account` when `type`
-is `transfer`. `funded_by` is required when `type` is `expense` and must be
+`income_source` is required when `type` is `income`. A `transfer` names
+`from_account`, `to_account`, or both, never the same account twice; the
+side left null is chequing, so "took 200 out of savings" is `from_account`
+only. `from_account` is null on income and expense, and rows extracted
+before it existed have none (read as null). `funded_by` is required when `type` is `expense` and must be
 null on income and transfer. The extraction call sets each line's `bucket`
 and `bucket_why`; on income and transfer lines the bucket is ignored. The header's `tags` are
 context for the whole transaction; a line's `tags` are context for that line
@@ -420,6 +440,9 @@ bump when SSM rules change.
   lines. Enforced by application logic and dbt tests, not triggers.
 - `funding_source_id` is set on expenses and null on income and transfer
   (check constraints).
+- A transfer has `from_account_id`, `to_account_id`, or both, and they differ;
+  null on either side means chequing. `from_account_id` is null on income and
+  expense (check constraints).
 - An item's `item_type_id`, when set, must belong to the same category as
   its `subcategory_id` (dbt test).
 - `(ingestions.telegram_update_id, event_index)` is UNIQUE. One Telegram
