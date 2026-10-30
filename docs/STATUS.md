@@ -2,8 +2,8 @@
 
 Living state of the project. Read this first; update it whenever work lands.
 
-**Last updated:** 2026-10-29
-**Current phase:** Phase 4 — Semantic layer, roles migration merged, dbt staging models in CI (see [ROADMAP.md](ROADMAP.md))
+**Last updated:** 2026-10-30
+**Current phase:** Phase 4 — Semantic layer, roles migration merged, dbt staging and marts in CI (see [ROADMAP.md](ROADMAP.md))
 
 ## Phase progress
 
@@ -437,7 +437,24 @@ rulings. PR-B (migration 0013, the `finflow_dbt` and `finflow_analyst` roles,
 production: run `supabase db push`, set both role passwords out of band, then
 check from the owner's machine as `finflow_dbt` through the pooler that
 `select count(*) from transactions` works, an insert is refused, and
-`create table marts.t(); drop table marts.t;` works. Next: the marts (PR-D).
+`create table marts.t(); drop table marts.t;` works. Next: MetricFlow
+(PR-E), then the nightly against production (PR-F).
+
+dbt marts (PR-D, 2026-10-30): four tables in schema `marts`, rebuilt in full
+every run: `dim_date`, `fct_transactions` (one row per ledger line, with
+effective tags), `fct_category_month` and `fct_monthly_summary` (one column
+per SEMANTIC_LAYER.md metric). `monthly_summary_matches_hand_written_sql`
+recomputes every month from `public` with the contract's reference SQL;
+`fixture_sample_month_expected` pins the fixture's 2026-06 to hand-worked
+values; `analyst_reads_every_mart` checks the analyst's grants after each
+rebuild. The `dbt` job proves the reconciliation bites (a mart metric moved
+by 0.01 fails it alone) and logs in as `finflow_analyst`. Contract change:
+the month list runs to a later month if a row is dated in it (DECISIONS
+2026-10-30). **Not yet run against production**: `finflow_dbt` has no
+password there. Every production month is partial until the owner says it
+is complete (backfill under way); once one is, run
+`dbt build --exclude tag:fixture` as `finflow_dbt` and record which months
+passed, no amounts.
 
 dbt staging (PR-C, 2026-10-29): `dbt/` holds the dbt project (dbt-core
 1.12.6, dbt-postgres 1.11.0, Python 3.12), three staging views in schema
@@ -446,8 +463,7 @@ and the ledger invariant tests, cited in TESTING.md as `dbt:<name>`. The CI
 job `dbt` builds them as `finflow_dbt` on every PR against a synthetic
 fixture, and proves that a line moved by 0.01 fails
 `expense_lines_sum_to_header` and nothing else. Owner: add `dbt` to the
-required checks on `main` once it has run stable. No marts yet, so nothing
-has run against production.
+required checks on `main` once it has run stable.
 
 Phase 3.5 acceptance (2026-10-29): the journey tests are the check, not a
 phone test. Against a throwaway Postgres (`cd lambda && npm run db:up`), then
