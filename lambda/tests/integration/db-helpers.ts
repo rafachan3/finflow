@@ -28,7 +28,7 @@ const SEED_MERCHANTS = ["Acme Mart", "Example Online"];
 /** Empties the data tables; taxonomy and lookup tables keep their seed. */
 export async function resetData(): Promise<void> {
   await pool.query(
-    "TRUNCATE ingestions, transaction_tags, transaction_items, transactions RESTART IDENTITY CASCADE",
+    "TRUNCATE ingestions, transaction_tags, transaction_items, transactions, recurring_series, recurring_dismissed RESTART IDENTITY CASCADE",
   );
   // Merchant commands change the lookup, so put it back as seeded.
   await pool.query("DELETE FROM merchants WHERE name <> ALL($1)", [SEED_MERCHANTS]);
