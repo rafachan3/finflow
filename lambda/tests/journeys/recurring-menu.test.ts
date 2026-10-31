@@ -208,7 +208,7 @@ describe("pause, resume, rename and delete", () => {
     expect(chat.current(list).text).toContain("not logged: Oct 23");
 
     await chat.tap(list, "⏸ Pause");
-    expect(labels(chat.current(list))).toEqual(["Today, Oct 31", "From Oct 23, first not logged", "Cancel"]);
+    expect(labels(chat.current(list))).toEqual(["Today", "From Oct 23, first not logged", "Cancel"]);
     await chat.tap(list, "From Oct 23, first not logged");
     expect(chat.current(list).text).toBe("⏸ Pause Salary from Oct 23\nUntil when?");
     expect(labels(chat.current(list))).toEqual(["Until I resume", "Until Nov 30", "Until Jan 31 2027", "Until a date I type…", "Cancel"]);
@@ -241,7 +241,7 @@ describe("pause, resume, rename and delete", () => {
     await chat.tap(first, "Salary");
     await chat.tap(second, "Salary");
     await chat.tap(first, "⏸ Pause");
-    await chat.tap(first, "Today, Oct 31");
+    await chat.tap(first, "Today");
     await chat.tap(first, "Until I resume");
 
     // The second message still offers Pause, from before the first pause.
@@ -251,6 +251,16 @@ describe("pause, resume, rename and delete", () => {
     expect(chat.acks().at(-1)).toBe("Overlaps an earlier pause. Nothing changed.");
     expect(await pauses()).toEqual([{ from: "2026-10-31", until: null }]);
     expect(chat.current(second).text).toContain("⏸ paused since Oct 31");
+  });
+
+  it("a Today button tapped days after it was drawn uses the day of the tap", async () => {
+    const salary = await stoppedSalary();
+    await sql("insert into recurring_pauses (series_id, paused_from) values ($1, '2026-10-23')", [salary]);
+    const list = await open();
+    await chat.tap(list, "Salary ⏸");
+    vi.setSystemTime(new Date("2026-11-02T16:00:00Z"));
+    await chat.tap(list, "▶️ Resume today");
+    expect(await pauses()).toEqual([{ from: "2026-10-23", until: "2026-11-02" }]);
   });
 
   it("resuming from a payment logged during the pause counts the pause up to it", async () => {
@@ -326,7 +336,7 @@ describe("pause, resume, rename and delete", () => {
     const list = await open();
     await chat.tap(list, "Internet bill");
     await chat.tap(list, "⏸ Pause");
-    await chat.tap(list, "Today, Oct 31");
+    await chat.tap(list, "Today");
     await chat.tap(list, "Until a date I type…");
     const prompt = chat.last();
     for (const typed of ["today", "yesterday", "Oct 31 2026"]) {
@@ -415,7 +425,7 @@ describe("replies to a /recurring prompt", () => {
     const list = await open();
     await chat.tap(list, "Internet bill");
     await chat.tap(list, "⏸ Pause");
-    await chat.tap(list, "Today, Oct 31");
+    await chat.tap(list, "Today");
     await chat.tap(list, "Until a date I type…");
     return chat.last();
   }

@@ -178,41 +178,46 @@ describe("the review keyboards", () => {
 
 describe("recurring callback data", () => {
   it("reads every button's action, and nothing else", () => {
-    expect(parseRecurringTap("r:l:16")).toEqual({ op: "list", offset: 16 });
-    expect(parseRecurringTap("r:v:4294967295")).toEqual({ op: "view", sid: 4294967295 });
-    expect(parseRecurringTap("r:p:3")).toEqual({ op: "pause", sid: 3 });
-    expect(parseRecurringTap("r:pf:3:20261023")).toEqual({ op: "pauseFrom", sid: 3, from: "2026-10-23" });
-    expect(parseRecurringTap("r:pd:3:20261023")).toEqual({ op: "pauseDate", sid: 3, from: "2026-10-23" });
-    expect(parseRecurringTap("r:pu:3:20261023:0")).toEqual({ op: "pauseUntil", sid: 3, from: "2026-10-23", until: null });
-    expect(parseRecurringTap("r:pu:3:20261023:20270131")).toEqual({
+    expect(parseRecurringTap("r:l:16", "2026-10-31")).toEqual({ op: "list", offset: 16 });
+    expect(parseRecurringTap("r:v:4294967295", "2026-10-31")).toEqual({ op: "view", sid: 4294967295 });
+    expect(parseRecurringTap("r:p:3", "2026-10-31")).toEqual({ op: "pause", sid: 3 });
+    expect(parseRecurringTap("r:pf:3:20261023", "2026-10-31")).toEqual({ op: "pauseFrom", sid: 3, from: "2026-10-23" });
+    expect(parseRecurringTap("r:pd:3:20261023", "2026-10-31")).toEqual({ op: "pauseDate", sid: 3, from: "2026-10-23" });
+    expect(parseRecurringTap("r:pu:3:20261023:0", "2026-10-31")).toEqual({ op: "pauseUntil", sid: 3, from: "2026-10-23", until: null });
+    expect(parseRecurringTap("r:pu:3:20261023:20270131", "2026-10-31")).toEqual({
       op: "pauseUntil", sid: 3, from: "2026-10-23", until: "2027-01-31",
     });
-    expect(parseRecurringTap("r:u:3:20261031")).toEqual({ op: "resume", sid: 3, on: "2026-10-31" });
-    expect(parseRecurringTap("r:n:3")).toEqual({ op: "rename", sid: 3 });
-    expect(parseRecurringTap("r:x:3")).toEqual({ op: "askDelete", sid: 3 });
-    expect(parseRecurringTap("r:xy:3")).toEqual({ op: "delete", sid: 3 });
-    expect(parseRecurringTap("r:a")).toEqual({ op: "pick", offset: 0 });
-    expect(parseRecurringTap("r:ar:8")).toEqual({ op: "pick", offset: 8 });
-    expect(parseRecurringTap(`r:at:${TX}`)).toEqual({ op: "addFrom", tx: TX });
-    expect(parseRecurringTap("r:av")).toEqual({ op: "varies" });
-    expect(parseRecurringTap(`r:ac:${TX}:s1`)).toEqual({ op: "create", tx: TX, cadence: "semimonthly", varies: true });
-    expect(parseRecurringTap(`r:ac:${TX}:x1`)).toBeNull();
+    expect(parseRecurringTap("r:u:3:20261031", "2026-10-31")).toEqual({ op: "resume", sid: 3, on: "2026-10-31" });
+    // A "today" button resolves to the day it is tapped, not the day it was drawn.
+    expect(parseRecurringTap("r:u:3:t", "2026-11-02")).toEqual({ op: "resume", sid: 3, on: "2026-11-02" });
+    expect(parseRecurringTap("r:pf:3:t", "2026-11-02")).toEqual({ op: "pauseFrom", sid: 3, from: "2026-11-02" });
+    expect(parseRecurringTap("r:pd:3:t", "2026-11-02")).toEqual({ op: "pauseDate", sid: 3, from: "2026-11-02" });
+    expect(parseRecurringTap("r:pu:3:t:0", "2026-11-02")).toEqual({ op: "pauseUntil", sid: 3, from: "2026-11-02", until: null });
+    expect(parseRecurringTap("r:n:3", "2026-10-31")).toEqual({ op: "rename", sid: 3 });
+    expect(parseRecurringTap("r:x:3", "2026-10-31")).toEqual({ op: "askDelete", sid: 3 });
+    expect(parseRecurringTap("r:xy:3", "2026-10-31")).toEqual({ op: "delete", sid: 3 });
+    expect(parseRecurringTap("r:a", "2026-10-31")).toEqual({ op: "pick", offset: 0 });
+    expect(parseRecurringTap("r:ar:8", "2026-10-31")).toEqual({ op: "pick", offset: 8 });
+    expect(parseRecurringTap(`r:at:${TX}`, "2026-10-31")).toEqual({ op: "addFrom", tx: TX });
+    expect(parseRecurringTap("r:av", "2026-10-31")).toEqual({ op: "varies" });
+    expect(parseRecurringTap(`r:ac:${TX}:s1`, "2026-10-31")).toEqual({ op: "create", tx: TX, cadence: "semimonthly", varies: true });
+    expect(parseRecurringTap(`r:ac:${TX}:x1`, "2026-10-31")).toBeNull();
     expect(Buffer.byteLength(`r:ac:${TX}:y0`)).toBe(44);
-    expect(parseRecurringTap("r:b")).toEqual({ op: "review", sid: null });
-    expect(parseRecurringTap("r:b:7")).toEqual({ op: "review", sid: 7 });
-    expect(parseRecurringTap(`r:bt:${TX}`)).toEqual({ op: "toggle", data: `r:bt:${TX}` });
-    expect(parseRecurringTap(`r:ft:${TX}`)).toEqual({ op: "toggle", data: `r:ft:${TX}` });
-    expect(parseRecurringTap("r:ba")).toEqual({ op: "all" });
-    expect(parseRecurringTap("r:bk:7")).toEqual({ op: "apply", sid: 7 });
-    expect(parseRecurringTap("r:bl")).toEqual({ op: "later" });
-    expect(parseRecurringTap("r:f:8")).toEqual({ op: "flags", offset: 8 });
-    expect(parseRecurringTap("r:fk")).toEqual({ op: "clear" });
-    expect(parseRecurringTap("r:sg")).toEqual({ op: "suggestions" });
-    expect(parseRecurringTap(`r:gd:${TX}`)).toEqual({ op: "dismiss", tx: TX });
+    expect(parseRecurringTap("r:b", "2026-10-31")).toEqual({ op: "review", sid: null });
+    expect(parseRecurringTap("r:b:7", "2026-10-31")).toEqual({ op: "review", sid: 7 });
+    expect(parseRecurringTap(`r:bt:${TX}`, "2026-10-31")).toEqual({ op: "toggle", data: `r:bt:${TX}` });
+    expect(parseRecurringTap(`r:ft:${TX}`, "2026-10-31")).toEqual({ op: "toggle", data: `r:ft:${TX}` });
+    expect(parseRecurringTap("r:ba", "2026-10-31")).toEqual({ op: "all" });
+    expect(parseRecurringTap("r:bk:7", "2026-10-31")).toEqual({ op: "apply", sid: 7 });
+    expect(parseRecurringTap("r:bl", "2026-10-31")).toEqual({ op: "later" });
+    expect(parseRecurringTap("r:f:8", "2026-10-31")).toEqual({ op: "flags", offset: 8 });
+    expect(parseRecurringTap("r:fk", "2026-10-31")).toEqual({ op: "clear" });
+    expect(parseRecurringTap("r:sg", "2026-10-31")).toEqual({ op: "suggestions" });
+    expect(parseRecurringTap(`r:gd:${TX}`, "2026-10-31")).toEqual({ op: "dismiss", tx: TX });
     // The longest pause data, with a ten-digit series id, fits Telegram's 64 bytes.
     expect(Buffer.byteLength("r:pu:4294967295:20261023:20270131")).toBeLessThanOrEqual(64);
     for (const data of [undefined, "", "r:v:", "r:v:x", "r:l:12345", `c:${TX}`, "mt:1", "r:zz"]) {
-      expect(parseRecurringTap(data), String(data)).toBeNull();
+      expect(parseRecurringTap(data, "2026-10-31"), String(data)).toBeNull();
     }
   });
 });

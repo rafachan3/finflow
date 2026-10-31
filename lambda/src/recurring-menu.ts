@@ -16,7 +16,7 @@
  * `r:a`, `r:ar:<offset>` pick a saved payment → `r:at:<uuid>` add from it,
  * `r:av` flips "amount varies" in the keyboard only, `r:ac:<uuid>:<c><v>`
  * creates the series with cadence code c and varies flag v.
- * Dates are yyyymmdd.
+ * Dates are yyyymmdd, or `t` on a "today" button: the day it is tapped.
  */
 import { collapseSpaces } from "./commands.js";
 import { parseCents, parseDateReply } from "./extraction.js";
@@ -71,7 +71,10 @@ export type RecurringTap =
   | { op: "dismiss"; tx: string };
 
 const SID = "(\\d{1,10})";
-const DATE = "(\\d{8})";
+/** A date in callback data: yyyymmdd, or `t` for the day of the tap. */
+const DATE = "(\\d{8}|t)";
+/** Placeholder `iso` gives `t` until parseRecurringTap knows the tap's day. */
+const TAP_DAY = "tap-day";
 const UUID = "([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})";
 
 /** One letter per cadence in `r:ac` data. */
@@ -86,7 +89,7 @@ const CODES: Record<string, Cadence> = {
 
 /** yyyymmdd → YYYY-MM-DD. */
 function iso(compact: string): string {
-  return `${compact.slice(0, 4)}-${compact.slice(4, 6)}-${compact.slice(6)}`;
+  return compact === "t" ? TAP_DAY : `${compact.slice(0, 4)}-${compact.slice(4, 6)}-${compact.slice(6)}`;
 }
 
 /** YYYY-MM-DD → yyyymmdd, for callback data. */
@@ -127,10 +130,15 @@ const TAPS: [RegExp, (m: RegExpExecArray) => RecurringTap][] = [
 ];
 
 /** A /recurring button's action, or null for any other callback data. */
-export function parseRecurringTap(data: string | undefined): RecurringTap | null {
+export function parseRecurringTap(data: string | undefined, today: string): RecurringTap | null {
   for (const [pattern, make] of TAPS) {
     const m = pattern.exec(data ?? "");
-    if (m) return make(m);
+    if (!m) continue;
+    // "Today" buttons mean the day they are tapped, not the day they were drawn.
+    const tap = make(m) as RecurringTap & { from?: string; on?: string };
+    if (tap.from === TAP_DAY) tap.from = today;
+    if (tap.on === TAP_DAY) tap.on = today;
+    return tap;
   }
   return null;
 }
@@ -339,7 +347,7 @@ export function detailScreen(book: Book, sid: number, today: string): Screen {
   let manage: Keyboard[number] = [{ text: "⏸ Pause", callback_data: `r:p:${sid}` }];
   if (v.pausedNow) {
     lines.push(pauseText(v.pausedNow, today));
-    manage = [{ text: "▶️ Resume today", callback_data: `r:u:${sid}:${compact(today)}` }];
+    manage = [{ text: "▶️ Resume today", callback_data: `r:u:${sid}:t` }];
     // A payment logged during the pause says the series came back then.
     const back = v.linked.find((r) => r.date >= v.pausedNow!.from && r.date < today);
     if (back) {
@@ -374,7 +382,7 @@ export function pauseFromScreen(book: Book, sid: number, today: string): Screen 
   const series = book.series.find((s) => s.id === sid);
   if (!series) return GONE;
   const first = viewOf(book, series, today).missed[0];
-  const options = [{ text: `Today, ${day(today)}`, callback_data: `r:pf:${sid}:${compact(today)}` }];
+  const options = [{ text: "Today", callback_data: `r:pf:${sid}:t` }];
   if (first && first.due !== today) {
     options.push({ text: `From ${dayIn(first.due, today)}, first not logged`, callback_data: `r:pf:${sid}:${compact(first.due)}` });
   }
@@ -631,7 +639,7 @@ export function reviewScreen(book: Book, sid: number, today: string): Screen {
       keyboard: [
         ...(next.length ? [next] : []),
         // For a series that bills again only later (a free trial, a paused plan).
-        [{ text: "⏳ Next payment not until…", callback_data: `r:pd:${sid}:${compact(today)}` }],
+        [{ text: "⏳ Next payment not until…", callback_data: `r:pd:${sid}:t` }],
         [{ text: `‹ ${cut(series.name, 30)}`, callback_data: `r:v:${sid}` }, BACK_TO_LIST[0]],
       ],
     };

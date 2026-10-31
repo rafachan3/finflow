@@ -661,7 +661,8 @@ async function handleCallback(
   const review = parseMentionTap(cb.data);
   if (review) return handleMentionTap(cb, review, chatId, botToken);
 
-  const recurring = parseRecurringTap(cb.data);
+  const today = todayToronto();
+  const recurring = parseRecurringTap(cb.data, today);
   if (recurring) {
     await handleRecurringTap(recurring, {
       botToken,
@@ -669,7 +670,7 @@ async function handleCallback(
       callbackId: cb.id,
       messageId: cb.message!.message_id!,
       keyboard: cb.message?.reply_markup?.inline_keyboard ?? [],
-      today: todayToronto(),
+      today,
     });
     return ok("ok");
   }
