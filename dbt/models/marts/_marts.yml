@@ -195,7 +195,7 @@ models:
           - "{{ Dimension('line__type') }} = 'transfer'"
           - "{{ Dimension('line__from_account_name') }} is not null"
           - "{{ Dimension('line__to_account_name') }} is null"
-      - name: savings_rate
+      - name: unspent_rate
         type: derived
         expr: round((income - coalesce(spend, 0)) / nullif(income, 0), 4)
         input_metrics: [income, spend]
@@ -265,7 +265,7 @@ models:
     description: >
       One row per month from the first data month to the current Toronto
       month (or a later month a row is dated in), zero-filled, with one
-      column per metric in docs/SEMANTIC_LAYER.md. savings_rate and
+      column per metric in docs/SEMANTIC_LAYER.md. unspent_rate and
       needs_wants_ratio are null when their denominator is 0.
     columns:
       - name: month_start
@@ -290,7 +290,7 @@ models:
         data_tests: [not_null]
       - name: withdrawals
         data_tests: [not_null]
-      - name: savings_rate
+      - name: unspent_rate
         data_tests:
           - not_null:
               config:

@@ -2261,3 +2261,21 @@ growing the legacy-flag list and block 0017), re-running the matcher at
 Confirm (Confirm links exactly what the card showed; a changed series is
 caught by the re-check), and storing the toggle server side (the keyboard
 holds it, as on the review).
+
+## 2026-10-31 — The residual rate is `unspent_rate`, not a savings rate
+
+- **`savings_rate` is renamed `unspent_rate`.** It measures money not
+  spent, `(income − spend) / income`, not money moved into a savings,
+  investment or debt account. The owner follows 50/30/20, where the 20%
+  counts only money actually moved; calling the residual a savings rate
+  would read as that 20% when part of it may still sit in chequing
+  (`unallocated_cash`).
+- **The formula is unchanged:** `round((income - spend) / nullif(income, 0), 4)`,
+  null when income is `0`. Renamed in the contract, the
+  `fct_monthly_summary` column, MetricFlow, `check_metrics.py` and the
+  dbt tests. No dashboard reads the column yet (Grafana is Phase 5).
+- **The 2026-10-29 metric-contract entry is superseded in name only;** its
+  reasoning about a residual rate stands.
+
+**Ruled out:** keeping `savings_rate` and adding the moved-money rate under
+another name (the familiar name would stay on the wrong number).

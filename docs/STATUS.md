@@ -598,9 +598,12 @@ Chequing is the null side of `from_account_id`, `to_account_id` and
 account) and `withdrawals` (account to chequing); `transfers` is chequing
 to an account only; a move between two accounts is in no metric;
 `unallocated_cash = income − savings_income − spend − transfers +
-withdrawals` (its running sum follows); `savings_rate` is unchanged.
+withdrawals` (its running sum follows); the residual rate (now `unspent_rate`) is unchanged.
 `stg_transactions` and `fct_transactions` carry the from and deposit
 accounts; `fct_monthly_summary` adds both columns.
+(2026-10-31: the residual rate is renamed `unspent_rate` in the contract,
+the mart, MetricFlow and `check_metrics.py`; formula unchanged; DECISIONS.md
+2026-10-31.)
 `dbt:transfer_has_account` now encodes migration 0014's check, so a saved
 withdrawal passes. The fixture's June gains interest into savings, a
 withdrawal and a move; its hand-worked values were redone. A withdrawal can

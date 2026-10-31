@@ -16,7 +16,7 @@
 -- transfers        out of chequing: 500.00 savings + 300.00 investment;
 --                  the 200.00 savings-to-investment move is not one     =  800.00
 -- withdrawals      150.00 out of savings into chequing                  =  150.00
--- savings_rate     (3029.12 - 1275.89) / 3029.12 = 0.57879...           =   0.5788
+-- unspent_rate     (3029.12 - 1275.89) / 3029.12 = 0.57879...           =   0.5788
 -- unallocated_cash 3029.12 - 4.12 - 1275.89 - 800.00 + 150.00           = 1099.11
 -- unallocated_cash_cumulative  June is the first month                  = 1099.11
 -- needs_wants_ratio  1237.75 / 38.14 = 32.45280...                      =  32.4528
@@ -35,7 +35,7 @@ with expected (metric, value) as (
         ('external_spend', 80.00),
         ('transfers', 800.00),
         ('withdrawals', 150.00),
-        ('savings_rate', 0.5788),
+        ('unspent_rate', 0.5788),
         ('unallocated_cash', 1099.11),
         ('unallocated_cash_cumulative', 1099.11),
         ('needs_wants_ratio', 32.4528),
@@ -57,7 +57,7 @@ actual (metric, value) as (
         ('external_spend', s.external_spend),
         ('transfers', s.transfers),
         ('withdrawals', s.withdrawals),
-        ('savings_rate', s.savings_rate),
+        ('unspent_rate', s.unspent_rate),
         ('unallocated_cash', s.unallocated_cash),
         ('unallocated_cash_cumulative', s.unallocated_cash_cumulative),
         ('needs_wants_ratio', s.needs_wants_ratio),
