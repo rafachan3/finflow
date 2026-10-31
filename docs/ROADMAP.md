@@ -189,22 +189,32 @@ and a deleted one is not.
 
 - [x] dbt project: staging models + marts (fct_transactions,
       fct_category_month, fct_monthly_summary) (2026-10-30; reconciled in
-      CI on the fixture, not yet run against production)
-- [ ] docs/SEMANTIC_LAYER.md: canonical metric definitions (discretionary
-      spend, savings rate, needs/wants ratio, fixed base burn)
-- [ ] GitHub Action: nightly `dbt build` + tests (not_null, accepted_values,
-      relationships) (`dbt-nightly.yml`, 2026-10-30; ticked once a
-      dispatch on `main` is green against production)
+      CI on the fixture, then ran green against production on 2026-10-30:
+      `dbt build --exclude tag:fixture` passed all 87 nodes)
+- [x] docs/SEMANTIC_LAYER.md: canonical metric definitions (discretionary
+      spend, savings rate, needs/wants ratio, fixed base burn; fourteen
+      metrics in all)
+- [x] GitHub Action: nightly `dbt build` + tests (not_null, accepted_values,
+      relationships) (`dbt-nightly.yml`; dispatch on `main`, run
+      41157900716, green against production as `finflow_dbt`, 2026-10-30)
 - [x] MetricFlow (local `mf` CLI, dbt-core): semantic models + metrics in
       YAML are the executable form of SEMANTIC_LAYER.md. Grafana still
       reads marts (the hosted Semantic Layer APIs are dbt Cloud only), so
       one test compares `mf query` against the marts. (2026-10-30; all
-      fourteen metrics, checked in CI on the fixture, not yet run against
-      production)
+      fourteen metrics, checked in CI on the fixture; also green against
+      production on 2026-10-30: `mf validate-configs` passed and
+      `check_metrics.py` reported 14 metrics, 5 months)
 
 **Done when:** `dbt build` is green in CI, marts match hand-written SQL for
 one sample month, and `mf query` matches the marts for every metric in
 SEMANTIC_LAYER.md.
+*Accepted 2026-10-30: all three hold in CI on the synthetic fixture
+(#72-#78), and the first production dispatch of `dbt-nightly.yml` on
+`main` (run 41157900716) was green as `finflow_dbt`: 87 of 87 nodes
+passed, including the invariant tests and the reconciliation test, and
+`mf query` matched `fct_monthly_summary`. Real numbers have not been
+hand-verified against the owner's records; that waits until the owner
+names a complete month.*
 
 ## Phase 4.5 — Proactive nudges (≈2–3 evenings)
 
