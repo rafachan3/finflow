@@ -86,7 +86,11 @@ type TelegramMessage = {
   caption?: string;
   photo?: unknown[];
   voice?: unknown;
-  reply_to_message?: { text?: string };
+  audio?: unknown;
+  document?: unknown;
+  /** Unix seconds. */
+  date?: number;
+  reply_to_message?: { text?: string; date?: number; from?: { is_bot?: boolean } };
 };
 type TelegramCallbackQuery = {
   id: string;
@@ -580,7 +584,9 @@ async function handleMessage(
     return ok("ok");
   }
 
-  // Also before the wait: a reply to a /recurring prompt (rename, pause end) is not a date or a correction.
+  // Also before the wait: a text reply to a fresh /recurring prompt (rename,
+  // pause end) is not a date or a correction. Anything else, including a
+  // photo or an expense sent as a reply, falls through to extraction.
   if (await answerPrompt(message, message.chat.id, config.botToken, todayToronto())) {
     return ok("ok");
   }

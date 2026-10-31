@@ -46,6 +46,8 @@ const telegram = {
   /** What each sent message shows now, after any edits, by message_id. */
   shown: new Map<number, Shown>(),
   nextMessageId: 1,
+  /** When each sent message was sent, in Unix seconds, by message_id. */
+  sentAt: new Map<number, number>(),
 };
 
 const EDITS = new Set(["editMessageText", "editMessageReplyMarkup"]);
@@ -192,6 +194,7 @@ const server = setupServer(
       const messageId = telegram.nextMessageId++;
       telegram.sent.push({ method, body, failed, messageId });
       telegram.shown.set(messageId, { text: visibleText(body), keyboard: keyboardOf(body) ?? [] });
+      telegram.sentAt.set(messageId, Math.floor(Date.now() / 1000));
       return HttpResponse.json({ ok: true, result: { message_id: messageId } });
     }
     telegram.sent.push({ method, body, failed });
@@ -274,6 +277,7 @@ export function useJourneys(): void {
     telegram.files = {};
     telegram.shown = new Map();
     telegram.nextMessageId = 1;
+    telegram.sentAt = new Map();
     gemini.calls = [];
     gemini.lastSystem = "";
     gemini.lastUserText = [];
@@ -329,12 +333,24 @@ async function deliver(update: unknown, secret = SECRET): Promise<Result> {
   return (await handler(event)) as Result;
 }
 
+/** Unix seconds, as Telegram dates a message. */
+const nowSeconds = () => Math.floor(Date.now() / 1000);
+
 function message(fields: Record<string, unknown>, from = OWNER) {
   updateId++;
   return {
     update_id: updateId,
-    message: { message_id: updateId, chat: { id: from }, ...fields },
+    message: { message_id: updateId, date: nowSeconds(), chat: { id: from }, ...fields },
   };
+}
+
+/** A receipt photo; file_unique_id is stable for a stored file, so re-sending it repeats it. */
+function receipt() {
+  telegram.files = { "photo-large": "photos/file_1.jpg" };
+  return [
+    { file_id: "photo-small", file_unique_id: "photo-small-u", file_size: 10 },
+    { file_id: "photo-large", file_unique_id: "photo-large-u", file_size: 900 },
+  ];
 }
 
 /** The owner's side of the Telegram chat. */
@@ -342,17 +358,22 @@ export const chat = {
   text(text: string, from = OWNER) {
     return deliver(message({ text }, from));
   },
-  /** A reply to a bot message, as Telegram sends one to a ForceReply prompt. */
-  reply(to: Reply, text: string) {
-    return deliver(message({ text, reply_to_message: { message_id: to.messageId, text: to.text } }));
+  /**
+   * A reply to a bot message, as Telegram sends one to a ForceReply prompt:
+   * text, or a receipt photo with this caption.
+   */
+  reply(to: Reply, text: string, as: "text" | "photo" = "text") {
+    const reply_to_message = {
+      message_id: to.messageId,
+      text: to.text,
+      date: telegram.sentAt.get(to.messageId ?? -1),
+      from: { id: 1, is_bot: true },
+    };
+    const fields = as === "photo" ? { photo: receipt(), caption: text } : { text };
+    return deliver(message({ ...fields, reply_to_message }));
   },
   photo(caption = "") {
-    telegram.files = { "photo-large": "photos/file_1.jpg" };
-    // file_unique_id is stable for a stored file, so re-sending this photo repeats it.
-    const photo = [
-      { file_id: "photo-small", file_unique_id: "photo-small-u", file_size: 10 },
-      { file_id: "photo-large", file_unique_id: "photo-large-u", file_size: 900 },
-    ];
+    const photo = receipt();
     return deliver(message(caption ? { photo, caption } : { photo }));
   },
   voice() {

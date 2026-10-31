@@ -1,4 +1,5 @@
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { golden } from "../golden/golden.js";
 import { sql } from "../integration/db-helpers.js";
 import { chat, gemini, labels, ledger, STRANGER, useJourneys, type Reply } from "./harness.js";
 
@@ -11,8 +12,12 @@ vi.mock("../../src/config.js", async () => {
 useJourneys();
 
 // Saturday 2026-10-31 in Toronto. Only Date is faked; timers stay real.
+const NOW = new Date("2026-10-31T16:00:00Z");
 beforeAll(() => {
-  vi.useFakeTimers({ toFake: ["Date"], now: new Date("2026-10-31T16:00:00Z") });
+  vi.useFakeTimers({ toFake: ["Date"], now: NOW });
+});
+beforeEach(() => {
+  vi.setSystemTime(NOW);
 });
 afterAll(() => {
   vi.useRealTimers();
@@ -354,5 +359,83 @@ describe("pause, resume, rename and delete", () => {
     expect(chat.acks().at(-1)).toBe("Already deleted.");
     await chat.tap(list, "‹ All recurring");
     expect(chat.current(list).text).not.toContain("Internet bill");
+  });
+});
+
+describe("replies to a /recurring prompt", () => {
+  /** What Gemini reads from any message here: one valid purchase. */
+  function scriptPurchase(): void {
+    const recorded = golden("text-with-note").recorded as { events: object[] };
+    gemini.extract = { events: [recorded.events[0]] };
+  }
+
+  async function renamePrompt(): Promise<Reply> {
+    await threeSeries();
+    const list = await open();
+    await chat.tap(list, "Internet bill");
+    await chat.tap(list, "✏️ Rename");
+    return chat.last();
+  }
+
+  async function pausePrompt(): Promise<Reply> {
+    await threeSeries();
+    const list = await open();
+    await chat.tap(list, "Internet bill");
+    await chat.tap(list, "⏸ Pause");
+    await chat.tap(list, "Today, Oct 31");
+    await chat.tap(list, "Until a date I type…");
+    return chat.last();
+  }
+
+  async function names(): Promise<string[]> {
+    return (await sql<{ name: string }>("select name from recurring_series order by name")).map((r) => r.name);
+  }
+
+  it("a receipt photo sent as a reply to a rename prompt is still saved as an expense", async () => {
+    const prompt = await renamePrompt();
+    scriptPurchase();
+    await chat.reply(prompt, "lunch", "photo");
+    expect(gemini.calls).toHaveLength(1);
+    expect(labels(chat.last())).toContain("Confirm");
+    expect(await names()).toEqual(["Gym", "Internet bill", "Salary"]);
+  });
+
+  it("an expense typed as a reply to a pause prompt is saved, not taken as the date", async () => {
+    const prompt = await pausePrompt();
+    scriptPurchase();
+    await chat.reply(prompt, "12.50 lunch with the team");
+    expect(gemini.calls).toHaveLength(1);
+    expect(labels(chat.last())).toContain("Confirm");
+    expect(await pauses()).toEqual([]);
+  });
+
+  it("a long expense typed as a reply to a rename prompt is saved, not refused as a name", async () => {
+    const prompt = await renamePrompt();
+    scriptPurchase();
+    await chat.reply(prompt, "groceries 45.20 at the market on the way home from the office today");
+    expect(gemini.calls).toHaveLength(1);
+    expect(await names()).toEqual(["Gym", "Internet bill", "Salary"]);
+  });
+
+  it("a reply to a prompt older than 15 minutes goes to extraction", async () => {
+    const prompt = await renamePrompt();
+    vi.setSystemTime(new Date(NOW.getTime() + 15 * 60_000));
+    scriptPurchase();
+    await chat.reply(prompt, "Home internet");
+    expect(gemini.calls).toHaveLength(1);
+    expect(await names()).toEqual(["Gym", "Internet bill", "Salary"]);
+  });
+
+  it("a rename reply while a card waits for a date renames the series and leaves the card waiting", async () => {
+    const prompt = await renamePrompt();
+    scriptPurchase();
+    await chat.text("lunch 14");
+    await chat.tap(chat.last(), "Fix date");
+    const calls = gemini.calls.length;
+
+    await chat.reply(prompt, "Home internet");
+    expect(chat.last().text).toBe("Renamed to Home internet.");
+    expect(gemini.calls).toHaveLength(calls);
+    expect((await ledger.ingestions()).map((i) => i.status)).toEqual(["awaiting_date"]);
   });
 });

@@ -3,6 +3,10 @@ import { fitCadence } from "../src/recurring.js";
 import type { Book, BookRow } from "../src/recurring-db.js";
 import {
   addScreen,
+  answerPrompt,
+  looksLikeExpense,
+  PROMPT_TTL_SECONDS,
+  type PromptReply,
   cadenceText,
   day,
   defaultName,
@@ -115,6 +119,33 @@ describe("adding a series", () => {
     expect(addScreen(linked, TX).text).toBe("That payment is already in Gym.");
     expect(addScreen(empty, TX).text).toBe("That payment no longer exists.");
     expect(pickScreen(empty, 0).text).toContain("No saved payment is outside a series.");
+  });
+});
+
+describe("replies to a /recurring prompt", () => {
+  const prompt = { text: "Rename #3 (Gym): reply with the new name.", date: 1000, from: { is_bot: true } };
+  const reply = (over: Partial<PromptReply>): PromptReply => ({ text: "Home gym", date: 1010, reply_to_message: prompt, ...over });
+
+  it.each([
+    ["a photo", { photo: [{ file_id: "p" }] }],
+    ["a voice note", { voice: { file_id: "v" } }],
+    ["an audio file", { audio: { file_id: "a" } }],
+    ["a document", { document: { file_id: "d" } }],
+    ["a caption", { caption: "lunch 12" }],
+    ["no text", { text: "  " }],
+    ["a reply to a message that is not the bot's", { reply_to_message: { ...prompt, from: { is_bot: false } } }],
+    ["a reply to a bot message that is not a prompt", { reply_to_message: { ...prompt, text: "Saved." } }],
+    ["a prompt 15 minutes old", { date: 1000 + PROMPT_TTL_SECONDS }],
+    ["no dates", { date: undefined }],
+  ])("leaves %s to extraction", async (_, over) => {
+    expect(await answerPrompt(reply(over as Partial<PromptReply>), 1, "tok", "2026-10-31")).toBe(false);
+  });
+
+  it("reads an amount next to a non-date word as an expense, and a date as none", () => {
+    expect(["12.50 lunch", "coffee 5", "$40 groceries", "gas 45,20"].map(looksLikeExpense)).toEqual([true, true, true, true]);
+    expect(["Dec 15", "15 december", "Jan 32", "today", "Home internet", "Gym 2nd"].map(looksLikeExpense)).toEqual([
+      false, false, false, false, false, false,
+    ]);
   });
 });
 

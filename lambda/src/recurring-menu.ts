@@ -866,9 +866,23 @@ export async function handleRecurringTap(tap: RecurringTap, ctx: TapContext): Pr
   await answerCallbackQuery(ctx.botToken, ctx.callbackId, outcome.ack);
 }
 
-async function renameReply(sid: number, text: string): Promise<string> {
+/**
+ * Whether a reply reads as an expense rather than an answer: a standalone
+ * amount next to a word that is not a date word ("12.50 lunch", "coffee 5").
+ */
+export function looksLikeExpense(text: string): boolean {
+  const words = text.toLowerCase().split(/\s+/).filter(Boolean);
+  const amount = words.some((w) => /^\$?\d+(?:[.,]\d{1,2})?\$?$/.test(w));
+  const word = words.some((w) => /^\p{L}{3,}/u.test(w) && !MONTH_WORD.test(w) && w !== "today" && w !== "yesterday");
+  return amount && word;
+}
+
+/** The reply, or null when the text is not an answer to the prompt and goes to extraction. */
+async function renameReply(sid: number, text: string): Promise<string | null> {
   const name = collapseSpaces(text);
-  if (name === "" || name.length > NAME_MAX) return `A name is 1 to ${NAME_MAX} characters. Tap ✏️ Rename to try again.`;
+  if (name.length > NAME_MAX) {
+    return looksLikeExpense(name) ? null : `A name is 1 to ${NAME_MAX} characters. Tap ✏️ Rename to try again.`;
+  }
   const result = await renameSeries(sid, name);
   if (result === "renamed") return `Renamed to ${name}.`;
   return result === "taken" ? `Another series is already called ${name}. Pick another name.` : "That series no longer exists.";
@@ -879,9 +893,10 @@ async function renameReply(sid: number, text: string): Promise<string> {
  * before the pause's start means next year's. Also how a series that starts
  * billing later (a free trial) is told not to expect a payment before then.
  */
-async function pauseReply(sid: number, from: string, text: string, today: string): Promise<string> {
+async function pauseReply(sid: number, from: string, text: string, today: string): Promise<string | null> {
   let until = parseDateReply(text, today);
   if (until !== null && until <= from && !/\d{4}/.test(text)) until = addMonths(until, 12);
+  if (until === null && looksLikeExpense(text)) return null;
   if (until === null || until <= from) {
     return `Send a date after ${day(from)}, like Dec 15 or 2027-01-15. Tap ⏸ Pause to try again.`;
   }
@@ -891,25 +906,52 @@ async function pauseReply(sid: number, from: string, text: string, today: string
   return `Paused from ${day(from)} until ${day(until)}.`;
 }
 
+/** A prompt answered later than this is stale: the reply goes to extraction. */
+export const PROMPT_TTL_SECONDS = 15 * 60;
+
+export type PromptReply = {
+  text?: string;
+  caption?: string;
+  /** Unix seconds, as Telegram sends it. */
+  date?: number;
+  photo?: unknown;
+  voice?: unknown;
+  audio?: unknown;
+  document?: unknown;
+  reply_to_message?: { text?: string; date?: number; from?: { is_bot?: boolean } };
+};
+
 /**
  * A reply to one of the menu's prompts (rename, or a pause's end date) acts
  * on that series; false for any other message. The prompt's own text
  * carries the series id and date, so no waiting state is stored.
+ *
+ * Logging an expense always wins (hard constraint 6): media, a caption or
+ * no text, a reply to anything but the bot's prompt, a prompt older than
+ * 15 minutes, or text that is clearly no answer but reads as an expense
+ * all return false and go on to extraction.
  */
 export async function answerPrompt(
-  message: { text?: string; reply_to_message?: { text?: string } },
+  message: PromptReply,
   chatId: number,
   botToken: string,
   today: string,
 ): Promise<boolean> {
-  const prompt = message.reply_to_message?.text ?? "";
-  const rename = RENAME.exec(prompt);
-  const pause = PAUSE_PROMPT.exec(prompt);
+  const prompt = message.reply_to_message;
+  if (!prompt?.from?.is_bot) return false;
+  const rename = RENAME.exec(prompt.text ?? "");
+  const pause = PAUSE_PROMPT.exec(prompt.text ?? "");
   if (!rename && !pause) return false;
-  const text = message.text ?? "";
+  if (message.photo || message.voice || message.audio || message.document || message.caption !== undefined) return false;
+  const text = message.text?.trim() ?? "";
+  if (text === "") return false;
+  if (message.date === undefined || prompt.date === undefined || message.date - prompt.date >= PROMPT_TTL_SECONDS) {
+    return false;
+  }
   const reply = rename
     ? await renameReply(Number(rename[1]), text)
     : await pauseReply(Number(pause![1]), pause![2], text, today);
+  if (reply === null) return false;
   await sendMessage(botToken, chatId, reply);
   return true;
 }
