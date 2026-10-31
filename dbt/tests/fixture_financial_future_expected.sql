@@ -45,6 +45,24 @@
 -- 2026-07, spend and no income: spendable_income 0.00, so every *_pct is
 -- null; financial_future 0.00, target 0.00, gap 0.00.
 -- 2026-10, no rows at all: the same, from the zero-filled month.
+--
+-- 2026-05, income, savings interest and spend, nothing moved: income
+-- 1002.50 includes 2.50 interest paid into savings; spend 600.00 needs +
+-- 400.00 wants.
+--   spendable_income   1002.50 - 2.50                              = 1000.00
+--   financial_future   no transfers, no withdrawals                =    0.00
+--   target             0.2 * 1000.00                               =  200.00
+--   gap                200.00 - 0                                  =  200.00
+--   needs_pct          600.00 / 1000.00                            =  0.6000
+--   wants_pct          400.00 / 1000.00                            =  0.4000
+--   financial_future_pct 0 / 1000.00                               =  0.0000
+--   unallocated_pct    (1000.00 - 1000.00 - 0) / 1000.00           =  0.0000
+--
+-- 2026-03, only an 80.00 withdrawal, no income: spendable_income 0.00, so
+-- every *_pct is null; financial_future 0 - 80.00 = -80.00, target 0.00,
+-- gap 0.00 - (-80.00) = 80.00.
+-- 2026-04, only an 80.00 transfer, no income: financial_future 80.00,
+-- target 0.00, gap -80.00, every *_pct null.
 {{ config(tags=['fixture']) }}
 
 with expected (month_start, metric, value) as (
@@ -92,12 +110,39 @@ with expected (month_start, metric, value) as (
         (date '2026-10-01', 'needs_pct', null),
         (date '2026-10-01', 'wants_pct', null),
         (date '2026-10-01', 'financial_future_pct', null),
-        (date '2026-10-01', 'unallocated_pct', null)
+        (date '2026-10-01', 'unallocated_pct', null),
+
+        (date '2026-05-01', 'spendable_income', 1000.00),
+        (date '2026-05-01', 'financial_future', 0.00),
+        (date '2026-05-01', 'financial_future_target', 200.00),
+        (date '2026-05-01', 'financial_future_gap', 200.00),
+        (date '2026-05-01', 'needs_pct', 0.6000),
+        (date '2026-05-01', 'wants_pct', 0.4000),
+        (date '2026-05-01', 'financial_future_pct', 0.0000),
+        (date '2026-05-01', 'unallocated_pct', 0.0000),
+
+        (date '2026-03-01', 'spendable_income', 0.00),
+        (date '2026-03-01', 'financial_future', -80.00),
+        (date '2026-03-01', 'financial_future_target', 0.00),
+        (date '2026-03-01', 'financial_future_gap', 80.00),
+        (date '2026-03-01', 'needs_pct', null),
+        (date '2026-03-01', 'wants_pct', null),
+        (date '2026-03-01', 'financial_future_pct', null),
+        (date '2026-03-01', 'unallocated_pct', null),
+
+        (date '2026-04-01', 'spendable_income', 0.00),
+        (date '2026-04-01', 'financial_future', 80.00),
+        (date '2026-04-01', 'financial_future_target', 0.00),
+        (date '2026-04-01', 'financial_future_gap', -80.00),
+        (date '2026-04-01', 'needs_pct', null),
+        (date '2026-04-01', 'wants_pct', null),
+        (date '2026-04-01', 'financial_future_pct', null),
+        (date '2026-04-01', 'unallocated_pct', null)
 
     union all
 
     select m::date, t.metric, t.value
-    from generate_series(date '2026-06-01', date '2026-10-01', interval '1 month') as m
+    from generate_series(date '2026-03-01', date '2026-10-01', interval '1 month') as m
     cross join (values
         ('needs_target_pct', 0.5000),
         ('wants_target_pct', 0.3000),
@@ -121,7 +166,7 @@ actual (month_start, metric, value) as (
         ('wants_target_pct', s.wants_target_pct),
         ('financial_future_target_pct', s.financial_future_target_pct)
     ) as v (metric, value)
-    where s.month_start between date '2026-06-01' and date '2026-10-01'
+    where s.month_start between date '2026-03-01' and date '2026-10-01'
 )
 
 select

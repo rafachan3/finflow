@@ -234,8 +234,11 @@ models:
         type: derived
         expr: round(coalesce(needs_spend, 0) / nullif(wants_spend, 0), 4)
         input_metrics: [needs_spend, wants_spend]
-      # The 50/30/20 view. spendable_income and financial_future coalesce
-      # their inputs, so a month with rows is never null for them.
+      # The 50/30/20 view. A derived metric joins its inputs month by month,
+      # so it is null in a month where none of its inputs has a row, even
+      # one that coalesces them: spendable_income in a month with no income,
+      # financial_future in one with nothing moved. The metrics built on
+      # them coalesce them too.
       - name: spendable_income
         type: derived
         expr: coalesce(income, 0) - coalesce(savings_income, 0)
@@ -261,11 +264,11 @@ models:
         expr: financial_future_target_pct
       - name: financial_future_target
         type: derived
-        expr: round(financial_future_target_pct * spendable_income, 2)
+        expr: round(financial_future_target_pct * coalesce(spendable_income, 0), 2)
         input_metrics: [financial_future_target_pct, spendable_income]
       - name: financial_future_gap
         type: derived
-        expr: financial_future_target - financial_future
+        expr: coalesce(financial_future_target, 0) - coalesce(financial_future, 0)
         input_metrics: [financial_future_target, financial_future]
       - name: needs_pct
         type: derived
@@ -277,7 +280,7 @@ models:
         input_metrics: [wants_spend, spendable_income]
       - name: financial_future_pct
         type: derived
-        expr: round(financial_future / nullif(spendable_income, 0), 4)
+        expr: round(coalesce(financial_future, 0) / nullif(spendable_income, 0), 4)
         input_metrics: [financial_future, spendable_income]
       - name: unallocated_pct
         type: derived
