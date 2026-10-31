@@ -1,5 +1,5 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { closeHelpers, insertTransaction, resetData, sql } from "./db-helpers.js";
+import { closeHelpers, insertTransaction, resetData, sql, withClient } from "./db-helpers.js";
 
 vi.mock("../../src/config.js", async () => {
   const { testDbUrl } = await import("./env.js");
@@ -112,6 +112,53 @@ describe("createSeries", () => {
     expect(
       await rdb.createSeries({ transactionId: "00000000-0000-4000-8000-000000000000", name: "X", cadence: "monthly", amountVaries: true }),
     ).toEqual({ missing: true });
+  });
+});
+
+/** Waits until some backend is blocked on a lock: the statement under test is queued behind the helper's transaction. */
+async function blockedOnLock(): Promise<void> {
+  for (let i = 0; i < 200; i++) {
+    const [row] = await sql<{ n: number }>(
+      "select count(*)::int as n from pg_stat_activity where wait_event_type = 'Lock' and datname = current_database()",
+    );
+    if (row.n > 0) return;
+    await new Promise((r) => setTimeout(r, 10));
+  }
+  throw new Error("the statement never waited on the lock");
+}
+
+describe("concurrent double taps", () => {
+  it("a create that waits on another tap's create names the series that tap made", async () => {
+    const tx = await internet("2026-10-15");
+    const result = await withClient(async (other) => {
+      await other.query("BEGIN");
+      const [{ id }] = (
+        await other.query<{ id: number }>(
+          "insert into recurring_series (name, kind, cadence) values ('Internet bill', 'expense', 'monthly') returning id",
+        )
+      ).rows;
+      await other.query("update transactions set recurring_series_id = $1 where id = $2", [id, tx]);
+      const second = rdb.createSeries({ transactionId: tx, name: "Internet bill", cadence: "monthly", amountVaries: false });
+      await blockedOnLock();
+      await other.query("COMMIT");
+      return { id, second: await second };
+    });
+    expect(result.second).toEqual({ already: result.id, name: "Internet bill" });
+    expect(await sql("select count(*)::int as n from recurring_series")).toEqual([{ n: 1 }]);
+  });
+
+  it("a pause that waits on the same pause from another tap is already paused, not an overlap", async () => {
+    const sid = await created(await internet("2026-10-15"));
+    const result = await withClient(async (other) => {
+      await other.query("BEGIN");
+      await other.query("insert into recurring_pauses (series_id, paused_from) values ($1, '2026-10-31')", [sid]);
+      const second = rdb.pauseSeries(sid, "2026-10-31", null);
+      await blockedOnLock();
+      await other.query("COMMIT");
+      return second;
+    });
+    expect(result).toBe("already");
+    expect(await sql("select count(*)::int as n from recurring_pauses")).toEqual([{ n: 1 }]);
   });
 });
 

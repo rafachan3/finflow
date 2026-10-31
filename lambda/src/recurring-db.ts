@@ -152,7 +152,11 @@ export async function createSeries(input: {
     const row = res.rows[0];
     if (!row) return { missing: true };
     if (row.created !== null) return { created: row.created };
-    return { already: row.already!, name: row.name! };
+    if (row.name !== null) return { already: row.already!, name: row.name };
+    // A concurrent tap linked it after this statement's snapshot, so the
+    // series that tap made is visible only to a new statement.
+    const named = await db.query<{ name: string }>("SELECT name FROM recurring_series WHERE id = $1", [row.already]);
+    return { already: row.already!, name: named.rows[0]?.name ?? "another series" };
   } catch (err) {
     if (hasCode(err, "23505")) return { taken: true };
     // A check on recurring_series: an income with no source, a transfer with no accounts.
@@ -172,19 +176,18 @@ export async function pauseSeries(
   until: string | null,
 ): Promise<"paused" | "already" | "overlap" | "missing"> {
   const db = await getPool();
+  const SAME = `SELECT 1 FROM recurring_pauses
+                WHERE series_id = $1 AND paused_from = $2::date AND resumed_on IS NOT DISTINCT FROM $3::date`;
   try {
     const res = await db.query(
       `INSERT INTO recurring_pauses (series_id, paused_from, resumed_on)
-       SELECT $1, $2::date, $3::date
-       WHERE NOT EXISTS (
-         SELECT 1 FROM recurring_pauses
-         WHERE series_id = $1 AND paused_from = $2::date AND resumed_on IS NOT DISTINCT FROM $3::date
-       )`,
+       SELECT $1, $2::date, $3::date WHERE NOT EXISTS (${SAME})`,
       [seriesId, from, until],
     );
     return res.rowCount ? "paused" : "already";
   } catch (err) {
-    if (hasCode(err, "23P01")) return "overlap";
+    // A concurrent identical tap that committed first is a repeat, not an overlap.
+    if (hasCode(err, "23P01")) return (await db.query(SAME, [seriesId, from, until])).rowCount ? "already" : "overlap";
     if (hasCode(err, "23503")) return "missing";
     throw err;
   }
