@@ -515,6 +515,15 @@ loan month, June's interest and withdrawal, and two null months by hand.
 Migration 0018 must be applied before merge. No bot or Telegram change
 (Phase 5 charts the mart).
 
+Nightly fix for issue #99 (branch `fix/financial-future-empty-months`, in
+review): MetricFlow left `financial_future_gap` and `financial_future_pct`
+null in a month with no transfer and no withdrawal, and the gap null in a
+month with no income but money moved, because a derived metric has no row
+in a month where none of its inputs has one. The three metrics now coalesce
+those inputs; the contract and the mart were right. The fixture gains
+2026-03 (only a withdrawal), 2026-04 (only a transfer) and 2026-05
+(income, interest and spend, nothing moved). No migration.
+
 ## Next concrete step
 
 Phase 4.5 — Proactive nudges, PR 4 (`feat/nudge-infra`, Terraform only) in
