@@ -1,15 +1,30 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+// The module must stay pure: importing pg or calling the network fails.
+vi.mock("pg", () => {
+  throw new Error("recurring.ts must not import pg");
+});
+
 import {
+  amountBand,
+  bestMatch,
   type Cadence,
   dayNumber,
   fitCadence,
   isoDate,
+  type LedgerRow,
+  matchStrength,
   occurrences,
+  outsideBand,
   type Pause,
+  proposeSeries,
+  type Series,
   shouldPropose,
   type SlotStatus,
   slots,
   suggestCadence,
+  textSimilarity,
+  tokens,
 } from "../src/recurring.js";
 
 /** Dates every `step` days from `from`, `n` of them. */
@@ -273,5 +288,211 @@ describe("expected payments", () => {
         if (inside) expect(s.status, `${dates.join(" ")} paused ${from}..${until}`).not.toBe("missed");
       }
     }
+  });
+});
+
+describe("amount band", () => {
+  it("is the median plus or minus 5 %, three robust spreads or 1.00 from four payments on", () => {
+    const salary = [...Array(10).fill("2000.00"), "1400.00"];
+    const band = amountBand(salary)!;
+    expect(band).toEqual({ typical: 200000, low: 190000, high: 210000 });
+    expect(outsideBand(band, "1400.00")).toBe(-60000);
+    expect(outsideBand(band, "2100.00")).toBeNull();
+    expect(amountBand(Array(5).fill("64.99"))).toEqual({ typical: 6499, low: 6174, high: 6824 });
+    // Spread wider than 5 %: three robust spreads of the amounts.
+    expect(amountBand(["40.00", "50.00", "60.00", "50.00"])).toEqual({ typical: 5000, low: 2776, high: 7224 });
+  });
+
+  it("is 10 % or 1.00 below four payments, and absent when the amount varies", () => {
+    const phone = amountBand(["45.00", "61.25", "45.00"])!;
+    expect(phone).toEqual({ typical: 4500, low: 4050, high: 4950 });
+    expect(outsideBand(phone, "61.25")).toBe(1625);
+    expect(amountBand(["3.12"])).toEqual({ typical: 312, low: 212, high: 412 });
+    expect(amountBand(["3.12", "3.40", "3.38", "3.55"], true)).toBeNull();
+    expect(amountBand([])).toBeNull();
+  });
+});
+
+describe("description matching", () => {
+  it("compares descriptions as word sets: case, order, spacing, dates and filler words do not matter", () => {
+    expect(tokens("Home internet plan")).toEqual(["home", "internet"]);
+    expect(tokens("Internet bill — October 2026, paid")).toEqual(["internet"]);
+    expect(tokens("Joe’s  DINER")).toEqual(["diner", "joes"]);
+    expect(textSimilarity("Bike share monthly pass", "Bike Share Monthly Pass")).toBe(1);
+    expect(textSimilarity("Unlimited bus weekend pass", "Unlimited weekend bus pass")).toBe(1);
+    expect(textSimilarity("Internet bill", "Home internet plan")).toBe(0.75);
+    expect(textSimilarity("Unlimited bus weekend pass", "Unlimited public transport weekend pass")).toBe(0.625);
+  });
+
+  it("keeps different payments apart", () => {
+    expect(textSimilarity("Internet bill", "Phone bill")).toBe(0);
+    expect(textSimilarity("Home internet", "Home hardware store")).toBeLessThan(0.6);
+    expect(textSimilarity("Bill", "Monthly fee")).toBe(0);
+  });
+});
+
+const NOV = (d: number) => `2026-11-${String(d).padStart(2, "0")}`;
+
+function row(over: Partial<LedgerRow>): LedgerRow {
+  return {
+    id: "t",
+    date: NOV(16),
+    type: "expense",
+    amount: "64.99",
+    description: "Internet",
+    merchantId: null,
+    subcategoryId: null,
+    incomeSourceId: null,
+    fromAccountId: null,
+    toAccountId: null,
+    seriesId: null,
+    ...over,
+  };
+}
+
+function series(over: Partial<Series>): Series {
+  return {
+    id: 1,
+    name: "Internet bill",
+    kind: "expense",
+    cadence: "monthly",
+    amountVaries: false,
+    merchantId: null,
+    subcategoryId: 7,
+    incomeSourceId: null,
+    fromAccountId: null,
+    toAccountId: null,
+    keywords: [],
+    ...over,
+  };
+}
+
+// The internet bill as the owner logs it: no merchant, the wording drifts.
+const INTERNET_WORDING = ["Internet bill", "Home internet plan", "HOME INTERNET", "internet", "Home internet plan"];
+const INTERNET_HISTORY = INTERNET.map((date, i) =>
+  row({ id: `i${i}`, date, description: INTERNET_WORDING[i], subcategoryId: 7, seriesId: 1 }),
+);
+const internet = { series: series({}), linked: INTERNET_HISTORY, excluded: [] as string[], pauses: [] as Pause[] };
+
+// name, how the payment differs from a 64.99 "Internet" on Nov 16 in the same subcategory, strength
+const MATCHES: [string, Partial<LedgerRow>, string][] = [
+  ["a reworded description at the usual amount", { description: "Home internet service" }, "strong"],
+  ["a reworded description on schedule at a new price", { description: "Internet", amount: "150.00" }, "strong"],
+  ["a reworded description at the usual amount off schedule", { description: "home Internet", date: NOV(28) }, "strong"],
+  ["a new price off schedule", { description: "Internet", amount: "150.00", date: NOV(28) }, "none"],
+  ["only the subcategory, at the usual amount and on schedule", { description: "Router rental" }, "weak"],
+  ["only the subcategory, off schedule", { description: "Router rental", date: NOV(28) }, "none"],
+  ["another bill", { description: "Phone bill", subcategoryId: 8 }, "none"],
+  ["a payment of another kind", { type: "income", incomeSourceId: 3 }, "none"],
+  ["a payment already in another series", { seriesId: 2 }, "none"],
+];
+
+describe("matching a payment to a series", () => {
+  it.each(MATCHES)("matches %s", (_name, over, strength) => {
+    expect(matchStrength(internet, row({ subcategoryId: 7, ...over })).strength).toBe(strength);
+  });
+
+  it("never offers a payment the owner excluded from the series", () => {
+    expect(matchStrength({ ...internet, excluded: ["t"] }, row({})).strength).toBe("none");
+  });
+
+  it("matches wording seen only in the series' history, not just its name", () => {
+    // Three ways of writing the same weekend transit pass, bought irregularly.
+    const pass = series({ id: 4, name: "Weekend transit pass", subcategoryId: null });
+    const history = [
+      row({ id: "w0", date: "2026-06-13", description: "Unlimited bus weekend pass", amount: "12.50", seriesId: 4 }),
+      row({ id: "w1", date: "2026-07-25", description: "Unlimited weekend bus pass", amount: "12.50", seriesId: 4 }),
+    ];
+    const tx = row({ date: "2026-09-19", description: "Unlimited public transport weekend pass", amount: "12.50" });
+    expect(textSimilarity(pass.name, tx.description)).toBeLessThan(0.6);
+    expect(matchStrength({ series: pass, linked: history, excluded: [], pauses: [] }, tx).strength).toBe("strong");
+    // A series with no linked payment has no amount or schedule to agree with.
+    expect(matchStrength({ series: pass, linked: [], excluded: [], pauses: [] }, tx).strength).toBe("none");
+  });
+
+  it("matches income by source and a transfer by its accounts, whatever the wording", () => {
+    const salary = { series: series({ id: 2, name: "Salary", kind: "income", subcategoryId: null, incomeSourceId: 3 }), linked: [], excluded: [], pauses: [] };
+    expect(matchStrength(salary, row({ type: "income", incomeSourceId: 3, description: "Pay", amount: "1400.00" })).strength).toBe("strong");
+    expect(matchStrength(salary, row({ type: "income", incomeSourceId: 4 })).strength).toBe("none");
+    const savings = { series: series({ id: 3, name: "To savings", kind: "transfer", subcategoryId: null, toAccountId: 2 }), linked: [], excluded: [], pauses: [] };
+    expect(matchStrength(savings, row({ type: "transfer", toAccountId: 2, description: "x" })).strength).toBe("strong");
+    expect(matchStrength(savings, row({ type: "transfer", fromAccountId: 2, description: "x" })).strength).toBe("none");
+  });
+
+  it("matches by merchant, and by a keyword the owner added", () => {
+    const gym = { series: series({ id: 5, name: "Gym", merchantId: 9, keywords: ["fitness club"], subcategoryId: null }), linked: [row({ id: "g", date: "2026-10-03", amount: "25.00", seriesId: 5 })], excluded: [], pauses: [] };
+    expect(matchStrength(gym, row({ date: NOV(3), amount: "25.00", merchantId: 9, description: "Monthly" })).strength).toBe("strong");
+    expect(matchStrength(gym, row({ date: NOV(3), amount: "25.00", description: "Fitness club" })).strength).toBe("strong");
+  });
+
+  it("picks the stronger match, then the closer slot, then the closer amount", () => {
+    const m = (seriesId: number, strength: "strong" | "weak" | "none", slotDays: number, amountCents: number) => ({ seriesId, strength, slotDays, amountCents });
+    expect(bestMatch([m(1, "weak", 0, 0), m(2, "strong", 3, 500)])?.seriesId).toBe(2);
+    expect(bestMatch([m(1, "strong", 3, 0), m(2, "strong", 1, 900)])?.seriesId).toBe(2);
+    expect(bestMatch([m(1, "strong", 1, 900), m(2, "strong", 1, Infinity), m(3, "strong", 1, 100)])?.seriesId).toBe(3);
+    expect(bestMatch([m(1, "none", 0, 0)])).toBeNull();
+  });
+});
+
+describe("proposing undeclared series", () => {
+  const gymRows = GYM.map((date, i) =>
+    row({ id: `g${i}`, date, amount: "25.00", description: ["Gym", "Gym membership", "gym", "GYM"][i] }),
+  );
+
+  it("groups reworded descriptions with no merchant and proposes a regular one", () => {
+    const [gym, ...rest] = proposeSeries(gymRows, [], "2026-10-31");
+    expect(rest).toEqual([]);
+    expect(gym).toMatchObject({ key: "desc:gym", kind: "expense", transactionIds: ["g0", "g1", "g2", "g3"] });
+    expect(gym.fit.cadence).toBe("monthly");
+  });
+
+  it("keeps a different amount under the same words apart", () => {
+    const dayPasses = ["2026-06-20", "2026-08-01", "2026-09-12"].map((date, i) =>
+      row({ id: `d${i}`, date, amount: "10.00", description: "Gym day pass" }),
+    );
+    const groups = proposeSeries([...gymRows, ...dayPasses], [], "2026-10-31");
+    expect(groups.map((p) => p.transactionIds)).toEqual([["g0", "g1", "g2", "g3"]]);
+  });
+
+  it("proposes income by source, transfers by accounts and expenses by merchant", () => {
+    const salary = SALARY.map((date, i) => row({ id: `s${i}`, date, type: "income", incomeSourceId: 3, amount: "2000.00", description: "Pay" }));
+    const saving = INTERNET.map((date, i) => row({ id: `v${i}`, date, type: "transfer", toAccountId: 2, amount: "100.00", description: "x" }));
+    const club = GYM.map((date, i) => row({ id: `c${i}`, date, merchantId: 9, amount: "30.00", description: `visit ${i}` }));
+    expect(proposeSeries([...salary, ...saving, ...club], [], "2026-10-31").map((p) => [p.key, p.fit.cadence])).toEqual([
+      ["income:3", "biweekly"],
+      ["transfer:0:2", "monthly"],
+      ["merchant:9", "monthly"],
+    ]);
+  });
+
+  it("does not propose twice-a-week shopping, a dismissed group or one already tracked", () => {
+    const shop = GROCERIES.map((date, i) => row({ id: `s${i}`, date, merchantId: 4, amount: "40.00" }));
+    expect(proposeSeries(shop, [], "2026-10-31")).toEqual([]);
+    // Dismissed under slightly different wording: still the same group.
+    expect(proposeSeries(gymRows, ["desc:gym membership"], "2026-10-31")).toEqual([]);
+    expect(proposeSeries(gymRows, ["merchant:9"], "2026-10-31")).toHaveLength(1);
+    const tracked = gymRows.map((r, i) => (i === 0 ? { ...r, seriesId: 5 } : r));
+    expect(proposeSeries(tracked, [], "2026-10-31")).toEqual([]);
+  });
+
+  it("reads only the last 400 days, and skips descriptions with no words", () => {
+    expect(proposeSeries(gymRows, [], "2027-12-31")).toEqual([]);
+    const numbers = gymRows.map((r) => ({ ...r, description: "25.00" }));
+    expect(proposeSeries(numbers, [], "2026-10-31")).toEqual([]);
+  });
+});
+
+describe("purity", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("does no I/O: pg is mocked to throw on import and the network on call", () => {
+    vi.stubGlobal("fetch", () => {
+      throw new Error("recurring.ts must not call the network");
+    });
+    expect(() => {
+      proposeSeries([...INTERNET_HISTORY.map((r) => ({ ...r, seriesId: null }))], [], "2026-10-31");
+      matchStrength(internet, row({}));
+      occurrences({ cadence: "monthly", payments: paid(INTERNET), pauses: [], skips: [], today: "2026-10-31" });
+    }).not.toThrow();
   });
 });

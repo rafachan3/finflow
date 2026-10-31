@@ -24,7 +24,16 @@
  *   it. With less, the owner's declared cadence (`recurring_series.cadence`)
  *   is what the series uses; `fitCadence` fits an anchor to it from as little
  *   as one payment.
+ * - **Descriptions are compared as word sets** (`tokens`, `textSimilarity`):
+ *   case, order, punctuation, digits, month names and filler words ("bill",
+ *   "plan", "monthly") are ignored, so "Internet bill" and "Home internet
+ *   plan" are one payment. Most expenses have no merchant, so an expense
+ *   series matches on its name, keywords and every description already
+ *   linked to it, never on one exact string or on the merchant alone.
  */
+
+import { merchantKey } from "./commands.js";
+import { parseCents } from "./extraction.js";
 
 export type Cadence = "weekly" | "biweekly" | "semimonthly" | "monthly" | "quarterly" | "yearly";
 
@@ -301,7 +310,7 @@ function weekday(day: number): number {
  * (charges post on the next business day). Grace is ⌈s⌉ clamped. Holidays
  * are not modelled; the grace floor absorbs a one-day shift.
  */
-function window(fit: Fit, centre: number): { start: number; end: number; lastDay: number } {
+function windowOf(fit: Fit, centre: number): { start: number; end: number; lastDay: number } {
   const { half, grace } = RULES[fit.cadence];
   const h = fit.events < 3 ? half[2] : clamp(Math.ceil(2 * fit.spread), half);
   let start = centre - h;
@@ -357,7 +366,7 @@ export function occurrences(input: {
   }
 
   const slots = centres.map((c): Slot => {
-    const w = window(fit, c);
+    const w = windowOf(fit, c);
     const paused = inPause(c, pauses);
     const paymentId = held.get(c) ?? null;
     const status: SlotStatus = paymentId
@@ -382,4 +391,275 @@ export function occurrences(input: {
     };
   });
   return { fit, slots, extra };
+}
+
+/** The usual amount of a series and its band, in cents. */
+export interface Band {
+  typical: number;
+  low: number;
+  high: number;
+}
+
+/**
+ * The median of the last 12 amounts and a band around it: from four amounts
+ * on, the widest of 5 %, three robust spreads (3 × 1.4826 × MAD) or 1.00;
+ * below four, 10 % or 1.00. None when the series' amount varies (interest).
+ * Outside the band is a note on the card, never a refusal.
+ */
+export function amountBand(amounts: string[], varies = false): Band | null {
+  if (varies) return null;
+  const cents = amounts
+    .slice(-RECENT_EVENTS)
+    .map(parseCents)
+    .filter((c): c is number => c !== null);
+  if (cents.length === 0) return null;
+  const typical = Math.round(median(cents));
+  const mad = median(cents.map((c) => Math.abs(c - typical)));
+  const half =
+    cents.length >= 4
+      ? Math.max(Math.round(typical * 0.05), Math.round(3 * 1.4826 * mad), 100)
+      : Math.max(Math.round(typical * 0.1), 100);
+  return { typical, low: typical - half, high: typical + half };
+}
+
+/** How far outside the band an amount is, in signed cents; null inside it. */
+export function outsideBand(band: Band, amount: string): number | null {
+  const cents = parseCents(amount);
+  if (cents === null || (cents >= band.low && cents <= band.high)) return null;
+  return cents - band.typical;
+}
+
+// Words that say nothing about which payment it is.
+const NOISE = new Set([
+  "an", "and", "at", "by", "for", "from", "in", "my", "of", "on", "our", "the", "this", "to", "with",
+  "bill", "bills", "charge", "fee", "fees", "paid", "pay", "payment", "plan",
+  "weekly", "biweekly", "monthly", "yearly", "annual", "week", "month", "year",
+  "january", "february", "march", "april", "may", "june", "july", "august",
+  "september", "october", "november", "december",
+  "jan", "feb", "mar", "apr", "jun", "jul", "aug", "sep", "sept", "oct", "nov", "dec",
+]);
+
+/**
+ * The words of a description that identify a payment, sorted and unique:
+ * the merchant key's normalisation (case, spacing, apostrophe style), then
+ * words of two letters or more, without digits, month names or `NOISE`.
+ * No stemming: "pass" and "passes" are different words.
+ */
+export function tokens(text: string): string[] {
+  const words = merchantKey(text).replace(/'/g, "").split(/[^\p{L}\p{N}]+/u);
+  return [...new Set(words.filter((w) => w.length > 1 && !/\d/.test(w) && !NOISE.has(w)))].sort();
+}
+
+/** Two descriptions with at least this similarity name the same payment. */
+const TEXT_MATCH = 0.6;
+
+/**
+ * How alike two descriptions are, 0..1: the mean of the word sets' Jaccard
+ * index (shared / all) and overlap (shared / the smaller set). Overlap lets
+ * "Internet bill" match "Home internet plan" (0.75); Jaccard keeps one
+ * shared word in long descriptions from being enough ("Home internet" and
+ * "Home hardware store", 0.375). Either set empty: 0.
+ */
+export function textSimilarity(a: string, b: string): number {
+  const x = new Set(tokens(a));
+  const y = tokens(b);
+  if (x.size === 0 || y.length === 0) return 0;
+  const shared = y.filter((t) => x.has(t)).length;
+  return (shared / (x.size + y.length - shared) + shared / Math.min(x.size, y.length)) / 2;
+}
+
+export type Kind = "income" | "expense" | "transfer";
+
+/** A saved transaction as matching reads it. */
+export interface LedgerRow {
+  id: string;
+  date: string;
+  type: Kind;
+  amount: string;
+  description: string;
+  merchantId: number | null;
+  /** The subcategory of the largest line; null on income and transfers. */
+  subcategoryId: number | null;
+  incomeSourceId: number | null;
+  fromAccountId: number | null;
+  toAccountId: number | null;
+  seriesId: number | null;
+}
+
+/** A recurring_series row. */
+export interface Series {
+  id: number;
+  name: string;
+  kind: Kind;
+  cadence: Cadence;
+  amountVaries: boolean;
+  merchantId: number | null;
+  subcategoryId: number | null;
+  incomeSourceId: number | null;
+  fromAccountId: number | null;
+  toAccountId: number | null;
+  keywords: string[];
+}
+
+export interface SeriesHistory {
+  series: Series;
+  /** Its linked transactions. */
+  linked: LedgerRow[];
+  /** Ids the owner said are not this series. */
+  excluded: string[];
+  pauses: Pause[];
+}
+
+export type Strength = "strong" | "weak" | "none";
+
+export interface Match {
+  seriesId: number;
+  strength: Strength;
+  /** Days from the nearest expected payment; Infinity with no history. */
+  slotDays: number;
+  /** Cents from the usual amount; Infinity with no band. */
+  amountCents: number;
+}
+
+/**
+ * How well a transaction fits a series: strong (pre-ticked on review, linked
+ * by default on the card), weak (shown unticked) or none. Never across kinds,
+ * never a row linked elsewhere or excluded from this series.
+ *
+ * - income: the same income source; transfer: the same two accounts.
+ * - expense, strong: the same merchant or a similar description (to the
+ *   name, a keyword or any linked description), and either the amount within
+ *   twice the band or the date inside an expected window plus grace.
+ * - expense, weak: only the subcategory, with both the amount and the date.
+ */
+export function matchStrength(history: SeriesHistory, tx: LedgerRow): Match {
+  const { series: s } = history;
+  const linked = [...history.linked].sort((a, b) => a.date.localeCompare(b.date));
+  const band = amountBand(linked.map((r) => r.amount), s.amountVaries);
+  const cents = parseCents(tx.amount);
+  const amountCents = band && cents !== null ? Math.abs(cents - band.typical) : Infinity;
+  const amountFits = band !== null && amountCents <= 2 * (band.high - band.typical);
+
+  let slotGap = Infinity;
+  let dateFits = false;
+  if (linked.length > 0) {
+    const fit = fitCadence(s.cadence, linked.map((r) => r.date), history.pauses);
+    const day = dayNumber(tx.date);
+    const p = Math.ceil(RULES[s.cadence].period);
+    const [centre, r] = nearest(slotDays(fit.anchor, day - p, day + p), day);
+    const w = windowOf(fit, centre);
+    slotGap = Math.abs(r);
+    dateFits = day >= w.start && day <= w.lastDay;
+  }
+
+  const match = (strength: Strength): Match => ({ seriesId: s.id, strength, slotDays: slotGap, amountCents });
+  if (tx.type !== s.kind || tx.seriesId !== null || history.excluded.includes(tx.id)) return match("none");
+  if (s.kind === "income") return match(tx.incomeSourceId === s.incomeSourceId ? "strong" : "none");
+  if (s.kind === "transfer") {
+    const same = tx.fromAccountId === s.fromAccountId && tx.toAccountId === s.toAccountId;
+    return match(same ? "strong" : "none");
+  }
+  const refs = [s.name, ...s.keywords, ...linked.map((r) => r.description)];
+  const named =
+    (s.merchantId !== null && tx.merchantId === s.merchantId) ||
+    refs.some((ref) => textSimilarity(ref, tx.description) >= TEXT_MATCH);
+  if (named && (amountFits || dateFits)) return match("strong");
+  const sameSub = s.subcategoryId !== null && tx.subcategoryId === s.subcategoryId;
+  return match(sameSub && amountFits && dateFits ? "weak" : "none");
+}
+
+const RANK: Record<Strength, number> = { strong: 0, weak: 1, none: 2 };
+
+function compare(a: number, b: number): number {
+  return a === b ? 0 : a < b ? -1 : 1;
+}
+
+/** Of several series' matches for one transaction: stronger, then closer slot, then closer amount. */
+export function bestMatch(matches: Match[]): Match | null {
+  const live = matches
+    .filter((m) => m.strength !== "none")
+    .sort(
+      (a, b) =>
+        RANK[a.strength] - RANK[b.strength] ||
+        compare(a.slotDays, b.slotDays) ||
+        compare(a.amountCents, b.amountCents),
+    );
+  return live[0] ?? null;
+}
+
+/** A group of unlinked transactions that looks like an undeclared series. */
+export interface Proposal {
+  /** The `recurring_dismissed.group_key` that silences it. */
+  key: string;
+  kind: Kind;
+  transactionIds: string[];
+  fit: Fit;
+}
+
+/** Whether a row's amount is within twice the band of a group's amounts. */
+function amountNear(group: LedgerRow[], row: LedgerRow): boolean {
+  const band = amountBand(group.map((r) => r.amount));
+  const cents = parseCents(row.amount);
+  return band !== null && cents !== null && Math.abs(cents - band.typical) <= 2 * (band.high - band.typical);
+}
+
+/** The words more than half a description group shares, else its newest description's. */
+function descKey(group: LedgerRow[]): string {
+  const counts = new Map<string, number>();
+  for (const r of group) for (const t of tokens(r.description)) counts.set(t, (counts.get(t) ?? 0) + 1);
+  const shared = [...counts].filter(([, n]) => n > group.length / 2).map(([t]) => t);
+  return `desc:${(shared.length ? shared.sort() : tokens(group[group.length - 1].description)).join(" ")}`;
+}
+
+function dismissedKey(key: string, dismissed: string[]): boolean {
+  if (dismissed.includes(key)) return true;
+  return (
+    key.startsWith("desc:") &&
+    dismissed.some((d) => d.startsWith("desc:") && textSimilarity(d.slice(5), key.slice(5)) >= TEXT_MATCH)
+  );
+}
+
+/**
+ * Undeclared series in the last 400 days of transactions. Groups: income by
+ * source (`income:<id>`), transfers by accounts (`transfer:<from or 0>:<to or
+ * 0>`), expenses by merchant (`merchant:<id>`), and expenses with no merchant
+ * by description: a row joins the first group holding a similar description
+ * (`textSimilarity` ≥ 0.6) whose amounts its own is near (twice the band),
+ * keyed `desc:<the words most of the group shares>`. A group is proposed when
+ * none of it is linked to a series, its key (or for descriptions, a similar
+ * one) was not dismissed, and its cadence fit passes `shouldPropose`.
+ * Highest score first.
+ */
+export function proposeSeries(rows: LedgerRow[], dismissed: string[], today: string): Proposal[] {
+  const end = dayNumber(today);
+  const recentRows = rows
+    .filter((r) => dayNumber(r.date) <= end && dayNumber(r.date) > end - RECENT_DAYS)
+    .sort((a, b) => a.date.localeCompare(b.date));
+  const keyed = new Map<string, LedgerRow[]>();
+  const described: LedgerRow[][] = [];
+  for (const r of recentRows) {
+    const key =
+      r.type === "income"
+        ? `income:${r.incomeSourceId}`
+        : r.type === "transfer"
+          ? `transfer:${r.fromAccountId ?? 0}:${r.toAccountId ?? 0}`
+          : r.merchantId !== null
+            ? `merchant:${r.merchantId}`
+            : null;
+    if (key !== null) keyed.set(key, [...(keyed.get(key) ?? []), r]);
+    else if (tokens(r.description).length > 0) {
+      const home = described.find(
+        (g) => g.some((m) => textSimilarity(m.description, r.description) >= TEXT_MATCH) && amountNear(g, r),
+      );
+      if (home) home.push(r);
+      else described.push([r]);
+    }
+  }
+  const groups: [string, LedgerRow[]][] = [...keyed, ...described.map((g): [string, LedgerRow[]] => [descKey(g), g])];
+  return groups
+    .filter(([key, g]) => g.every((r) => r.seriesId === null) && !dismissedKey(key, dismissed))
+    .map(([key, g]) => ({ key, g, fit: suggestCadence(g.map((r) => r.date)).best }))
+    .filter((p): p is { key: string; g: LedgerRow[]; fit: Fit } => p.fit !== null && shouldPropose(p.fit))
+    .sort((a, b) => b.fit.score - a.fit.score || a.key.localeCompare(b.key))
+    .map(({ key, g, fit }) => ({ key, kind: g[0].type, transactionIds: g.map((r) => r.id), fit }));
 }
