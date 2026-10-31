@@ -16,33 +16,58 @@
 -- two accounts (migration 0014, a...13 to a...15).
 -- 2026-07: one expense on 07-01. 2026-08: income only. 2026-09: needs
 -- spend only, no income.
+--
+-- The recurring rows are linked to generic series and never set
+-- is_recurring themselves: migration 0016's trigger sets it from the link,
+-- so fixture_sample_month_expected proves the contract holds through
+-- linkage. One series has a pause and one row an exclusion, so the
+-- recurring dbt tests read rows, not empty tables.
+
+insert into recurring_series (name, kind, cadence, income_source_id)
+select v.name, v.kind::transaction_type, 'monthly', s.id
+from (values
+    ('Salary',                 'income',  'Salary'),
+    ('Rent',                   'expense', null),
+    ('Streaming subscription', 'expense', null),
+    ('Electricity bill',       'expense', null)
+) as v (name, kind, income_source)
+left join income_sources as s on s.name = v.income_source;
 
 insert into transactions (
-    id, occurred_on, type, amount, description, is_recurring, notes,
+    id, occurred_on, type, amount, description, recurring_series_id, notes,
     funding_source_id, income_source_id, to_account_id, merchant_id, venue_id
 )
 select
     v.id::uuid, v.occurred_on::date, v.type::transaction_type, v.amount,
-    v.description, v.is_recurring, v.notes, f.id, s.id, a.id, m.id, ve.id
+    v.description, rs.id, v.notes, f.id, s.id, a.id, m.id, ve.id
 from (values
-    ('a0000000-0000-0000-0000-000000000001', '2026-06-01', 'income',   3000.00, 'Paycheque',             true,  null::text,         null::text, 'Salary', null::text,           null::text,  null::text),
-    ('a0000000-0000-0000-0000-000000000002', '2026-06-15', 'income',     25.00, 'Returned item',         false, null,               null,       'Refund', null,                 null,        null),
-    ('a0000000-0000-0000-0000-000000000003', '2026-06-01', 'expense',  1200.00, 'June rent',             true,  null,               'self',     null,     null,                 null,        null),
-    ('a0000000-0000-0000-0000-000000000004', '2026-06-05', 'expense',    15.99, 'Streaming subscription', true, null,               'self',     null,     null,                 null,        null),
-    ('a0000000-0000-0000-0000-000000000005', '2026-06-10', 'expense',    80.00, 'Dinner out',            false, 'Birthday dinner',  'family',   null,     null,                 null,        null),
-    ('a0000000-0000-0000-0000-000000000006', '2026-06-20', 'expense',    47.50, 'Weekly shop',           false, null,               'self',     null,     null,                 'Acme Mart', 'Supermarket'),
-    ('a0000000-0000-0000-0000-000000000007', '2026-06-30', 'expense',    12.40, 'Late lunch',            false, null,               'self',     null,     null,                 null,        'Fast Food'),
-    ('a0000000-0000-0000-0000-000000000008', '2026-06-25', 'transfer',  500.00, 'To emergency fund',     false, null,               null,       null,     'Emergency fund',     null,        null),
-    ('a0000000-0000-0000-0000-000000000009', '2026-06-26', 'transfer',  300.00, 'To retirement account', false, null,               null,       null,     'Retirement account', null,        null),
-    ('a0000000-0000-0000-0000-000000000010', '2026-07-01', 'expense',     3.75, 'Bus fare',              false, null,               'self',     null,     null,                 null,        null),
-    ('a0000000-0000-0000-0000-000000000011', '2026-08-01', 'income',   3000.00, 'Paycheque',             true,  null,               null,       'Salary', null,                 null,        null),
-    ('a0000000-0000-0000-0000-000000000012', '2026-09-03', 'expense',    60.00, 'Electricity bill',      true,  null,               'self',     null,     null,                 null,        null)
-) as v (id, occurred_on, type, amount, description, is_recurring, notes, funder, income_source, account, merchant, venue)
+    ('a0000000-0000-0000-0000-000000000001', '2026-06-01', 'income',   3000.00, 'Paycheque',             'Salary',                 null::text,         null::text, 'Salary', null::text,           null::text,  null::text),
+    ('a0000000-0000-0000-0000-000000000002', '2026-06-15', 'income',     25.00, 'Returned item',         null,                     null,               null,       'Refund', null,                 null,        null),
+    ('a0000000-0000-0000-0000-000000000003', '2026-06-01', 'expense',  1200.00, 'June rent',             'Rent',                   null,               'self',     null,     null,                 null,        null),
+    ('a0000000-0000-0000-0000-000000000004', '2026-06-05', 'expense',    15.99, 'Streaming subscription', 'Streaming subscription', null,              'self',     null,     null,                 null,        null),
+    ('a0000000-0000-0000-0000-000000000005', '2026-06-10', 'expense',    80.00, 'Dinner out',            null,                     'Birthday dinner',  'family',   null,     null,                 null,        null),
+    ('a0000000-0000-0000-0000-000000000006', '2026-06-20', 'expense',    47.50, 'Weekly shop',           null,                     null,               'self',     null,     null,                 'Acme Mart', 'Supermarket'),
+    ('a0000000-0000-0000-0000-000000000007', '2026-06-30', 'expense',    12.40, 'Late lunch',            null,                     null,               'self',     null,     null,                 null,        'Fast Food'),
+    ('a0000000-0000-0000-0000-000000000008', '2026-06-25', 'transfer',  500.00, 'To emergency fund',     null,                     null,               null,       null,     'Emergency fund',     null,        null),
+    ('a0000000-0000-0000-0000-000000000009', '2026-06-26', 'transfer',  300.00, 'To retirement account', null,                     null,               null,       null,     'Retirement account', null,        null),
+    ('a0000000-0000-0000-0000-000000000010', '2026-07-01', 'expense',     3.75, 'Bus fare',              null,                     null,               'self',     null,     null,                 null,        null),
+    ('a0000000-0000-0000-0000-000000000011', '2026-08-01', 'income',   3000.00, 'Paycheque',             'Salary',                 null,               null,       'Salary', null,                 null,        null),
+    ('a0000000-0000-0000-0000-000000000012', '2026-09-03', 'expense',    60.00, 'Electricity bill',      'Electricity bill',       null,               'self',     null,     null,                 null,        null)
+) as v (id, occurred_on, type, amount, description, series, notes, funder, income_source, account, merchant, venue)
+left join recurring_series as rs on rs.name = v.series
 left join funding_sources as f on f.name = v.funder
 left join income_sources as s on s.name = v.income_source
 left join accounts as a on a.name = v.account
 left join merchants as m on m.name = v.merchant
 left join venues as ve on ve.name = v.venue;
+
+-- The streaming subscription is paused from August; the bus fare was
+-- offered to it and unticked.
+insert into recurring_pauses (series_id, paused_from)
+select id, '2026-08-01' from recurring_series where name = 'Streaming subscription';
+
+insert into recurring_exclusions (series_id, transaction_id)
+select id, 'a0000000-0000-0000-0000-000000000010' from recurring_series where name = 'Streaming subscription';
 
 -- Money that does not start or end in chequing (null is chequing): a
 -- source whose income lands in savings, a withdrawal (from set, to null)
