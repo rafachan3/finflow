@@ -882,12 +882,28 @@ export async function handleRecurringTap(tap: RecurringTap, ctx: TapContext): Pr
 }
 
 /**
- * Whether a reply reads as an expense rather than an answer: a standalone
- * amount next to a word that is not a date word ("12.50 lunch", "coffee 5").
+ * Whether text holds money: a number with a decimal part ("12.50", "4,50")
+ * or a currency marker next to a number ("$5", "5$", "5 dollars"). Plain
+ * digits alone ("Gym 24") are not money.
+ */
+export function hasMoney(text: string): boolean {
+  return (
+    /(?<![\d.,])\d+[.,]\d{1,2}(?![\d.,])/.test(text) ||
+    /[$€£]\s*\d|\d\s*[$€£]/.test(text) ||
+    /\b\d+\s*(?:dollars?|bucks|cad|usd)\b/i.test(text)
+  );
+}
+
+/**
+ * Whether a reply reads as an expense rather than an answer: it holds money,
+ * or a standalone number sits next to a word that is not a date word
+ * ("coffee 5"). The second rule is for date replies only: a name like
+ * "Gym 24" would match it.
  */
 export function looksLikeExpense(text: string): boolean {
+  if (hasMoney(text)) return true;
   const words = text.toLowerCase().split(/\s+/).filter(Boolean);
-  const amount = words.some((w) => /^\$?\d+(?:[.,]\d{1,2})?\$?$/.test(w));
+  const amount = words.some((w) => /^\d+$/.test(w));
   const word = words.some((w) => /^\p{L}{3,}/u.test(w) && !MONTH_WORD.test(w) && w !== "today" && w !== "yesterday");
   return amount && word;
 }
@@ -895,6 +911,8 @@ export function looksLikeExpense(text: string): boolean {
 /** The reply, or null when the text is not an answer to the prompt and goes to extraction. */
 async function renameReply(sid: number, text: string): Promise<string | null> {
   const name = collapseSpaces(text);
+  // A name with money in it is an expense sent as a reply, not a name.
+  if (hasMoney(name)) return null;
   if (name.length > NAME_MAX) {
     return looksLikeExpense(name) ? null : `A name is 1 to ${NAME_MAX} characters. Tap ✏️ Rename to try again.`;
   }

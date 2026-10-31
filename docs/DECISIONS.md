@@ -2187,10 +2187,15 @@ Code review of PR #87 (Phase 4.5 PR 2).
   minutes of the prompt (`message.date − reply_to_message.date`), is taken
   as the answer. A photo, voice note, audio, document or caption, an empty
   text, a reply to anything else or a stale prompt goes on to extraction.
-  Text that is clearly no answer (a name over 60 characters, an unreadable
-  date) and reads as an expense (a standalone amount next to a word that
-  is not a date word) also goes to extraction; only an unmistakable
-  attempt gets the "try again" reply.
+  Text with money in it (a number with a decimal part, such as 12.50 or
+  4,50, or a currency marker next to a number: $5, 5$, 5 dollars) is an
+  expense whichever prompt it answers, so "lunch 12.50" replying to a
+  rename prompt is saved, not taken as a name; plain digits in a name
+  ("Internet 2", "Gym 24") still rename. A date reply that is no date but
+  reads as an expense (a number next to a non-date word, "coffee 5") also
+  goes to extraction; only an unmistakable attempt gets the "try again"
+  reply. A name such as "Plan 2.0" would read as money; it can be typed
+  without the decimal.
 - **A typed pause end with no year is its next occurrence** after the
   later of the pause's start and today, not the most recent past one; a
   day not after the start (today, yesterday, an earlier date) is refused.

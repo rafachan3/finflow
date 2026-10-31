@@ -5,6 +5,7 @@ import {
   addScreen,
   answerPrompt,
   dayIn,
+  hasMoney,
   looksLikeExpense,
   pauseEnd,
   PROMPT_TTL_SECONDS,
@@ -169,6 +170,16 @@ describe("replies to a /recurring prompt", () => {
     expect(pauseEnd("no idea", "2026-10-31", today)).toBeNull();
     expect(dayIn("2027-01-05", today)).toBe("Jan 5 2027");
     expect(dayIn("2026-12-15", today)).toBe("Dec 15");
+  });
+
+  it("reads a decimal amount or a currency marker as money, and plain digits in a name as none", () => {
+    for (const text of ["lunch 12.50", "4,50 coffee", "$5", "5$", "5 dollars", "taxi 20 CAD", "€3 tip"]) {
+      expect(hasMoney(text), text).toBe(true);
+      expect(looksLikeExpense(text), text).toBe(true);
+    }
+    for (const text of ["Internet 2", "Gym 24", "Dec 15", "2026-11-02", "Home internet"]) {
+      expect(hasMoney(text), text).toBe(false);
+    }
   });
 
   it("reads an amount next to a non-date word as an expense, and a date as none", () => {

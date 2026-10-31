@@ -485,6 +485,20 @@ describe("replies to a /recurring prompt", () => {
     expect(await names()).toEqual(["Gym", "Internet bill", "Salary"]);
   });
 
+  it("lunch 12.50 sent as a reply to a rename prompt is saved as an expense, and Internet 2 still renames", async () => {
+    const prompt = await renamePrompt();
+    scriptPurchase();
+    await chat.reply(prompt, "lunch 12.50");
+    expect(gemini.calls).toHaveLength(1);
+    expect(labels(chat.last())).toContain("Confirm");
+    expect(await names()).toEqual(["Gym", "Internet bill", "Salary"]);
+
+    await chat.reply(prompt, "Internet 2");
+    expect(chat.last().text).toBe("Renamed to Internet 2.");
+    expect(gemini.calls).toHaveLength(1);
+    expect(await names()).toEqual(["Gym", "Internet 2", "Salary"]);
+  });
+
   it("a reply to a prompt older than 15 minutes goes to extraction", async () => {
     const prompt = await renamePrompt();
     vi.setSystemTime(new Date(NOW.getTime() + 15 * 60_000));
