@@ -20,6 +20,10 @@
 -- (a...20 to a...23): income, a minimum payment as needs spend, an extra
 -- payment into the "Car loan" debt account and a payment on it from
 -- savings; no wants. 2026-10: no rows at all.
+-- Before June, months MetricFlow has no row for in some metric (a...24 to
+-- a...29): 2026-03 only a withdrawal, 2026-04 only a transfer of the same
+-- amount, 2026-05 income, savings interest and spend with nothing moved.
+-- Their cash left in chequing nets to 0, so June's carry-over is unchanged.
 --
 -- The recurring rows are linked to generic series and never set
 -- is_recurring themselves: migration 0016's trigger sets it from the link,
@@ -109,7 +113,13 @@ from (values
     ('a0000000-0000-0000-0000-000000000020', '2026-09-01', 'income',   2000.00, 'Paycheque',             null,      'Salary',   null,             null),
     ('a0000000-0000-0000-0000-000000000021', '2026-09-05', 'expense',   250.00, 'Car loan payment',     'self',     null,       null,             null),
     ('a0000000-0000-0000-0000-000000000022', '2026-09-30', 'transfer',  150.00, 'Extra on the car loan', null,      null,       null,             'Car loan'),
-    ('a0000000-0000-0000-0000-000000000023', '2026-09-30', 'transfer',  100.00, 'Car loan from savings', null,      null,       'Emergency fund', 'Car loan')
+    ('a0000000-0000-0000-0000-000000000023', '2026-09-30', 'transfer',  100.00, 'Car loan from savings', null,      null,       'Emergency fund', 'Car loan'),
+    ('a0000000-0000-0000-0000-000000000024', '2026-03-10', 'transfer',   80.00, 'Out of emergency fund', null,      null,       'Emergency fund', null),
+    ('a0000000-0000-0000-0000-000000000025', '2026-04-10', 'transfer',   80.00, 'To emergency fund',     null,      null,       null,             'Emergency fund'),
+    ('a0000000-0000-0000-0000-000000000026', '2026-05-01', 'income',   1000.00, 'Paycheque',             null,      'Salary',   null,             null),
+    ('a0000000-0000-0000-0000-000000000027', '2026-05-31', 'income',      2.50, 'Interest',              null,      'Savings interest', null,     null),
+    ('a0000000-0000-0000-0000-000000000028', '2026-05-01', 'expense',   600.00, 'May rent',              'self',    null,       null,             null),
+    ('a0000000-0000-0000-0000-000000000029', '2026-05-15', 'expense',   400.00, 'Dinners out',           'self',    null,       null,             null)
 ) as v (id, occurred_on, type, amount, description, funder, income_source, from_account, to_account)
 left join funding_sources as f on f.name = v.funder
 left join income_sources as s on s.name = v.income_source
@@ -130,7 +140,9 @@ from (values
     ('b0000000-0000-0000-0000-000000000012', 'a0000000-0000-0000-0000-000000000012', 'Electricity',     60.00, 'Bills',          'Utilities',               null,                    'needs'),
     ('b0000000-0000-0000-0000-000000000016', 'a0000000-0000-0000-0000-000000000016', 'Rent',          1400.00, 'Housing',        'Rent',                    null,                    'needs'),
     ('b0000000-0000-0000-0000-000000000017', 'a0000000-0000-0000-0000-000000000017', 'Dinners',        700.00, 'Food and drink', 'Restaurants',             'Meals & Prepared Food', 'wants'),
-    ('b0000000-0000-0000-0000-000000000021', 'a0000000-0000-0000-0000-000000000021', 'Minimum payment', 250.00, 'Transportation', 'Car loan payments',      null,                    'needs')
+    ('b0000000-0000-0000-0000-000000000021', 'a0000000-0000-0000-0000-000000000021', 'Minimum payment', 250.00, 'Transportation', 'Car loan payments',      null,                    'needs'),
+    ('b0000000-0000-0000-0000-000000000028', 'a0000000-0000-0000-0000-000000000028', 'Rent',           600.00, 'Housing',        'Rent',                    null,                    'needs'),
+    ('b0000000-0000-0000-0000-000000000029', 'a0000000-0000-0000-0000-000000000029', 'Dinners',        400.00, 'Food and drink', 'Restaurants',             'Meals & Prepared Food', 'wants')
 ) as v (id, transaction_id, description, amount, category, subcategory, item_type, bucket)
 join categories as c on c.name = v.category
 join subcategories as sc on sc.category_id = c.id and sc.name = v.subcategory

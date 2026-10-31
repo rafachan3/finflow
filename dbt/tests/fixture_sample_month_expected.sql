@@ -18,7 +18,7 @@
 -- withdrawals      150.00 out of savings into chequing                  =  150.00
 -- unspent_rate     (3029.12 - 1275.89) / 3029.12 = 0.57879...           =   0.5788
 -- unallocated_cash 3029.12 - 4.12 - 1275.89 - 800.00 + 150.00           = 1099.11
--- unallocated_cash_cumulative  June is the first month                  = 1099.11
+-- unallocated_cash_cumulative  the months before June net to 0          = 1099.11
 -- needs_wants_ratio  1237.75 / 38.14 = 32.45280...                      =  32.4528
 -- transaction_count  a...01 to a...09, a...13 to a...15                 =       12
 {{ config(tags=['fixture']) }}
