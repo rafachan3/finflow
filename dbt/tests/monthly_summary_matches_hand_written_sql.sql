@@ -76,9 +76,26 @@ expected as (
             as unallocated_cash,
         sum(coalesce(m.income - m.savings_income - m.spend - m.transfers + m.withdrawals, 0))
             over (order by s.month_start) as unallocated_cash_cumulative,
-        round(m.needs_spend / nullif(m.wants_spend, 0), 4) as needs_wants_ratio
+        round(m.needs_spend / nullif(m.wants_spend, 0), 4) as needs_wants_ratio,
+        coalesce(m.income - m.savings_income, 0) as spendable_income,
+        coalesce(m.transfers - m.withdrawals, 0) as financial_future,
+        b.needs_percent / 100 as needs_target_pct,
+        b.wants_percent / 100 as wants_target_pct,
+        b.financial_future_percent / 100 as financial_future_target_pct,
+        round(b.financial_future_percent / 100 * coalesce(m.income - m.savings_income, 0), 2)
+            as financial_future_target,
+        round(b.financial_future_percent / 100 * coalesce(m.income - m.savings_income, 0), 2)
+            - coalesce(m.transfers - m.withdrawals, 0) as financial_future_gap,
+        round(m.needs_spend / nullif(m.income - m.savings_income, 0), 4) as needs_pct,
+        round(m.wants_spend / nullif(m.income - m.savings_income, 0), 4) as wants_pct,
+        round((m.transfers - m.withdrawals) / nullif(m.income - m.savings_income, 0), 4)
+            as financial_future_pct,
+        round((m.income - m.savings_income - m.spend - m.transfers + m.withdrawals)
+              / nullif(m.income - m.savings_income, 0), 4) as unallocated_pct
     from months as s
     left join monthly as m on m.month_start = s.month_start
+    -- One row (migration 0018), as in the contract's reference SQL.
+    cross join {{ source('ledger', 'budget_targets') }} as b
 ),
 
 actual as (
@@ -105,7 +122,27 @@ compared as (
             case when e.unallocated_cash_cumulative is distinct from a.unallocated_cash_cumulative
                 then 'unallocated_cash_cumulative' end,
             case when e.needs_wants_ratio is distinct from a.needs_wants_ratio
-                then 'needs_wants_ratio' end
+                then 'needs_wants_ratio' end,
+            case when e.spendable_income is distinct from a.spendable_income
+                then 'spendable_income' end,
+            case when e.financial_future is distinct from a.financial_future
+                then 'financial_future' end,
+            case when e.needs_target_pct is distinct from a.needs_target_pct
+                then 'needs_target_pct' end,
+            case when e.wants_target_pct is distinct from a.wants_target_pct
+                then 'wants_target_pct' end,
+            case when e.financial_future_target_pct is distinct from a.financial_future_target_pct
+                then 'financial_future_target_pct' end,
+            case when e.financial_future_target is distinct from a.financial_future_target
+                then 'financial_future_target' end,
+            case when e.financial_future_gap is distinct from a.financial_future_gap
+                then 'financial_future_gap' end,
+            case when e.needs_pct is distinct from a.needs_pct then 'needs_pct' end,
+            case when e.wants_pct is distinct from a.wants_pct then 'wants_pct' end,
+            case when e.financial_future_pct is distinct from a.financial_future_pct
+                then 'financial_future_pct' end,
+            case when e.unallocated_pct is distinct from a.unallocated_pct
+                then 'unallocated_pct' end
         ], null) as metrics
     from expected as e
     full join actual as a on a.month_start = e.month_start

@@ -78,6 +78,20 @@ describe("migrations", () => {
     expect(await errorCode("insert into accounts (name, kind) values ('Wallet', 'chequing')")).toBe("23514");
   });
 
+  it("seed one 50/30/20 budget_targets row and refuse a second row or targets outside 0-100 or not summing to 100", async () => {
+    const rows = await sql("select needs_percent::text, wants_percent::text, financial_future_percent::text from budget_targets");
+    expect(rows).toEqual([{ needs_percent: "50.00", wants_percent: "30.00", financial_future_percent: "20.00" }]);
+    await withClient(async (client) => {
+      await client.query("begin");
+      await client.query("update budget_targets set needs_percent = 55, wants_percent = 25");
+      await client.query("rollback");
+    });
+    expect(await errorCode("insert into budget_targets values (true, 50, 30, 20)")).toBe("23505");
+    expect(await errorCode("insert into budget_targets values (false, 50, 30, 20)")).toBe("23514");
+    expect(await errorCode("update budget_targets set needs_percent = 60")).toBe("23514");
+    expect(await errorCode("update budget_targets set needs_percent = 110, wants_percent = -30")).toBe("23514");
+  });
+
   it("let an income source name the account its income lands in", async () => {
     await withClient(async (client) => {
       await client.query("begin");
