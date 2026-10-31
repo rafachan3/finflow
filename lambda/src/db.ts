@@ -830,7 +830,7 @@ export async function confirmIngestion(
     return {
       status: "confirmed",
       transactionId,
-      seriesGone: series !== undefined && seriesId === null,
+      seriesGone: series?.link === true && seriesId === null,
       looksRecurring: linkId === null && extraction.is_recurring,
     };
   } catch (err) {

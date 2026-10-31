@@ -976,9 +976,10 @@ describe("confirmIngestion with the card's series", () => {
       await db.confirmIngestion((await save(305, expense()))[0], { id: gone, link: true }),
       await db.confirmIngestion((await save(306, expense()))[0], { id: salary, link: true }),
       await db.confirmIngestion((await save(307, income({ income_source: "Refund" })))[0], { id: salary, link: true }),
+      // "Not this series" asked for no link, so the series being gone loses nothing.
       await db.confirmIngestion((await save(308, expense()))[0], { id: gone, link: false }),
     ];
-    expect(results).toMatchObject(Array(4).fill({ status: "confirmed", seriesGone: true }));
+    expect(results.map((r) => r !== "already_handled" && r.seriesGone)).toEqual([true, true, true, false]);
     expect(await saved()).toEqual(Array(4).fill({ series: null, flagged: false, excludedFrom: [] }));
   });
 
