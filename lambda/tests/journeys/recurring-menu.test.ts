@@ -111,6 +111,31 @@ describe("/recurring list and detail", () => {
     expect(labels(chat.current(list))).toEqual(["▶️ Resume today", "✏️ Rename", "🗑 Delete", "‹ All recurring"]);
   });
 
+  it("a name or description with &, < or > is shown as typed in every HTML screen", async () => {
+    await ledger.add({ date: "2026-10-15", amount: "9.99", description: "A&B <fun> > plan 2" });
+    const list = await open();
+    await chat.tap(list, "➕ Add");
+    await chat.tap(list, "Oct 15 · 9.99 · A&B <fun> > plan 2");
+    expect(chat.current(list).text).toContain("From Oct 15 · 9.99 · A&B <fun> > plan 2\nName: A&B <fun> > plan (rename after)");
+    await chat.tap(list, "Monthly");
+    expect(chat.current(list).text).toContain("🧹 A&B <fun> > plan\n");
+    await chat.tap(list, "‹ All recurring");
+    expect(chat.current(list).text).toContain("• A&B <fun> > plan — monthly, around the 15th");
+    await chat.tap(list, "A&B <fun> > plan");
+    expect(chat.current(list).text.split("\n")[0]).toBe("↻ A&B <fun> > plan — expense · Food and drink › Groceries");
+  });
+
+  it("a delete tapped from another chat deletes nothing", async () => {
+    await threeSeries();
+    const list = await open();
+    await chat.tap(list, "Internet bill");
+    await chat.tap(list, "🗑 Delete");
+    const before = chat.acks().length;
+    await chat.tap(list, "🗑 Delete", STRANGER);
+    expect(chat.acks()).toHaveLength(before);
+    expect(await sql("select count(*)::int as n from recurring_series")).toEqual([{ n: 3 }]);
+  });
+
   it("a recurring button tapped from another chat does nothing", async () => {
     await threeSeries();
     const list = await open();

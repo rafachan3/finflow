@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { sql } from "../integration/db-helpers.js";
-import { chat, gemini, labels, ledger, useJourneys, type Reply } from "./harness.js";
+import { chat, gemini, labels, ledger, STRANGER, useJourneys, type Reply } from "./harness.js";
 
 vi.mock("../../src/config.js", async () => {
   const { journeyConfig } = await import("./harness.js");
@@ -127,6 +127,16 @@ describe("verify past payments before linking", () => {
     expect(chat.acks().at(-1)).toBe("Already applied.");
     expect(chat.current(menu)).toEqual(shown);
     expect({ links: await ledger.links(), exclusions: await exclusions() }).toEqual(before);
+  });
+
+  it("an Apply tapped from another chat links and ignores nothing", async () => {
+    await billHistory();
+    const menu = await addInternet();
+    const before = chat.acks().length;
+    await chat.tap(menu, "✅ Link 5 · ignore 1", STRANGER);
+    expect(chat.acks()).toHaveLength(before);
+    expect(Object.values(await ledger.links()).filter((l) => l.series !== null)).toHaveLength(1);
+    expect(await exclusions()).toEqual([]);
   });
 
   it("a toggle only edits the keyboard and writes nothing", async () => {
