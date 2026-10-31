@@ -67,6 +67,17 @@ describe("migrations", () => {
     expect(n).toBe(3);
   });
 
+  it("accept savings, investment and debt accounts, and refuse any other kind", async () => {
+    await withClient(async (client) => {
+      await client.query("begin");
+      await client.query("insert into accounts (name, kind) values ('Car loan', 'debt')");
+      const { rows } = await client.query("select kind from accounts order by kind");
+      await client.query("rollback");
+      expect(rows.map((r) => r.kind)).toEqual(["debt", "investment", "savings"]);
+    });
+    expect(await errorCode("insert into accounts (name, kind) values ('Wallet', 'chequing')")).toBe("23514");
+  });
+
   it("let an income source name the account its income lands in", async () => {
     await withClient(async (client) => {
       await client.query("begin");
