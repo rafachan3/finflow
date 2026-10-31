@@ -129,6 +129,30 @@ dbt models and the agent read it, so numbers agree everywhere.
   personal financial data in Canada. Marginally pricier than `us-east-1` on S3
   ($0.025 vs $0.023/GB); immaterial at this volume.
 
+### Scheduled nudges — EventBridge Scheduler + a second Lambda
+- The bot speaks first through its own function, `finflow-nudge`
+  (`infra/nudge_lambda.tf`), not a path in the webhook. It has **no Function
+  URL**: the only caller is the scheduler's role, which may
+  `lambda:InvokeFunction` on that one function. The webhook URL is public; a
+  scheduled-only job should have no public trigger.
+- **EventBridge Scheduler** runs `cron(0 9 * * ? *)` in `America/Toronto`.
+  The scheduler applies the time zone and DST itself, so the digest stays at
+  09:00 local all year with no seasonal edit (the GitHub Actions crons are
+  UTC and drift by an hour). The payload carries
+  `<aws.scheduler.scheduled-time>`, so a retry keeps the original run date.
+- Retry policy: 2 retries within 1 hour, no dead-letter queue. Delivery is
+  at-least-once, so the handler claims a `nudge_runs` row before it sends;
+  a lost day is noted in the next digest, which recomputes everything.
+- Least privilege: the nudge role reads exactly three SSM parameters (bot
+  token, chat-ID allowlist, database URL) and no Gemini key, webhook secret
+  or S3.
+- Cost: 31 invocations a month against Scheduler's 14M free and Lambda's
+  perpetual free tier. Both are bounded by the schedule itself (one fire a
+  day, at most 3 attempts), so it cannot run away; $0 added.
+- Taps on digest buttons still arrive at the webhook: Telegram has one
+  webhook per bot. Sending is the nudge function's job; handling the taps is
+  the webhook's.
+
 ### Extraction — Gemini Flash (free tier)
 - Handles images (receipts) and audio (voice notes) natively — one API for all
   three input types. Free-tier quota comfortably covers personal volume
@@ -244,8 +268,8 @@ rationale for its shape:
 
 ### Infrastructure as code — Terraform (`infra/`)
 - Providers: `aws` (Lambda, Function URL, IAM role + policies, S3 bucket +
-  lifecycle + Block Public Access, SSM parameters, CloudWatch log group,
-  Budgets alarm), `supabase` (project, settings — **not** schema; schema lives
+  lifecycle + Block Public Access, SSM parameters, CloudWatch log groups,
+  EventBridge Scheduler schedule, Budgets alarm), `supabase` (project, settings — **not** schema; schema lives
   in `supabase/migrations/`), `grafana` (stack, data source, dashboards as code).
 - Applied incrementally: each resource is terraformed in the phase where it
   first appears (Supabase in 1, Lambda + S3 + IAM in 2, Grafana in 5).
@@ -296,7 +320,9 @@ change.
 **Deploy path:** GitHub Actions on push to `main` → esbuild bundles TypeScript
 to a single `dist/index.js` → zip → `aws lambda update-function-code`. Actions
 authenticates via **OIDC** assuming a deploy role whose only permission is
-`lambda:UpdateFunctionCode` on this one function. No long-lived AWS access keys
+`lambda:UpdateFunctionCode` on the project's functions (`finflow-ingest`,
+`finflow-nudge`), plus reading the bot token for the command menu. The nudge
+function follows the same `ignore_changes` rule. No long-lived AWS access keys
 exist anywhere, which matters more than usual on a public repo.
 
 **Consequence to remember:** `terraform destroy && terraform apply` yields a

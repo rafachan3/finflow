@@ -3,7 +3,7 @@
 Living state of the project. Read this first; update it whenever work lands.
 
 **Last updated:** 2026-10-31
-**Current phase:** Phase 4.5 — Proactive nudges, in progress: PR 1 (schema and detection) merged and migration 0016 applied; PR 2 (`/recurring` menu, add, backfill-verify) merged as #87; PR 3 (the card proposes and links the series, `feat/recurring-card-link`) in review (see [ROADMAP.md](ROADMAP.md) and Next concrete step)
+**Current phase:** Phase 4.5 — Proactive nudges, in progress: PR 1 (schema and detection) merged and migration 0016 applied; PR 2 (`/recurring` menu, add, backfill-verify) merged as #87; PR 3 (the card proposes and links the series) merged as #88; PR 4 (nudge Terraform, `feat/nudge-infra`) in review, apply before PR 5 merges (see [ROADMAP.md](ROADMAP.md) and Next concrete step)
 
 ## Phase progress
 
@@ -16,7 +16,7 @@ Living state of the project. Read this first; update it whenever work lands.
 - [x] Phase 3.6 — Regression test suite — **accepted 2026-10-29: deliberate-break PR #48 blocked (unit + inventory failed, BLOCKED), clean PRs #46/#47 green, smoke step green on deploy run 40803017809, `main` protected** (2026-10-29)
 - [x] Phase 3.5 — Ingestion follow-ons — **accepted 2026-10-29 by the journey tests (no phone test): 25 of 25 passed in `line-tags`, `duplicates` and `merchants`; see Next concrete step** (2026-10-29)
 - [x] Phase 4 — dbt semantic layer + MetricFlow — **accepted 2026-10-30: `dbt build`, the hand-written-SQL reconciliation and `mf query` vs the marts green in CI on the fixture (#72-#78) and on production in `dbt-nightly` run 41157900716 (87 of 87 nodes, 14 metrics, 5 months); real-month hand verification deferred** (2026-10-30)
-- [ ] Phase 4.5 — Proactive nudges (recurring reminders, merchant recommendations) — **PRs 1-2 of 7 merged (#86 with migration 0016 applied, #87); PR 3 (card links the series) in review** (2026-10-31)
+- [ ] Phase 4.5 — Proactive nudges (recurring reminders, merchant recommendations) — **PRs 1-3 of 7 merged (#86 with migration 0016 applied, #87, #88); PR 4 (nudge Terraform) in review** (2026-10-31)
 - [ ] Phase 5 — Grafana dashboards
 - [ ] Phase 6 — Claude analytics agent (subagents + Postgres MCP)
 - [ ] Phase 7 — Open-source polish
@@ -488,13 +488,17 @@ saved; with no match it shows as `Recurring: not tracked yet` and puts
 
 ## Next concrete step
 
-Phase 4.5 — Proactive nudges, PR 3 (`feat/recurring-card-link`) open and
-waiting for code review before merge (Confirm writes series links from a
-button). No migration or infra step. The owner's backfill can run now:
-`/recurring` → ⚑ Flagged (legacy flags with no series) and ➕ Add for each
-real bill, salary and transfer; once PR 3 deploys, new payments of a tracked
-series link on Confirm. Then PR 4 (nudge Terraform),
-PR 5 (daily digest), PR 6 (migration 0017, after the owner's backfill), PR 7
+Phase 4.5 — Proactive nudges, PR 4 (`feat/nudge-infra`, Terraform only) in
+review: the `finflow-nudge` Lambda shell (bootstrap stub, no Function URL,
+reads three SSM parameters), its log group, and an EventBridge Scheduler
+schedule at 09:00 America/Toronto whose role may only invoke that function;
+the deploy role may also update its code. After merge, `terraform plan`
+should show only adds in `infra/nudge_lambda.tf` plus one in-place change to
+`aws_iam_role_policy.ingest_deploy`; stop on anything else. Apply it
+**before PR 5 merges** (PR 5's deploy step needs the function to exist);
+until then the scheduled stub returns 200 and does nothing. The owner's
+backfill can run now: `/recurring` → ⚑ Flagged and ➕ Add for each real
+bill, salary and transfer. Then PR 5 (daily digest), PR 6 (migration 0017, after the owner's backfill), PR 7
 (acceptance). `fixed_base_burn` stays thin until the backfill links real
 history; expect it to rise then.
 
