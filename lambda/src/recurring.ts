@@ -535,6 +535,24 @@ export interface Match {
 export function matchStrength(history: SeriesHistory, tx: LedgerRow): Match {
   const { series: s } = history;
   const linked = [...history.linked].sort((a, b) => a.date.localeCompare(b.date));
+  // The cheap keys first: a screen matches every series against every row,
+  // and the fit below is the costly part.
+  const unrelated =
+    tx.type !== s.kind ||
+    tx.seriesId !== null ||
+    history.excluded.includes(tx.id) ||
+    (s.kind === "income" && tx.incomeSourceId !== s.incomeSourceId) ||
+    (s.kind === "transfer" && (tx.fromAccountId !== s.fromAccountId || tx.toAccountId !== s.toAccountId));
+  const refs = [s.name, ...s.keywords, ...linked.map((r) => r.description)];
+  const named =
+    s.kind === "expense" &&
+    ((s.merchantId !== null && tx.merchantId === s.merchantId) ||
+      refs.some((ref) => textSimilarity(ref, tx.description) >= TEXT_MATCH));
+  const sameSub = s.kind === "expense" && s.subcategoryId !== null && tx.subcategoryId === s.subcategoryId;
+  if (unrelated || (s.kind === "expense" && !named && !sameSub)) {
+    return { seriesId: s.id, strength: "none", slotDays: Infinity, amountCents: Infinity };
+  }
+
   const band = amountBand(linked.map((r) => r.amount), s.amountVaries);
   const cents = parseCents(tx.amount);
   const amountCents = band && cents !== null ? Math.abs(cents - band.typical) : Infinity;
@@ -553,18 +571,9 @@ export function matchStrength(history: SeriesHistory, tx: LedgerRow): Match {
   }
 
   const match = (strength: Strength): Match => ({ seriesId: s.id, strength, slotDays: slotGap, amountCents });
-  if (tx.type !== s.kind || tx.seriesId !== null || history.excluded.includes(tx.id)) return match("none");
-  if (s.kind === "income") return match(tx.incomeSourceId === s.incomeSourceId ? "strong" : "none");
-  if (s.kind === "transfer") {
-    const same = tx.fromAccountId === s.fromAccountId && tx.toAccountId === s.toAccountId;
-    return match(same ? "strong" : "none");
-  }
-  const refs = [s.name, ...s.keywords, ...linked.map((r) => r.description)];
-  const named =
-    (s.merchantId !== null && tx.merchantId === s.merchantId) ||
-    refs.some((ref) => textSimilarity(ref, tx.description) >= TEXT_MATCH);
+  // Income and transfers got here only with their hard key.
+  if (s.kind !== "expense") return match("strong");
   if (named && (amountFits || dateFits)) return match("strong");
-  const sameSub = s.subcategoryId !== null && tx.subcategoryId === s.subcategoryId;
   return match(sameSub && amountFits && dateFits ? "weak" : "none");
 }
 
