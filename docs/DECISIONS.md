@@ -2279,3 +2279,31 @@ holds it, as on the review).
 
 **Ruled out:** keeping `savings_rate` and adding the moved-money rate under
 another name (the familiar name would stay on the wrong number).
+
+## 2026-10-31 — Debt is an account kind; extra payments are transfers into it
+
+The owner has no debt but wants the capability ready, for themselves and for
+anyone who forks the repo with a mortgage or a car loan.
+
+- **`accounts.kind` gains `debt` (migration 0017).** An extra payment on a
+  loan is a transfer from chequing into a debt account, the existing deposit
+  shape, so it reaches `transfers` with no new metric and `account_kind`
+  splits it out. A minimum payment stays an ordinary `needs` expense line in
+  the loan's subcategory (Mortgage, Car loan payments, Student loans,
+  Personal loans already exist). Paying a loan from savings is a move
+  between two accounts, in no metric: net position is unchanged.
+- **A debt account only receives transfers, guarded by a dbt test, not a
+  constraint.** `debt_account_only_receives_transfers` fails on a transfer
+  from a debt account (a drawdown, out of scope) and on an income source
+  whose deposit account is a debt account (it would put a loan inside
+  `savings_income`). A CHECK cannot read `accounts.kind` from another table,
+  and a trigger is more machinery than one ledger invariant needs; the
+  dbt-nightly run catches it the next morning.
+- **The bot needs no change.** It lists every account by name and Gemini's
+  prompt names no kind, so a debt account is a normal transfer destination.
+
+**Ruled out:** debt as a spend bucket (`bucket = 'financial_future'`: it
+would break the meaning of `spend` and needs plus wants equals spend),
+balances or interest on a debt account (the ledger has no balances), and a
+golden case for a debt transfer (the suite is capped at 20; a journey with a
+neutral "Car loan" account proves it).

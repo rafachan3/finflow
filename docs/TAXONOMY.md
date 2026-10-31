@@ -160,9 +160,11 @@ Kept deliberately restrained; this is not a medical ontology.
 The bucket is a per-line judgment, not a property of the subcategory (the
 same Groceries run contains staples and indulgences). Subcategories carry a
 nullable `default_bucket` that seeds the extraction prompt's suggestion;
-the human confirms or overrides per line. Transfers to savings or
-investment accounts are not expenses and have no bucket — they are
-`type = 'transfer'` transactions.
+the human confirms or overrides per line. Transfers to savings,
+investment or debt accounts are not expenses and have no bucket — they are
+`type = 'transfer'` transactions. A loan's minimum payment is an expense
+line (`Mortgage`, `Car loan payments`, ...); only an extra payment is a
+transfer to its debt account (SEMANTIC_LAYER.md, Debt).
 
 The hints here are generic priors only. An owner's actual needs/wants
 rulings are personal by nature (what counts as a "reasonable basic

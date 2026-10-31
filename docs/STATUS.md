@@ -486,6 +486,18 @@ linked to the series proposed for the old reading. Gemini's `is_recurring` guess
 saved; with no match it shows as `Recurring: not tracked yet` and puts
 `↻ Track as recurring` on the `Saved.` reply, which opens the add flow.
 
+Debt account kind (financial-future PR A, DECISIONS.md 2026-10-31, branch
+`feat/debt-account-kind`, in review): migration 0017 widens `accounts.kind`
+to `savings | investment | debt`. An extra loan payment is a transfer from
+chequing into a debt account (in `transfers`, `account_kind = debt`); the
+minimum payment stays a `needs` expense line. The dbt test
+`debt_account_only_receives_transfers` fails on a transfer from a debt
+account or an income source depositing into one. The bot needed no change;
+a journey with a neutral `Car loan` account proves it. Migration 0017 must
+be applied before merge. It takes the number the Phase 4.5 backfill CHECK
+had pencilled in, so that migration (and the docs and comments that call it
+0017) moves to the next free number when it is written.
+
 ## Next concrete step
 
 Phase 4.5 — Proactive nudges, PR 4 (`feat/nudge-infra`, Terraform only) in

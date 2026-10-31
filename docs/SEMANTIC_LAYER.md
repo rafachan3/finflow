@@ -64,9 +64,9 @@ An expense someone else paid for never passed through the owner's accounts.
 It is excluded from every spend metric and reported on its own as
 `external_spend`.
 
-**Chequing is the null account.** `accounts` holds only savings and
-investment accounts (`accounts.kind`, limited by a check constraint);
-chequing has no row. A null in any of these three columns means chequing:
+**Chequing is the null account.** `accounts` holds only savings,
+investment and debt accounts (`accounts.kind`, limited by a check
+constraint); chequing has no row. A null in any of these three columns means chequing:
 `transactions.from_account_id` (the account a transfer leaves),
 `transactions.to_account_id` (the one it enters) and
 `income_sources.deposit_account_id` (where income from that source lands).
@@ -90,6 +90,23 @@ touches chequing, so it is in no metric and changes neither
 `unallocated_cash` nor `unspent_rate`; it still counts in
 `transaction_count` and has its row in `fct_transactions`. Transfers saved
 before migration 0014 have no from account, so every one is a deposit.
+
+**Debt.** A `debt` account (migration 0017; "Car loan", say) is a loan the
+owner pays down. It has no balance and no interest; the ledger only records
+money going into it.
+
+- A minimum payment is an ordinary own expense line classified `needs`, in
+  the loan's subcategory (`Mortgage`, `Car loan payments`, `Student loans`,
+  `Personal loans`). It is `spend`, not a transfer.
+- An extra payment (anything beyond the minimum) is a deposit-shaped
+  transfer from chequing to the debt account, so it counts in `transfers`
+  and the `account_kind` dimension splits it out as `debt`.
+- Paying a loan from savings or investment is a move between two accounts:
+  in no metric, because the owner's net position did not change.
+- A debt account only receives transfers. A transfer from a debt account (a
+  loan drawdown) is out of scope, and an income source never deposits into
+  one, so `savings_income` only ever counts savings and investment accounts.
+  Both fail the dbt test `debt_account_only_receives_transfers`.
 
 **Income** is every `type = 'income'` transaction, from any income source,
 including interest and refunds, wherever it lands. The part whose source's
@@ -150,14 +167,14 @@ a metric, and CI fails if that set differs from the MetricFlow metrics.
 | Metric | Meaning | Formula | Edge cases |
 |---|---|---|---|
 | `income` | Money that came in | `sum(transactions.amount) where type = 'income'` | Empty gives `0`. Includes refunds and interest, and `savings_income`. |
-| `savings_income` | Income paid straight into a savings or investment account, such as interest | `sum(transactions.amount) where type = 'income' and income_sources.deposit_account_id is not null`, joining `income_sources.id = transactions.income_source_id` | Empty gives `0`. Part of `income`, never added to it. Never reaches chequing, so `unallocated_cash` subtracts it. |
+| `savings_income` | Income paid straight into a savings or investment account, such as interest | `sum(transactions.amount) where type = 'income' and income_sources.deposit_account_id is not null`, joining `income_sources.id = transactions.income_source_id` | Empty gives `0`. Part of `income`, never added to it. Never reaches chequing, so `unallocated_cash` subtracts it. A source's deposit account is never a debt account (see Debt above). |
 | `spend` | What the owner paid for | `sum(transaction_items.amount)` over own lines | Empty gives `0`. Excludes transfers and `external_spend`. |
 | `needs_spend` | Spend on needs | own lines `and bucket = 'needs'` | `= fixed_base_burn + variable_needs`. |
 | `wants_spend` | Spend on wants; also called discretionary spend | own lines `and bucket = 'wants'` | `needs_spend + wants_spend = spend`. Refunds do not reduce it. |
 | `fixed_base_burn` | The recurring floor of needs | own lines `and bucket = 'needs' and transactions.is_recurring` | A recurring want (a subscription) is not part of it. An annual bill makes its month spike; smoothing is the reader's job. Only as right as `is_recurring`. |
 | `variable_needs` | Needs that vary month to month, such as groceries | own lines `and bucket = 'needs' and not transactions.is_recurring` | Partly avoidable, so kept apart from the fixed floor. |
 | `external_spend` | Expenses someone else paid for | `sum(transaction_items.amount)` over expense lines whose `funding_sources.name <> 'self'` | Never part of any other spend metric. |
-| `transfers` | Money moved out of chequing into savings and investment accounts | `sum(transactions.amount) where type = 'transfer' and from_account_id is null and to_account_id is not null` | Empty gives `0`. A deposit (see the shapes above); a move between two accounts is not one. Split by the destination's kind with the `account_kind` dimension. |
+| `transfers` | Money moved out of chequing into savings, investment and debt accounts | `sum(transactions.amount) where type = 'transfer' and from_account_id is null and to_account_id is not null` | Empty gives `0`. A deposit (see the shapes above); a move between two accounts is not one. An extra payment on a loan is one; its minimum payment is `spend`. Split by the destination's kind with the `account_kind` dimension. |
 | `withdrawals` | Money moved out of savings and investment accounts back into chequing | `sum(transactions.amount) where type = 'transfer' and from_account_id is not null and to_account_id is null` | Empty gives `0`. Neither income nor negative saving: spending it is what shows, through `spend`. Split by the source account's kind with the `from_account_kind` dimension. |
 | `unspent_rate` | Share of income not spent | `round((income - spend) / nullif(income, 0), 4)` | Null when income is `0`. Negative when spend exceeds income. `transfers`, `withdrawals` and moves between accounts do not change it: moving money is neither saving nor spending it. `savings_income` is income not spent, so it raises the rate like any other income. It is not the financial-future rate (money actually moved into a savings, investment or debt account), which is added as its own metric. |
 | `unallocated_cash` | Money that reached chequing this month and was neither spent nor moved out | `income - savings_income - spend - transfers + withdrawals` | Chequing's net flow for the month. Positive: surplus still sitting in chequing that should have been moved. Negative: more left chequing than came in, covered by earlier months' surplus. A withdrawal raises it; `savings_income` and a move between two accounts do not change it. |
@@ -244,7 +261,7 @@ here so the dashboard and the agent compute them the same way.
   `fct_transactions.tags` is a line's effective tags: its own line tags plus
   its transaction's header tags.
 - **Transfers by account kind:** `transfers` grouped by `account_kind`
-  (`savings`, `investment`), the kind of the account entered.
+  (`savings`, `investment`, `debt`), the kind of the account entered.
 - **Withdrawals by account kind:** `withdrawals` grouped by
   `from_account_kind`, the kind of the account left.
 

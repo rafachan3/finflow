@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { golden } from "../golden/golden.js";
+import { resetData, sql } from "../integration/db-helpers.js";
 import {
   BUCKET,
   chat,
@@ -118,6 +119,34 @@ describe("logging one purchase", () => {
     expect(await ledger.transactions()).toMatchObject([
       { type: "transfer", from_account: null, account: "Emergency fund", funder: null, lines: 0 },
     ]);
+  });
+
+  it("an extra payment on a car loan is saved as a transfer to that debt account", async () => {
+    await sql("insert into accounts (name, kind) values ('Car loan', 'debt')");
+    try {
+      const [deposit] = (golden("transfer").recorded as { events: object[] }).events;
+      gemini.extract = {
+        events: [
+          { ...deposit, amount: "200.00", date: "2026-10-28", description: "Extra car loan payment", to_account: "Car loan" },
+        ],
+      };
+      await chat.text("paid 200 extra on my car loan on Oct 28");
+
+      expect(gemini.lastSystem.split("\n")).toContain("Accounts: Car loan, Emergency fund, Retirement account");
+      expect(chat.last().text).toContain("To account: Car loan");
+      expect(chat.last().text).not.toContain("From account");
+      expect(labels(chat.last())).toEqual(REVIEW);
+      await chat.tap(chat.last(), "Confirm");
+      expect(await ledger.transactions()).toMatchObject([
+        { type: "transfer", amount: "200.00", from_account: null, account: "Car loan", funder: null, lines: 0 },
+      ]);
+      expect(await sql("select a.kind from transactions t join accounts a on a.id = t.to_account_id")).toEqual([
+        { kind: "debt" },
+      ]);
+    } finally {
+      await resetData();
+      await sql("delete from accounts where name = 'Car loan'");
+    }
   });
 
   it("taking money out of savings and moving it between accounts are saved with the account each leaves", async () => {
