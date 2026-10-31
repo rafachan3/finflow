@@ -3,7 +3,7 @@
 Living state of the project. Read this first; update it whenever work lands.
 
 **Last updated:** 2026-10-30
-**Current phase:** Phase 4 — Semantic layer, roles migration merged, dbt staging, marts and MetricFlow in CI (see [ROADMAP.md](ROADMAP.md))
+**Current phase:** Phase 4.5 — Proactive nudges, not started: needs a brainstorm with the owner first (see [ROADMAP.md](ROADMAP.md) and Next concrete step)
 
 ## Phase progress
 
@@ -15,7 +15,7 @@ Living state of the project. Read this first; update it whenever work lands.
 - [x] Phase 3 — Gemini extraction (text → photo → voice) — **3a + 3b + 3c phone-tested; funding source applied; Edit phone-tested; context notes phone-tested; multi-event accepted by the Phase 3.6 journeys** (2026-10-28; S3 key prefix landed 2026-10-29)
 - [x] Phase 3.6 — Regression test suite — **accepted 2026-10-29: deliberate-break PR #48 blocked (unit + inventory failed, BLOCKED), clean PRs #46/#47 green, smoke step green on deploy run 40803017809, `main` protected** (2026-10-29)
 - [x] Phase 3.5 — Ingestion follow-ons — **accepted 2026-10-29 by the journey tests (no phone test): 25 of 25 passed in `line-tags`, `duplicates` and `merchants`; see Next concrete step** (2026-10-29)
-- [ ] Phase 4 — dbt semantic layer + MetricFlow
+- [x] Phase 4 — dbt semantic layer + MetricFlow — **accepted 2026-10-30: `dbt build`, the hand-written-SQL reconciliation and `mf query` vs the marts green in CI on the fixture (#72-#78) and on production in `dbt-nightly` run 41157900716 (87 of 87 nodes, 14 metrics, 5 months); real-month hand verification deferred** (2026-10-30)
 - [ ] Phase 4.5 — Proactive nudges (recurring reminders, merchant recommendations)
 - [ ] Phase 5 — Grafana dashboards
 - [ ] Phase 6 — Claude analytics agent (subagents + Postgres MCP)
@@ -429,7 +429,19 @@ red; the code stays deployed.
 
 ## Next concrete step
 
-Phase 4 — Semantic layer (see ROADMAP.md). The metric contract is in
+Phase 4.5 — Proactive nudges (see ROADMAP.md), not started. Brainstorm with
+the owner first: buttons versus commands, a recurring-expense declaration,
+pause and resume, and a way to flip `is_recurring` on a saved row.
+`fixed_base_burn` reads that per-transaction flag and only about 5% of
+lines are recurring, so the metric stays thin until the flag is easy to set.
+
+Phase 4 is accepted (2026-10-30). Optional and deferred: hand-verify real
+numbers for one complete month against the owner's records (on hold until
+the owner names a complete month; until then the production run proves the
+pipeline and the invariants, not the figures). The follow-ups listed below
+stay.
+
+Phase 4 record. The metric contract is in
 [SEMANTIC_LAYER.md](SEMANTIC_LAYER.md) (2026-10-29; fourteen since 2026-10-30): metrics with
 formulas, mart columns and edge cases, and DECISIONS.md records the owner's
 rulings. PR-B (migration 0013, the `finflow_dbt` and `finflow_analyst` roles,
@@ -444,17 +456,20 @@ through the session pooler with verified TLS, it runs
 `dbt build --exclude tag:fixture`, `mf validate-configs` and
 `check_metrics.py`; its public log shows node names and statuses only, and
 a failure, step timeout or cancel keeps one `dbt-nightly` issue open.
-Without the secrets (forks) or off `main` it skips green. **It has not run
-against production yet.**
+Without the secrets (forks) or off `main` it skips green. **First production
+dispatch on `main` (run 41157900716, 2026-10-30): green** as `finflow_dbt`;
+`dbt build --exclude tag:fixture` passed all 87 nodes (every invariant test
+and the reconciliation test), `mf validate-configs` passed, and
+`check_metrics.py` reported "mf query matches fct_monthly_summary: 14
+metrics, 5 months". The public log held node names and statuses only, with
+host, user and password masked.
 
 Pre-run check of `finflow_dbt` (2026-10-30, `has_table_privilege` and
 `has_schema_privilege` over `verify-ca` TLS with the tracked CA, no writes): SELECT on `public.transactions` true;
 INSERT, UPDATE and DELETE on it false; CREATE on schema `public` false;
 CREATE on `staging` and on `marts` true.
 
-Next: after merge, `gh workflow run dbt-nightly.yml` on `main`; check the
-log shows no amounts or row counts, then tick the ROADMAP nightly item with
-the run id. A branch dispatch now skips the build, so the spec's
+A branch dispatch skips the build, so the spec's
 throwaway-branch proof of the issue path no longer applies: the issue
 table and open/close logic were exercised locally with a stubbed `gh`, and
 the first real failure on `main` is the live proof.
@@ -485,11 +500,10 @@ values; `analyst_reads_every_mart` checks the analyst's grants after each
 rebuild. The `dbt` job proves the reconciliation bites (a mart metric moved
 by 0.01 fails it alone) and logs in as `finflow_analyst`. Contract change:
 the month list runs to a later month if a row is dated in it (DECISIONS
-2026-10-30). **Not yet run against production**: the role's password and
-secrets exist, but nothing connects until PR-F. Every production month is partial until the owner says it
-is complete (backfill under way); once one is, run
-`dbt build --exclude tag:fixture` as `finflow_dbt` and record which months
-passed, no amounts.
+2026-10-30). Ran green against production on 2026-10-30 (see nightly dbt above).
+Every production month is partial until the owner says it
+is complete (backfill under way); once one is, hand-verify its numbers
+against the owner's records and record which months passed, no amounts.
 
 dbt staging (PR-C, 2026-10-29): `dbt/` holds the dbt project (dbt-core
 1.12.6, dbt-postgres 1.11.0, Python 3.12), three staging views in schema
@@ -527,7 +541,7 @@ accounts; `fct_monthly_summary` adds both columns.
 `dbt:transfer_has_account` now encodes migration 0014's check, so a saved
 withdrawal passes. The fixture's June gains interest into savings, a
 withdrawal and a move; its hand-worked values were redone. A withdrawal can
-now be saved. dbt has still never run against production (see above).
+now be saved.
 
 Phase 3.5 acceptance (2026-10-29): the journey tests are the check, not a
 phone test. Against a throwaway Postgres (`cd lambda && npm run db:up`), then
