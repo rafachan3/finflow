@@ -315,6 +315,7 @@ export function listScreen(book: Book, today: string, offset = 0): Screen {
   ];
   if (todo.length > 0) keyboard.push(todo);
   const last = [{ text: "➕ Add", callback_data: "r:a" }];
+  if (offset > 0) last.push({ text: "‹ Back", callback_data: `r:l:${Math.max(0, offset - LIST_PAGE)}` });
   if (sorted.length > offset + LIST_PAGE) last.push({ text: "More ›", callback_data: `r:l:${offset + LIST_PAGE}` });
   keyboard.push(last);
   return { text: lines.join("\n"), keyboard };
@@ -477,6 +478,7 @@ export function pickScreen(book: Book, offset: number): Screen {
   const page = free.slice(offset, offset + PICK_PAGE);
   const keyboard: Keyboard = page.map((r) => [{ text: rowLabel(r), callback_data: `r:at:${r.id}` }]);
   const last = [BACK_TO_LIST[0]];
+  if (offset > 0) last.push({ text: "‹ Back", callback_data: `r:ar:${Math.max(0, offset - PICK_PAGE)}` });
   if (free.length > offset + PICK_PAGE) last.push({ text: "More ›", callback_data: `r:ar:${offset + PICK_PAGE}` });
   keyboard.push(last);
   const text =

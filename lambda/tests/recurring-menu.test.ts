@@ -79,7 +79,10 @@ describe("the /recurring list", () => {
       { text: "More ›", callback_data: "r:l:16" },
     ]);
     const second = listScreen(book(17), "2026-10-31", 16);
-    expect(second.keyboard).toEqual([[{ text: "Bill 17", callback_data: "r:v:17" }], [{ text: "➕ Add", callback_data: "r:a" }]]);
+    expect(second.keyboard).toEqual([
+      [{ text: "Bill 17", callback_data: "r:v:17" }],
+      [{ text: "➕ Add", callback_data: "r:a" }, { text: "‹ Back", callback_data: "r:l:0" }],
+    ]);
   });
 });
 
@@ -114,6 +117,18 @@ describe("adding a series", () => {
       [{ text: "‹ Back", callback_data: "r:a" }],
     ]);
     expect(flipVaries(on)).toEqual(keyboard);
+  });
+
+  it("pages the saved payments 8 at a time, with More › and ‹ Back", () => {
+    const rows = Array.from({ length: 9 }, (_, i) =>
+      row({ id: `11111111-1111-4111-8111-${String(i).padStart(12, "0")}`, date: `2026-10-${String(i + 10)}` }),
+    );
+    const many = { ...empty, rows };
+    expect(pickScreen(many, 0).keyboard.at(-1)!.map((b) => b.callback_data)).toEqual(["r:l:0", "r:ar:8"]);
+    const second = pickScreen(many, 8).keyboard;
+    expect(second).toHaveLength(2);
+    expect(second.at(-1)!.map((b) => b.text)).toEqual(["‹ All recurring", "‹ Back"]);
+    expect(second.at(-1)![1].callback_data).toBe("r:ar:0");
   });
 
   it("an add screen for a payment already in a series, or gone, says so", () => {
