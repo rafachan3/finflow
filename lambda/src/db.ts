@@ -620,6 +620,8 @@ export type Confirmed = {
   transactionId: string;
   /** The card's series was deleted, or no longer fits the payment: saved in no series. */
   seriesGone: boolean;
+  /** Saved in no series, though Gemini called it recurring: worth offering Track as recurring. */
+  looksRecurring: boolean;
 };
 
 /**
@@ -825,7 +827,12 @@ export async function confirmIngestion(
     );
 
     await client.query("COMMIT");
-    return { status: "confirmed", transactionId, seriesGone: series !== undefined && seriesId === null };
+    return {
+      status: "confirmed",
+      transactionId,
+      seriesGone: series !== undefined && seriesId === null,
+      looksRecurring: linkId === null && extraction.is_recurring,
+    };
   } catch (err) {
     try {
       await client.query("ROLLBACK");

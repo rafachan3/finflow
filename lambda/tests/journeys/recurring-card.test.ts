@@ -161,6 +161,42 @@ describe("the card proposes the series a payment matches", () => {
   });
 });
 
+describe("Track as recurring on the Saved reply", () => {
+  it("a payment Gemini calls recurring but no series matches offers Track as recurring, which opens the add flow", async () => {
+    const shown = await card(billEvent());
+    await chat.tap(shown, "Confirm");
+    const saved = chat.last();
+    expect(saved.text).toBe("Saved.");
+    expect(labels(saved)).toEqual(["↻ Track as recurring"]);
+
+    await chat.tap(saved, "↻ Track as recurring");
+    expect(chat.current(saved).text.split("\n")[0]).toBe("➕ New recurring item");
+    await chat.tap(saved, "Monthly");
+    expect((await ledger.links())["Internet bill 2026-10-15"]).toEqual({ series: "Internet bill", flagged: true });
+    expect(gemini.calls).toHaveLength(1);
+  });
+
+  it("a linked payment, or one Gemini does not call recurring, gets a plain Saved", async () => {
+    await card(golden("text-with-note").recorded, "14 lunch at Sandwich Shop on Oct 25");
+    await chat.tap(chat.last(), "Confirm");
+    expect(labels(chat.last())).toEqual([]);
+
+    await internetBill();
+    await card(billEvent());
+    await chat.tap(chat.last(), "Confirm");
+    expect(chat.last().text).toBe("Saved.");
+    expect(labels(chat.last())).toEqual([]);
+  });
+
+  it("a payment excluded from the proposed series can still be tracked as its own", async () => {
+    await internetBill();
+    const shown = await card(billEvent());
+    await chat.tap(shown, "↻ Internet bill ✓");
+    await chat.tap(shown, "Confirm");
+    expect(labels(chat.last())).toEqual(["↻ Track as recurring"]);
+  });
+});
+
 describe("Confirm on a card with a series", () => {
   it("a card sent before series confirms with c: and links nothing", async () => {
     const shown = await card(billEvent());

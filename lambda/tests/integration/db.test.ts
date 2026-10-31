@@ -997,6 +997,17 @@ describe("confirmIngestion with the card's series", () => {
     expect(await saved()).toEqual([{ series: null, flagged: false, excludedFrom: [] }]);
   });
 
+  it("reports a payment saved in no series as looking recurring only when Gemini called it so", async () => {
+    const internet = await series("expense", "Internet bill");
+    const results = [
+      await db.confirmIngestion((await save(311, expense({ is_recurring: true })))[0]),
+      await db.confirmIngestion((await save(312, expense({ is_recurring: true })))[0], { id: internet, link: false }),
+      await db.confirmIngestion((await save(313, expense({ is_recurring: true })))[0], { id: internet, link: true }),
+      await db.confirmIngestion((await save(314, expense()))[0]),
+    ];
+    expect(results.map((r) => r !== "already_handled" && r.looksRecurring)).toEqual([true, true, false, false]);
+  });
+
   it("a double tap on Confirm saves and links once", async () => {
     const internet = await series("expense", "Internet bill");
     const [id] = await save(310, expense());

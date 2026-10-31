@@ -327,9 +327,9 @@ describe("handler", () => {
     const id = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
     const tap = (data: string) =>
       handler(event({ update_id: 36, callback_query: { id: "cb", data, message: { message_id: 5, chat: { id: 1 } } } }));
-    vi.mocked(confirmIngestion).mockResolvedValue({ status: "confirmed", transactionId: "tx", seriesGone: false });
+    vi.mocked(confirmIngestion).mockResolvedValue({ status: "confirmed", transactionId: "tx", seriesGone: false, looksRecurring: false });
     await tap(`cr:${id}:4294967295`);
-    vi.mocked(confirmIngestion).mockResolvedValue({ status: "confirmed", transactionId: "tx", seriesGone: true });
+    vi.mocked(confirmIngestion).mockResolvedValue({ status: "confirmed", transactionId: "tx", seriesGone: true, looksRecurring: false });
     await tap(`cx:${id}:12`);
 
     expect(vi.mocked(confirmIngestion).mock.calls).toEqual([

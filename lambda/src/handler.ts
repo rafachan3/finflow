@@ -718,13 +718,21 @@ async function handleCallback(
   const ingestionId = match[2];
 
   let ack: string;
+  let ackButtons: object | undefined;
   if (action === "c" || withSeries) {
     const series = withSeries ? { id: Number(withSeries[3]), link: action === "cr" } : undefined;
     const result = await confirmIngestion(ingestionId, series);
-    ack =
-      result === "already_handled"
-        ? "Already handled."
-        : `${withPosition("Saved.", cb.message?.text)}${result.seriesGone ? ` ${SERIES_GONE}` : ""}`;
+    if (result === "already_handled") {
+      ack = "Already handled.";
+    } else {
+      ack = `${withPosition("Saved.", cb.message?.text)}${result.seriesGone ? ` ${SERIES_GONE}` : ""}`;
+      // After the save, so it adds no step: one tap opens /recurring's add flow on this payment.
+      if (result.looksRecurring) {
+        ackButtons = {
+          inline_keyboard: [[{ text: "↻ Track as recurring", callback_data: `r:at:${result.transactionId}` }]],
+        };
+      }
+    }
   } else if (action === "f") {
     const started = await setIngestionAwaitingDate(ingestionId);
     if (started === "busy") return busyWaiting(botToken, cb.id, chatId);
@@ -763,7 +771,7 @@ async function handleCallback(
   }
 
   await answerCallbackQuery(botToken, cb.id, ack);
-  await sendMessage(botToken, chatId, ack);
+  await sendMessage(botToken, chatId, ack, ackButtons);
   return ok("ok");
 }
 
