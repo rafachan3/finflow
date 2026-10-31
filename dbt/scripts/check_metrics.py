@@ -27,7 +27,7 @@ import psycopg2
 
 DBT = Path(__file__).resolve().parents[1]
 CONTRACT = DBT.parent / "docs" / "SEMANTIC_LAYER.md"
-RATIOS = {"savings_rate", "needs_wants_ratio"}
+RATIOS = {"unspent_rate", "needs_wants_ratio"}
 RATIO_TOLERANCE = Decimal("0.0001")
 CENT = Decimal("0.01")
 

@@ -71,7 +71,7 @@ expected as (
         coalesce(m.external_spend, 0) as external_spend,
         coalesce(m.transfers, 0) as transfers,
         coalesce(m.withdrawals, 0) as withdrawals,
-        round((m.income - m.spend) / nullif(m.income, 0), 4) as savings_rate,
+        round((m.income - m.spend) / nullif(m.income, 0), 4) as unspent_rate,
         coalesce(m.income - m.savings_income - m.spend - m.transfers + m.withdrawals, 0)
             as unallocated_cash,
         sum(coalesce(m.income - m.savings_income - m.spend - m.transfers + m.withdrawals, 0))
@@ -100,7 +100,7 @@ compared as (
             case when e.external_spend is distinct from a.external_spend then 'external_spend' end,
             case when e.transfers is distinct from a.transfers then 'transfers' end,
             case when e.withdrawals is distinct from a.withdrawals then 'withdrawals' end,
-            case when e.savings_rate is distinct from a.savings_rate then 'savings_rate' end,
+            case when e.unspent_rate is distinct from a.unspent_rate then 'unspent_rate' end,
             case when e.unallocated_cash is distinct from a.unallocated_cash then 'unallocated_cash' end,
             case when e.unallocated_cash_cumulative is distinct from a.unallocated_cash_cumulative
                 then 'unallocated_cash_cumulative' end,

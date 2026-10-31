@@ -56,7 +56,7 @@ select
     external_spend::numeric(12, 2) as external_spend,
     transfers::numeric(12, 2) as transfers,
     withdrawals::numeric(12, 2) as withdrawals,
-    round((income - spend) / nullif(income, 0), 4)::numeric(9, 4) as savings_rate,
+    round((income - spend) / nullif(income, 0), 4)::numeric(9, 4) as unspent_rate,
     (income - savings_income - spend - transfers + withdrawals)::numeric(12, 2) as unallocated_cash,
     sum(income - savings_income - spend - transfers + withdrawals)
         over (order by month_start)::numeric(12, 2)
