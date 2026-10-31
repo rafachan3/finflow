@@ -115,6 +115,12 @@ models:
                 values: [photo, voice, text, import]
       - name: tags
         data_tests: [not_null]
+      - name: needs_target_pct
+        description: budget_targets' needs target as a fraction, the same on every row.
+      - name: wants_target_pct
+        description: budget_targets' wants target as a fraction, the same on every row.
+      - name: financial_future_target_pct
+        description: budget_targets' financial-future target as a fraction, the same on every row.
     # One metric per row of docs/SEMANTIC_LAYER.md's metric table, with the
     # same filter as its formula. A simple metric is null, not 0, in a month
     # with no matching rows: dbt 1.12.6 drops fill_nulls_with from metrics
@@ -228,6 +234,55 @@ models:
         type: derived
         expr: round(coalesce(needs_spend, 0) / nullif(wants_spend, 0), 4)
         input_metrics: [needs_spend, wants_spend]
+      # The 50/30/20 view. spendable_income and financial_future coalesce
+      # their inputs, so a month with rows is never null for them.
+      - name: spendable_income
+        type: derived
+        expr: coalesce(income, 0) - coalesce(savings_income, 0)
+        input_metrics: [income, savings_income]
+      - name: financial_future
+        type: derived
+        expr: coalesce(transfers, 0) - coalesce(withdrawals, 0)
+        input_metrics: [transfers, withdrawals]
+      # The targets are the same on every fct_transactions row, so max is
+      # that value. A month with no transactions has none here, so
+      # check_metrics.py does not compare a target there.
+      - name: needs_target_pct
+        type: simple
+        agg: max
+        expr: needs_target_pct
+      - name: wants_target_pct
+        type: simple
+        agg: max
+        expr: wants_target_pct
+      - name: financial_future_target_pct
+        type: simple
+        agg: max
+        expr: financial_future_target_pct
+      - name: financial_future_target
+        type: derived
+        expr: round(financial_future_target_pct * spendable_income, 2)
+        input_metrics: [financial_future_target_pct, spendable_income]
+      - name: financial_future_gap
+        type: derived
+        expr: financial_future_target - financial_future
+        input_metrics: [financial_future_target, financial_future]
+      - name: needs_pct
+        type: derived
+        expr: round(coalesce(needs_spend, 0) / nullif(spendable_income, 0), 4)
+        input_metrics: [needs_spend, spendable_income]
+      - name: wants_pct
+        type: derived
+        expr: round(coalesce(wants_spend, 0) / nullif(spendable_income, 0), 4)
+        input_metrics: [wants_spend, spendable_income]
+      - name: financial_future_pct
+        type: derived
+        expr: round(financial_future / nullif(spendable_income, 0), 4)
+        input_metrics: [financial_future, spendable_income]
+      - name: unallocated_pct
+        type: derived
+        expr: round(coalesce(unallocated_cash, 0) / nullif(spendable_income, 0), 4)
+        input_metrics: [unallocated_cash, spendable_income]
 
   - name: fct_category_month
     description: >
@@ -267,8 +322,10 @@ models:
     description: >
       One row per month from the first data month to the current Toronto
       month (or a later month a row is dated in), zero-filled, with one
-      column per metric in docs/SEMANTIC_LAYER.md. unspent_rate and
-      needs_wants_ratio are null when their denominator is 0.
+      column per metric in docs/SEMANTIC_LAYER.md. unspent_rate,
+      needs_wants_ratio and the four *_pct shares of spendable_income are
+      null when their denominator is 0. The three *_target_pct come from
+      budget_targets and are the same every month.
     columns:
       - name: month_start
         data_tests: [unique, not_null]
@@ -306,6 +363,27 @@ models:
           - not_null:
               config:
                 where: "wants_spend <> 0"
+      - name: spendable_income
+        data_tests: [not_null]
+      - name: financial_future
+        data_tests: [not_null]
+      # Null only if budget_targets lost its row.
+      - name: needs_target_pct
+        data_tests: [not_null]
+      - name: wants_target_pct
+        data_tests: [not_null]
+      - name: financial_future_target_pct
+        data_tests: [not_null]
+      - name: financial_future_target
+        data_tests: [not_null]
+      - name: financial_future_gap
+        data_tests: [not_null]
+      # The four shares: null exactly when spendable_income is 0
+      # (financial_future_identity).
+      - name: needs_pct
+      - name: wants_pct
+      - name: financial_future_pct
+      - name: unallocated_pct
       - name: transaction_count
         data_tests: [not_null]
       - name: is_complete_month

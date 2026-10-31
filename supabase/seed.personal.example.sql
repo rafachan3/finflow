@@ -30,6 +30,11 @@ insert into income_sources (name) values
 -- insert into income_sources (name, deposit_account_id) values
 --   ('Savings interest', (select id from accounts where name = 'Emergency fund'));
 
+-- Your 50/30/20 targets, as percentages of the income that reaches chequing
+-- (migration 0018 seeds 50/30/20). They must sum to 100.
+-- update budget_targets
+--   set needs_percent = 55, wants_percent = 25, financial_future_percent = 20;
+
 -- Who pays besides you ('self' is already seeded by migration 0002).
 insert into funding_sources (name) values
   ('family');

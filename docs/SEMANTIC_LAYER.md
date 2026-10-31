@@ -124,6 +124,36 @@ are overstated by the refund. `unspent_rate`'s numerator and
 (`income | refund`), with refunds then netted against spend, once a refund
 visibly distorts a month.
 
+**Spendable income and financial future (the 50/30/20 view).** Each month
+splits the money that reached chequing, `spendable_income`, into four parts:
+`needs_spend`, `wants_spend`, `financial_future` and `unallocated_cash`
+(what is still in chequing). `spendable_income` is `income` without
+`savings_income`: salary, allowance, refunds and one-off income count, but
+interest paid inside a savings or investment account is growth, not income,
+in this view. `financial_future` is money actually moved: `transfers` (into
+savings, investment and debt accounts, so a loan's extra payment counts)
+minus `withdrawals` (a withdrawal lowers that month's financial future). A
+move between two accounts is in neither. Cash left in chequing is not
+financial future until it is moved. A transfer counts in the month of its
+`occurred_on`, so one dated into the month it belongs to needs no
+carry-over. Because `unallocated_cash = spendable_income - spend -
+financial_future` by its formula, the identity `spendable_income = spend +
+financial_future + unallocated_cash` holds exactly every month, and the four
+`*_pct` shares sum to `1` within `0.0005` (each rounded to 4 places) whenever
+`spendable_income > 0` (dbt test `financial_future_identity`).
+`external_spend` is in none of them.
+
+**Targets.** The 50/30/20 targets are one row in `budget_targets`
+(migration 0018), stored as percentages `0`-`100` that sum to `100` and
+seeded `50/30/20`; a person changes them with an UPDATE in their untracked
+seed overlay. The marts expose them as fractions (`*_target_pct`, the stored
+value divided by `100`) so they compare directly with the `*_pct` shares.
+They apply to every month, with no effective dates: changing them restates
+history on the next rebuild. Which direction is better (needs and wants at
+most their target, financial future at least) is not encoded in any metric;
+the reader decides. `fct_transactions` carries the three fractions on every
+row so MetricFlow can read them.
+
 **Bucket.** `transaction_items.bucket` is `needs` or `wants` and NOT NULL;
 there is no unclassified bucket. A line with missing context is classified
 `wants` and flagged at Confirm (the owner's bucket rules), so every own
@@ -176,10 +206,21 @@ a metric, and CI fails if that set differs from the MetricFlow metrics.
 | `external_spend` | Expenses someone else paid for | `sum(transaction_items.amount)` over expense lines whose `funding_sources.name <> 'self'` | Never part of any other spend metric. |
 | `transfers` | Money moved out of chequing into savings, investment and debt accounts | `sum(transactions.amount) where type = 'transfer' and from_account_id is null and to_account_id is not null` | Empty gives `0`. A deposit (see the shapes above); a move between two accounts is not one. An extra payment on a loan is one; its minimum payment is `spend`. Split by the destination's kind with the `account_kind` dimension. |
 | `withdrawals` | Money moved out of savings and investment accounts back into chequing | `sum(transactions.amount) where type = 'transfer' and from_account_id is not null and to_account_id is null` | Empty gives `0`. Neither income nor negative saving: spending it is what shows, through `spend`. Split by the source account's kind with the `from_account_kind` dimension. |
-| `unspent_rate` | Share of income not spent | `round((income - spend) / nullif(income, 0), 4)` | Null when income is `0`. Negative when spend exceeds income. `transfers`, `withdrawals` and moves between accounts do not change it: moving money is neither saving nor spending it. `savings_income` is income not spent, so it raises the rate like any other income. It is not the financial-future rate (money actually moved into a savings, investment or debt account), which is added as its own metric. |
+| `unspent_rate` | Share of income not spent | `round((income - spend) / nullif(income, 0), 4)` | Null when income is `0`. Negative when spend exceeds income. `transfers`, `withdrawals` and moves between accounts do not change it: moving money is neither saving nor spending it. `savings_income` is income not spent, so it raises the rate like any other income. It is not `financial_future_pct` (money actually moved into a savings, investment or debt account). |
 | `unallocated_cash` | Money that reached chequing this month and was neither spent nor moved out | `income - savings_income - spend - transfers + withdrawals` | Chequing's net flow for the month. Positive: surplus still sitting in chequing that should have been moved. Negative: more left chequing than came in, covered by earlier months' surplus. A withdrawal raises it; `savings_income` and a move between two accounts do not change it. |
 | `unallocated_cash_cumulative` | Running balance of `unallocated_cash` | `sum(unallocated_cash) over (order by month_start)`, from the first data month up to and including this month | Starts at `0` before 2026-06-01: it measures how chequing changed since coverage began, not its balance (the ledger has no opening balance). A partial month (August 2026) carries into every later month. A deposit or withdrawal that was never logged shows up here as drift. |
 | `needs_wants_ratio` | Needs per dollar of wants | `round(needs_spend / nullif(wants_spend, 0), 4)` | Null when `wants_spend` is `0`. A 50/30 split is about `1.67`. |
+| `spendable_income` | Income that reached chequing: the base of the 50/30/20 view | `income - savings_income` | Empty gives `0`. Refunds and the allowance count; interest paid inside a savings or investment account does not. `= spend + financial_future + unallocated_cash` exactly. |
+| `financial_future` | Money set aside: moved into savings, investment and debt accounts, minus money taken back out | `transfers - withdrawals` | Empty gives `0`. Negative when more came out than went in. A loan's extra payment counts through `transfers`; its minimum payment is `spend`. A move between two accounts, `savings_income` and cash left in chequing are not part of it. |
+| `needs_target_pct` | Target share of `spendable_income` for needs | `budget_targets.needs_percent / 100` | Not computed from the ledger: the same every month, `0.5` as seeded. Changing the row restates every month on the next rebuild. |
+| `wants_target_pct` | Target share of `spendable_income` for wants | `budget_targets.wants_percent / 100` | As `needs_target_pct`; `0.3` as seeded. |
+| `financial_future_target_pct` | Target share of `spendable_income` for financial future | `budget_targets.financial_future_percent / 100` | As `needs_target_pct`; `0.2` as seeded. The three targets sum to `1`. |
+| `financial_future_target` | Dollars the target asks to set aside this month | `round(financial_future_target_pct * spendable_income, 2)` | `0` when `spendable_income` is `0`. |
+| `financial_future_gap` | Dollars still to move to reach the target | `financial_future_target - financial_future` | Positive: move this much more. Negative: ahead of target. The current month shows a large gap until the money is moved; `is_complete_month` marks it. |
+| `needs_pct` | Needs as a share of spendable income | `round(needs_spend / nullif(spendable_income, 0), 4)` | Null when `spendable_income` is `0`, like every `*_pct` share. Compare with `needs_target_pct`. |
+| `wants_pct` | Wants as a share of spendable income | `round(wants_spend / nullif(spendable_income, 0), 4)` | Compare with `wants_target_pct`. Refunds do not reduce it. |
+| `financial_future_pct` | Financial future as a share of spendable income | `round(financial_future / nullif(spendable_income, 0), 4)` | Negative when more came out than went in. Compare with `financial_future_target_pct`. |
+| `unallocated_pct` | Share of spendable income still in chequing | `round(unallocated_cash / nullif(spendable_income, 0), 4)` | Negative when more left chequing than came in. With the other three it sums to `1` within `0.0005` when `spendable_income > 0`. |
 
 Columns in `fct_monthly_summary` that are deliberately **not** metrics:
 `month_start`, `transaction_count` (distinct transactions in the month),
@@ -190,7 +231,8 @@ Columns in `fct_monthly_summary` that are deliberately **not** metrics:
 The same metrics written directly over `public` tables, with no staging or
 marts. The dbt acceptance test recomputes every month this way and fails on
 any difference from `fct_monthly_summary`. Months missing from `ledger`
-are `0` for money and null for ratios in the mart.
+are `0` for money and null for ratios in the mart, and still carry the
+three targets.
 
 ```sql
 with ledger as (
@@ -239,8 +281,24 @@ select m.*,
   income - savings_income - spend - transfers + withdrawals as unallocated_cash,
   sum(income - savings_income - spend - transfers + withdrawals)
     over (order by month_start) as unallocated_cash_cumulative,
-  round(needs_spend / nullif(wants_spend, 0), 4) as needs_wants_ratio
+  round(needs_spend / nullif(wants_spend, 0), 4) as needs_wants_ratio,
+  income - savings_income as spendable_income,
+  transfers - withdrawals as financial_future,
+  b.needs_percent / 100 as needs_target_pct,
+  b.wants_percent / 100 as wants_target_pct,
+  b.financial_future_percent / 100 as financial_future_target_pct,
+  round(b.financial_future_percent / 100 * (income - savings_income), 2)
+    as financial_future_target,
+  round(b.financial_future_percent / 100 * (income - savings_income), 2)
+    - (transfers - withdrawals) as financial_future_gap,
+  round(needs_spend / nullif(income - savings_income, 0), 4) as needs_pct,
+  round(wants_spend / nullif(income - savings_income, 0), 4) as wants_pct,
+  round((transfers - withdrawals) / nullif(income - savings_income, 0), 4)
+    as financial_future_pct,
+  round((income - savings_income - spend - transfers + withdrawals)
+        / nullif(income - savings_income, 0), 4) as unallocated_pct
 from monthly m
+cross join budget_targets b  -- one row, migration 0018
 order by month_start;
 ```
 

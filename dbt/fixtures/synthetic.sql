@@ -14,8 +14,12 @@
 -- message sent 07-01 03:00 UTC (still 06-30 in Toronto); interest paid
 -- straight into savings, a withdrawal back to chequing and a move between
 -- two accounts (migration 0014, a...13 to a...15).
--- 2026-07: one expense on 07-01. 2026-08: income only. 2026-09: needs
--- spend only, no income.
+-- 2026-07: one expense on 07-01, no income. 2026-08: the 50/30/20 worked
+-- example (a...16 to a...19): 3000 income, 1400 needs, 700 wants, 300 to
+-- savings and 200 to investment, 400 left in chequing. 2026-09: a loan
+-- (a...20 to a...23): income, a minimum payment as needs spend, an extra
+-- payment into the "Car loan" debt account and a payment on it from
+-- savings; no wants. 2026-10: no rows at all.
 --
 -- The recurring rows are linked to generic series and never set
 -- is_recurring themselves: migration 0016's trigger sets it from the link,
@@ -88,6 +92,30 @@ left join income_sources as s on s.name = v.income_source
 left join accounts as fa on fa.name = v.from_account
 left join accounts as ta on ta.name = v.to_account;
 
+-- The 50/30/20 months (fixture_financial_future_expected). A debt account
+-- only receives transfers: an extra payment from chequing, and a payment
+-- from savings that is a move between two accounts.
+insert into accounts (name, kind) values ('Car loan', 'debt');
+
+insert into transactions (
+    id, occurred_on, type, amount, description, funding_source_id, income_source_id, from_account_id, to_account_id
+)
+select v.id::uuid, v.occurred_on::date, v.type::transaction_type, v.amount, v.description, f.id, s.id, fa.id, ta.id
+from (values
+    ('a0000000-0000-0000-0000-000000000016', '2026-08-01', 'expense',  1400.00, 'August rent',          'self',     null::text, null::text,       null::text),
+    ('a0000000-0000-0000-0000-000000000017', '2026-08-15', 'expense',   700.00, 'Dinners out',          'self',     null,       null,             null),
+    ('a0000000-0000-0000-0000-000000000018', '2026-08-31', 'transfer',  300.00, 'To emergency fund',     null,      null,       null,             'Emergency fund'),
+    ('a0000000-0000-0000-0000-000000000019', '2026-08-31', 'transfer',  200.00, 'To retirement account', null,      null,       null,             'Retirement account'),
+    ('a0000000-0000-0000-0000-000000000020', '2026-09-01', 'income',   2000.00, 'Paycheque',             null,      'Salary',   null,             null),
+    ('a0000000-0000-0000-0000-000000000021', '2026-09-05', 'expense',   250.00, 'Car loan payment',     'self',     null,       null,             null),
+    ('a0000000-0000-0000-0000-000000000022', '2026-09-30', 'transfer',  150.00, 'Extra on the car loan', null,      null,       null,             'Car loan'),
+    ('a0000000-0000-0000-0000-000000000023', '2026-09-30', 'transfer',  100.00, 'Car loan from savings', null,      null,       'Emergency fund', 'Car loan')
+) as v (id, occurred_on, type, amount, description, funder, income_source, from_account, to_account)
+left join funding_sources as f on f.name = v.funder
+left join income_sources as s on s.name = v.income_source
+left join accounts as fa on fa.name = v.from_account
+left join accounts as ta on ta.name = v.to_account;
+
 insert into transaction_items (id, transaction_id, description, amount, subcategory_id, item_type_id, bucket)
 select v.id::uuid, v.transaction_id::uuid, v.description, v.amount, sc.id, it.id, v.bucket::bucket_type
 from (values
@@ -99,7 +127,10 @@ from (values
     ('b0000000-0000-0000-0000-000000000063', 'a0000000-0000-0000-0000-000000000006', 'Paper towels',     7.50, 'Housing',        'Household supplies',      'Paper Product',         'needs'),
     ('b0000000-0000-0000-0000-000000000007', 'a0000000-0000-0000-0000-000000000007', 'Burger combo',    12.40, 'Food and drink', 'Takeout / Quick Service', 'Meals & Prepared Food', 'wants'),
     ('b0000000-0000-0000-0000-000000000010', 'a0000000-0000-0000-0000-000000000010', 'Bus fare',         3.75, 'Transportation', 'Public transit',          null,                    'needs'),
-    ('b0000000-0000-0000-0000-000000000012', 'a0000000-0000-0000-0000-000000000012', 'Electricity',     60.00, 'Bills',          'Utilities',               null,                    'needs')
+    ('b0000000-0000-0000-0000-000000000012', 'a0000000-0000-0000-0000-000000000012', 'Electricity',     60.00, 'Bills',          'Utilities',               null,                    'needs'),
+    ('b0000000-0000-0000-0000-000000000016', 'a0000000-0000-0000-0000-000000000016', 'Rent',          1400.00, 'Housing',        'Rent',                    null,                    'needs'),
+    ('b0000000-0000-0000-0000-000000000017', 'a0000000-0000-0000-0000-000000000017', 'Dinners',        700.00, 'Food and drink', 'Restaurants',             'Meals & Prepared Food', 'wants'),
+    ('b0000000-0000-0000-0000-000000000021', 'a0000000-0000-0000-0000-000000000021', 'Minimum payment', 250.00, 'Transportation', 'Car loan payments',      null,                    'needs')
 ) as v (id, transaction_id, description, amount, category, subcategory, item_type, bucket)
 join categories as c on c.name = v.category
 join subcategories as sc on sc.category_id = c.id and sc.name = v.subcategory
