@@ -89,3 +89,63 @@ resource "aws_lambda_function" "nudge" {
     ignore_changes = [filename, source_code_hash]
   }
 }
+
+# The scheduler's role may invoke the nudge function and nothing else.
+resource "aws_iam_role" "scheduler" {
+  name = "finflow-scheduler"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Principal = {
+        Service = "scheduler.amazonaws.com"
+      }
+      Action = "sts:AssumeRole"
+      Condition = {
+        StringEquals = {
+          "aws:SourceAccount" = data.aws_caller_identity.current.account_id
+        }
+      }
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "scheduler_invoke_nudge" {
+  name = "invoke-nudge"
+  role = aws_iam_role.scheduler.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = ["lambda:InvokeFunction"]
+      Resource = aws_lambda_function.nudge.arn
+    }]
+  })
+}
+
+# 09:00 local time all year: the scheduler applies the IANA zone and DST
+# itself, so no UTC cron needs a seasonal edit. The scheduled time goes into
+# the payload so a retry keeps the original run date. Delivery is
+# at-least-once; the handler's nudge_runs claim makes it idempotent.
+resource "aws_scheduler_schedule" "daily_digest" {
+  name                         = "finflow-daily-digest"
+  schedule_expression          = "cron(0 9 * * ? *)"
+  schedule_expression_timezone = "America/Toronto"
+
+  flexible_time_window {
+    mode = "OFF"
+  }
+
+  target {
+    arn      = aws_lambda_function.nudge.arn
+    role_arn = aws_iam_role.scheduler.arn
+    input    = jsonencode({ scheduled_time = "<aws.scheduler.scheduled-time>" })
+
+    retry_policy {
+      maximum_retry_attempts       = 2
+      maximum_event_age_in_seconds = 3600
+    }
+  }
+}
