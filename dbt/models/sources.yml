@@ -24,3 +24,5 @@ sources:
       - name: recurring_series
       - name: recurring_exclusions
       - name: recurring_pauses
+      - name: budget_targets
+        description: One row, the 50/30/20 targets as percentages (migration 0018).

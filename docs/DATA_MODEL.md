@@ -448,6 +448,21 @@ end $$;
 create trigger transactions_sync_recurring
   before insert or update of recurring_series_id, is_recurring on transactions
   for each row execute function transactions_sync_recurring();
+
+-- The 50/30/20 targets (migration 0018): one row, percentages of spendable
+-- income that sum to 100, seeded 50/30/20 (a tracked default, nothing
+-- personal). A person changes them with an UPDATE in the untracked seed
+-- overlay. dbt reads them as fractions (SEMANTIC_LAYER.md, "Targets"); no
+-- effective dates, so a change restates every month on the next rebuild.
+create table budget_targets (
+  id                       boolean primary key default true check (id),  -- one row only
+  needs_percent            numeric(5,2) not null check (needs_percent between 0 and 100),
+  wants_percent            numeric(5,2) not null check (wants_percent between 0 and 100),
+  financial_future_percent numeric(5,2) not null check (financial_future_percent between 0 and 100),
+  check (needs_percent + wants_percent + financial_future_percent = 100)
+);
+insert into budget_targets (needs_percent, wants_percent, financial_future_percent)
+values (50, 30, 20);
 ```
 
 ## Roles and schemas
@@ -502,7 +517,8 @@ The repo is public and the seed data splits accordingly:
 - **Untracked personal overlay** — `supabase/seed.personal.sql`, gitignored,
   applied once by hand (`psql -f`). Holds the owner-specific lookup values:
   accounts, income sources, additional funding sources, personal tags, and
-  recurring merchants. A tracked `supabase/seed.personal.example.sql` shows
+  recurring merchants, and an UPDATE of `budget_targets` when the 50/30/20
+  default does not fit. A tracked `supabase/seed.personal.example.sql` shows
   the format with placeholder values so a fork can build its own overlay.
 
 Nothing in a tracked file may name a personal account, income source,
