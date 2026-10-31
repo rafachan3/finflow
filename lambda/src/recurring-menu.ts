@@ -269,19 +269,20 @@ export function listScreen(book: Book, today: string, offset = 0): Screen {
   const page = sorted.slice(offset, offset + LIST_PAGE);
   const lines = [`<b>↻ Recurring · ${book.series.length} tracked</b>`];
   if (book.series.length === 0) lines.push("Nothing tracked yet.");
+  const views = page.map((s) => viewOf(book, s, today));
   for (const [kind, heading] of KINDS) {
-    const views = page.filter((s) => s.kind === kind).map((s) => viewOf(book, s, today));
-    if (views.length === 0) continue;
+    const of = views.filter((v) => v.series.kind === kind);
+    if (of.length === 0) continue;
     lines.push(`<b>${heading}</b>`);
-    for (const v of views) lines.push(`• ${esc(v.series.name)} — ${summary(v)}`);
+    for (const v of of) lines.push(`• ${esc(v.series.name)} — ${summary(v)}`);
   }
   const keyboard: Keyboard = [];
-  for (let i = 0; i < page.length; i += 2) {
+  for (let i = 0; i < views.length; i += 2) {
     keyboard.push(
-      page.slice(i, i + 2).map((s) => {
-        const paused = viewOf(book, s, today).pausedNow ? " ⏸" : "";
-        return { text: `${cut(s.name, 30)}${paused}`, callback_data: `r:v:${s.id}` };
-      }),
+      views.slice(i, i + 2).map((v) => ({
+        text: `${cut(v.series.name, 30)}${v.pausedNow ? " ⏸" : ""}`,
+        callback_data: `r:v:${v.series.id}`,
+      })),
     );
   }
   // The leftovers (design §D.3, P3): nothing half-linked goes unnoticed.

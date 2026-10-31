@@ -446,9 +446,18 @@ const NOISE = new Set([
  * No stemming: "pass" and "passes" are different words.
  */
 export function tokens(text: string): string[] {
-  const words = merchantKey(text).replace(/'/g, "").split(/[^\p{L}\p{N}]+/u);
-  return [...new Set(words.filter((w) => w.length > 1 && !/\d/.test(w) && !NOISE.has(w)))].sort();
+  let found = TOKENS.get(text);
+  if (!found) {
+    const words = merchantKey(text).replace(/'/g, "").split(/[^\p{L}\p{N}]+/u);
+    found = [...new Set(words.filter((w) => w.length > 1 && !/\d/.test(w) && !NOISE.has(w)))].sort();
+    // A screen compares every description with every series' references.
+    if (TOKENS.size >= 5000) TOKENS.clear();
+    TOKENS.set(text, found);
+  }
+  return [...found];
 }
+
+const TOKENS = new Map<string, string[]>();
 
 /** Two descriptions with at least this similarity name the same payment. */
 const TEXT_MATCH = 0.6;
@@ -532,6 +541,26 @@ export interface Match {
  *   twice the band or the date inside an expected window plus grace.
  * - expense, weak: only the subcategory, with both the amount and the date.
  */
+/**
+ * A history's band and cadence fit, which do not depend on the transaction
+ * matched: computed once per history object, so matching every row against
+ * one history fits it once. A history is read, never mutated, by callers.
+ */
+const DERIVED = new WeakMap<SeriesHistory, { band: Band | null; fit: Fit | null }>();
+
+function derived(history: SeriesHistory, linked: LedgerRow[]): { band: Band | null; fit: Fit | null } {
+  let d = DERIVED.get(history);
+  if (!d) {
+    const { series: s } = history;
+    d = {
+      band: amountBand(linked.map((r) => r.amount), s.amountVaries),
+      fit: linked.length > 0 ? fitCadence(s.cadence, linked.map((r) => r.date), history.pauses) : null,
+    };
+    DERIVED.set(history, d);
+  }
+  return d;
+}
+
 export function matchStrength(history: SeriesHistory, tx: LedgerRow): Match {
   const { series: s } = history;
   const linked = [...history.linked].sort((a, b) => a.date.localeCompare(b.date));
@@ -553,15 +582,14 @@ export function matchStrength(history: SeriesHistory, tx: LedgerRow): Match {
     return { seriesId: s.id, strength: "none", slotDays: Infinity, amountCents: Infinity };
   }
 
-  const band = amountBand(linked.map((r) => r.amount), s.amountVaries);
+  const { band, fit } = derived(history, linked);
   const cents = parseCents(tx.amount);
   const amountCents = band && cents !== null ? Math.abs(cents - band.typical) : Infinity;
   const amountFits = band !== null && amountCents <= 2 * (band.high - band.typical);
 
   let slotGap = Infinity;
   let dateFits = false;
-  if (linked.length > 0) {
-    const fit = fitCadence(s.cadence, linked.map((r) => r.date), history.pauses);
+  if (fit) {
     const day = dayNumber(tx.date);
     const p = Math.ceil(RULES[s.cadence].period);
     const [centre, r] = nearest(slotDays(fit.anchor, day - p, day + p), day);
