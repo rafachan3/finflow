@@ -4,7 +4,10 @@ import {
   dayNumber,
   fitCadence,
   isoDate,
+  occurrences,
+  type Pause,
   shouldPropose,
+  type SlotStatus,
   slots,
   suggestCadence,
 } from "../src/recurring.js";
@@ -159,6 +162,116 @@ describe("cadence detection", () => {
         isoDate(dayNumber(monthDay(2026, m, day)) + Math.floor(random() * 5) - 2),
       );
       expect(suggestCadence(dates).best?.cadence, dates.join(" ")).toBe("monthly");
+    }
+  });
+});
+
+/** Payments with ids p0, p1, ... in date order. */
+function paid(dates: string[]): { id: string; date: string }[] {
+  return dates.map((date, i) => ({ id: `p${i}`, date }));
+}
+
+function track(
+  cadence: Cadence,
+  dates: string[],
+  today: string,
+  pauses: Pause[] = [],
+  skips: string[] = [],
+) {
+  return occurrences({ cadence, payments: paid(dates), pauses, skips, today });
+}
+
+function missed(o: ReturnType<typeof occurrences>): string[] {
+  return o.slots.filter((s) => s.status === "missed").map((s) => s.due);
+}
+
+// name, cadence, payments, today, slot, window start, end, last day before missed, status
+const PREDICTS: [string, Cadence, string[], string, string, string, string, string, SlotStatus][] = [
+  ["a monthly bill due on a Sunday", "monthly", INTERNET, "2026-10-31", "2026-11-15", "2026-11-13", "2026-11-17", "2026-11-20", "upcoming"],
+  ["a month-end charge, its window widened by the jitter", "monthly", MONTH_END, "2026-10-31", "2026-11-30", "2026-11-27", "2026-12-03", "2026-12-06", "upcoming"],
+  ["a salary whose window ends on a Saturday", "biweekly", SALARY, "2026-10-31", "2026-11-06", "2026-11-05", "2026-11-09", "2026-11-11", "upcoming"],
+  ["an allowance whose window opens on a Saturday", "semimonthly", ALLOWANCE, "2026-10-31", "2026-11-01", "2026-10-30", "2026-11-02", "2026-11-04", "due"],
+  ["interest due today", "monthly", INTEREST, "2026-10-31", "2026-10-31", "2026-10-29", "2026-11-02", "2026-11-05", "due"],
+  ["a gym due now", "monthly", GYM, "2026-10-31", "2026-11-03", "2026-10-30", "2026-11-05", "2026-11-08", "due"],
+  ["a gym month never logged", "monthly", GYM, "2026-10-31", "2026-08-03", "2026-07-31", "2026-08-05", "2026-08-08", "missed"],
+  ["a bill logged once, with the default window", "monthly", ["2026-10-15"], "2026-10-31", "2026-11-15", "2026-11-12", "2026-11-18", "2026-11-21", "upcoming"],
+];
+
+describe("expected payments", () => {
+  it.each(PREDICTS)("predicts %s", (_name, cadence, dates, today, due, start, end, lastDay, status) => {
+    const slot = track(cadence, dates, today).slots.find((s) => s.due === due);
+    expect(slot).toMatchObject({ start, end, lastDay, status });
+  });
+
+  it("counts a missed payment only after its window and grace", () => {
+    const lostJob = SALARY.slice(0, -1); // no pay on Oct 23
+    expect(missed(track("biweekly", lostJob, "2026-10-28"))).toEqual([]);
+    expect(missed(track("biweekly", lostJob, "2026-10-29"))).toEqual(["2026-10-23"]);
+    expect(missed(track("monthly", GYM, "2026-10-31"))).toEqual(["2026-08-03"]);
+  });
+
+  it("never counts a paused slot as missed", () => {
+    // Salary stops: the owner pauses it since the first missing pay.
+    const lostJob = SALARY.slice(0, -1);
+    const paused = track("biweekly", lostJob, "2026-10-29", [{ from: "2026-10-23", until: null }]);
+    expect(missed(paused)).toEqual([]);
+    expect(paused.slots.filter((s) => s.status === "paused").map((s) => s.due)).toEqual([
+      "2026-10-23", "2026-11-06",
+    ]);
+
+    // A phone bill paused for two months, then resumed.
+    const phone = ["2026-06-15", "2026-07-15", "2026-08-14"];
+    const pause = [{ from: "2026-09-01", until: "2026-10-28" }];
+    const resumed = track("monthly", phone, "2026-10-31", pause);
+    expect(missed(resumed)).toEqual([]);
+    expect(resumed.slots.map((s) => [s.due, s.status])).toEqual([
+      ["2026-06-15", "met"], ["2026-07-15", "met"], ["2026-08-15", "met"],
+      ["2026-09-15", "paused"], ["2026-10-15", "paused"], ["2026-11-15", "upcoming"],
+    ]);
+    expect(missed(track("monthly", phone, "2026-10-31"))).toEqual(["2026-09-15", "2026-10-15"]);
+  });
+
+  it("pauses a slot whose centre is the pause's first day, and expects one on its resume day", () => {
+    const o = track("monthly", INTERNET, "2026-12-31", [{ from: "2026-11-15", until: "2026-12-15" }]);
+    const status = Object.fromEntries(o.slots.map((s) => [s.due, s.status]));
+    expect(status["2026-11-15"]).toBe("paused");
+    expect(status["2026-12-15"]).toBe("missed");
+  });
+
+  it("lets a skip settle the one payment that will not happen", () => {
+    const o = track("monthly", GYM, "2026-10-31", [], ["2026-08-03"]);
+    expect(missed(o)).toEqual([]);
+    expect(o.slots.find((s) => s.due === "2026-08-03")?.status).toBe("skipped");
+    // A skip near a slot that was paid anyway changes nothing.
+    expect(track("monthly", GYM, "2026-10-31", [], ["2026-09-04"]).slots.find((s) => s.due === "2026-09-03")?.status).toBe("met");
+  });
+
+  it("counts a payment logged during a pause as met and flags it, and reports a second payment in one slot", () => {
+    const o = track("monthly", [...INTERNET, "2026-10-16"], "2026-10-31", [{ from: "2026-10-01", until: null }]);
+    expect(o.slots.find((s) => s.due === "2026-10-15")).toMatchObject({ status: "met", paymentId: "p4", duringPause: true });
+    expect(o.extra).toEqual(["p5"]);
+  });
+
+  it("expects nothing from a series with no payment yet", () => {
+    expect(occurrences({ cadence: "monthly", payments: [], pauses: [], skips: [], today: "2026-10-31" })).toEqual({
+      fit: null, slots: [], extra: [],
+    });
+  });
+
+  it("never counts a slot inside a pause as missed, for any monthly series and pause", () => {
+    const random = seeded(7);
+    for (let run = 0; run < 100; run++) {
+      const day = 1 + Math.floor(random() * 28);
+      const dates = Array.from({ length: 3 + Math.floor(random() * 6) }, (_, m) =>
+        isoDate(dayNumber(monthDay(2026, m, day)) + Math.floor(random() * 5) - 2),
+      );
+      const from = isoDate(dayNumber(dates[dates.length - 1]) + Math.floor(random() * 60));
+      const until = random() < 0.5 ? null : isoDate(dayNumber(from) + 1 + Math.floor(random() * 90));
+      const o = track("monthly", dates, "2026-12-31", [{ from, until }]);
+      for (const s of o.slots) {
+        const inside = s.due >= from && (until === null || s.due < until);
+        if (inside) expect(s.status, `${dates.join(" ")} paused ${from}..${until}`).not.toBe("missed");
+      }
     }
   });
 });

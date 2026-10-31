@@ -35,15 +35,22 @@ interface Rule {
   tolerance: number;
   /** Fewest payments before the detector proposes an undeclared series. */
   minEvents: number;
+  /** Window half-width in days: [min, max, default with fewer than 3 payments]. */
+  half: [number, number, number];
+  /** Grace after the window before a payment counts as missed: [min, max]. */
+  grace: [number, number];
 }
 
+// Grace floors cover a card charge posting 1-2 business days late, a weekend
+// and a day of logging lag; ceilings stay under a quarter period, so one
+// missed payment is reported before the next one's window opens (§C.6).
 const RULES: Record<Cadence, Rule> = {
-  weekly: { period: 7, tolerance: 1, minEvents: 4 },
-  biweekly: { period: 14, tolerance: 2, minEvents: 4 },
-  semimonthly: { period: 15.2, tolerance: 3, minEvents: 4 },
-  monthly: { period: 30.4, tolerance: 4, minEvents: 3 },
-  quarterly: { period: 91.3, tolerance: 7, minEvents: 3 },
-  yearly: { period: 365, tolerance: 10, minEvents: 2 },
+  weekly: { period: 7, tolerance: 1, minEvents: 4, half: [1, 2, 1], grace: [1, 2] },
+  biweekly: { period: 14, tolerance: 2, minEvents: 4, half: [1, 3, 2], grace: [2, 3] },
+  semimonthly: { period: 15.2, tolerance: 3, minEvents: 4, half: [1, 3, 2], grace: [2, 3] },
+  monthly: { period: 30.4, tolerance: 4, minEvents: 3, half: [2, 5, 3], grace: [3, 7] },
+  quarterly: { period: 91.3, tolerance: 7, minEvents: 3, half: [3, 10, 5], grace: [5, 14] },
+  yearly: { period: 365, tolerance: 10, minEvents: 2, half: [5, 14, 7], grace: [7, 21] },
 };
 
 /** Shortest period first. */
@@ -260,4 +267,119 @@ export function shouldPropose(fit: Fit): boolean {
     fit.events >= minEvents &&
     fit.spanDays >= (minEvents - 1) * period - tolerance
   );
+}
+
+export type SlotStatus = "met" | "skipped" | "paused" | "upcoming" | "due" | "missed";
+
+/** One expected payment: its centre, its window, and what happened to it. */
+export interface Slot {
+  due: string;
+  /** Window [start, end]; the payment is due from start. */
+  start: string;
+  end: string;
+  /** The last day before it counts as missed: end plus grace. */
+  lastDay: string;
+  status: SlotStatus;
+  paymentId: string | null;
+  /** Met by a payment logged while the series was paused ("resume?"). */
+  duringPause: boolean;
+}
+
+function clamp(x: number, [min, max]: [number, number] | [number, number, number]): number {
+  return Math.min(Math.max(x, min), max);
+}
+
+/** 0 = Sunday .. 6 = Saturday. */
+function weekday(day: number): number {
+  return new Date(day * DAY_MS).getUTCDay();
+}
+
+/**
+ * The window around a slot centre: ±⌈2s⌉ days clamped to the cadence's
+ * range (its default below three payments). A start on a weekend moves back
+ * to Friday (pay lands early), an end on a weekend forward to Monday
+ * (charges post on the next business day). Grace is ⌈s⌉ clamped. Holidays
+ * are not modelled; the grace floor absorbs a one-day shift.
+ */
+function window(fit: Fit, centre: number): { start: number; end: number; lastDay: number } {
+  const { half, grace } = RULES[fit.cadence];
+  const h = fit.events < 3 ? half[2] : clamp(Math.ceil(2 * fit.spread), half);
+  let start = centre - h;
+  let end = centre + h;
+  if (weekday(start) === 6) start -= 1;
+  if (weekday(start) === 0) start -= 2;
+  if (weekday(end) === 6) end += 2;
+  if (weekday(end) === 0) end += 1;
+  return { start, end, lastDay: end + clamp(Math.ceil(fit.spread), grace) };
+}
+
+/**
+ * Every expected payment of a series from its first payment to the first
+ * slot after today, with its status: met (a payment within half a period,
+ * oldest first, one per slot; a second goes in `extra`), skipped (a skip
+ * settles the unpaid slot nearest its date), paused (centre inside a pause,
+ * [from, until)), else upcoming before its window, due until its last day,
+ * missed after. The anchor is fitted to the declared cadence, so a series
+ * with one payment has slots too; one with none expects nothing yet. A
+ * month the owner never logged is missed, never a reason to move the anchor.
+ */
+export function occurrences(input: {
+  cadence: Cadence;
+  payments: { id: string; date: string }[];
+  skips: string[];
+  pauses: Pause[];
+  today: string;
+}): { fit: Fit | null; slots: Slot[]; extra: string[] } {
+  const { cadence, skips, pauses } = input;
+  if (input.payments.length === 0) return { fit: null, slots: [], extra: [] };
+  const payments = [...input.payments].sort((a, b) => a.date.localeCompare(b.date));
+  const fit = fitCadence(cadence, payments.map((p) => p.date), pauses);
+  const { period } = RULES[cadence];
+  const today = dayNumber(input.today);
+  const first = dayNumber(payments[0].date);
+  const last = Math.max(today, dayNumber(payments[payments.length - 1].date));
+  const all = slotDays(fit.anchor, first - Math.ceil(period), last + 2 * Math.ceil(period));
+  const from = nearest(all, first)[0];
+  const after = all.findIndex((c) => c > today && c >= from);
+  const centres = all.slice(all.indexOf(from), after + 1);
+
+  const held = new Map<number, string>();
+  const extra: string[] = [];
+  for (const p of payments) {
+    const [c, r] = nearest(centres, dayNumber(p.date));
+    if (Math.abs(r) <= period / 2 && !held.has(c)) held.set(c, p.id);
+    else extra.push(p.id);
+  }
+  const skipped = new Set<number>();
+  for (const s of skips) {
+    const [c, r] = nearest(centres, dayNumber(s));
+    if (Math.abs(r) <= period / 2 && !held.has(c)) skipped.add(c);
+  }
+
+  const slots = centres.map((c): Slot => {
+    const w = window(fit, c);
+    const paused = inPause(c, pauses);
+    const paymentId = held.get(c) ?? null;
+    const status: SlotStatus = paymentId
+      ? "met"
+      : skipped.has(c)
+        ? "skipped"
+        : paused
+          ? "paused"
+          : today < w.start
+            ? "upcoming"
+            : today <= w.lastDay
+              ? "due"
+              : "missed";
+    return {
+      due: isoDate(c),
+      start: isoDate(w.start),
+      end: isoDate(w.end),
+      lastDay: isoDate(w.lastDay),
+      status,
+      paymentId,
+      duringPause: paymentId !== null && paused,
+    };
+  });
+  return { fit, slots, extra };
 }
