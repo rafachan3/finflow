@@ -42,15 +42,32 @@ async function postTelegram(
   await callTelegram(botToken, method, body);
 }
 
+/** `html`: the text is Telegram HTML (parse_mode HTML), with link previews off. */
+export type Format = { html?: boolean };
+
+function formatFields(format: Format): Record<string, unknown> {
+  return format.html ? { parse_mode: "HTML", link_preview_options: { is_disabled: true } } : {};
+}
+
+/**
+ * Text made safe for an HTML message: Telegram's HTML mode needs `&`, `<`
+ * and `>` as entities. Every name or description put in one goes through it.
+ */
+export function esc(text: string): string {
+  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
 export async function sendMessage(
   botToken: string,
   chatId: number,
   text: string,
   replyMarkup?: object,
+  format: Format = {},
 ): Promise<void> {
   const body: Record<string, unknown> = {
     chat_id: chatId,
     text,
+    ...formatFields(format),
   };
   if (replyMarkup !== undefined) {
     body.reply_markup = replyMarkup;
@@ -84,18 +101,21 @@ export async function editMessageReplyMarkup(
   });
 }
 
-/** Replaces a sent message's text and removes its buttons. */
+/** Replaces a sent message's text and its buttons; none by default. */
 export async function editMessageText(
   botToken: string,
   chatId: number,
   messageId: number,
   text: string,
+  keyboard: unknown[][] = [],
+  format: Format = {},
 ): Promise<void> {
   await postEdit(botToken, "editMessageText", {
     chat_id: chatId,
     message_id: messageId,
     text,
-    reply_markup: { inline_keyboard: [] },
+    ...formatFields(format),
+    reply_markup: { inline_keyboard: keyboard },
   });
 }
 

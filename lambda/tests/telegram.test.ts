@@ -6,8 +6,10 @@ import {
   downloadTelegramFile,
   editMessageReplyMarkup,
   editMessageText,
+  esc,
   largestPhotoFileId,
   reviewKeyboard,
+  sendMessage,
   voiceFileId,
 } from "../src/telegram.js";
 
@@ -240,6 +242,26 @@ describe("message edits", () => {
     );
     await expect(editMessageReplyMarkup("tok", 1, 2, { inline_keyboard: [] })).resolves.toBeUndefined();
     await expect(editMessageText("tok", 1, 2, "Linked 1 of 2 to Maple Kiosk.")).resolves.toBeUndefined();
+  });
+
+  it("sends HTML with link previews off and keeps the buttons an edit passes", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ ok: true, result: {} }) });
+    vi.stubGlobal("fetch", fetchMock);
+    const keyboard = [[{ text: "Back", callback_data: "r:l:0" }]];
+
+    await sendMessage("tok", 1, "<b>Hi</b>", { inline_keyboard: keyboard }, { html: true });
+    await editMessageText("tok", 1, 2, "<b>Hi</b>", keyboard, { html: true });
+    await sendMessage("tok", 1, "plain");
+
+    const bodies = fetchMock.mock.calls.map(([, init]) => JSON.parse(init.body));
+    const html = { parse_mode: "HTML", link_preview_options: { is_disabled: true } };
+    expect(bodies[0]).toEqual({ chat_id: 1, text: "<b>Hi</b>", ...html, reply_markup: { inline_keyboard: keyboard } });
+    expect(bodies[1]).toEqual({ chat_id: 1, message_id: 2, text: "<b>Hi</b>", ...html, reply_markup: { inline_keyboard: keyboard } });
+    expect(bodies[2]).toEqual({ chat_id: 1, text: "plain" });
+  });
+
+  it("escapes &, < and > for an HTML message", () => {
+    expect(esc("Tom & Jerry <3 > 2")).toBe("Tom &amp; Jerry &lt;3 &gt; 2");
   });
 
   it("still throws any other refused edit", async () => {

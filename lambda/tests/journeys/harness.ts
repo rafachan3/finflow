@@ -54,10 +54,55 @@ function keyboardOf(body: Record<string, unknown>): Button[][] | undefined {
   return (body.reply_markup as { inline_keyboard?: Button[][] } | undefined)?.inline_keyboard;
 }
 
+/** The tags Telegram's HTML parse mode supports. */
+const HTML_TAGS = new Set([
+  "b", "strong", "i", "em", "u", "ins", "s", "strike", "del", "span", "tg-spoiler",
+  "a", "tg-emoji", "code", "pre", "blockquote",
+]);
+const ENTITIES: Record<string, string> = { lt: "<", gt: ">", amp: "&", quot: '"' };
+
+/**
+ * What an HTML message shows, as Telegram parses it: supported tags, closed
+ * in order, and every `&`, `<` and `>` in the text escaped; else why it is refused.
+ */
+function parseHtml(text: string): { visible: string } | { error: string } {
+  const open: string[] = [];
+  let visible = "";
+  const parts = /<(\/?)([a-z][a-z0-9-]*)(?:\s[^<>]*)?>|&(lt|gt|amp|quot|#\d+);|[<>&]|[^<>&]+/gi;
+  for (const [whole, close, tag, entity] of text.matchAll(parts)) {
+    if (tag !== undefined) {
+      const name = tag.toLowerCase();
+      if (!HTML_TAGS.has(name)) return { error: `unsupported tag <${name}>` };
+      if (!close) open.push(name);
+      else if (open.pop() !== name) return { error: `unexpected </${name}>` };
+    } else if (entity !== undefined) {
+      visible += ENTITIES[entity] ?? String.fromCodePoint(Number(entity.slice(1)));
+    } else if (whole.length === 1 && "<>&".includes(whole)) {
+      return { error: `unescaped ${whole}` };
+    } else {
+      visible += whole;
+    }
+  }
+  return open.length > 0 ? { error: `unclosed <${open.at(-1)}>` } : { visible };
+}
+
+/** The text a message shows: HTML is parsed, plain text is as sent. */
+function visibleText(body: Record<string, unknown>): string {
+  const text = typeof body.text === "string" ? body.text : "";
+  if (body.parse_mode !== "HTML") return text;
+  const parsed = parseHtml(text);
+  return "visible" in parsed ? parsed.visible : text;
+}
+
 /** The Bot API limits the real Telegram enforces with HTTP 400. */
 function telegramViolation(method: string, body: Record<string, unknown>): string | null {
   if (method === "sendMessage" || method === "editMessageText") {
-    const text = typeof body.text === "string" ? body.text : "";
+    if (body.parse_mode === "HTML") {
+      const parsed = parseHtml(typeof body.text === "string" ? body.text : "");
+      if ("error" in parsed) return `${method}: can't parse entities: ${parsed.error}`;
+    }
+    // The limit counts the text after entities parsing.
+    const text = visibleText(body);
     if (text.length < 1 || text.length > 4096) return `${method}: text must be 1-4096 characters`;
   }
   for (const button of (keyboardOf(body) ?? []).flat()) {
@@ -69,7 +114,7 @@ function telegramViolation(method: string, body: Record<string, unknown>): strin
     const current = telegram.shown.get(Number(body.message_id));
     if (!current) return `${method}: message to edit not found`;
     const next = {
-      text: typeof body.text === "string" ? body.text : current.text,
+      text: typeof body.text === "string" ? visibleText(body) : current.text,
       keyboard: keyboardOf(body) ?? (method === "editMessageText" ? [] : current.keyboard),
     };
     if (JSON.stringify(next) === JSON.stringify(current)) return `${method}: message is not modified`;
@@ -146,7 +191,7 @@ const server = setupServer(
     if (method === "sendMessage") {
       const messageId = telegram.nextMessageId++;
       telegram.sent.push({ method, body, failed, messageId });
-      telegram.shown.set(messageId, { text: String(body.text), keyboard: keyboardOf(body) ?? [] });
+      telegram.shown.set(messageId, { text: visibleText(body), keyboard: keyboardOf(body) ?? [] });
       return HttpResponse.json({ ok: true, result: { message_id: messageId } });
     }
     telegram.sent.push({ method, body, failed });
@@ -154,7 +199,7 @@ const server = setupServer(
       const id = Number(body.message_id);
       const current = telegram.shown.get(id)!;
       telegram.shown.set(id, {
-        text: typeof body.text === "string" ? body.text : current.text,
+        text: typeof body.text === "string" ? visibleText(body) : current.text,
         keyboard: keyboardOf(body) ?? (method === "editMessageText" ? [] : current.keyboard),
       });
     }
@@ -346,7 +391,7 @@ export const chat = {
   replies(): Reply[] {
     return telegram.sent
       .filter((s) => s.method === "sendMessage" && !s.failed)
-      .map((s) => toReply({ text: String(s.body.text), keyboard: keyboardOf(s.body) ?? [] }, s.messageId));
+      .map((s) => toReply({ text: visibleText(s.body), keyboard: keyboardOf(s.body) ?? [] }, s.messageId));
   },
   last(): Reply {
     const all = chat.replies();
