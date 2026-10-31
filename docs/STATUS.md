@@ -2,8 +2,8 @@
 
 Living state of the project. Read this first; update it whenever work lands.
 
-**Last updated:** 2026-10-30
-**Current phase:** Phase 4.5 — Proactive nudges, in progress: design approved, PR 1 (schema and detection, `feat/recurring-foundation`) in review (see [ROADMAP.md](ROADMAP.md) and Next concrete step)
+**Last updated:** 2026-10-31
+**Current phase:** Phase 4.5 — Proactive nudges, in progress: PR 1 (schema and detection) merged and migration 0016 applied; PR 2 (`/recurring` menu, add, backfill-verify, `feat/recurring-menu`) in review (see [ROADMAP.md](ROADMAP.md) and Next concrete step)
 
 ## Phase progress
 
@@ -16,7 +16,7 @@ Living state of the project. Read this first; update it whenever work lands.
 - [x] Phase 3.6 — Regression test suite — **accepted 2026-10-29: deliberate-break PR #48 blocked (unit + inventory failed, BLOCKED), clean PRs #46/#47 green, smoke step green on deploy run 40803017809, `main` protected** (2026-10-29)
 - [x] Phase 3.5 — Ingestion follow-ons — **accepted 2026-10-29 by the journey tests (no phone test): 25 of 25 passed in `line-tags`, `duplicates` and `merchants`; see Next concrete step** (2026-10-29)
 - [x] Phase 4 — dbt semantic layer + MetricFlow — **accepted 2026-10-30: `dbt build`, the hand-written-SQL reconciliation and `mf query` vs the marts green in CI on the fixture (#72-#78) and on production in `dbt-nightly` run 41157900716 (87 of 87 nodes, 14 metrics, 5 months); real-month hand verification deferred** (2026-10-30)
-- [ ] Phase 4.5 — Proactive nudges (recurring reminders, merchant recommendations) — **design approved; PR 1 of 7 (migration 0016, dbt invariants, `lambda/src/recurring.ts`) in review** (2026-10-30)
+- [ ] Phase 4.5 — Proactive nudges (recurring reminders, merchant recommendations) — **PR 1 of 7 merged (#86, migration 0016 applied); PR 2 (`/recurring` menu) in review** (2026-10-31)
 - [ ] Phase 5 — Grafana dashboards
 - [ ] Phase 6 — Claude analytics agent (subagents + Postgres MCP)
 - [ ] Phase 7 — Open-source polish
@@ -455,14 +455,30 @@ pauses and skips, computes the amount band, and matches descriptions as word
 sets because the same bill is logged under drifting wording with no
 merchant. No bot change yet: nothing calls the module.
 
+Recurring menu (Phase 4.5 PR 2, DECISIONS.md 2026-10-31): `/recurring` lists
+the series by kind with cadence, usual amount and next window (or how many
+are not logged, or the pause), and every button edits that message in place.
+A series' detail pauses it (from today or the first payment not logged;
+until resumed, one or three months on, or a date the owner replies with),
+resumes, renames (a reply to a prompt) and deletes it (asked first). ➕ Add
+makes a series from a saved payment, suggesting the cadence its similar
+payments show, and then opens the review of all history: candidates as
+toggles (strong and previously flagged ticked, weak unticked) and an Apply
+whose label states the counts, which links the ticked and excludes the rest
+shown. The legacy-flag screen clears or makes series from rows flagged
+recurring with no series, and Suggestions tracks or dismisses detector
+proposals. Writes happen only on taps whose labels say what they write;
+repeats write nothing. No Gemini call. Screens read the whole recurring book
+per tap (`lambda/src/recurring-db.ts`) and derive everything in
+`recurring.ts`.
+
 ## Next concrete step
 
-Phase 4.5 — Proactive nudges, PR 1 (`feat/recurring-foundation`) open.
-Before it merges, the CoS runs the read-only prechecks in the PR body on
-production, then `supabase db push --dry-run` and `supabase db push`
-(migration 0016), because the nightly dbt tests read the new tables. Then
-PR 2 (`feat/recurring-menu`: `/recurring`, add from a saved transaction,
-backfill-verify), PR 3 (the card links the series), PR 4 (nudge Terraform),
+Phase 4.5 — Proactive nudges, PR 2 (`feat/recurring-menu`) open and
+waiting for code review before merge (it writes ledger links from buttons).
+No migration or infra step. After it merges and deploys, the owner can start
+the backfill: `/recurring` → ⚑ Flagged (legacy flags with no series)
+and ➕ Add for each real bill, salary and transfer. Then PR 3 (the card links the series), PR 4 (nudge Terraform),
 PR 5 (daily digest), PR 6 (migration 0017, after the owner's backfill), PR 7
 (acceptance). `fixed_base_burn` stays thin until the backfill links real
 history; expect it to rise then.

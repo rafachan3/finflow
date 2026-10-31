@@ -93,6 +93,16 @@ dbt models and the agent read it, so numbers agree everywhere.
   `merchants` lookup directly, with no Confirm; the next message's
   `loadTaxonomy` sees the change. The deploy workflow's last step
   registers the same table as the Telegram command menu.
+  `/recurring` (`src/recurring-menu.ts`) sends one message whose buttons
+  edit it in place: list, detail, pause/resume/rename/delete, add from a
+  saved payment, the review that links past payments, legacy flags and
+  suggestions. Each tap reads the whole recurring book
+  (`src/recurring-db.ts`) and derives everything in `src/recurring.ts`;
+  what is ticked lives in the keyboard, and only a tap whose label states
+  the effect writes (one statement, safe to repeat). A reply to one of its
+  prompts (rename, a pause's end date) carries the series id in the
+  prompt's text and is routed after commands and before the wait, so there
+  is no waiting state. No Gemini call.
 - Idempotency: one Telegram update may yield several `ingestions` rows
   (one per event), unique on `(telegram_update_id, event_index)`. Telegram
   retries webhooks, and a retry re-runs Gemini, which can return a
