@@ -35,9 +35,11 @@ models:
         data_tests:
           - accepted_values:
               arguments:
-                values: [savings, investment]
+                values: [savings, investment, debt]
       - name: from_account_kind
-        description: Kind of from_account_id, the account a transfer leaves.
+        description: >
+          Kind of from_account_id, the account a transfer leaves; never debt
+          (dbt test debt_account_only_receives_transfers).
         data_tests:
           - accepted_values:
               arguments:
