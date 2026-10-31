@@ -2307,3 +2307,43 @@ would break the meaning of `spend` and needs plus wants equals spend),
 balances or interest on a debt account (the ledger has no balances), and a
 golden case for a debt transfer (the suite is capped at 20; a journey with a
 neutral "Car loan" account proves it).
+
+## 2026-10-31 — Financial future is money actually moved; 50/30/20 targets per person
+
+The owner follows 50/30/20: needs, wants and "financial future" (saving,
+investing, paying a loan down faster) as shares of the month's income.
+`unspent_rate` counts money not spent, which includes cash still sitting in
+chequing that can leak into next month's spending, so it is not the 20%.
+
+- **`financial_future = transfers - withdrawals`: money actually moved.**
+  Money counts only once it is in a savings, investment or debt account.
+  Cash left in chequing is `unallocated_cash`, shown as its own line ("still
+  in chequing"), not financial future.
+- **`unspent_rate` is kept** (renamed from `savings_rate` the same day): it
+  is the standard savings rate, just not the 20% line.
+- **The base is `spendable_income = income - savings_income`.** Savings
+  interest is growth inside the account, so it is neither income nor
+  financial future in this view. Refunds and the allowance count.
+- **A withdrawal lowers that month's financial future.** No carry-over: the
+  owner dates a late transfer to the month it belongs to, so the transfer's
+  `occurred_on` is enough.
+- **Debt reaches it through the existing deposit shape.** An extra loan
+  payment is a transfer into a `debt` account (migration 0017), so it is in
+  `transfers` and `financial_future` with no separate debt term; a minimum
+  payment stays `needs` spend.
+- **Targets are per person, in a one-row `budget_targets` table**
+  (migration 0018), stored `0`-`100`, seeded `50/30/20` (nothing personal),
+  overridden in the untracked seed overlay, exposed to the marts as
+  fractions. No effective dates: a change restates history, as other
+  settings do. Which direction is better is not encoded; Phase 5 colours it.
+- **The identity `spendable_income = spend + financial_future +
+  unallocated_cash` holds exactly** by construction and is a dbt test, as is
+  the four shares summing to 1 within rounding.
+
+**Ruled out:** carrying a shortfall into the next month (late transfers are
+dated to their month); deleting the old savings rate (kept, renamed);
+counting savings interest as income or as financial future (it is growth);
+debt as a spend bucket (`bucket = 'financial_future'` would break `spend`
+and the identity); percentages of spend instead of income (the owner wants
+share of income); per-month target history; a cumulative financial-future
+metric; a Telegram command or card for this view (Phase 5 charts the mart).
