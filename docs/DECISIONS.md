@@ -1990,3 +1990,56 @@ job level (pip's install scripts would see them); a
 sslrootcert setting in `profiles.yml` and `check_metrics.py` (libpq's
 environment variable covers all three tools); running the fixture test on
 production (its literals describe the fixture).
+
+---
+
+## 2026-10-30 — The Data API roles are revoked, not fenced with RLS
+
+A read-only check of production (2026-10-30) found RLS off on all 14 tables
+in `public`, `anon` and `authenticated` holding USAGE on `public` and SELECT
+on its tables (Supabase's default privileges), and the Data API answering.
+Anyone with the project's anon key could have read the ledger through
+PostgREST. Nothing in FinFlow uses the Data API: the Lambda, dbt and every
+reader connect to Postgres directly.
+
+**Chosen:** migration 0015 revokes, for each of `anon` and `authenticated`
+that exists, every privilege on the tables, sequences and routines in
+`public`; USAGE and CREATE on `public`, `staging` and `marts`; and the
+migrating role's default privileges for them, in `public` (Supabase's
+documented "Revoke default privileges" statements, securing-your-api) and
+globally, since a per-schema revoke cannot remove a global default. It does
+the same for `supabase_admin`'s defaults when the migrating role may; on
+Supabase `postgres` may not, which is acceptable because every FinFlow object
+is created by the migrating role. The migration fails if either role can
+still reach a `public` table, and does nothing where the roles do not exist
+(the throwaway test Postgres). The dbt test `data_api_roles_reach_nothing`
+returns any grant, effective table or sequence access, routine grant or
+default privilege either role holds there, names only; the nightly runs it on
+production, so a grant Supabase or a later migration brings back opens the
+`dbt-nightly` issue. The integration suite recreates Supabase's grants and
+proves the revoke and the guard; the dbt CI job proves the guard fails as
+`finflow_dbt`.
+
+**Ruled out:**
+
+- **RLS as the fix, or RLS with no policies as a second layer.** The readers
+  `finflow_readonly` and `finflow_dbt` read `public` through grants, are not
+  owners and do not bypass RLS. With RLS on and no policies they would see
+  zero rows, not an error, so dbt would build empty marts and much of the
+  suite would pass on nothing. Adding `using (true)` policies for each
+  reader on every table, and remembering them for each new table, buys
+  nothing while the Data API roles hold no grants.
+- **Relying on the anon key staying secret.** It is a publishable key by
+  design, meant to be shipped in clients; it is not in this repo, but that
+  is not a control.
+- **Only disabling the Data API in the dashboard.** It is a setting outside
+  the repo that nothing here would notice being turned back on, and the
+  grants would still be there. The owner should turn it off as well, as a
+  second layer; the database does not depend on it.
+- **Revoking `service_role` too, or PUBLIC's execute on new functions**
+  (Supabase's fourth statement). `service_role`'s key is the secret key, not
+  a public credential. The PUBLIC default is global, touches every schema,
+  and `public` holds no functions.
+
+**Reconsider if** FinFlow ever serves data through the Data API: then expose
+a dedicated schema with explicit grants and RLS policies, not `public`.

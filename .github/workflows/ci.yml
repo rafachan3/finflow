@@ -202,6 +202,26 @@ jobs:
               raise SystemExit(f"finflow_analyst can read {t}")
           print(f"finflow_analyst reads {len(marts)} marts and no staging or ledger table")
           EOF
+      # The throwaway Postgres has no anon role, so the guard passes there by
+      # finding nothing; this proves it bites as finflow_dbt, as on production.
+      - name: a grant to anon fails data_api_roles_reach_nothing, and nothing else
+        run: |
+          api_role() {
+            python -c 'import os, sys, psycopg2
+          db = psycopg2.connect(os.environ["TEST_DATABASE_URL"], dbname="finflow_test")
+          db.autocommit = True
+          db.cursor().execute(sys.argv[1])' "$1"
+          }
+          api_role "create role anon nologin; grant select on public.transactions to anon"
+          status=0
+          dbt test --exclude tag:fixture || status=$?
+          api_role "drop owned by anon; drop role anon"
+          if [ "$status" = 0 ]; then
+            echo "::error::dbt test passed with anon holding SELECT on public.transactions"
+            exit 1
+          fi
+          jq -e '[.results[] | select(.status == "fail" or .status == "error") | .unique_id]
+            == ["test.finflow.data_api_roles_reach_nothing"]' target/run_results.json
       - name: mf query matches fct_monthly_summary for every contract metric
         run: |
           mf validate-configs

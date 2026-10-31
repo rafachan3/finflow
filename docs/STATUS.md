@@ -427,6 +427,17 @@ deploy workflow registers it with `setMyCommands` (`npm run telegram:commands`;
 token read from SSM and masked). A failed registration turns the deploy run
 red; the code stays deployed.
 
+Data API lockdown (security fix, DECISIONS.md 2026-10-30): every `public`
+table had RLS off while Supabase's `anon` and `authenticated` held grants on
+them, so the project's anon key could read the ledger through PostgREST.
+Migration 0015 revokes everything those roles hold on `public` (tables,
+sequences, routines, schema) and on `staging` and `marts`, and the default
+privileges that would grant them new tables. Guarded by the dbt test
+`data_api_roles_reach_nothing`, which the nightly runs on production.
+**Pending:** CoS applies 0015 to production (`supabase db push`, dry-run
+first) before the PR merges; owner turns the Data API off in the dashboard
+as well (not required).
+
 ## Next concrete step
 
 Phase 4.5 — Proactive nudges (see ROADMAP.md), not started. Brainstorm with

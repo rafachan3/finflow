@@ -305,6 +305,12 @@ is part of any rebuild, and the "deploy your own" guide must say so.
   on `public` (no raw Telegram payloads). dbt runs as `finflow_dbt`, which reads
   `public` and writes only `staging` and `marts`, so it cannot change the
   ledger. Both are created by migration 0013 without passwords.
+- Every database client connects to Postgres directly, never through
+  Supabase's Data API (PostgREST, GraphQL). Its roles `anon` and
+  `authenticated` hold no privilege on `public`, `staging` or `marts`
+  (migration 0015), so the project's anon key reads nothing; a nightly dbt
+  test checks production. RLS is off on purpose: the `finflow_*` readers have
+  no policies (DECISIONS.md 2026-10-30).
 - AWS billing is a security concern here, not just a cost one: a leaked key on
   a public repo is exploitable for compute. Budget alarm + least-privilege IAM
   + no long-lived access keys in CI (use OIDC if Actions ever needs AWS).
