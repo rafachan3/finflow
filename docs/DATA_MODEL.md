@@ -336,6 +336,14 @@ tracked file). Migrations 0003 and 0013 create them.
   member of `finflow_dbt`. Supabase's `postgres` is not a superuser, so 0013
   grants itself the membership for that statement and revokes it right after.
 - Roles are cluster-wide, so 0013 creates each only when absent.
+- Supabase's Data API roles, `anon` and `authenticated`, hold nothing:
+  migration 0015 revokes their privileges on every table, sequence and
+  routine in `public`, their grants on `public`, `staging` and `marts`, and
+  the migrating role's default privileges that would grant them later
+  tables. Nothing in FinFlow uses the Data API. RLS stays off: grants are the
+  boundary (DECISIONS.md 2026-10-30). A table a later migration adds needs no
+  revoke; `data_api_roles_reach_nothing` (dbt, nightly on production) fails
+  if either role reaches anything.
 - Neither schema is in the Data API's exposed schemas, so PostgREST does not
   serve them. Over the pooler the usernames are `finflow_dbt.<project-ref>` and
   `finflow_analyst.<project-ref>`.
