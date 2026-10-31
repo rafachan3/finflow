@@ -2114,3 +2114,101 @@ questions answered by their defaults). Migration 0016, three dbt tests,
 
 **Reconsider if** the review screens show many weak or missed matches on real
 history: tune the 0.6 threshold or the filler-word list first.
+
+## 2026-10-31 — The /recurring menu: stateless screens, writes only on labelled taps
+
+Phase 4.5 PR 2, from the approved design (§D, §E, §H PR 2).
+
+**Chosen:**
+
+- **Every tap re-reads the whole recurring book** (series, every
+  transaction with its largest line's subcategory, pauses, skips,
+  exclusions, dismissals: a few hundred rows) and derives windows, bands,
+  candidates and proposals in `recurring.ts`, as the design's "derive, never
+  cache" rule says. `matchStrength` fits a history once per screen rather
+  than once per row, and `tokens()` remembers word sets, which took a
+  synthetic 520-row, 25-series list from about 950 ms to about 90 ms.
+- **Nothing is written until a tap whose label says what it writes.** The
+  last step of a pause, Resume, Delete (after a confirm screen), a cadence
+  on the add screen, Apply (`✅ Link 5 · ignore 3`, rewritten on every
+  toggle), Clear flag on ticked (k) and Not recurring. Toggles, Select all,
+  Amount varies and Later edit only the keyboard, the mention review's
+  pattern (DECISIONS 2026-10-29). Every write is one SQL statement.
+- **A repeat finds the work done and only pops up.** A double tap or a
+  Telegram retry gets "Already paused/applied/cleared/…" and no edit, so it
+  never redraws over the screen the first tap left (and the journey fakes
+  refuse an edit that changes nothing, as Telegram does).
+- **Typed pause end.** Besides "until resumed" and one or three months on,
+  a pause can end on a date the owner replies with (ForceReply, the
+  prompt's text carries the series id and start date, so no waiting state),
+  a yearless date on or before the start meaning next year's. This is how
+  a series that bills again only from a known later date (a free trial, a
+  paused plan) is told not to expect a payment before then; a new series'
+  review offers it directly (`⏳ Next payment not until…`).
+- **Legacy flags get ➕ per row** rather than one "Make a series from …"
+  button whose target would depend on which row is ticked, plus Select all
+  and paging (`r:f:<offset>`); the list starts unticked, because clearing a
+  flag is the owner's call.
+- **`r:b` with no series** opens the first series with candidates, else the
+  legacy flags (the design's "when no series has candidates left").
+- **The add flow stores no keywords**: the name is already a match key
+  (DECISIONS 2026-10-30). A default name another series has gets a number.
+- **The review's totals come from the database** (`N payments linked, M
+  ignored`), not from counts carried between pages, so they stay right
+  across pages and retries.
+
+**Ruled out / deferred:**
+
+- **A series with a future start and no payment yet.** The schema has no
+  start date, and a series' expected payments start at its first linked
+  payment, so a series with none expects nothing; the add flow also starts
+  from a saved payment. Expressing "first bill on Dec 15" with no history
+  needs a `starts_on` column (a migration this PR does not add). Until then
+  the owner adds such an item from its first payment once it posts (PR 3's
+  Saved reply offers that), or, when it has history, pauses it until the
+  date it bills again.
+- Button colours (`style`), the digest's silent send, and the detail's
+  "Matches:" line: not needed by the menu; the digest PR adds
+  `disable_notification`.
+- A candidate can be offered under two series; it joins whichever Apply
+  links it first and then leaves the other's list (links are never stolen).
+
+**Reconsider if** a tap feels slow on real history: the book is read whole
+on every tap; an index-backed candidate query is the next step.
+
+## 2026-10-31 — A /recurring prompt never takes an expense; "today" means the tap's day
+
+Code review of PR #87 (Phase 4.5 PR 2).
+
+**Chosen:**
+
+- **Logging an expense wins over a prompt** (hard constraint 6). Only a
+  text reply to the bot's own rename or pause-end prompt, sent within 15
+  minutes of the prompt (`message.date − reply_to_message.date`), is taken
+  as the answer. A photo, voice note, audio, document or caption, an empty
+  text, a reply to anything else or a stale prompt goes on to extraction.
+  Text with money in it (a number with a decimal part, such as 12.50 or
+  4,50, or a currency marker next to a number: $5, 5$, 5 dollars) is an
+  expense whichever prompt it answers, so "lunch 12.50" replying to a
+  rename prompt is saved, not taken as a name; plain digits in a name
+  ("Internet 2", "Gym 24") still rename. A date reply that is no date but
+  reads as an expense (a number next to a non-date word, "coffee 5") also
+  goes to extraction; only an unmistakable attempt gets the "try again"
+  reply. A name such as "Plan 2.0" would read as money; it can be typed
+  without the decimal.
+- **A typed pause end with no year is its next occurrence** after the
+  later of the pause's start and today, not the most recent past one; a
+  day not after the start (today, yesterday, an earlier date) is refused.
+  Dates outside the current year show their year.
+- **"Today" buttons carry `t`**, resolved to the Toronto day of the tap, so
+  a menu tapped days after it was drawn resumes or pauses on the right
+  day.
+- **Racing double taps answer as repeats.** A create that waited on
+  another tap's create reads the series name in a second statement; a
+  pause that hit the exclusion constraint re-checks for the identical
+  pause and says "Already paused".
+
+**Ruled out:** a stored "awaiting prompt" state (the Lambda stays
+stateless; the prompt's own text and date carry everything needed), and
+undoing a review exclusion from the menu (logged as a follow-up; the spec
+makes an unticked shown row ignored for good).

@@ -25,6 +25,24 @@ describe("the journey fakes", () => {
     ]);
   });
 
+  it("count only the text an HTML message shows towards Telegram's limit", async () => {
+    await expect(sendMessage("t", 1, `<b>${"x".repeat(4000)}</b> &amp;`, undefined, { html: true })).resolves.toBeUndefined();
+  });
+
+  it("reject HTML with an unsupported tag, an unclosed tag or an unescaped character", async () => {
+    for (const text of ["<h1>Hi</h1>", "<b>Hi", "<b>Hi</i>", "Tom & Jerry", "1 < 2", "2 > 1"]) {
+      await expect(sendMessage("t", 1, text, undefined, { html: true }), text).rejects.toThrow(/HTTP 400/);
+    }
+    expect(takeTelegramRejections()).toEqual([
+      "sendMessage: can't parse entities: unsupported tag <h1>",
+      "sendMessage: can't parse entities: unclosed <b>",
+      "sendMessage: can't parse entities: unexpected </i>",
+      "sendMessage: can't parse entities: unescaped &",
+      "sendMessage: can't parse entities: unescaped <",
+      "sendMessage: can't parse entities: unescaped >",
+    ]);
+  });
+
   it("reject an empty message", async () => {
     await expect(sendMessage("t", 1, "")).rejects.toThrow(/HTTP 400/);
     expect(takeTelegramRejections()).toHaveLength(1);

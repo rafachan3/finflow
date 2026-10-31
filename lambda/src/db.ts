@@ -12,7 +12,7 @@ import { mentionPattern, MENTIONS_PAGE, type Mention } from "./mentions.js";
 
 let pool: Pool | undefined;
 
-async function getPool(): Promise<Pool> {
+export async function getPool(): Promise<Pool> {
   if (!pool) {
     const { databaseUrl } = await getConfig();
     pool = new Pool({ connectionString: databaseUrl, max: 1 });
@@ -27,13 +27,13 @@ export async function closePool(): Promise<void> {
   await open?.end();
 }
 
+/** Whether a Postgres error carries this SQLSTATE (23505 unique, 23P01 exclusion, ...). */
+export function hasCode(err: unknown, code: string): boolean {
+  return typeof err === "object" && err !== null && "code" in err && (err as { code: unknown }).code === code;
+}
+
 function isUniqueViolation(err: unknown): boolean {
-  return (
-    typeof err === "object" &&
-    err !== null &&
-    "code" in err &&
-    (err as { code: unknown }).code === "23505"
-  );
+  return hasCode(err, "23505");
 }
 
 type Querier = { query: Pool["query"] };

@@ -446,9 +446,18 @@ const NOISE = new Set([
  * No stemming: "pass" and "passes" are different words.
  */
 export function tokens(text: string): string[] {
-  const words = merchantKey(text).replace(/'/g, "").split(/[^\p{L}\p{N}]+/u);
-  return [...new Set(words.filter((w) => w.length > 1 && !/\d/.test(w) && !NOISE.has(w)))].sort();
+  let found = TOKENS.get(text);
+  if (!found) {
+    const words = merchantKey(text).replace(/'/g, "").split(/[^\p{L}\p{N}]+/u);
+    found = [...new Set(words.filter((w) => w.length > 1 && !/\d/.test(w) && !NOISE.has(w)))].sort();
+    // A screen compares every description with every series' references.
+    if (TOKENS.size >= 5000) TOKENS.clear();
+    TOKENS.set(text, found);
+  }
+  return [...found];
 }
+
+const TOKENS = new Map<string, string[]>();
 
 /** Two descriptions with at least this similarity name the same payment. */
 const TEXT_MATCH = 0.6;
@@ -532,18 +541,55 @@ export interface Match {
  *   twice the band or the date inside an expected window plus grace.
  * - expense, weak: only the subcategory, with both the amount and the date.
  */
+/**
+ * A history's band and cadence fit, which do not depend on the transaction
+ * matched: computed once per history object, so matching every row against
+ * one history fits it once. A history is read, never mutated, by callers.
+ */
+const DERIVED = new WeakMap<SeriesHistory, { band: Band | null; fit: Fit | null }>();
+
+function derived(history: SeriesHistory, linked: LedgerRow[]): { band: Band | null; fit: Fit | null } {
+  let d = DERIVED.get(history);
+  if (!d) {
+    const { series: s } = history;
+    d = {
+      band: amountBand(linked.map((r) => r.amount), s.amountVaries),
+      fit: linked.length > 0 ? fitCadence(s.cadence, linked.map((r) => r.date), history.pauses) : null,
+    };
+    DERIVED.set(history, d);
+  }
+  return d;
+}
+
 export function matchStrength(history: SeriesHistory, tx: LedgerRow): Match {
   const { series: s } = history;
   const linked = [...history.linked].sort((a, b) => a.date.localeCompare(b.date));
-  const band = amountBand(linked.map((r) => r.amount), s.amountVaries);
+  // The cheap keys first: a screen matches every series against every row,
+  // and the fit below is the costly part.
+  const unrelated =
+    tx.type !== s.kind ||
+    tx.seriesId !== null ||
+    history.excluded.includes(tx.id) ||
+    (s.kind === "income" && tx.incomeSourceId !== s.incomeSourceId) ||
+    (s.kind === "transfer" && (tx.fromAccountId !== s.fromAccountId || tx.toAccountId !== s.toAccountId));
+  const none: Match = { seriesId: s.id, strength: "none", slotDays: Infinity, amountCents: Infinity };
+  if (unrelated) return none;
+  const refs = new Set([s.name, ...s.keywords, ...linked.map((r) => r.description)]);
+  const named =
+    s.kind === "expense" &&
+    ((s.merchantId !== null && tx.merchantId === s.merchantId) ||
+      [...refs].some((ref) => textSimilarity(ref, tx.description) >= TEXT_MATCH));
+  const sameSub = s.kind === "expense" && s.subcategoryId !== null && tx.subcategoryId === s.subcategoryId;
+  if (s.kind === "expense" && !named && !sameSub) return none;
+
+  const { band, fit } = derived(history, linked);
   const cents = parseCents(tx.amount);
   const amountCents = band && cents !== null ? Math.abs(cents - band.typical) : Infinity;
   const amountFits = band !== null && amountCents <= 2 * (band.high - band.typical);
 
   let slotGap = Infinity;
   let dateFits = false;
-  if (linked.length > 0) {
-    const fit = fitCadence(s.cadence, linked.map((r) => r.date), history.pauses);
+  if (fit) {
     const day = dayNumber(tx.date);
     const p = Math.ceil(RULES[s.cadence].period);
     const [centre, r] = nearest(slotDays(fit.anchor, day - p, day + p), day);
@@ -553,18 +599,9 @@ export function matchStrength(history: SeriesHistory, tx: LedgerRow): Match {
   }
 
   const match = (strength: Strength): Match => ({ seriesId: s.id, strength, slotDays: slotGap, amountCents });
-  if (tx.type !== s.kind || tx.seriesId !== null || history.excluded.includes(tx.id)) return match("none");
-  if (s.kind === "income") return match(tx.incomeSourceId === s.incomeSourceId ? "strong" : "none");
-  if (s.kind === "transfer") {
-    const same = tx.fromAccountId === s.fromAccountId && tx.toAccountId === s.toAccountId;
-    return match(same ? "strong" : "none");
-  }
-  const refs = [s.name, ...s.keywords, ...linked.map((r) => r.description)];
-  const named =
-    (s.merchantId !== null && tx.merchantId === s.merchantId) ||
-    refs.some((ref) => textSimilarity(ref, tx.description) >= TEXT_MATCH);
+  // Income and transfers got here only with their hard key.
+  if (s.kind !== "expense") return match("strong");
   if (named && (amountFits || dateFits)) return match("strong");
-  const sameSub = s.subcategoryId !== null && tx.subcategoryId === s.subcategoryId;
   return match(sameSub && amountFits && dateFits ? "weak" : "none");
 }
 

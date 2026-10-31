@@ -64,6 +64,7 @@ import {
   type Keyboard,
   type MentionTap,
 } from "./mentions.js";
+import { handleRecurringTap, answerPrompt, parseRecurringTap, sendRecurringList } from "./recurring-menu.js";
 import { putReceipt } from "./s3.js";
 import {
   answerCallbackQuery,
@@ -85,6 +86,11 @@ type TelegramMessage = {
   caption?: string;
   photo?: unknown[];
   voice?: unknown;
+  audio?: unknown;
+  document?: unknown;
+  /** Unix seconds. */
+  date?: number;
+  reply_to_message?: { text?: string; date?: number; from?: { is_bot?: boolean } };
 };
 type TelegramCallbackQuery = {
   id: string;
@@ -421,6 +427,7 @@ const RUN: Record<CommandName, (c: CommandContext) => Promise<void>> = {
     const reply = name === "" ? DELETE_USAGE : deleteReply(await deleteMerchant(name), name);
     await sendMessage(botToken, chatId, reply);
   },
+  recurring: ({ chatId, botToken }) => sendRecurringList(botToken, chatId, todayToronto()),
 };
 
 /** Check, persist, and present every event of one message, in order. */
@@ -577,6 +584,13 @@ async function handleMessage(
     return ok("ok");
   }
 
+  // Also before the wait: a text reply to a fresh /recurring prompt (rename,
+  // pause end) is not a date or a correction. Anything else, including a
+  // photo or an expense sent as a reply, falls through to extraction.
+  if (await answerPrompt(message, message.chat.id, config.botToken, todayToronto())) {
+    return ok("ok");
+  }
+
   const awaiting = await findAwaitingIngestion();
   if (awaiting) {
     const waiting =
@@ -646,6 +660,20 @@ async function handleCallback(
 
   const review = parseMentionTap(cb.data);
   if (review) return handleMentionTap(cb, review, chatId, botToken);
+
+  const today = todayToronto();
+  const recurring = parseRecurringTap(cb.data, today);
+  if (recurring) {
+    await handleRecurringTap(recurring, {
+      botToken,
+      chatId,
+      callbackId: cb.id,
+      messageId: cb.message!.message_id!,
+      keyboard: cb.message?.reply_markup?.inline_keyboard ?? [],
+      today,
+    });
+    return ok("ok");
+  }
 
   const match = cb.data?.match(CALLBACK_RE);
   if (!match) {

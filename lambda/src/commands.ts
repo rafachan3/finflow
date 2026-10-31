@@ -8,6 +8,7 @@ export const COMMANDS = {
   merchants: "List merchants",
   addmerchant: "Add a merchant: /addmerchant Name",
   delmerchant: "Delete a merchant: /delmerchant Name",
+  recurring: "Recurring bills and income: list, pause, add",
 } as const;
 
 export type CommandName = keyof typeof COMMANDS;

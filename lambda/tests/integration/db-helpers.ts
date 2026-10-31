@@ -39,6 +39,57 @@ export async function resetData(): Promise<void> {
   );
 }
 
+export type TxSeed = {
+  date: string;
+  amount: string;
+  description: string;
+  type?: "expense" | "income" | "transfer";
+  merchant?: string;
+  /** An income's source. */
+  source?: string;
+  /** A transfer's accounts; null is chequing. */
+  from?: string;
+  to?: string;
+  /** An expense's one line; Groceries by default. */
+  subcategory?: string;
+  /** A legacy is_recurring flag, as the Notion import or Gemini's guess left it. */
+  flagged?: boolean;
+};
+
+/** A saved transaction as a history import writes it (no ingestion); an expense gets one line. Its id. */
+export async function insertTransaction(t: TxSeed): Promise<string> {
+  const [row] = await sql<{ id: string }>(
+    `WITH t AS (
+       INSERT INTO transactions (occurred_on, type, amount, description, merchant_id, income_source_id,
+                                 from_account_id, to_account_id, funding_source_id, is_recurring)
+       VALUES ($1::date, $2::transaction_type, $3::numeric, $4,
+               (SELECT id FROM merchants WHERE name = $5), (SELECT id FROM income_sources WHERE name = $6),
+               (SELECT id FROM accounts WHERE name = $7), (SELECT id FROM accounts WHERE name = $8),
+               CASE WHEN $2 = 'expense' THEN (SELECT id FROM funding_sources WHERE name = 'self') END, $9)
+       RETURNING id, type, amount, description
+     ),
+     line AS (
+       INSERT INTO transaction_items (transaction_id, description, amount, subcategory_id, bucket)
+       SELECT t.id, t.description, t.amount, s.id, 'needs' FROM t JOIN subcategories s ON s.name = $10
+       WHERE t.type = 'expense'
+     )
+     SELECT id::text FROM t`,
+    [
+      t.date,
+      t.type ?? "expense",
+      t.amount,
+      t.description,
+      t.merchant ?? null,
+      t.source ?? null,
+      t.from ?? null,
+      t.to ?? null,
+      t.flagged ?? false,
+      t.subcategory ?? "Groceries",
+    ],
+  );
+  return row.id;
+}
+
 export async function closeHelpers(): Promise<void> {
   await pool.end();
 }

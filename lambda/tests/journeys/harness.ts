@@ -5,7 +5,7 @@ import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
 import { afterAll, afterEach, beforeAll, beforeEach, expect } from "vitest";
 import { retryWait } from "../../src/gemini.js";
-import { closeHelpers, resetData, sql } from "../integration/db-helpers.js";
+import { closeHelpers, insertTransaction, resetData, sql, type TxSeed } from "../integration/db-helpers.js";
 import { testDbUrl } from "../integration/env.js";
 
 /**
@@ -46,6 +46,8 @@ const telegram = {
   /** What each sent message shows now, after any edits, by message_id. */
   shown: new Map<number, Shown>(),
   nextMessageId: 1,
+  /** When each sent message was sent, in Unix seconds, by message_id. */
+  sentAt: new Map<number, number>(),
 };
 
 const EDITS = new Set(["editMessageText", "editMessageReplyMarkup"]);
@@ -54,10 +56,55 @@ function keyboardOf(body: Record<string, unknown>): Button[][] | undefined {
   return (body.reply_markup as { inline_keyboard?: Button[][] } | undefined)?.inline_keyboard;
 }
 
+/** The tags Telegram's HTML parse mode supports. */
+const HTML_TAGS = new Set([
+  "b", "strong", "i", "em", "u", "ins", "s", "strike", "del", "span", "tg-spoiler",
+  "a", "tg-emoji", "code", "pre", "blockquote",
+]);
+const ENTITIES: Record<string, string> = { lt: "<", gt: ">", amp: "&", quot: '"' };
+
+/**
+ * What an HTML message shows, as Telegram parses it: supported tags, closed
+ * in order, and every `&`, `<` and `>` in the text escaped; else why it is refused.
+ */
+function parseHtml(text: string): { visible: string } | { error: string } {
+  const open: string[] = [];
+  let visible = "";
+  const parts = /<(\/?)([a-z][a-z0-9-]*)(?:\s[^<>]*)?>|&(lt|gt|amp|quot|#\d+);|[<>&]|[^<>&]+/gi;
+  for (const [whole, close, tag, entity] of text.matchAll(parts)) {
+    if (tag !== undefined) {
+      const name = tag.toLowerCase();
+      if (!HTML_TAGS.has(name)) return { error: `unsupported tag <${name}>` };
+      if (!close) open.push(name);
+      else if (open.pop() !== name) return { error: `unexpected </${name}>` };
+    } else if (entity !== undefined) {
+      visible += ENTITIES[entity] ?? String.fromCodePoint(Number(entity.slice(1)));
+    } else if (whole.length === 1 && "<>&".includes(whole)) {
+      return { error: `unescaped ${whole}` };
+    } else {
+      visible += whole;
+    }
+  }
+  return open.length > 0 ? { error: `unclosed <${open.at(-1)}>` } : { visible };
+}
+
+/** The text a message shows: HTML is parsed, plain text is as sent. */
+function visibleText(body: Record<string, unknown>): string {
+  const text = typeof body.text === "string" ? body.text : "";
+  if (body.parse_mode !== "HTML") return text;
+  const parsed = parseHtml(text);
+  return "visible" in parsed ? parsed.visible : text;
+}
+
 /** The Bot API limits the real Telegram enforces with HTTP 400. */
 function telegramViolation(method: string, body: Record<string, unknown>): string | null {
   if (method === "sendMessage" || method === "editMessageText") {
-    const text = typeof body.text === "string" ? body.text : "";
+    if (body.parse_mode === "HTML") {
+      const parsed = parseHtml(typeof body.text === "string" ? body.text : "");
+      if ("error" in parsed) return `${method}: can't parse entities: ${parsed.error}`;
+    }
+    // The limit counts the text after entities parsing.
+    const text = visibleText(body);
     if (text.length < 1 || text.length > 4096) return `${method}: text must be 1-4096 characters`;
   }
   for (const button of (keyboardOf(body) ?? []).flat()) {
@@ -69,7 +116,7 @@ function telegramViolation(method: string, body: Record<string, unknown>): strin
     const current = telegram.shown.get(Number(body.message_id));
     if (!current) return `${method}: message to edit not found`;
     const next = {
-      text: typeof body.text === "string" ? body.text : current.text,
+      text: typeof body.text === "string" ? visibleText(body) : current.text,
       keyboard: keyboardOf(body) ?? (method === "editMessageText" ? [] : current.keyboard),
     };
     if (JSON.stringify(next) === JSON.stringify(current)) return `${method}: message is not modified`;
@@ -146,7 +193,8 @@ const server = setupServer(
     if (method === "sendMessage") {
       const messageId = telegram.nextMessageId++;
       telegram.sent.push({ method, body, failed, messageId });
-      telegram.shown.set(messageId, { text: String(body.text), keyboard: keyboardOf(body) ?? [] });
+      telegram.shown.set(messageId, { text: visibleText(body), keyboard: keyboardOf(body) ?? [] });
+      telegram.sentAt.set(messageId, Math.floor(Date.now() / 1000));
       return HttpResponse.json({ ok: true, result: { message_id: messageId } });
     }
     telegram.sent.push({ method, body, failed });
@@ -154,7 +202,7 @@ const server = setupServer(
       const id = Number(body.message_id);
       const current = telegram.shown.get(id)!;
       telegram.shown.set(id, {
-        text: typeof body.text === "string" ? body.text : current.text,
+        text: typeof body.text === "string" ? visibleText(body) : current.text,
         keyboard: keyboardOf(body) ?? (method === "editMessageText" ? [] : current.keyboard),
       });
     }
@@ -229,6 +277,7 @@ export function useJourneys(): void {
     telegram.files = {};
     telegram.shown = new Map();
     telegram.nextMessageId = 1;
+    telegram.sentAt = new Map();
     gemini.calls = [];
     gemini.lastSystem = "";
     gemini.lastUserText = [];
@@ -284,12 +333,24 @@ async function deliver(update: unknown, secret = SECRET): Promise<Result> {
   return (await handler(event)) as Result;
 }
 
+/** Unix seconds, as Telegram dates a message. */
+const nowSeconds = () => Math.floor(Date.now() / 1000);
+
 function message(fields: Record<string, unknown>, from = OWNER) {
   updateId++;
   return {
     update_id: updateId,
-    message: { message_id: updateId, chat: { id: from }, ...fields },
+    message: { message_id: updateId, date: nowSeconds(), chat: { id: from }, ...fields },
   };
+}
+
+/** A receipt photo; file_unique_id is stable for a stored file, so re-sending it repeats it. */
+function receipt() {
+  telegram.files = { "photo-large": "photos/file_1.jpg" };
+  return [
+    { file_id: "photo-small", file_unique_id: "photo-small-u", file_size: 10 },
+    { file_id: "photo-large", file_unique_id: "photo-large-u", file_size: 900 },
+  ];
 }
 
 /** The owner's side of the Telegram chat. */
@@ -297,13 +358,22 @@ export const chat = {
   text(text: string, from = OWNER) {
     return deliver(message({ text }, from));
   },
+  /**
+   * A reply to a bot message, as Telegram sends one to a ForceReply prompt:
+   * text, or a receipt photo with this caption.
+   */
+  reply(to: Reply, text: string, as: "text" | "photo" = "text") {
+    const reply_to_message = {
+      message_id: to.messageId,
+      text: to.text,
+      date: telegram.sentAt.get(to.messageId ?? -1),
+      from: { id: 1, is_bot: true },
+    };
+    const fields = as === "photo" ? { photo: receipt(), caption: text } : { text };
+    return deliver(message({ ...fields, reply_to_message }));
+  },
   photo(caption = "") {
-    telegram.files = { "photo-large": "photos/file_1.jpg" };
-    // file_unique_id is stable for a stored file, so re-sending this photo repeats it.
-    const photo = [
-      { file_id: "photo-small", file_unique_id: "photo-small-u", file_size: 10 },
-      { file_id: "photo-large", file_unique_id: "photo-large-u", file_size: 900 },
-    ];
+    const photo = receipt();
     return deliver(message(caption ? { photo, caption } : { photo }));
   },
   voice() {
@@ -346,7 +416,7 @@ export const chat = {
   replies(): Reply[] {
     return telegram.sent
       .filter((s) => s.method === "sendMessage" && !s.failed)
-      .map((s) => toReply({ text: String(s.body.text), keyboard: keyboardOf(s.body) ?? [] }, s.messageId));
+      .map((s) => toReply({ text: visibleText(s.body), keyboard: keyboardOf(s.body) ?? [] }, s.messageId));
   },
   last(): Reply {
     const all = chat.replies();
@@ -369,6 +439,37 @@ export const ledger = {
                (select id from funding_sources where name = 'self'))`,
       [description],
     );
+  },
+  /** Saved transactions, as a history import writes them; their ids. */
+  async add(...rows: TxSeed[]): Promise<string[]> {
+    const ids: string[] = [];
+    for (const row of rows) ids.push(await insertTransaction(row));
+    return ids;
+  },
+  /**
+   * A series the owner already tracks, with these payments linked; its keys
+   * come from the first one, as the bot's Add takes them. Its id.
+   */
+  async track(name: string, cadence: string, ids: string[]): Promise<number> {
+    const [{ id }] = await sql<{ id: number }>(
+      `INSERT INTO recurring_series (name, kind, cadence, subcategory_id, income_source_id, from_account_id, to_account_id)
+       SELECT $1, t.type, $2::recurring_cadence,
+              (SELECT i.subcategory_id FROM transaction_items i WHERE i.transaction_id = t.id ORDER BY i.amount DESC LIMIT 1),
+              t.income_source_id, t.from_account_id, t.to_account_id
+       FROM transactions t WHERE t.id = $3::uuid
+       RETURNING id`,
+      [name, cadence, ids[0]],
+    );
+    await sql("UPDATE transactions SET recurring_series_id = $1 WHERE id = ANY($2::uuid[])", [id, ids]);
+    return id;
+  },
+  /** Each transaction's series name and is_recurring, by description and date. */
+  async links(): Promise<Record<string, { series: string | null; flagged: boolean }>> {
+    const rows = await sql<{ key: string; series: string | null; flagged: boolean }>(
+      `SELECT t.description || ' ' || t.occurred_on AS key, s.name AS series, t.is_recurring AS flagged
+       FROM transactions t LEFT JOIN recurring_series s ON s.id = t.recurring_series_id`,
+    );
+    return Object.fromEntries(rows.map((r) => [r.key, { series: r.series, flagged: r.flagged }]));
   },
   ingestions() {
     return sql<{
