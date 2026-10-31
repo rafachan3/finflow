@@ -3,7 +3,7 @@
 Living state of the project. Read this first; update it whenever work lands.
 
 **Last updated:** 2026-10-31
-**Current phase:** Phase 4.5 — Proactive nudges, in progress: PR 1 (schema and detection) merged and migration 0016 applied; PR 2 (`/recurring` menu, add, backfill-verify) merged as #87; PR 3 (the card proposes and links the series) merged as #88; PR 4 (nudge Terraform, `feat/nudge-infra`) in review, apply before PR 5 merges (see [ROADMAP.md](ROADMAP.md) and Next concrete step)
+**Current phase:** Phase 4.5 — Proactive nudges, in progress: PR 1 (schema and detection) merged and migration 0016 applied; PR 2 (`/recurring` menu, add, backfill-verify) merged as #87; PR 3 (the card proposes and links the series) merged as #88; PR 4 (nudge Terraform, `feat/nudge-infra`) in review, apply before PR 5 merges (see [ROADMAP.md](ROADMAP.md) and Next concrete step). Alongside: financial-future metrics PR C (`feat/financial-future-metrics`, migration 0018) in review
 
 ## Phase progress
 
@@ -497,6 +497,23 @@ a journey with a neutral `Car loan` account proves it. Migration 0017 must
 be applied before merge. It takes the number the Phase 4.5 backfill CHECK
 had pencilled in, so that migration (and the docs and comments that call it
 0017) moves to the next free number when it is written.
+
+Financial-future metrics (PR C, DECISIONS.md 2026-10-31, branch
+`feat/financial-future-metrics`, in review): the 50/30/20 monthly view in
+the contract, `fct_monthly_summary`, MetricFlow and `check_metrics.py` (25
+metrics). `spendable_income = income - savings_income`; `financial_future
+= transfers - withdrawals` (money actually moved, so a loan's extra payment
+counts and a withdrawal lowers it); `needs_pct`, `wants_pct`,
+`financial_future_pct`, `unallocated_pct` as shares of `spendable_income`
+(null when it is 0); `financial_future_target` and `financial_future_gap`
+in dollars; the three `*_target_pct` from the new one-row `budget_targets`
+table (migration 0018, seeded 50/30/20, overridden in the untracked seed
+overlay). `financial_future_identity` holds `spendable_income = spend +
+financial_future + unallocated_cash` every month, nightly on production too;
+`fixture_financial_future_expected` checks the spec's worked example, a car
+loan month, June's interest and withdrawal, and two null months by hand.
+Migration 0018 must be applied before merge. No bot or Telegram change
+(Phase 5 charts the mart).
 
 ## Next concrete step
 
