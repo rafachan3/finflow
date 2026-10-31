@@ -3,7 +3,7 @@
 Living state of the project. Read this first; update it whenever work lands.
 
 **Last updated:** 2026-10-30
-**Current phase:** Phase 4.5 — Proactive nudges, not started: needs a brainstorm with the owner first (see [ROADMAP.md](ROADMAP.md) and Next concrete step)
+**Current phase:** Phase 4.5 — Proactive nudges, in progress: design approved, PR 1 (schema and detection, `feat/recurring-foundation`) in review (see [ROADMAP.md](ROADMAP.md) and Next concrete step)
 
 ## Phase progress
 
@@ -16,7 +16,7 @@ Living state of the project. Read this first; update it whenever work lands.
 - [x] Phase 3.6 — Regression test suite — **accepted 2026-10-29: deliberate-break PR #48 blocked (unit + inventory failed, BLOCKED), clean PRs #46/#47 green, smoke step green on deploy run 40803017809, `main` protected** (2026-10-29)
 - [x] Phase 3.5 — Ingestion follow-ons — **accepted 2026-10-29 by the journey tests (no phone test): 25 of 25 passed in `line-tags`, `duplicates` and `merchants`; see Next concrete step** (2026-10-29)
 - [x] Phase 4 — dbt semantic layer + MetricFlow — **accepted 2026-10-30: `dbt build`, the hand-written-SQL reconciliation and `mf query` vs the marts green in CI on the fixture (#72-#78) and on production in `dbt-nightly` run 41157900716 (87 of 87 nodes, 14 metrics, 5 months); real-month hand verification deferred** (2026-10-30)
-- [ ] Phase 4.5 — Proactive nudges (recurring reminders, merchant recommendations)
+- [ ] Phase 4.5 — Proactive nudges (recurring reminders, merchant recommendations) — **design approved; PR 1 of 7 (migration 0016, dbt invariants, `lambda/src/recurring.ts`) in review** (2026-10-30)
 - [ ] Phase 5 — Grafana dashboards
 - [ ] Phase 6 — Claude analytics agent (subagents + Postgres MCP)
 - [ ] Phase 7 — Open-source polish
@@ -438,13 +438,34 @@ privileges that would grant them new tables. Guarded by the dbt test
 first) before the PR merges; owner turns the Data API off in the dashboard
 as well (not required).
 
+Recurring foundation (Phase 4.5 PR 1, DECISIONS.md 2026-10-30): migration
+0016 adds `recurring_series` (name, kind, owner-confirmed cadence, match
+keys), `transactions.recurring_series_id` with a composite FK on (series,
+type) so a payment only joins a series of its own kind, a trigger that makes
+`is_recurring` follow the link (an unlinked insert keeps its flag until 0017),
+dated non-overlapping `recurring_pauses` (GiST exclusion, `btree_gist` in
+schema `extensions`), `recurring_skips`, `recurring_exclusions` and
+`recurring_dismissed`. The tables ship empty. dbt tests
+`recurring_link_matches_series_kind`, `recurring_link_not_excluded` and
+`recurring_pauses_do_not_overlap` run nightly; the fixture's recurring rows
+are now linked to generic series. `lambda/src/recurring.ts` (pure, no I/O)
+detects cadence from calendar slots (a month never logged is a missing
+payment, not a cadence change), predicts windows and missed payments with
+pauses and skips, computes the amount band, and matches descriptions as word
+sets because the same bill is logged under drifting wording with no
+merchant. No bot change yet: nothing calls the module.
+
 ## Next concrete step
 
-Phase 4.5 — Proactive nudges (see ROADMAP.md), not started. Brainstorm with
-the owner first: buttons versus commands, a recurring-expense declaration,
-pause and resume, and a way to flip `is_recurring` on a saved row.
-`fixed_base_burn` reads that per-transaction flag and only about 5% of
-lines are recurring, so the metric stays thin until the flag is easy to set.
+Phase 4.5 — Proactive nudges, PR 1 (`feat/recurring-foundation`) open.
+Before it merges, the CoS runs the read-only prechecks in the PR body on
+production, then `supabase db push --dry-run` and `supabase db push`
+(migration 0016), because the nightly dbt tests read the new tables. Then
+PR 2 (`feat/recurring-menu`: `/recurring`, add from a saved transaction,
+backfill-verify), PR 3 (the card links the series), PR 4 (nudge Terraform),
+PR 5 (daily digest), PR 6 (migration 0017, after the owner's backfill), PR 7
+(acceptance). `fixed_base_burn` stays thin until the backfill links real
+history; expect it to rise then.
 
 Phase 4 is accepted (2026-10-30). Optional and deferred: hand-verify real
 numbers for one complete month against the owner's records (on hold until

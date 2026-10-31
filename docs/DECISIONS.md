@@ -2043,3 +2043,74 @@ proves the revoke and the guard; the dbt CI job proves the guard fails as
 
 **Reconsider if** FinFlow ever serves data through the Data API: then expose
 a dedicated schema with explicit grants and RLS policies, not `public`.
+
+---
+
+## 2026-10-30 — Recurring series foundation: link, not flag; descriptions as word sets
+
+Phase 4.5 PR 1, from the approved design (owner, with the five open
+questions answered by their defaults). Migration 0016, three dbt tests,
+`lambda/src/recurring.ts`.
+
+**Chosen:**
+
+- **`is_recurring` follows a link.** `transactions.recurring_series_id`
+  with a composite FK `(recurring_series_id, type) → recurring_series (id,
+  kind)`, `ON DELETE SET NULL (recurring_series_id)` (Postgres 15+), and a
+  trigger: linking sets the flag, unlinking clears it, an unlinked insert
+  keeps what it was given. Migration 0017 (after the owner's backfill)
+  replaces the trigger with an exact rule and a CHECK. The contract
+  formulas do not change; `fixed_base_burn` will rise as the backfill links
+  real history, which is the point of the backfill, not a regression.
+- **Numbering.** The design called the foundation 0015 and the later CHECK
+  0016; 0015 went to the Data API lockdown, so they are 0016 and 0017.
+- **`btree_gist` in schema `extensions`**, where Supabase keeps extensions,
+  so its functions stay out of `public` and out of the Data API guard's
+  view. Pauses never overlap by a GiST exclusion constraint.
+- **Descriptions are word sets.** The owner's ledger (2026-10-31) logs one
+  bill several ways (an extra word one month, the same pass in different
+  case, a weekend pass in three word orders and wordings), most rows have no
+  merchant, and some bills have one to three rows. So matching and
+  detection normalise (merchant-key rules, then drop digits, month names
+  and filler words such as "bill", "plan", "monthly"), and score two
+  descriptions by the mean of their Jaccard index and overlap coefficient;
+  0.6 or more is the same payment. An expense series matches on its name,
+  its keywords and every description already linked to it, together with
+  the amount (twice the band) or the date (window plus grace). The design's
+  exact `descKey` (first two words) and whole-word keyword match are
+  replaced by this. The detector groups unmerchanted expenses the same way,
+  plus amount closeness, and a dismissed description key also silences a
+  similarly worded group.
+- **The name is a match key.** The design required an expense series to
+  carry a merchant, a subcategory or a keyword; with description matching
+  the name already is one, so that CHECK is dropped.
+- **Thin history uses the declared cadence.** `recurring_series.cadence` is
+  owner-confirmed and `NOT NULL`, so a bill logged once still has slots.
+  `suggestCadence` only suggests a cadence once the history spans one full
+  period of it ("not enough history, pick one" otherwise).
+- **Gaps are missing payments.** Slots are calendar anchors fitted by capped
+  L1 distance, never "last + 30 days": a month the owner did not log lowers
+  coverage and counts as not logged, and cannot move the anchor or turn a
+  monthly bill quarterly.
+- **Proposal span.** The design's "span ≥ 2 periods" would never let a
+  yearly series with its minimum of two payments be proposed; the rule is
+  span ≥ (minimum payments − 1) periods less one tolerance, which is the
+  same two months for monthly.
+- **`nudge_runs` waits for the digest PR.** It belongs to the scheduled
+  digest (PR 5), which adds its own migration; PR 1 holds no table nothing
+  uses yet.
+
+**Ruled out:**
+
+- Grouping or matching by exact description, or by merchant alone: the real
+  ledger defeats both.
+- Edit distance (Levenshtein) on whole descriptions: word order and extra
+  words ("Home internet plan" vs "Internet bill") dominate it.
+- Stemming or a synonym list ("metro" = "public transport"): a dependency or
+  a maintained list for a gain the linked-description references already
+  give; reconsider if real misses trace to it.
+- Enabling RLS on the new tables: it would hide them from `finflow_dbt`
+  (DECISIONS 2026-10-30, grants are the boundary).
+
+**Reconsider if** the review screens show many weak or missed matches on real
+history: tune the 0.6 threshold or the filler-word list first.
