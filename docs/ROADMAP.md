@@ -192,7 +192,7 @@ and a deleted one is not.
       CI on the fixture, then ran green against production on 2026-10-30:
       `dbt build --exclude tag:fixture` passed all 87 nodes)
 - [x] docs/SEMANTIC_LAYER.md: canonical metric definitions (discretionary
-      spend, savings rate, needs/wants ratio, fixed base burn; fourteen
+      spend, unspent rate, needs/wants ratio, fixed base burn; fourteen
       metrics in all)
 - [x] GitHub Action: nightly `dbt build` + tests (not_null, accepted_values,
       relationships) (`dbt-nightly.yml`; dispatch on `main`, run

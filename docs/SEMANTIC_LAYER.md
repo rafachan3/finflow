@@ -87,7 +87,7 @@ it has exactly one of three shapes:
 A contribution to an investment account is a deposit: it is the form a
 saving takes, not an extra saving on top. A move between two accounts never
 touches chequing, so it is in no metric and changes neither
-`unallocated_cash` nor `savings_rate`; it still counts in
+`unallocated_cash` nor `unspent_rate`; it still counts in
 `transaction_count` and has its row in `fct_transactions`. Transfers saved
 before migration 0014 have no from account, so every one is a deposit.
 
@@ -100,9 +100,9 @@ month of that source on the next rebuild.
 
 **Refunds count as income.** There is no refund flag. A refund adds to
 `income`, and the original purchase stays in `spend` and its bucket, so both
-are overstated by the refund. `savings_rate`'s numerator and
+are overstated by the refund. `unspent_rate`'s numerator and
 `unallocated_cash` stay exact (the refund and the purchase cancel); the
-`savings_rate` denominator is slightly inflated. A refund does not reduce
+`unspent_rate` denominator is slightly inflated. A refund does not reduce
 `wants_spend`. Upgrade path: a migration adding `income_sources.kind`
 (`income | refund`), with refunds then netted against spend, once a refund
 visibly distorts a month.
@@ -159,7 +159,7 @@ a metric, and CI fails if that set differs from the MetricFlow metrics.
 | `external_spend` | Expenses someone else paid for | `sum(transaction_items.amount)` over expense lines whose `funding_sources.name <> 'self'` | Never part of any other spend metric. |
 | `transfers` | Money moved out of chequing into savings and investment accounts | `sum(transactions.amount) where type = 'transfer' and from_account_id is null and to_account_id is not null` | Empty gives `0`. A deposit (see the shapes above); a move between two accounts is not one. Split by the destination's kind with the `account_kind` dimension. |
 | `withdrawals` | Money moved out of savings and investment accounts back into chequing | `sum(transactions.amount) where type = 'transfer' and from_account_id is not null and to_account_id is null` | Empty gives `0`. Neither income nor negative saving: spending it is what shows, through `spend`. Split by the source account's kind with the `from_account_kind` dimension. |
-| `savings_rate` | Share of income not spent | `round((income - spend) / nullif(income, 0), 4)` | Null when income is `0`. Negative when spend exceeds income. `transfers`, `withdrawals` and moves between accounts do not change it: moving money is neither saving nor spending it. `savings_income` is income not spent, so it raises the rate like any other income. |
+| `unspent_rate` | Share of income not spent | `round((income - spend) / nullif(income, 0), 4)` | Null when income is `0`. Negative when spend exceeds income. `transfers`, `withdrawals` and moves between accounts do not change it: moving money is neither saving nor spending it. `savings_income` is income not spent, so it raises the rate like any other income. It is not the financial-future rate (money actually moved into a savings, investment or debt account), which is added as its own metric. |
 | `unallocated_cash` | Money that reached chequing this month and was neither spent nor moved out | `income - savings_income - spend - transfers + withdrawals` | Chequing's net flow for the month. Positive: surplus still sitting in chequing that should have been moved. Negative: more left chequing than came in, covered by earlier months' surplus. A withdrawal raises it; `savings_income` and a move between two accounts do not change it. |
 | `unallocated_cash_cumulative` | Running balance of `unallocated_cash` | `sum(unallocated_cash) over (order by month_start)`, from the first data month up to and including this month | Starts at `0` before 2026-06-01: it measures how chequing changed since coverage began, not its balance (the ledger has no opening balance). A partial month (August 2026) carries into every later month. A deposit or withdrawal that was never logged shows up here as drift. |
 | `needs_wants_ratio` | Needs per dollar of wants | `round(needs_spend / nullif(wants_spend, 0), 4)` | Null when `wants_spend` is `0`. A 50/30 split is about `1.67`. |
@@ -218,7 +218,7 @@ with ledger as (
   group by month_start
 )
 select m.*,
-  round((income - spend) / nullif(income, 0), 4) as savings_rate,
+  round((income - spend) / nullif(income, 0), 4) as unspent_rate,
   income - savings_income - spend - transfers + withdrawals as unallocated_cash,
   sum(income - savings_income - spend - transfers + withdrawals)
     over (order by month_start) as unallocated_cash_cumulative,

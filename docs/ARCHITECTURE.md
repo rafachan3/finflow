@@ -235,7 +235,7 @@ rationale for its shape:
 - `.claude/agents/` defines subagents:
   - `data-analyst` — answers questions, produces charts/tables from marts
   - `sql-runner` — translates NL → SQL against the semantic layer, read-only
-  - `spend-coach` — monthly reviews: anomalies, category drift, savings rate
+  - `spend-coach` — monthly reviews: anomalies, category drift, unspent rate
   - `bucket-classifier` — same rules as ingest, for backfill / explain /
     owner-requested reclassify only; not the Telegram hot path
 - `AGENTS.md` (imported by `CLAUDE.md`) indexes STATUS, DECISIONS, DATA_MODEL
