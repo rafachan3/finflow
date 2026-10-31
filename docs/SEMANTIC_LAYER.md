@@ -114,8 +114,13 @@ spend line is in exactly one bucket and `needs_spend + wants_spend = spend`
 holds exactly (dbt test). "Discretionary spend" is a synonym for
 `wants_spend`, not a separate metric.
 
-**Recurring.** `transactions.is_recurring` is a header flag. Every line of a
-recurring expense counts as recurring.
+**Recurring.** `transactions.is_recurring` is a header flag that follows the
+transaction's link to a recurring series (migration 0016): linking sets it,
+unlinking clears it, and deleting a series unlinks its transactions. A
+paused series keeps its links: pausing changes expectations, not history.
+Until migration 0017, a row flagged before series existed keeps its flag
+while the owner's backfill links or clears it. Every line of a recurring
+expense counts as recurring.
 
 ## Grain
 

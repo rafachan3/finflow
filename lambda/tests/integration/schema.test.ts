@@ -181,6 +181,147 @@ describe("constraints", () => {
   });
 });
 
+describe("recurring series", () => {
+  async function series(name: string, kind = "expense"): Promise<number> {
+    const source = kind === "income" ? SALARY : "null";
+    const [{ id }] = await sql<{ id: number }>(
+      `insert into recurring_series (name, kind, cadence, income_source_id)
+       values ('${name}', '${kind}', 'monthly', ${source}) returning id`,
+    );
+    return id;
+  }
+
+  async function expense(seriesId: number | null = null, isRecurring = false): Promise<string> {
+    const [{ id }] = await sql<{ id: string }>(
+      `insert into transactions (occurred_on, type, amount, description, funding_source_id, is_recurring, recurring_series_id)
+       values ('2026-10-15', 'expense', 64.99, 'Internet bill', ${SELF}, $1, $2) returning id::text`,
+      [isRecurring, seriesId],
+    );
+    return id;
+  }
+
+  async function flag(id: string): Promise<{ is_recurring: boolean; recurring_series_id: number | null }> {
+    const [row] = await sql<{ is_recurring: boolean; recurring_series_id: number | null }>(
+      "select is_recurring, recurring_series_id from transactions where id = $1",
+      [id],
+    );
+    return row;
+  }
+
+  it("links a transaction to a series of its own kind and refuses another kind", async () => {
+    const internet = await series("Internet bill");
+    const salary = await series("Salary", "income");
+    const tx = await expense(internet);
+    expect(await flag(tx)).toEqual({ is_recurring: true, recurring_series_id: internet });
+
+    // The composite FK (recurring_series_id, type) → (id, kind) refuses an
+    // expense in an income series, on update as on insert.
+    expect(await errorCode(`update transactions set recurring_series_id = ${salary} where id = '${tx}'`)).toBe("23503");
+    expect(
+      await errorCode(
+        `insert into transactions (occurred_on, type, amount, description, funding_source_id, recurring_series_id)
+         values ('2026-10-15', 'expense', 10, 'x', ${SELF}, ${salary})`,
+      ),
+    ).toBe("23503");
+    // A linked row cannot change type away from its series' kind, nor the series its kind.
+    expect(
+      await errorCode(`update transactions set type = 'income', funding_source_id = null,
+                         income_source_id = ${SALARY} where id = '${tx}'`),
+    ).toBe("23503");
+    expect(await errorCode(`update recurring_series set kind = 'income', income_source_id = ${SALARY} where id = ${internet}`)).toBe("23503");
+  });
+
+  it("linking sets is_recurring and unlinking clears it", async () => {
+    const internet = await series("Internet bill");
+    const tx = await expense();
+    expect((await flag(tx)).is_recurring).toBe(false);
+
+    await sql(`update transactions set recurring_series_id = ${internet} where id = '${tx}'`);
+    expect(await flag(tx)).toEqual({ is_recurring: true, recurring_series_id: internet });
+
+    // Writing the flag alone cannot make a linked row non-recurring.
+    await sql(`update transactions set is_recurring = false where id = '${tx}'`);
+    expect((await flag(tx)).is_recurring).toBe(true);
+
+    await sql(`update transactions set recurring_series_id = null where id = '${tx}'`);
+    expect(await flag(tx)).toEqual({ is_recurring: false, recurring_series_id: null });
+  });
+
+  it("keeps a legacy flag on an unlinked insert and through merchant linking, and lets it be cleared", async () => {
+    // Transitional (migration 0016): Confirm still writes Gemini's guess until
+    // the card links series; 0017 closes the guarantee after the backfill.
+    const tx = await expense(null, true);
+    expect(await flag(tx)).toEqual({ is_recurring: true, recurring_series_id: null });
+    await sql(`update transactions set merchant_id = (select id from merchants where name = 'Acme Mart') where id = '${tx}'`);
+    expect((await flag(tx)).is_recurring).toBe(true);
+    await sql(`update transactions set is_recurring = false where id = '${tx}'`);
+    expect((await flag(tx)).is_recurring).toBe(false);
+  });
+
+  it("deleting a series unlinks its transactions and clears their flag", async () => {
+    const internet = await series("Internet bill");
+    const tx = await expense(internet);
+    await sql(`insert into recurring_pauses (series_id, paused_from) values (${internet}, '2026-11-01')`);
+    await sql(`insert into recurring_skips (series_id, due_on) values (${internet}, '2026-11-15')`);
+    const other = await expense();
+    await sql(`insert into recurring_exclusions (series_id, transaction_id) values (${internet}, '${other}')`);
+
+    await sql(`delete from recurring_series where id = ${internet}`);
+    expect(await flag(tx)).toEqual({ is_recurring: false, recurring_series_id: null });
+    const [{ n }] = await sql<{ n: number }>(
+      `select (select count(*) from recurring_pauses) + (select count(*) from recurring_skips)
+            + (select count(*) from recurring_exclusions) as n`,
+    );
+    expect(Number(n)).toBe(0);
+    expect(await sql("select 1 from transactions where id = $1", [other])).toHaveLength(1);
+  });
+
+  it("refuses a pause that overlaps another pause of the series", async () => {
+    const phone = await series("Phone bill");
+    const gym = await series("Gym");
+    const pause = (id: number, from: string, until: string | null) =>
+      `insert into recurring_pauses (series_id, paused_from, resumed_on)
+       values (${id}, '${from}', ${until === null ? "null" : `'${until}'`})`;
+    await sql(pause(phone, "2026-07-01", "2026-09-01"));
+    expect(await errorCode(pause(phone, "2026-08-15", null))).toBe("23P01");
+    // [from, resumed_on) is half-open: a pause starting the day the last one
+    // ended does not overlap, and another series' pauses are independent.
+    await sql(pause(phone, "2026-09-01", null));
+    await sql(pause(gym, "2026-08-15", null));
+    expect(await errorCode(pause(gym, "2026-10-01", "2026-10-01"))).toBe("23514");
+  });
+
+  it("drops an exclusion with its transaction, and remembers a dismissed proposal once", async () => {
+    const internet = await series("Internet bill");
+    const tx = await expense();
+    const exclude = `insert into recurring_exclusions (series_id, transaction_id) values (${internet}, '${tx}')`;
+    await sql(exclude);
+    expect(await errorCode(exclude)).toBe("23505");
+    await sql("delete from transactions where id = $1", [tx]);
+    expect(await sql("select 1 from recurring_exclusions")).toEqual([]);
+
+    const dismiss = "insert into recurring_dismissed (group_key) values ('desc:internet')";
+    await sql(dismiss);
+    expect(await errorCode(dismiss)).toBe("23505");
+  });
+
+  it.each([
+    ["a blank name", `insert into recurring_series (name, kind, cadence) values ('  ', 'expense', 'monthly')`, "23514"],
+    ["an unknown cadence", `insert into recurring_series (name, kind, cadence) values ('Gym', 'expense', 'daily')`, "22P02"],
+    ["income without a source", `insert into recurring_series (name, kind, cadence) values ('Salary', 'income', 'biweekly')`, "23514"],
+    ["an expense with a source", `insert into recurring_series (name, kind, cadence, income_source_id) values ('Gym', 'expense', 'monthly', ${SALARY})`, "23514"],
+    ["a transfer without an account", `insert into recurring_series (name, kind, cadence) values ('Savings', 'transfer', 'monthly')`, "23514"],
+    ["a transfer from and to the same account", `insert into recurring_series (name, kind, cadence, from_account_id, to_account_id) values ('Savings', 'transfer', 'monthly', ${SAVINGS}, ${SAVINGS})`, "23514"],
+    ["an expense with an account", `insert into recurring_series (name, kind, cadence, to_account_id) values ('Gym', 'expense', 'monthly', ${INVESTMENT})`, "23514"],
+    ["income with a merchant", `insert into recurring_series (name, kind, cadence, income_source_id, merchant_id) values ('Salary', 'income', 'monthly', ${SALARY}, (select min(id) from merchants))`, "23514"],
+    ["two series whose names differ only by case and spaces", `insert into recurring_series (name, kind, cadence) values ('Gym', 'expense', 'monthly'), (' gym ', 'expense', 'weekly')`, "23505"],
+    ["the same skip twice", `with s as (insert into recurring_series (name, kind, cadence) values ('Gym', 'expense', 'monthly') returning id)
+       insert into recurring_skips (series_id, due_on) select id, '2026-08-03'::date from s cross join generate_series(1, 2)`, "23505"],
+  ])("refuse a recurring series with %s", async (_name, text, code) => {
+    expect(await errorCode(text)).toBe(code);
+  });
+});
+
 describe("finflow_readonly", () => {
   it("can read every public table and write none of them", async () => {
     const tables = await sql<{ name: string; can_read: boolean; can_write: boolean }>(

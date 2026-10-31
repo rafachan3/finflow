@@ -21,3 +21,6 @@ sources:
       - name: accounts
       - name: funding_sources
       - name: tags
+      - name: recurring_series
+      - name: recurring_exclusions
+      - name: recurring_pauses
