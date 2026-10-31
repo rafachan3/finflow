@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { sql } from "../integration/db-helpers.js";
 import { chat, gemini, labels, ledger, STRANGER, useJourneys, type Reply } from "./harness.js";
 
 vi.mock("../../src/config.js", async () => {
@@ -93,6 +94,18 @@ describe("/recurring list and detail", () => {
     expect((await open()).text).toBe("↻ Recurring · 0 tracked\nNothing tracked yet.");
   });
 
+  it("a paused series shows its pause in the list and detail", async () => {
+    const ids = await ledger.add(bill("2026-06-15", "45.00", "Phone bill"), bill("2026-07-15", "45.00", "Phone bill"));
+    const phone = await ledger.track("Phone bill", "monthly", ids);
+    await sql("insert into recurring_pauses (series_id, paused_from, resumed_on) values ($1, '2026-09-01', '2026-12-01')", [phone]);
+    const list = await open();
+    expect(list.text).toContain("• Phone bill — ⏸ paused since Sep 1, resumes Dec 1");
+    expect(labels(list)).toContain("Phone bill ⏸");
+    await chat.tap(list, "Phone bill ⏸");
+    expect(chat.current(list).text).toContain("\n⏸ paused since Sep 1, resumes Dec 1");
+    expect(labels(chat.current(list))).toEqual(["▶️ Resume today", "✏️ Rename", "🗑 Delete", "‹ All recurring"]);
+  });
+
   it("a recurring button tapped from another chat does nothing", async () => {
     await threeSeries();
     const list = await open();
@@ -100,5 +113,184 @@ describe("/recurring list and detail", () => {
     await chat.tap(list, "Internet bill", STRANGER);
     expect(chat.acks()).toHaveLength(before);
     expect(chat.current(list).text).toBe(list.text);
+  });
+});
+
+/** A salary that stopped: the last pay was Oct 9, so Oct 23 is not logged. */
+async function stoppedSalary(): Promise<number> {
+  const fridays = ["07-31", "08-14", "08-28", "09-11", "09-25", "10-09"];
+  return ledger.track(
+    "Salary",
+    "biweekly",
+    await ledger.add(
+      ...fridays.map((d) => ({ date: `2026-${d}`, type: "income" as const, amount: "2000.00", description: "Pay", source: "Salary" })),
+    ),
+  );
+}
+
+async function pauses(): Promise<{ from: string; until: string | null }[]> {
+  return sql(`select paused_from::text as "from", resumed_on::text as "until" from recurring_pauses order by paused_from`);
+}
+
+describe("pause, resume, rename and delete", () => {
+  it("pausing a series since its last payment stops it being missed", async () => {
+    await stoppedSalary();
+    const list = await open();
+    expect(list.text).toContain("• Salary — every 2 weeks, Fri · ~2,000.00 · 1 not logged");
+    await chat.tap(list, "Salary");
+    expect(chat.current(list).text).toContain("not logged: Oct 23");
+
+    await chat.tap(list, "⏸ Pause");
+    expect(labels(chat.current(list))).toEqual(["Today, Oct 31", "From Oct 23, first not logged", "Cancel"]);
+    await chat.tap(list, "From Oct 23, first not logged");
+    expect(chat.current(list).text).toBe("⏸ Pause Salary from Oct 23\nUntil when?");
+    expect(labels(chat.current(list))).toEqual(["Until I resume", "Until Nov 30", "Until Jan 31", "Until a date I type…", "Cancel"]);
+    expect(await pauses()).toEqual([]);
+
+    await chat.tap(list, "Until I resume");
+    expect(chat.acks().at(-1)).toBe("Paused from Oct 23.");
+    expect(await pauses()).toEqual([{ from: "2026-10-23", until: null }]);
+    expect(chat.current(list).text).toContain("not logged: none\n⏸ paused since Oct 23");
+
+    // Telegram resending the tap writes no second pause and leaves the screen.
+    const shown = chat.current(list);
+    await chat.retry();
+    expect(chat.acks().at(-1)).toBe("Already paused.");
+    expect(await pauses()).toHaveLength(1);
+    expect(chat.current(list)).toEqual(shown);
+
+    await chat.tap(list, "▶️ Resume today");
+    expect(chat.acks().at(-1)).toBe("Resumed.");
+    expect(await pauses()).toEqual([{ from: "2026-10-23", until: "2026-10-31" }]);
+    // The paused fortnight stays excused after the resume.
+    expect(chat.current(list).text).toContain("Next: Nov 5–9 · not logged: none");
+    expect(labels(chat.current(list))[0]).toBe("⏸ Pause");
+  });
+
+  it("a pause that overlaps an earlier one is refused and nothing is written", async () => {
+    await stoppedSalary();
+    const first = await open();
+    const second = await open();
+    await chat.tap(first, "Salary");
+    await chat.tap(second, "Salary");
+    await chat.tap(first, "⏸ Pause");
+    await chat.tap(first, "Today, Oct 31");
+    await chat.tap(first, "Until I resume");
+
+    // The second message still offers Pause, from before the first pause.
+    await chat.tap(second, "⏸ Pause");
+    await chat.tap(second, "From Oct 23, first not logged");
+    await chat.tap(second, "Until Nov 30");
+    expect(chat.acks().at(-1)).toBe("Overlaps an earlier pause. Nothing changed.");
+    expect(await pauses()).toEqual([{ from: "2026-10-31", until: null }]);
+    expect(chat.current(second).text).toContain("⏸ paused since Oct 31");
+  });
+
+  it("resuming from a payment logged during the pause counts the pause up to it", async () => {
+    const salary = await stoppedSalary();
+    await sql("insert into recurring_pauses (series_id, paused_from) values ($1, '2026-10-10')", [salary]);
+    const [back] = await ledger.add({ date: "2026-10-23", type: "income", amount: "2000.00", description: "Pay", source: "Salary" });
+    await sql("update transactions set recurring_series_id = $1 where id = $2", [salary, back]);
+
+    const list = await open();
+    await chat.tap(list, "Salary ⏸");
+    expect(chat.current(list).text).toContain("Logged while paused: Oct 23. Resume from then?");
+    await chat.tap(list, "▶️ Resume from Oct 23");
+    expect(await pauses()).toEqual([{ from: "2026-10-10", until: "2026-10-23" }]);
+    await chat.retry();
+    expect(chat.acks().at(-1)).toBe("Not paused.");
+  });
+
+  it("a series that bills again from a later date is paused until the day the owner types, never missed before it", async () => {
+    // A streaming subscription went free for a while; billing restarts on a known day.
+    const ids = await ledger.add(
+      bill("2026-07-05", "16.99", "Streaming subscription"),
+      bill("2026-08-05", "16.99", "Streaming subscription"),
+      bill("2026-09-05", "16.99", "Streaming subscription"),
+    );
+    await ledger.track("Streaming subscription", "monthly", ids);
+    const list = await open();
+    await chat.tap(list, "Streaming subscription");
+    expect(chat.current(list).text).toContain("not logged: Oct 5");
+    await chat.tap(list, "⏸ Pause");
+    await chat.tap(list, "From Oct 5, first not logged");
+    await chat.tap(list, "Until a date I type…");
+    const prompt = chat.last();
+    expect(prompt.text).toBe("Pause #1 from 2026-10-05 (Streaming subscription): reply with the day payments start again, e.g. Dec 15.");
+    expect(await pauses()).toEqual([]);
+
+    await chat.reply(prompt, "2026-10-01");
+    expect(chat.last().text).toBe("Send a date after Oct 5, like Dec 15 or 2027-01-15. Tap ⏸ Pause to try again.");
+    await chat.reply(prompt, "not a date");
+    expect(await pauses()).toEqual([]);
+
+    // A day with no year before the pause's start is next year's; this one is this year's.
+    await chat.reply(prompt, "Jan 5");
+    expect(chat.last().text).toBe("Paused from Oct 5 until Jan 5.");
+    expect(await pauses()).toEqual([{ from: "2026-10-05", until: "2027-01-05" }]);
+    await chat.reply(prompt, "Jan 5");
+    expect(await pauses()).toHaveLength(1);
+    await chat.reply(prompt, "Feb 1");
+    expect(chat.last().text).toBe("That overlaps an earlier pause. Nothing changed.");
+
+    expect((await open()).text).toContain("• Streaming subscription — ⏸ paused since Oct 5, resumes Jan 5");
+    expect(gemini.calls).toEqual([]);
+  });
+
+  it("renaming by replying to the prompt keeps its links", async () => {
+    const { internet } = await threeSeries();
+    const list = await open();
+    await chat.tap(list, "Internet bill");
+    await chat.tap(list, "✏️ Rename");
+    const prompt = chat.last();
+    expect(prompt.text).toBe(`Rename #${internet} (Internet bill): reply with the new name.`);
+    expect(chat.acks().at(-1)).toBe("Reply with the new name.");
+
+    await chat.reply(prompt, "  Home   internet ");
+    expect(chat.last().text).toBe("Renamed to Home internet.");
+    await chat.reply(prompt, "gym");
+    expect(chat.last().text).toBe("Another series is already called gym. Pick another name.");
+    await chat.reply(prompt, "x".repeat(61));
+    expect(chat.last().text).toBe("A name is 1 to 60 characters. Tap ✏️ Rename to try again.");
+
+    const links = Object.values(await ledger.links()).filter((l) => l.series === "Home internet");
+    expect(links).toHaveLength(5);
+    expect(links.every((l) => l.flagged)).toBe(true);
+    expect(gemini.calls).toEqual([]);
+  });
+
+  it("a rename reply for a deleted series says so", async () => {
+    const { internet } = await threeSeries();
+    const list = await open();
+    await chat.tap(list, "Internet bill");
+    await chat.tap(list, "✏️ Rename");
+    const prompt = chat.last();
+    await sql("delete from recurring_series where id = $1", [internet]);
+    await chat.reply(prompt, "Home internet");
+    expect(chat.last().text).toBe("That series no longer exists.");
+  });
+
+  it("deleting a series asks first, then clears is_recurring on its payments", async () => {
+    await threeSeries();
+    const list = await open();
+    await chat.tap(list, "Internet bill");
+    await chat.tap(list, "🗑 Delete");
+    expect(chat.current(list).text).toBe(
+      "🗑 Delete Internet bill?\nIts 5 payments stay saved and are no longer marked recurring.",
+    );
+    await chat.tap(list, "Cancel");
+    expect(Object.values(await ledger.links()).filter((l) => l.series === "Internet bill")).toHaveLength(5);
+
+    await chat.tap(list, "🗑 Delete");
+    await chat.tap(list, "🗑 Delete");
+    expect(chat.current(list).text).toBe("Deleted Internet bill. Its 5 payments are no longer marked recurring.");
+    const bills = Object.entries(await ledger.links()).filter(([k]) => k.startsWith("Internet bill"));
+    expect(bills.map(([, l]) => l)).toEqual(Array(5).fill({ series: null, flagged: false }));
+    expect((await ledger.transactions()).length).toBe(20);
+
+    await chat.retry();
+    expect(chat.acks().at(-1)).toBe("Already deleted.");
+    await chat.tap(list, "‹ All recurring");
+    expect(chat.current(list).text).not.toContain("Internet bill");
   });
 });

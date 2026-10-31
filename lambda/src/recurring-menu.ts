@@ -7,8 +7,15 @@
  * next time it is touched.
  *
  * Callback data, all `r:`-prefixed and at most 44 bytes:
- * `r:l:<offset>` list · `r:v:<sid>` detail.
+ * `r:l:<offset>` list · `r:v:<sid>` detail ·
+ * `r:p:<sid>` → `r:pf:<sid>:<from>` → `r:pu:<sid>:<from>:<until|0>` pause
+ * (only the last writes) · `r:u:<sid>:<date>` resume · `r:n:<sid>` rename
+ * (a ForceReply prompt; the reply is routed by its `#<sid>`) · `r:pd:<sid>:<from>`
+ * asks for a typed pause end the same way ·
+ * `r:x:<sid>` / `r:xy:<sid>` delete, asked then done. Dates are yyyymmdd.
  */
+import { collapseSpaces } from "./commands.js";
+import { parseDateReply } from "./extraction.js";
 import type { Keyboard } from "./mentions.js";
 import {
   amountBand,
@@ -20,18 +27,54 @@ import {
   type Pause,
   type Slot,
 } from "./recurring.js";
-import { loadBook, type Book, type BookRow, type BookSeries } from "./recurring-db.js";
+import {
+  deleteSeries,
+  loadBook,
+  pauseSeries,
+  renameSeries,
+  resumeSeries,
+  type Book,
+  type BookRow,
+  type BookSeries,
+} from "./recurring-db.js";
 import { answerCallbackQuery, editMessageText, esc, sendMessage } from "./telegram.js";
 
 export type Screen = { text: string; keyboard: Keyboard };
 
-export type RecurringTap = { op: "list"; offset: number } | { op: "view"; sid: number };
+export type RecurringTap =
+  | { op: "list"; offset: number }
+  | { op: "view" | "pause" | "rename" | "askDelete" | "delete"; sid: number }
+  | { op: "pauseFrom" | "pauseDate"; sid: number; from: string }
+  | { op: "pauseUntil"; sid: number; from: string; until: string | null }
+  | { op: "resume"; sid: number; on: string };
 
 const SID = "(\\d{1,10})";
+const DATE = "(\\d{8})";
+
+/** yyyymmdd → YYYY-MM-DD. */
+function iso(compact: string): string {
+  return `${compact.slice(0, 4)}-${compact.slice(4, 6)}-${compact.slice(6)}`;
+}
+
+/** YYYY-MM-DD → yyyymmdd, for callback data. */
+function compact(isoDate: string): string {
+  return isoDate.replace(/-/g, "");
+}
 
 const TAPS: [RegExp, (m: RegExpExecArray) => RecurringTap][] = [
   [/^r:l:(\d{1,4})$/, (m) => ({ op: "list", offset: Number(m[1]) })],
   [new RegExp(`^r:v:${SID}$`), (m) => ({ op: "view", sid: Number(m[1]) })],
+  [new RegExp(`^r:p:${SID}$`), (m) => ({ op: "pause", sid: Number(m[1]) })],
+  [new RegExp(`^r:pf:${SID}:${DATE}$`), (m) => ({ op: "pauseFrom", sid: Number(m[1]), from: iso(m[2]) })],
+  [
+    new RegExp(`^r:pu:${SID}:${DATE}:(\\d{8}|0)$`),
+    (m) => ({ op: "pauseUntil", sid: Number(m[1]), from: iso(m[2]), until: m[3] === "0" ? null : iso(m[3]) }),
+  ],
+  [new RegExp(`^r:pd:${SID}:${DATE}$`), (m) => ({ op: "pauseDate", sid: Number(m[1]), from: iso(m[2]) })],
+  [new RegExp(`^r:u:${SID}:${DATE}$`), (m) => ({ op: "resume", sid: Number(m[1]), on: iso(m[2]) })],
+  [new RegExp(`^r:n:${SID}$`), (m) => ({ op: "rename", sid: Number(m[1]) })],
+  [new RegExp(`^r:x:${SID}$`), (m) => ({ op: "askDelete", sid: Number(m[1]) })],
+  [new RegExp(`^r:xy:${SID}$`), (m) => ({ op: "delete", sid: Number(m[1]) })],
 ];
 
 /** A /recurring button's action, or null for any other callback data. */
@@ -222,8 +265,84 @@ export function detailScreen(book: Book, sid: number, today: string): Screen {
       missed.length === 0 ? "none" : missed.length <= 3 ? missed.join(", ") : `${missed.slice(0, 3).join(", ")} +${missed.length - 3} more`;
     lines.push(`${v.next ? `Next: ${range(v.next.start, v.next.end)} · ` : ""}not logged: ${notLogged}`);
   }
-  if (v.pausedNow) lines.push(capitalise(pauseText(v.pausedNow)));
-  return { text: lines.join("\n"), keyboard: [BACK_TO_LIST] };
+  let manage: Keyboard[number] = [{ text: "⏸ Pause", callback_data: `r:p:${sid}` }];
+  if (v.pausedNow) {
+    lines.push(pauseText(v.pausedNow));
+    manage = [{ text: "▶️ Resume today", callback_data: `r:u:${sid}:${compact(today)}` }];
+    // A payment logged during the pause says the series came back then.
+    const back = v.linked.find((r) => r.date >= v.pausedNow!.from && r.date < today);
+    if (back) {
+      lines.push(`Logged while paused: ${day(back.date)}. Resume from then?`);
+      manage.push({ text: `▶️ Resume from ${day(back.date)}`, callback_data: `r:u:${sid}:${compact(back.date)}` });
+    }
+  }
+  return {
+    text: lines.join("\n"),
+    keyboard: [
+      [...manage, { text: "✏️ Rename", callback_data: `r:n:${sid}` }],
+      [{ text: "🗑 Delete", callback_data: `r:x:${sid}` }],
+      BACK_TO_LIST,
+    ],
+  };
+}
+
+/** The same day n months on, clamped to that month's length. */
+function addMonths(isoDate: string, n: number): string {
+  const [y, m, d] = isoDate.split("-").map(Number);
+  const last = new Date(Date.UTC(y, m - 1 + n + 1, 0)).getUTCDate();
+  return new Date(Date.UTC(y, m - 1 + n, Math.min(d, last))).toISOString().slice(0, 10);
+}
+
+/** Pause, step 1: from today, or from the first payment not logged. Writes nothing. */
+export function pauseFromScreen(book: Book, sid: number, today: string): Screen {
+  const series = book.series.find((s) => s.id === sid);
+  if (!series) return GONE;
+  const first = viewOf(book, series, today).missed[0];
+  const options = [{ text: `Today, ${day(today)}`, callback_data: `r:pf:${sid}:${compact(today)}` }];
+  if (first && first.due !== today) {
+    options.push({ text: `From ${day(first.due)}, first not logged`, callback_data: `r:pf:${sid}:${compact(first.due)}` });
+  }
+  return {
+    text: `<b>⏸ Pause ${esc(series.name)}</b>\nFrom when? A payment expected from that day on is not counted as not logged.`,
+    keyboard: [...options.map((o) => [o]), [{ text: "Cancel", callback_data: `r:v:${sid}` }]],
+  };
+}
+
+/** Pause, step 2: until resumed, or until a date one or three months on. The tap writes. */
+export function pauseUntilScreen(book: Book, sid: number, from: string, today: string): Screen {
+  const series = book.series.find((s) => s.id === sid);
+  if (!series) return GONE;
+  const until = (d: string | null) => `r:pu:${sid}:${compact(from)}:${d ? compact(d) : "0"}`;
+  const later = [addMonths(today, 1), addMonths(today, 3)];
+  return {
+    text: `<b>⏸ Pause ${esc(series.name)} from ${day(from)}</b>\nUntil when?`,
+    keyboard: [
+      [{ text: "Until I resume", callback_data: until(null) }],
+      later.map((d) => ({ text: `Until ${day(d)}`, callback_data: until(d) })),
+      [{ text: "Until a date I type…", callback_data: `r:pd:${sid}:${compact(from)}` }],
+      [{ text: "Cancel", callback_data: `r:v:${sid}` }],
+    ],
+  };
+}
+
+function payments(n: number): string {
+  return `${n} payment${n === 1 ? "" : "s"}`;
+}
+
+/** Delete, asked first: the payments stay, unlinked. */
+export function deleteAskScreen(book: Book, sid: number): Screen {
+  const series = book.series.find((s) => s.id === sid);
+  if (!series) return GONE;
+  const n = book.rows.filter((r) => r.seriesId === sid).length;
+  return {
+    text: `<b>🗑 Delete ${esc(series.name)}?</b>\nIts ${payments(n)} stay saved and are no longer marked recurring.`,
+    keyboard: [
+      [
+        { text: "🗑 Delete", callback_data: `r:xy:${sid}` },
+        { text: "Cancel", callback_data: `r:v:${sid}` },
+      ],
+    ],
+  };
 }
 
 // ---- Telegram ---------------------------------------------------------------
@@ -244,16 +363,64 @@ export type TapContext = {
   today: string;
 };
 
-/** What a tap does: a screen to edit in, and the pop-up. */
-type Outcome = { screen?: Screen; ack?: string };
+/**
+ * What a tap does: a screen to edit in, a new message to send (the rename
+ * prompt), and the pop-up. A write that finds its work already done (a
+ * double tap, a Telegram retry) only pops up, so it never redraws over the
+ * screen the first tap left.
+ */
+type Outcome = { screen?: Screen; prompt?: string; ack?: string };
+
+const RENAME = /^Rename #(\d{1,10}) /;
+const PAUSE_PROMPT = /^Pause #(\d{1,10}) from (\d{4}-\d{2}-\d{2}) /;
+const NAME_MAX = 60;
 
 async function respond(tap: RecurringTap, ctx: TapContext): Promise<Outcome> {
-  const book = await loadBook();
+  const detail = async (sid: number) => detailScreen(await loadBook(), sid, ctx.today);
   switch (tap.op) {
     case "list":
-      return { screen: listScreen(book, ctx.today, tap.offset) };
+      return { screen: listScreen(await loadBook(), ctx.today, tap.offset) };
     case "view":
-      return { screen: detailScreen(book, tap.sid, ctx.today) };
+      return { screen: await detail(tap.sid) };
+    case "pause":
+      return { screen: pauseFromScreen(await loadBook(), tap.sid, ctx.today) };
+    case "pauseFrom":
+      return { screen: pauseUntilScreen(await loadBook(), tap.sid, tap.from, ctx.today) };
+    case "pauseUntil": {
+      const result = await pauseSeries(tap.sid, tap.from, tap.until);
+      if (result === "already") return { ack: "Already paused." };
+      if (result === "missing") return { screen: GONE };
+      const ack = result === "overlap" ? "Overlaps an earlier pause. Nothing changed." : `Paused from ${day(tap.from)}.`;
+      return { screen: await detail(tap.sid), ack };
+    }
+    case "resume":
+      return (await resumeSeries(tap.sid, tap.on)) ? { screen: await detail(tap.sid), ack: "Resumed." } : { ack: "Not paused." };
+    case "rename": {
+      const series = (await loadBook()).series.find((s) => s.id === tap.sid);
+      if (!series) return { screen: GONE };
+      return { prompt: `Rename #${series.id} (${series.name}): reply with the new name.`, ack: "Reply with the new name." };
+    }
+    case "pauseDate": {
+      const series = (await loadBook()).series.find((s) => s.id === tap.sid);
+      if (!series) return { screen: GONE };
+      return {
+        prompt: `Pause #${series.id} from ${tap.from} (${series.name}): reply with the day payments start again, e.g. Dec 15.`,
+        ack: "Reply with the date.",
+      };
+    }
+    case "askDelete":
+      return { screen: deleteAskScreen(await loadBook(), tap.sid) };
+    case "delete": {
+      const deleted = await deleteSeries(tap.sid);
+      if (!deleted) return { ack: "Already deleted." };
+      return {
+        screen: {
+          text: `Deleted ${esc(deleted.name)}. Its ${payments(deleted.unlinked)} are no longer marked recurring.`,
+          keyboard: [BACK_TO_LIST],
+        },
+        ack: "Deleted.",
+      };
+    }
   }
 }
 
@@ -267,5 +434,59 @@ export async function handleRecurringTap(tap: RecurringTap, ctx: TapContext): Pr
     const { text, keyboard } = outcome.screen;
     await editMessageText(ctx.botToken, ctx.chatId, ctx.messageId, text, keyboard, { html: true });
   }
+  if (outcome.prompt) {
+    await sendMessage(ctx.botToken, ctx.chatId, outcome.prompt, {
+      force_reply: true,
+      input_field_placeholder: tap.op === "rename" ? "New name" : "Dec 15",
+    });
+  }
   await answerCallbackQuery(ctx.botToken, ctx.callbackId, outcome.ack);
+}
+
+async function renameReply(sid: number, text: string): Promise<string> {
+  const name = collapseSpaces(text);
+  if (name === "" || name.length > NAME_MAX) return `A name is 1 to ${NAME_MAX} characters. Tap ✏️ Rename to try again.`;
+  const result = await renameSeries(sid, name);
+  if (result === "renamed") return `Renamed to ${name}.`;
+  return result === "taken" ? `Another series is already called ${name}. Pick another name.` : "That series no longer exists.";
+}
+
+/**
+ * The day a pause ends, typed: a date with no year that would fall on or
+ * before the pause's start means next year's. Also how a series that starts
+ * billing later (a free trial) is told not to expect a payment before then.
+ */
+async function pauseReply(sid: number, from: string, text: string, today: string): Promise<string> {
+  let until = parseDateReply(text, today);
+  if (until !== null && until <= from && !/\d{4}/.test(text)) until = addMonths(until, 12);
+  if (until === null || until <= from) {
+    return `Send a date after ${day(from)}, like Dec 15 or 2027-01-15. Tap ⏸ Pause to try again.`;
+  }
+  const result = await pauseSeries(sid, from, until);
+  if (result === "missing") return "That series no longer exists.";
+  if (result === "overlap") return "That overlaps an earlier pause. Nothing changed.";
+  return `Paused from ${day(from)} until ${day(until)}.`;
+}
+
+/**
+ * A reply to one of the menu's prompts (rename, or a pause's end date) acts
+ * on that series; false for any other message. The prompt's own text
+ * carries the series id and date, so no waiting state is stored.
+ */
+export async function answerPrompt(
+  message: { text?: string; reply_to_message?: { text?: string } },
+  chatId: number,
+  botToken: string,
+  today: string,
+): Promise<boolean> {
+  const prompt = message.reply_to_message?.text ?? "";
+  const rename = RENAME.exec(prompt);
+  const pause = PAUSE_PROMPT.exec(prompt);
+  if (!rename && !pause) return false;
+  const text = message.text ?? "";
+  const reply = rename
+    ? await renameReply(Number(rename[1]), text)
+    : await pauseReply(Number(pause![1]), pause![2], text, today);
+  await sendMessage(botToken, chatId, reply);
+  return true;
 }

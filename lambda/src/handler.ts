@@ -64,7 +64,7 @@ import {
   type Keyboard,
   type MentionTap,
 } from "./mentions.js";
-import { handleRecurringTap, parseRecurringTap, sendRecurringList } from "./recurring-menu.js";
+import { handleRecurringTap, answerPrompt, parseRecurringTap, sendRecurringList } from "./recurring-menu.js";
 import { putReceipt } from "./s3.js";
 import {
   answerCallbackQuery,
@@ -86,6 +86,7 @@ type TelegramMessage = {
   caption?: string;
   photo?: unknown[];
   voice?: unknown;
+  reply_to_message?: { text?: string };
 };
 type TelegramCallbackQuery = {
   id: string;
@@ -576,6 +577,11 @@ async function handleMessage(
       botToken: config.botToken,
       args: command.args,
     });
+    return ok("ok");
+  }
+
+  // Also before the wait: a reply to a /recurring prompt (rename, pause end) is not a date or a correction.
+  if (await answerPrompt(message, message.chat.id, config.botToken, todayToronto())) {
     return ok("ok");
   }
 

@@ -342,6 +342,10 @@ export const chat = {
   text(text: string, from = OWNER) {
     return deliver(message({ text }, from));
   },
+  /** A reply to a bot message, as Telegram sends one to a ForceReply prompt. */
+  reply(to: Reply, text: string) {
+    return deliver(message({ text, reply_to_message: { message_id: to.messageId, text: to.text } }));
+  },
   photo(caption = "") {
     telegram.files = { "photo-large": "photos/file_1.jpg" };
     // file_unique_id is stable for a stored file, so re-sending this photo repeats it.
