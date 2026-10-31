@@ -25,6 +25,7 @@ included.
 | Security | `finflow_dbt` reads the ledger and writes only `staging` and `marts`: it can create, replace and drop relations there, and is refused every write and any CREATE in `public`, and cannot drop its schemas | `holds SELECT on every public table and no write privilege on any`<br>`selects from the ledger but is refused every write and any CREATE in public`<br>`creates, replaces and drops tables and views in %s`<br>`cannot drop or take over its schemas, or create a schema` |
 | Security | `finflow_analyst` reads only `marts`, including a table dbt rebuilds, and nothing in `public` (no raw Telegram payloads) or `staging`; it cannot write or create anything | `reads a mart table dbt builds, including after dbt drops and rebuilds it`<br>`reads no ledger table: not transactions, not the raw Telegram payloads`<br>`cannot read staging, write a mart, or create anything` |
 | Security | After every `dbt build`, `finflow_analyst` can still read every mart (schema `USAGE`, `SELECT` on each table); CI also logs in as it and reads them, and is refused `staging` and `public` | `dbt:analyst_reads_every_mart` |
+| Security | Supabase's Data API roles (`anon`, `authenticated`) reach nothing: no grant on `public`, `staging` or `marts`, no privilege on any table, sequence or routine in them, and no default privilege that grants them a table a later migration adds, while `finflow_readonly` and `finflow_dbt` still read it; the nightly checks production | `lose every grant Supabase gives them, and later tables are not granted to them`<br>`migration 0015 is a no-op where the roles do not exist`<br>`dbt:data_api_roles_reach_nothing`<br>`ci:a grant to anon fails data_api_roles_reach_nothing, and nothing else` |
 | Text | A valid text purchase is saved as pending and shown as a card with Confirm, Discard, Fix date and Edit | `previews a valid extraction with Confirm buttons and persists pending`<br>`a text purchase shows a card, and Confirm saves it with its date and reason`<br>`puts Confirm and Discard on the first row and Fix date and Edit on the second`<br>`saves every event of one update as pending, in order` |
 | Text | A card whose checks fail has no Confirm and is not persisted | `does not persist or offer Confirm when checks fail`<br>`omits Confirm but keeps Edit when confirm is false`<br>`rejects when line cents do not sum to the header`<br>`rejects unknown venue or tag` |
 | Dates | No date: today is used and the card warns, and Confirm stays | `defaults a missing Gemini date to today and warns`<br>`defaults text with no date to today and warns`<br>`a purchase with no date uses today, warns, and can still be confirmed`<br>`golden:no-date-text` |
@@ -226,7 +227,11 @@ The CI job `dbt` runs on every PR, against a `postgres:17` service:
 `dbt build` on the fixture must pass; `finflow_analyst` (throwaway password
 from the loader, the role's name) logs in, must find exactly the four
 marts and read each, and must be refused `staging.stg_transactions` and
-`public.ingestions`; `mf validate-configs` and `check_metrics.py` must
+`public.ingestions`; with an `anon` role created and granted `SELECT` on
+`public.transactions`, `dbt test --exclude tag:fixture` must fail
+`data_api_roles_reach_nothing` and nothing else (the throwaway Postgres has
+no Data API roles, so without this the guard would pass by finding none);
+`mf validate-configs` and `check_metrics.py` must
 pass; with `_marts.yml` edited on the runner (`perl`), `check_metrics.py`
 must fail naming `spend` and 2026-06 and printing no value when `spend`
 loses its self-funded filter, and must name a metric added to the YAML

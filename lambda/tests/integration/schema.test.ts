@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { closeHelpers, resetData, sql, withClient } from "./db-helpers.js";
 
@@ -268,6 +269,103 @@ describe("finflow_dbt", () => {
       await denied(q, "drop schema staging cascade");
       await denied(q, "create schema dbt_scratch");
     });
+  });
+});
+
+describe("the Data API roles", () => {
+  // Supabase's anon and authenticated do not exist on the throwaway Postgres,
+  // so this creates them with the grants Supabase gives them (DECISIONS
+  // 2026-10-30), runs migration 0015 again, and checks with the dbt guard the
+  // nightly runs on production.
+  const migration = readFileSync(
+    new URL("../../../supabase/migrations/20261030000015_revoke_data_api_grants.sql", import.meta.url),
+    "utf8",
+  );
+  const guard = readFileSync(
+    new URL("../../../dbt/tests/data_api_roles_reach_nothing.sql", import.meta.url),
+    "utf8",
+  );
+  const API = "anon, authenticated";
+
+  async function supabaseGrants(): Promise<void> {
+    await sql(`create function public.data_api_probe() returns int language sql as 'select 1'`);
+    for (const role of ["anon", "authenticated", "supabase_admin"]) {
+      await sql(`do $$ begin
+        if not exists (select from pg_roles where rolname = '${role}') then
+          create role ${role} nologin noinherit;
+        end if; end $$`);
+    }
+    await sql(`grant usage on schema public, staging, marts to ${API}`);
+    await sql(`grant all on all tables in schema public to ${API}`);
+    await sql(`grant all on all sequences in schema public to ${API}`);
+    await sql(`grant all on all routines in schema public to ${API}`);
+    for (const owner of ["postgres", "supabase_admin"]) {
+      for (const kind of ["tables", "sequences", "functions"]) {
+        await sql(`alter default privileges for role ${owner} in schema public grant all on ${kind} to ${API}`);
+      }
+    }
+    await sql(`alter default privileges grant all on tables to ${API}`);
+  }
+
+  async function dropApiRoles(): Promise<void> {
+    await sql("drop table if exists public.data_api_later");
+    await sql("drop function if exists public.data_api_probe()");
+    for (const role of ["anon", "authenticated", "supabase_admin"]) {
+      await sql(`do $$ begin
+        if exists (select from pg_roles where rolname = '${role}') then
+          drop owned by ${role}; drop role ${role};
+        end if; end $$`);
+    }
+  }
+
+  it("lose every grant Supabase gives them, and later tables are not granted to them", async () => {
+    await dropApiRoles();
+    await supabaseGrants();
+    try {
+      // The setup bites: before the revoke, anon reads the ledger and the guard sees it.
+      await asRole("anon", async (q) => {
+        await expect(q("select count(*) from transactions")).resolves.toBeDefined();
+      });
+      expect((await sql(guard)).length).toBeGreaterThan(0);
+
+      await sql(migration);
+      await sql(migration); // a rerun is a no-op
+
+      expect(await sql(guard)).toEqual([]);
+      for (const role of ["anon", "authenticated"]) {
+        await asRole(role, async (q) => {
+          await denied(q, "select count(*) from transactions");
+          await denied(q, "select raw_payload from ingestions");
+          await denied(q, "insert into tags (name) values ('x')");
+          await denied(q, "select nextval('tags_id_seq')");
+        });
+      }
+      const defaults = await sql(
+        `select 1 from pg_default_acl d cross join lateral aclexplode(d.defaclacl) a
+         where a.grantee in (select oid from pg_roles where rolname in ('anon', 'authenticated'))`,
+      );
+      expect(defaults).toEqual([]);
+
+      // A table a later migration adds: still nothing for anon, still read by
+      // finflow_readonly and finflow_dbt through their own default privileges.
+      await sql("create table public.data_api_later (x int)");
+      expect(await sql(guard)).toEqual([]);
+      await asRole("anon", (q) => denied(q, "select x from data_api_later"));
+      for (const role of ["finflow_readonly", "finflow_dbt"]) {
+        await asRole(role, async (q) => {
+          await expect(q("select x from data_api_later")).resolves.toBeDefined();
+          await expect(q("select count(*) from transactions")).resolves.toBeDefined();
+        });
+      }
+    } finally {
+      await dropApiRoles();
+    }
+  });
+
+  it("migration 0015 is a no-op where the roles do not exist", async () => {
+    await dropApiRoles();
+    await expect(sql(migration)).resolves.toBeDefined();
+    expect(await sql(guard)).toEqual([]);
   });
 });
 
