@@ -81,7 +81,14 @@ dbt models and the agent read it, so numbers agree everywhere.
   `/pending`, Fix date and Edit), adds at most one `!` warning line, and
   never removes Confirm; if it fails the card goes out without it. A second
   read-only query adds a `💡` line when the card's merchant is unlisted but
-  bought from 3+ times, with the same fail-open rule. Photos and voice
+  bought from 3+ times, with the same fail-open rule. A card that can be
+  confirmed is then matched against the recurring series
+  (`src/recurring-card.ts`, reading the whole recurring book, no Gemini
+  call): a strong match names the series on the card, adds a toggle row,
+  and makes Confirm link to it, with the same fail-open rule. Confirm
+  re-reads that series inside its transaction and saves the payment
+  unlinked when the series is gone or no longer fits, so a link never
+  fails Confirm. Photos and voice
   download media first; S3 archive happens only on persist (UUID, then
   PutObject, then INSERT). All state lives in Postgres, so it stays
   stateless. Slash commands (`src/commands.ts` is the table) skip

@@ -138,24 +138,64 @@ export async function answerCallbackQuery(
   await postTelegram(botToken, "answerCallbackQuery", body);
 }
 
+type Button = { text: string; callback_data: string };
+
+/** The card's series button: `↻ Internet bill ✓` while Confirm links it, `↻ not Internet bill` once turned off. */
+function seriesLabel(name: string, linking: boolean): string {
+  const short = name.length <= 30 ? name : `${name.slice(0, 29).trimEnd()}…`;
+  return linking ? `↻ ${short} ✓` : `↻ not ${short}`;
+}
+
+/**
+ * A card's buttons. With a proposed series, Confirm links to it
+ * (`cr:<card>:<series>`) and a last row toggles it (`rt:<card>:<series>`);
+ * otherwise Confirm is `c:<card>`.
+ */
 export function reviewKeyboard(
   ingestionId: string,
-  options: { confirm?: boolean; edit?: boolean } = {},
-): object {
+  options: { confirm?: boolean; edit?: boolean; series?: { id: number; name: string } } = {},
+): { inline_keyboard: Button[][] } {
   const confirm = options.confirm ?? true;
   const edit = options.edit ?? true;
-  const first: { text: string; callback_data: string }[] = [];
+  const series = confirm ? options.series : undefined;
+  const first: Button[] = [];
   if (confirm) {
-    first.push({ text: "Confirm", callback_data: `c:${ingestionId}` });
+    const data = series ? `cr:${ingestionId}:${series.id}` : `c:${ingestionId}`;
+    first.push({ text: "Confirm", callback_data: data });
   }
   first.push({ text: "Discard", callback_data: `d:${ingestionId}` });
-  const second: { text: string; callback_data: string }[] = [
+  const second: Button[] = [
     { text: "Fix date", callback_data: `f:${ingestionId}` },
   ];
   if (edit) {
     second.push({ text: "Edit", callback_data: `e:${ingestionId}` });
   }
-  return { inline_keyboard: [first, second] };
+  const rows = [first, second];
+  if (series) {
+    rows.push([{ text: seriesLabel(series.name, true), callback_data: `rt:${ingestionId}:${series.id}` }]);
+  }
+  return { inline_keyboard: rows };
+}
+
+/**
+ * The card's series toggle tapped: Confirm swaps between linking (`cr:`) and
+ * "not this series" (`cx:`), and the toggle's label follows. The state lives
+ * in the keyboard only; nothing is stored until Confirm.
+ */
+export function toggleCardSeries(keyboard: Button[][]): Button[][] {
+  const linking = keyboard.flat().some((b) => b.callback_data.startsWith("cr:"));
+  return keyboard.map((row) =>
+    row.map((b) => {
+      if (b.callback_data.startsWith("rt:")) {
+        const name = linking ? b.text.slice("↻ ".length, -" ✓".length) : b.text.slice("↻ not ".length);
+        return { ...b, text: seriesLabel(name, !linking) };
+      }
+      if (/^c[rx]:/.test(b.callback_data)) {
+        return { ...b, callback_data: `${linking ? "cx" : "cr"}${b.callback_data.slice(2)}` };
+      }
+      return b;
+    }),
+  );
 }
 
 export function discardKeyboard(ingestionId: string): object {

@@ -64,6 +64,7 @@ import {
   type Keyboard,
   type MentionTap,
 } from "./mentions.js";
+import { cardSeries, type CardSeries } from "./recurring-card.js";
 import { handleRecurringTap, answerPrompt, parseRecurringTap, sendRecurringList } from "./recurring-menu.js";
 import { putReceipt } from "./s3.js";
 import {
@@ -75,6 +76,7 @@ import {
   largestPhotoFileId,
   reviewKeyboard,
   sendMessage,
+  toggleCardSeries,
   voiceFileId,
 } from "./telegram.js";
 
@@ -108,6 +110,10 @@ const CALLBACK_RE =
 /** Confirm on a card that proposed a series: `cr:` links it, `cx:` records "not this series". */
 const CONFIRM_SERIES_RE =
   /^(cr|cx):([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}):(\d{1,10})$/;
+
+/** The card's series toggle; it only edits the keyboard. */
+const SERIES_TOGGLE_RE =
+  /^rt:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}:\d{1,10}$/;
 
 const SERIES_GONE = "Not linked: that recurring series is gone or no longer fits.";
 
@@ -308,13 +314,23 @@ async function sendCard(
   } catch (err) {
     console.error("merchant hint error", err);
   }
+  // Only a card that can be confirmed proposes a series; a dateless one is
+  // matched when its date comes back.
+  let series: CardSeries | null = null;
+  if (confirm) {
+    try {
+      series = await cardSeries(ingestionId, extraction);
+    } catch (err) {
+      console.error("recurring match error", err);
+    }
+  }
   // A warning or hint only adds a line; Confirm still follows the checks alone.
   const shown = { ...checks, warnings: [...checks.warnings, ...duplicates] };
   await sendMessage(
     botToken,
     chatId,
-    formatPreview(extraction, shown, position, hint),
-    reviewKeyboard(ingestionId, { confirm }),
+    formatPreview(extraction, shown, position, hint, series ?? undefined),
+    reviewKeyboard(ingestionId, { confirm, series: series ?? undefined }),
   );
 }
 
@@ -677,6 +693,17 @@ async function handleCallback(
       keyboard: cb.message?.reply_markup?.inline_keyboard ?? [],
       today,
     });
+    return ok("ok");
+  }
+
+  if (SERIES_TOGGLE_RE.test(cb.data ?? "")) {
+    const keyboard = cb.message?.reply_markup?.inline_keyboard ?? [];
+    const next = toggleCardSeries(keyboard);
+    // Telegram refuses an edit that changes nothing.
+    if (JSON.stringify(next) !== JSON.stringify(keyboard)) {
+      await editMessageReplyMarkup(botToken, chatId, cb.message!.message_id!, { inline_keyboard: next });
+    }
+    await answerCallbackQuery(botToken, cb.id);
     return ok("ok");
   }
 

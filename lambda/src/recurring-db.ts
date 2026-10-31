@@ -6,7 +6,8 @@
  * repeat: a double tap or a Telegram retry finds the work done and reports
  * that instead of doing it twice.
  */
-import { getPool, hasCode } from "./db.js";
+import { getPool, hasCode, MERCHANT_KEY } from "./db.js";
+import { parseCents, type Extraction } from "./extraction.js";
 import type { Cadence, LedgerRow, Pause, Series } from "./recurring.js";
 
 /** A saved transaction as the recurring screens read it. */
@@ -98,6 +99,39 @@ export async function loadBook(): Promise<Book> {
     skips: byId(skips.rows.map((s) => ({ id: s.id, value: s.due }))),
     excluded: byId(excluded.rows.map((e) => ({ id: e.id, value: e.tx }))),
     dismissed: dismissed.rows.map((d) => d.key),
+  };
+}
+
+/**
+ * A pending card's payment as matching reads it: its names resolved to the
+ * ids Confirm would save (the merchant by its key, the largest line's
+ * subcategory, the income source, the accounts). Its id is the card's, which
+ * no exclusion names.
+ */
+export async function cardRow(cardId: string, e: Extraction): Promise<LedgerRow> {
+  const cents = (amount: string) => parseCents(amount) ?? 0;
+  const [largest] = e.type === "expense" ? [...e.items].sort((a, b) => cents(b.amount) - cents(a.amount)) : [];
+  const db = await getPool();
+  const res = await db.query<Pick<LedgerRow, "merchantId" | "subcategoryId" | "incomeSourceId" | "fromAccountId" | "toAccountId">>(
+    `SELECT
+       (SELECT id FROM merchants
+        WHERE ${MERCHANT_KEY("name")} = ${MERCHANT_KEY("$1::text")} AND hidden_at IS NULL
+        ORDER BY (name = $1::text) DESC, id LIMIT 1) AS "merchantId",
+       (SELECT s.id FROM subcategories s JOIN categories c ON c.id = s.category_id
+        WHERE c.name = $2::text AND s.name = $3::text) AS "subcategoryId",
+       (SELECT id FROM income_sources WHERE name = $4::text) AS "incomeSourceId",
+       (SELECT id FROM accounts WHERE name = $5::text) AS "fromAccountId",
+       (SELECT id FROM accounts WHERE name = $6::text) AS "toAccountId"`,
+    [e.merchant, largest?.category ?? null, largest?.subcategory ?? null, e.income_source, e.from_account ?? null, e.to_account],
+  );
+  return {
+    id: cardId,
+    date: e.date,
+    type: e.type,
+    amount: e.amount,
+    description: e.description,
+    ...res.rows[0],
+    seriesId: null,
   };
 }
 

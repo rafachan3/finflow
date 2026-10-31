@@ -485,6 +485,7 @@ export function formatPreview(
   checks: CheckResult,
   position?: { index: number; count: number },
   hint?: string,
+  series?: { name: string; note: string | null },
 ): string {
   const lines: string[] = [];
   const title =
@@ -498,12 +499,15 @@ export function formatPreview(
   if (extraction.merchant) lines.push(`Merchant: ${extraction.merchant}`);
   if (extraction.venue) lines.push(`Venue: ${extraction.venue}`);
   if (extraction.tags.length) lines.push(`Tags: ${extraction.tags.join(", ")}`);
-  const recurring = `Recurring: ${extraction.is_recurring ? "yes" : "no"}`;
+  // The series the card links to on Confirm. With none, Gemini's guess is only
+  // a hint: Confirm saves the payment as not recurring until it is in a series.
+  const recurring = `Recurring: ${series ? series.name : extraction.is_recurring ? "not tracked yet" : "no"}`;
   if (extraction.type === "expense") {
     lines.push(`Funded by: ${extraction.funded_by} · ${recurring}`);
   } else {
     lines.push(recurring);
   }
+  if (series?.note) lines.push(series.note);
   if (extraction.income_source) {
     lines.push(`Income source: ${extraction.income_source}`);
   }

@@ -42,8 +42,12 @@ vi.mock("../src/telegram.js", () => ({
 vi.mock("../src/s3.js", () => ({
   putReceipt: vi.fn(),
 }));
+vi.mock("../src/recurring-card.js", () => ({
+  cardSeries: vi.fn(async () => null),
+}));
 
 import { getConfig } from "../src/config.js";
+import { cardSeries } from "../src/recurring-card.js";
 import {
   addMerchant,
   applyIngestionDate,
@@ -226,6 +230,20 @@ describe("handler", () => {
     expect(text).toContain('! Possible duplicate: CAD 12.50 on 2026-08-16, "lunch" (saved)');
     expect(text).toContain("Confirm to save");
     expect(reviewKeyboard).toHaveBeenCalledWith("ing-1", { confirm: true });
+  });
+
+  it("sends a saved card without the series when matching fails", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.mocked(cardSeries).mockRejectedValueOnce(new Error("db down"));
+
+    await handler(event({ update_id: 37, message: { chat: { id: 1 }, text: "12.50 lunch" } }));
+
+    expect(error).toHaveBeenCalledWith("recurring match error", expect.any(Error));
+    const text = String(vi.mocked(sendMessage).mock.calls[0][2]);
+    expect(text).toContain("Recurring: no");
+    expect(text).toContain("Confirm to save");
+    expect(reviewKeyboard).toHaveBeenCalledWith("ing-1", { confirm: true, series: undefined });
+    error.mockRestore();
   });
 
   it("sends a saved card without the warning when the duplicate check fails", async () => {
