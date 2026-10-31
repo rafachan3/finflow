@@ -572,15 +572,15 @@ export function matchStrength(history: SeriesHistory, tx: LedgerRow): Match {
     history.excluded.includes(tx.id) ||
     (s.kind === "income" && tx.incomeSourceId !== s.incomeSourceId) ||
     (s.kind === "transfer" && (tx.fromAccountId !== s.fromAccountId || tx.toAccountId !== s.toAccountId));
-  const refs = [s.name, ...s.keywords, ...linked.map((r) => r.description)];
+  const none: Match = { seriesId: s.id, strength: "none", slotDays: Infinity, amountCents: Infinity };
+  if (unrelated) return none;
+  const refs = new Set([s.name, ...s.keywords, ...linked.map((r) => r.description)]);
   const named =
     s.kind === "expense" &&
     ((s.merchantId !== null && tx.merchantId === s.merchantId) ||
-      refs.some((ref) => textSimilarity(ref, tx.description) >= TEXT_MATCH));
+      [...refs].some((ref) => textSimilarity(ref, tx.description) >= TEXT_MATCH));
   const sameSub = s.kind === "expense" && s.subcategoryId !== null && tx.subcategoryId === s.subcategoryId;
-  if (unrelated || (s.kind === "expense" && !named && !sameSub)) {
-    return { seriesId: s.id, strength: "none", slotDays: Infinity, amountCents: Infinity };
-  }
+  if (s.kind === "expense" && !named && !sameSub) return none;
 
   const { band, fit } = derived(history, linked);
   const cents = parseCents(tx.amount);
