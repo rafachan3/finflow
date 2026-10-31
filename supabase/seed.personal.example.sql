@@ -10,10 +10,15 @@
 -- this overlay holds only the lookup values that are specific to you.
 
 -- Where your transfers go (type = 'transfer' transactions).
--- kind is 'savings' or 'investment'.
+-- kind is 'savings', 'investment' or 'debt'.
 insert into accounts (name, kind) values
   ('Emergency fund', 'savings'),
   ('Retirement account', 'investment');
+
+-- A loan you pay extra on is a 'debt' account: an extra payment is a
+-- transfer into it, and the minimum payment stays an ordinary expense line.
+-- insert into accounts (name, kind) values
+--   ('Car loan', 'debt');
 
 -- Where your income comes from.
 insert into income_sources (name) values

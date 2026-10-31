@@ -179,7 +179,7 @@ erDiagram
   accounts {
     smallint id PK
     text name UK
-    text kind "savings | investment"
+    text kind "savings | investment | debt"
   }
 
   funding_sources {
@@ -240,7 +240,8 @@ create table venues (
 create table accounts (
   id   smallint generated always as identity primary key,
   name text not null unique,                      -- values seeded locally
-  kind text not null check (kind in ('savings', 'investment'))
+  -- debt (migration 0017): a loan an extra payment is transferred into
+  kind text not null check (kind in ('savings', 'investment', 'debt'))
 );
 
 -- deposit_account_id is where income from this source lands (interest paid
@@ -593,6 +594,10 @@ bump when SSM rules change.
 - A transfer has `from_account_id`, `to_account_id`, or both, and they differ;
   null on either side means chequing. `from_account_id` is null on income and
   expense (check constraints).
+- A `debt` account (a car loan, say) only receives transfers: it is never a
+  transfer's `from_account_id` and never an income source's
+  `deposit_account_id` (dbt test `debt_account_only_receives_transfers`). It
+  has no balance; an extra payment on the loan is a transfer into it.
 - An item's `item_type_id`, when set, must belong to the same category as
   its `subcategory_id` (dbt test).
 - `(ingestions.telegram_update_id, event_index)` is UNIQUE. One Telegram
