@@ -1,6 +1,6 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Extraction } from "../../src/extraction.js";
-import { closeHelpers, resetData, sql } from "./db-helpers.js";
+import { closeHelpers, resetData, sql, withClient } from "./db-helpers.js";
 import { merchantKey } from "../../src/commands.js";
 import { expense, income, pending, transfer } from "./fixtures.js";
 
@@ -85,7 +85,7 @@ describe("insertPendingIngestions", () => {
 describe("confirmIngestion", () => {
   it("writes an expense with its lines, tags, venue, merchant, funder and note", async () => {
     const [id] = await save(200, expense());
-    await expect(db.confirmIngestion(id)).resolves.toBe("confirmed");
+    await expect(db.confirmIngestion(id)).resolves.toMatchObject({ status: "confirmed" });
 
     const [tx] = await sql<{ id: string }>(
       `select t.id::text, t.occurred_on::text as date, t.type::text, t.amount::text,
@@ -155,13 +155,13 @@ describe("confirmIngestion", () => {
 
   it("confirms a row stored before line tags, with no tags on its lines", async () => {
     const [id] = await save(206, expense());
-    await expect(db.confirmIngestion(id)).resolves.toBe("confirmed");
+    await expect(db.confirmIngestion(id)).resolves.toMatchObject({ status: "confirmed" });
     expect(await count("transaction_item_tags")).toBe(0);
   });
 
   it("confirms a row stored before tags were deduplicated, with a repeated header tag", async () => {
     const [id] = await save(210, expense({ tags: ["Social", "Social"] }));
-    await expect(db.confirmIngestion(id)).resolves.toBe("confirmed");
+    await expect(db.confirmIngestion(id)).resolves.toMatchObject({ status: "confirmed" });
     expect(
       await sql("select g.name from transaction_tags tt join tags g on g.id = tt.tag_id"),
     ).toEqual([{ name: "Social" }]);
@@ -237,7 +237,7 @@ describe("confirmIngestion", () => {
 
   it("saves a merchant that is not in the lookup as no merchant", async () => {
     const [id] = await save(204, expense({ merchant: "Corner Store" }));
-    await expect(db.confirmIngestion(id)).resolves.toBe("confirmed");
+    await expect(db.confirmIngestion(id)).resolves.toMatchObject({ status: "confirmed" });
     const [tx] = await sql("select merchant_id from transactions");
     expect(tx).toEqual({ merchant_id: null });
   });
@@ -909,5 +909,112 @@ describe("loadTaxonomy", () => {
       name: "Takeout / Quick Service",
       default_bucket: "wants",
     });
+  });
+});
+
+describe("confirmIngestion with the card's series", () => {
+  /** A series of this kind; an income series takes Salary, a transfer one the emergency fund. */
+  async function series(kind: "expense" | "income" | "transfer", name: string): Promise<number> {
+    const [{ id }] = await sql<{ id: number }>(
+      `INSERT INTO recurring_series (name, kind, cadence, subcategory_id, income_source_id, to_account_id)
+       VALUES ($1, $2::transaction_type, 'monthly',
+               CASE WHEN $2 = 'expense' THEN (SELECT id FROM subcategories WHERE name = 'Groceries') END,
+               CASE WHEN $2 = 'income' THEN (SELECT id FROM income_sources WHERE name = 'Salary') END,
+               CASE WHEN $2 = 'transfer' THEN (SELECT id FROM accounts WHERE name = 'Emergency fund') END)
+       RETURNING id`,
+      [name, kind],
+    );
+    return id;
+  }
+
+  async function saved(): Promise<{ series: number | null; flagged: boolean; excludedFrom: number[] }[]> {
+    return sql(
+      `SELECT t.recurring_series_id AS series, t.is_recurring AS flagged,
+              array(SELECT e.series_id FROM recurring_exclusions e WHERE e.transaction_id = t.id) AS "excludedFrom"
+       FROM transactions t ORDER BY t.created_at`,
+    );
+  }
+
+  it("links the new transaction to the series the card showed, which marks it recurring", async () => {
+    const internet = await series("expense", "Internet bill");
+    const [id] = await save(300, expense());
+    await expect(db.confirmIngestion(id, { id: internet, link: true })).resolves.toMatchObject({
+      status: "confirmed",
+      seriesGone: false,
+    });
+    expect(await saved()).toEqual([{ series: internet, flagged: true, excludedFrom: [] }]);
+  });
+
+  it("links income and transfers to a series of their kind and hard key", async () => {
+    const salary = await series("income", "Salary");
+    const savings = await series("transfer", "Savings");
+    await db.confirmIngestion((await save(301, income()))[0], { id: salary, link: true });
+    await db.confirmIngestion((await save(302, transfer()))[0], { id: savings, link: true });
+    expect((await saved()).map((r) => r.series)).toEqual([salary, savings]);
+  });
+
+  it("saves a payment the owner said is not that series unlinked, and records the exclusion", async () => {
+    const internet = await series("expense", "Internet bill");
+    const [id] = await save(303, expense({ is_recurring: true }));
+    await expect(db.confirmIngestion(id, { id: internet, link: false })).resolves.toMatchObject({
+      status: "confirmed",
+      seriesGone: false,
+    });
+    expect(await saved()).toEqual([{ series: null, flagged: false, excludedFrom: [internet] }]);
+  });
+
+  it("no longer saves Gemini's recurring guess on a transaction in no series", async () => {
+    await db.confirmIngestion((await save(304, expense({ is_recurring: true })))[0]);
+    expect(await saved()).toEqual([{ series: null, flagged: false, excludedFrom: [] }]);
+  });
+
+  it("saves the payment unlinked when its series was deleted, is another kind or no longer fits", async () => {
+    const gone = await series("expense", "Gone bill");
+    await sql("DELETE FROM recurring_series WHERE id = $1", [gone]);
+    const salary = await series("income", "Salary");
+    const results = [
+      await db.confirmIngestion((await save(305, expense()))[0], { id: gone, link: true }),
+      await db.confirmIngestion((await save(306, expense()))[0], { id: salary, link: true }),
+      await db.confirmIngestion((await save(307, income({ income_source: "Refund" })))[0], { id: salary, link: true }),
+      // "Not this series" asked for no link, so the series being gone loses nothing.
+      await db.confirmIngestion((await save(308, expense()))[0], { id: gone, link: false }),
+    ];
+    expect(results.map((r) => r !== "already_handled" && r.seriesGone)).toEqual([true, true, true, false]);
+    expect(await saved()).toEqual(Array(4).fill({ series: null, flagged: false, excludedFrom: [] }));
+  });
+
+  it("a series deleted while Confirm runs leaves the payment saved, unlinked", async () => {
+    const internet = await series("expense", "Internet bill");
+    const [id] = await save(309, expense());
+    await withClient(async (other) => {
+      await other.query("BEGIN");
+      await other.query("DELETE FROM recurring_series WHERE id = $1", [internet]);
+      // Confirm reaches the series lookup and waits there for the delete to commit.
+      const confirm = db.confirmIngestion(id, { id: internet, link: true });
+      await new Promise((r) => setTimeout(r, 300));
+      await other.query("COMMIT");
+      await expect(confirm).resolves.toMatchObject({ status: "confirmed", seriesGone: true });
+    });
+    expect(await saved()).toEqual([{ series: null, flagged: false, excludedFrom: [] }]);
+  });
+
+  it("reports a payment saved in no series as looking recurring only when Gemini called it so", async () => {
+    const internet = await series("expense", "Internet bill");
+    const results = [
+      await db.confirmIngestion((await save(311, expense({ is_recurring: true })))[0]),
+      await db.confirmIngestion((await save(312, expense({ is_recurring: true })))[0], { id: internet, link: false }),
+      await db.confirmIngestion((await save(313, expense({ is_recurring: true })))[0], { id: internet, link: true }),
+      await db.confirmIngestion((await save(314, expense()))[0]),
+    ];
+    expect(results.map((r) => r !== "already_handled" && r.looksRecurring)).toEqual([true, true, false, false]);
+  });
+
+  it("a double tap on Confirm saves and links once", async () => {
+    const internet = await series("expense", "Internet bill");
+    const [id] = await save(310, expense());
+    const first = await db.confirmIngestion(id, { id: internet, link: true });
+    const second = await db.confirmIngestion(id, { id: internet, link: true });
+    expect([first, second]).toMatchObject([{ status: "confirmed" }, "already_handled"]);
+    expect(await saved()).toEqual([{ series: internet, flagged: true, excludedFrom: [] }]);
   });
 });

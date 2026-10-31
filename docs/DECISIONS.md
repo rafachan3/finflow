@@ -2212,3 +2212,52 @@ Code review of PR #87 (Phase 4.5 PR 2).
 stateless; the prompt's own text and date carry everything needed), and
 undoing a review exclusion from the menu (logged as a follow-up; the spec
 makes an unticked shown row ignored for good).
+
+## 2026-10-31 — The card proposes the series; Gemini's recurring guess is a hint only
+
+Phase 4.5 PR 3 (`feat/recurring-card-link`), design §E.6 and §D.3 P1.
+
+**Chosen:**
+
+- **The card proposes the strongly matching series by default** (owner
+  decision): `Recurring: <series>` on the card and a last row
+  `↻ <series> ✓`; Confirm (`cr:<card>:<series>`) links. Turning it off is
+  one tap that only edits the keyboard (`↻ not <series>`, Confirm becomes
+  `cx:`), and Confirm then records the exclusion, so the payment is never
+  offered to that series' review again. Off by default would add a tap to
+  every recurring payment and recreate the "3 of 4 linked" gap. A weak
+  match is not proposed; the review shows it. Only a card that can be
+  confirmed is matched (a dateless card is matched when its date arrives).
+- **Outside the band is one note line** (`↻ Phone bill · usually 45.00;
+  this is 61.25 (+16.25)`), never a block.
+- **Confirm never fails because of the link.** It re-reads the series
+  inside its own transaction with `FOR KEY SHARE` (a concurrent delete waits
+  for Confirm, or wins first and leaves no row) and re-checks kind and hard
+  key (income source, accounts; the same predicate as the review's Apply).
+  A series gone or no longer fitting saves the payment unlinked, and the
+  reply says `Not linked: that recurring series is gone or no longer fits.`
+  A double tap is the existing ingestion lock: the second says "Already
+  handled." and links nothing.
+- **Gemini's `is_recurring` is no longer saved.** New rows are recurring
+  exactly when linked, so the legacy-flag list only shrinks and migration
+  0017 can ship after the backfill. The guess is still extracted (prompt
+  unchanged, no golden churn) and is used only when no series is linked:
+  the card reads `Recurring: not tracked yet` instead of `no`, and the
+  `Saved.` reply gets `↻ Track as recurring` (`r:at:<transaction>`), which
+  opens the add flow. That is also how a series with no history is
+  declared at its first charge. Payments Gemini did not call recurring are
+  tracked from `/recurring` → ➕ Add, so most Saved replies stay plain.
+  Expect `fixed_base_burn` to count a new recurring payment only once its
+  series exists.
+- **The card change is isolated** for the coming card redesign: one line
+  (`formatPreview`'s `series` argument), one note line, one button row
+  (`reviewKeyboard`'s `series` option, `toggleCardSeries`), matching in
+  `lambda/src/recurring-card.ts`.
+
+**Ruled out:** the Track button on every unlinked Saved reply (a button
+under every grocery receipt; `/recurring` → ➕ Add covers what Gemini
+misses), still saving Gemini's guess on unlinked rows (it would keep
+growing the legacy-flag list and block 0017), re-running the matcher at
+Confirm (Confirm links exactly what the card showed; a changed series is
+caught by the re-check), and storing the toggle server side (the keyboard
+holds it, as on the review).

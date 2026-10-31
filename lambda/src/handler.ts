@@ -64,6 +64,7 @@ import {
   type Keyboard,
   type MentionTap,
 } from "./mentions.js";
+import { cardSeries, type CardSeries } from "./recurring-card.js";
 import { handleRecurringTap, answerPrompt, parseRecurringTap, sendRecurringList } from "./recurring-menu.js";
 import { putReceipt } from "./s3.js";
 import {
@@ -75,6 +76,7 @@ import {
   largestPhotoFileId,
   reviewKeyboard,
   sendMessage,
+  toggleCardSeries,
   voiceFileId,
 } from "./telegram.js";
 
@@ -105,6 +107,15 @@ type TelegramUpdate = {
 
 const CALLBACK_RE =
   /^([cdfe]):([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i;
+/** Confirm on a card that proposed a series: `cr:` links it, `cx:` records "not this series". */
+const CONFIRM_SERIES_RE =
+  /^(cr|cx):([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}):(\d{1,10})$/;
+
+/** The card's series toggle; it only edits the keyboard. */
+const SERIES_TOGGLE_RE =
+  /^rt:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}:\d{1,10}$/;
+
+const SERIES_GONE = "Not linked: that recurring series is gone or no longer fits.";
 
 const ASK_DATE =
   "Send the date as YYYY-MM-DD, Aug 10, or yesterday.";
@@ -142,6 +153,21 @@ async function busyWaiting(
   await answerCallbackQuery(botToken, callbackId, "Finish the waiting card first.");
   await sendMessage(botToken, chatId, BUSY_WAITING);
   return ok("ok");
+}
+
+/**
+ * Removes the buttons of a card that Fix date or Edit will replace with a new
+ * one. Its Confirm carries the series proposed for the old reading, so a tap
+ * after the correction would link the corrected payment to that series. Best
+ * effort: a failed clear is logged and the flow goes on.
+ */
+async function retireCard(botToken: string, chatId: number, messageId: number | undefined): Promise<void> {
+  if (messageId === undefined) return;
+  try {
+    await editMessageReplyMarkup(botToken, chatId, messageId, { inline_keyboard: [] });
+  } catch (err) {
+    console.error("card retire error", err);
+  }
 }
 
 function unauthorized(): APIGatewayProxyResultV2 {
@@ -303,13 +329,23 @@ async function sendCard(
   } catch (err) {
     console.error("merchant hint error", err);
   }
+  // Only a card that can be confirmed proposes a series; a dateless one is
+  // matched when its date comes back.
+  let series: CardSeries | null = null;
+  if (confirm) {
+    try {
+      series = await cardSeries(ingestionId, extraction);
+    } catch (err) {
+      console.error("recurring match error", err);
+    }
+  }
   // A warning or hint only adds a line; Confirm still follows the checks alone.
   const shown = { ...checks, warnings: [...checks.warnings, ...duplicates] };
   await sendMessage(
     botToken,
     chatId,
-    formatPreview(extraction, shown, position, hint),
-    reviewKeyboard(ingestionId, { confirm }),
+    formatPreview(extraction, shown, position, hint, series ?? undefined),
+    reviewKeyboard(ingestionId, { confirm, series: series ?? undefined }),
   );
 }
 
@@ -675,7 +711,19 @@ async function handleCallback(
     return ok("ok");
   }
 
-  const match = cb.data?.match(CALLBACK_RE);
+  if (SERIES_TOGGLE_RE.test(cb.data ?? "")) {
+    const keyboard = cb.message?.reply_markup?.inline_keyboard ?? [];
+    const next = toggleCardSeries(keyboard);
+    // Telegram refuses an edit that changes nothing.
+    if (JSON.stringify(next) !== JSON.stringify(keyboard)) {
+      await editMessageReplyMarkup(botToken, chatId, cb.message!.message_id!, { inline_keyboard: next });
+    }
+    await answerCallbackQuery(botToken, cb.id);
+    return ok("ok");
+  }
+
+  const withSeries = cb.data?.match(CONFIRM_SERIES_RE);
+  const match = withSeries ?? cb.data?.match(CALLBACK_RE);
   if (!match) {
     await answerCallbackQuery(botToken, cb.id, "Unknown action.");
     return ok("ok");
@@ -685,15 +733,28 @@ async function handleCallback(
   const ingestionId = match[2];
 
   let ack: string;
-  if (action === "c") {
-    const result = await confirmIngestion(ingestionId);
-    ack = result === "confirmed" ? withPosition("Saved.", cb.message?.text) : "Already handled.";
+  let ackButtons: object | undefined;
+  if (action === "c" || withSeries) {
+    const series = withSeries ? { id: Number(withSeries[3]), link: action === "cr" } : undefined;
+    const result = await confirmIngestion(ingestionId, series);
+    if (result === "already_handled") {
+      ack = "Already handled.";
+    } else {
+      ack = `${withPosition("Saved.", cb.message?.text)}${result.seriesGone ? ` ${SERIES_GONE}` : ""}`;
+      // After the save, so it adds no step: one tap opens /recurring's add flow on this payment.
+      if (result.looksRecurring) {
+        ackButtons = {
+          inline_keyboard: [[{ text: "↻ Track as recurring", callback_data: `r:at:${result.transactionId}` }]],
+        };
+      }
+    }
   } else if (action === "f") {
     const started = await setIngestionAwaitingDate(ingestionId);
     if (started === "busy") return busyWaiting(botToken, cb.id, chatId);
     ack = started === "started" ? "Send the date." : "Already handled.";
     await answerCallbackQuery(botToken, cb.id, ack);
     if (started === "started") {
+      await retireCard(botToken, chatId, cb.message?.message_id);
       await sendMessage(
         botToken,
         chatId,
@@ -710,6 +771,7 @@ async function handleCallback(
     ack = started === "started" ? "Send the correction." : "Already handled.";
     await answerCallbackQuery(botToken, cb.id, ack);
     if (started === "started") {
+      await retireCard(botToken, chatId, cb.message?.message_id);
       await sendMessage(
         botToken,
         chatId,
@@ -726,7 +788,7 @@ async function handleCallback(
   }
 
   await answerCallbackQuery(botToken, cb.id, ack);
-  await sendMessage(botToken, chatId, ack);
+  await sendMessage(botToken, chatId, ack, ackButtons);
   return ok("ok");
 }
 

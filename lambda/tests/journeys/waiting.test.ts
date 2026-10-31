@@ -86,9 +86,10 @@ describe("a card waiting for a date", () => {
   it("discarding the waiting card lets another card wait", async () => {
     const [first, second] = await twoCards();
     await chat.tap(first, "Fix date");
-    await chat.tap(first, "Discard");
+    // Fix date cleared the card's buttons; the date prompt carries Discard.
+    await chat.tap(chat.last(), "Discard");
     await chat.tap(second, "Fix date");
 
-    expect(chat.acks()).toEqual(["Send the date.", "Discarded. (1 of 2)", "Send the date."]);
+    expect(chat.acks()).toEqual(["Send the date.", "Discarded.", "Send the date."]);
   });
 });

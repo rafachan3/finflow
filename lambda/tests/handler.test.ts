@@ -42,8 +42,12 @@ vi.mock("../src/telegram.js", () => ({
 vi.mock("../src/s3.js", () => ({
   putReceipt: vi.fn(),
 }));
+vi.mock("../src/recurring-card.js", () => ({
+  cardSeries: vi.fn(async () => null),
+}));
 
 import { getConfig } from "../src/config.js";
+import { cardSeries } from "../src/recurring-card.js";
 import {
   addMerchant,
   applyIngestionDate,
@@ -228,6 +232,20 @@ describe("handler", () => {
     expect(reviewKeyboard).toHaveBeenCalledWith("ing-1", { confirm: true });
   });
 
+  it("sends a saved card without the series when matching fails", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.mocked(cardSeries).mockRejectedValueOnce(new Error("db down"));
+
+    await handler(event({ update_id: 37, message: { chat: { id: 1 }, text: "12.50 lunch" } }));
+
+    expect(error).toHaveBeenCalledWith("recurring match error", expect.any(Error));
+    const text = String(vi.mocked(sendMessage).mock.calls[0][2]);
+    expect(text).toContain("Recurring: no");
+    expect(text).toContain("Confirm to save");
+    expect(reviewKeyboard).toHaveBeenCalledWith("ing-1", { confirm: true, series: undefined });
+    error.mockRestore();
+  });
+
   it("sends a saved card without the warning when the duplicate check fails", async () => {
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
     vi.mocked(findDuplicates).mockRejectedValue(new Error("db down"));
@@ -303,6 +321,26 @@ describe("handler", () => {
       expect(answered).toBeGreaterThan(edited);
     },
   );
+
+  it("Confirm on a card with a series links it (cr) or excludes it (cx), and says when it could not link", async () => {
+    const { confirmIngestion } = await import("../src/db.js");
+    const id = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
+    const tap = (data: string) =>
+      handler(event({ update_id: 36, callback_query: { id: "cb", data, message: { message_id: 5, chat: { id: 1 } } } }));
+    vi.mocked(confirmIngestion).mockResolvedValue({ status: "confirmed", transactionId: "tx", seriesGone: false, looksRecurring: false });
+    await tap(`cr:${id}:4294967295`);
+    vi.mocked(confirmIngestion).mockResolvedValue({ status: "confirmed", transactionId: "tx", seriesGone: true, looksRecurring: false });
+    await tap(`cx:${id}:12`);
+
+    expect(vi.mocked(confirmIngestion).mock.calls).toEqual([
+      [id, { id: 4294967295, link: true }],
+      [id, { id: 12, link: false }],
+    ]);
+    expect(vi.mocked(answerCallbackQuery).mock.calls.map((c) => c[2])).toEqual([
+      "Saved.",
+      "Saved. Not linked: that recurring series is gone or no longer fits.",
+    ]);
+  });
 
   it("does not persist or offer Confirm when checks fail", async () => {
     vi.mocked(extractFromText).mockResolvedValue([{

@@ -271,3 +271,22 @@ describe("clearFlags and dismissGroup", () => {
     expect(await sql("select group_key from recurring_dismissed")).toEqual([{ group_key: "desc:gym" }]);
   });
 });
+
+describe("cardRow", () => {
+  it("reads a card's payment with the ids Confirm would save: merchant by key, largest line, source, accounts", async () => {
+    const { expense, income, transfer } = await import("./fixtures.js");
+    const [ids] = await sql<{ merchant: number; groceries: number; salary: number; fund: number }>(
+      `SELECT (SELECT id FROM merchants WHERE name = 'Acme Mart') AS merchant,
+              (SELECT id FROM subcategories WHERE name = 'Groceries') AS groceries,
+              (SELECT id FROM income_sources WHERE name = 'Salary') AS salary,
+              (SELECT id FROM accounts WHERE name = 'Emergency fund') AS fund`,
+    );
+    expect(await rdb.cardRow("card-1", expense({ merchant: "acme  MART" }))).toEqual({
+      id: "card-1", date: "2026-10-20", type: "expense", amount: "12.50", description: "groceries",
+      merchantId: ids.merchant, subcategoryId: ids.groceries, incomeSourceId: null,
+      fromAccountId: null, toAccountId: null, seriesId: null,
+    });
+    expect(await rdb.cardRow("card-2", income())).toMatchObject({ merchantId: null, subcategoryId: null, incomeSourceId: ids.salary });
+    expect(await rdb.cardRow("card-3", transfer())).toMatchObject({ fromAccountId: null, toAccountId: ids.fund });
+  });
+});

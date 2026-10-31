@@ -3,7 +3,7 @@
 Living state of the project. Read this first; update it whenever work lands.
 
 **Last updated:** 2026-10-31
-**Current phase:** Phase 4.5 — Proactive nudges, in progress: PR 1 (schema and detection) merged and migration 0016 applied; PR 2 (`/recurring` menu, add, backfill-verify, `feat/recurring-menu`) in review (see [ROADMAP.md](ROADMAP.md) and Next concrete step)
+**Current phase:** Phase 4.5 — Proactive nudges, in progress: PR 1 (schema and detection) merged and migration 0016 applied; PR 2 (`/recurring` menu, add, backfill-verify) merged as #87; PR 3 (the card proposes and links the series, `feat/recurring-card-link`) in review (see [ROADMAP.md](ROADMAP.md) and Next concrete step)
 
 ## Phase progress
 
@@ -16,7 +16,7 @@ Living state of the project. Read this first; update it whenever work lands.
 - [x] Phase 3.6 — Regression test suite — **accepted 2026-10-29: deliberate-break PR #48 blocked (unit + inventory failed, BLOCKED), clean PRs #46/#47 green, smoke step green on deploy run 40803017809, `main` protected** (2026-10-29)
 - [x] Phase 3.5 — Ingestion follow-ons — **accepted 2026-10-29 by the journey tests (no phone test): 25 of 25 passed in `line-tags`, `duplicates` and `merchants`; see Next concrete step** (2026-10-29)
 - [x] Phase 4 — dbt semantic layer + MetricFlow — **accepted 2026-10-30: `dbt build`, the hand-written-SQL reconciliation and `mf query` vs the marts green in CI on the fixture (#72-#78) and on production in `dbt-nightly` run 41157900716 (87 of 87 nodes, 14 metrics, 5 months); real-month hand verification deferred** (2026-10-30)
-- [ ] Phase 4.5 — Proactive nudges (recurring reminders, merchant recommendations) — **PR 1 of 7 merged (#86, migration 0016 applied); PR 2 (`/recurring` menu) in review** (2026-10-31)
+- [ ] Phase 4.5 — Proactive nudges (recurring reminders, merchant recommendations) — **PRs 1-2 of 7 merged (#86 with migration 0016 applied, #87); PR 3 (card links the series) in review** (2026-10-31)
 - [ ] Phase 5 — Grafana dashboards
 - [ ] Phase 6 — Claude analytics agent (subagents + Postgres MCP)
 - [ ] Phase 7 — Open-source polish
@@ -472,13 +472,28 @@ repeats write nothing. No Gemini call. Screens read the whole recurring book
 per tap (`lambda/src/recurring-db.ts`) and derive everything in
 `recurring.ts`.
 
+Card links the series (Phase 4.5 PR 3, DECISIONS.md 2026-10-31): a card
+that can be confirmed is matched against every series (no Gemini call,
+fail-open). A strong match shows `Recurring: <series>` on the card, a note
+line when the amount is outside the series' band, and a last row
+`↻ <series> ✓`; Confirm links the payment. Tapping the row turns it into
+`↻ not <series>` (keyboard only) and Confirm then saves the payment
+excluded from that series. Confirm re-reads the series inside its
+transaction, so a deleted or no-longer-fitting series saves the payment
+unlinked and the reply says so. Fix date and Edit clear the old card's
+buttons before asking, so its Confirm cannot save the corrected payment
+linked to the series proposed for the old reading. Gemini's `is_recurring` guess is no longer
+saved; with no match it shows as `Recurring: not tracked yet` and puts
+`↻ Track as recurring` on the `Saved.` reply, which opens the add flow.
+
 ## Next concrete step
 
-Phase 4.5 — Proactive nudges, PR 2 (`feat/recurring-menu`) open and
-waiting for code review before merge (it writes ledger links from buttons).
-No migration or infra step. After it merges and deploys, the owner can start
-the backfill: `/recurring` → ⚑ Flagged (legacy flags with no series)
-and ➕ Add for each real bill, salary and transfer. Then PR 3 (the card links the series), PR 4 (nudge Terraform),
+Phase 4.5 — Proactive nudges, PR 3 (`feat/recurring-card-link`) open and
+waiting for code review before merge (Confirm writes series links from a
+button). No migration or infra step. The owner's backfill can run now:
+`/recurring` → ⚑ Flagged (legacy flags with no series) and ➕ Add for each
+real bill, salary and transfer; once PR 3 deploys, new payments of a tracked
+series link on Confirm. Then PR 4 (nudge Terraform),
 PR 5 (daily digest), PR 6 (migration 0017, after the owner's backfill), PR 7
 (acceptance). `fixed_base_burn` stays thin until the backfill links real
 history; expect it to rise then.

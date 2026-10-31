@@ -119,8 +119,10 @@ transaction's link to a recurring series (migration 0016): linking sets it,
 unlinking clears it, and deleting a series unlinks its transactions. A
 paused series keeps its links: pausing changes expectations, not history.
 Until migration 0017, a row flagged before series existed keeps its flag
-while the owner's backfill links or clears it. Every line of a recurring
-expense counts as recurring.
+while the owner's backfill links or clears it. The bot's Confirm writes the
+series its card proposed, never Gemini's guess, so a new payment is
+recurring exactly when it is linked. Every line of a recurring expense
+counts as recurring.
 
 ## Grain
 
