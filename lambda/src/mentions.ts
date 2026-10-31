@@ -130,31 +130,40 @@ export function parseMentionTap(data: string | undefined): MentionTap | null {
   return null;
 }
 
-function mapToggles(keyboard: Keyboard, f: (b: Keyboard[number][number]) => string): Keyboard {
+/*
+ * Toggle keyboards in general: a toggle is a button whose callback data
+ * matches `pattern` (group 1 is the row's id) and whose label starts with
+ * ☐ or ✅. The mention review's pattern is the default; the recurring
+ * review screens pass their own.
+ */
+
+function mapToggles(keyboard: Keyboard, pattern: RegExp, f: (b: Keyboard[number][number]) => string): Keyboard {
   return keyboard.map((row) =>
-    row.map((b) => (TOGGLE.test(b.callback_data) ? { ...b, text: f(b) } : b)),
+    row.map((b) => (pattern.test(b.callback_data) ? { ...b, text: f(b) } : b)),
   );
 }
 
-function flip(text: string): string {
+export function flip(text: string): string {
   if (text.startsWith(BOX)) return TICK + text.slice(BOX.length);
   if (text.startsWith(TICK)) return BOX + text.slice(TICK.length);
   return text;
 }
 
-export function toggle(keyboard: Keyboard, data: string): Keyboard {
-  return mapToggles(keyboard, (b) => (b.callback_data === data ? flip(b.text) : b.text));
+export function toggle(keyboard: Keyboard, data: string, pattern = TOGGLE): Keyboard {
+  return mapToggles(keyboard, pattern, (b) => (b.callback_data === data ? flip(b.text) : b.text));
 }
 
-export function selectAll(keyboard: Keyboard): Keyboard {
-  return mapToggles(keyboard, (b) => (b.text.startsWith(BOX) ? flip(b.text) : b.text));
+export function selectAll(keyboard: Keyboard, pattern = TOGGLE): Keyboard {
+  return mapToggles(keyboard, pattern, (b) => (b.text.startsWith(BOX) ? flip(b.text) : b.text));
 }
 
-/** The transaction ids ticked on the keyboard, and how many it offers. */
-export function ticked(keyboard: Keyboard): { ids: string[]; shown: number } {
-  const toggles = keyboard.flat().filter((b) => TOGGLE.test(b.callback_data));
+/** The ids ticked on the keyboard, the ids it offers, and how many it offers. */
+export function ticked(keyboard: Keyboard, pattern = TOGGLE): { ids: string[]; all: string[]; shown: number } {
+  const toggles = keyboard.flat().filter((b) => pattern.test(b.callback_data));
+  const id = (b: Keyboard[number][number]) => pattern.exec(b.callback_data)![1];
   return {
-    ids: toggles.filter((b) => b.text.startsWith(TICK)).map((b) => b.callback_data.slice(3)),
+    ids: toggles.filter((b) => b.text.startsWith(TICK)).map(id),
+    all: toggles.map(id),
     shown: toggles.length,
   };
 }

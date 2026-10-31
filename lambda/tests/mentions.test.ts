@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  flip,
   linkedSummary,
   mentionLabel,
   mentionPattern,
@@ -77,10 +78,25 @@ describe("the review keyboard", () => {
     const one = toggle(keyboard, `mt:${TX2}`);
     expect(one[1][0].text.startsWith("✅ ")).toBe(true);
     expect(one[0][0].text.startsWith("☐ ")).toBe(true);
-    expect(ticked(one)).toEqual({ ids: [TX2], shown: 2 });
-    expect(ticked(toggle(one, `mt:${TX2}`))).toEqual({ ids: [], shown: 2 });
-    expect(ticked(selectAll(keyboard))).toEqual({ ids: [TX1, TX2], shown: 2 });
+    const all = [TX1, TX2];
+    expect(ticked(one)).toEqual({ ids: [TX2], all, shown: 2 });
+    expect(ticked(toggle(one, `mt:${TX2}`))).toEqual({ ids: [], all, shown: 2 });
+    expect(ticked(selectAll(keyboard))).toEqual({ ids: [TX1, TX2], all, shown: 2 });
     expect(withoutMore(keyboard).flat().some((b) => b.callback_data.startsWith("mp:"))).toBe(false);
+  });
+
+  it("toggles any keyboard whose toggle data matches a given pattern, and leaves other buttons alone", () => {
+    const pattern = /^x:(\d+)$/;
+    const keyboard = [
+      [{ text: "☐ one", callback_data: "x:1" }],
+      [{ text: "✅ two", callback_data: "x:2" }],
+      [{ text: "✅ Apply", callback_data: "go" }],
+    ];
+    expect(ticked(keyboard, pattern)).toEqual({ ids: ["2"], all: ["1", "2"], shown: 2 });
+    expect(ticked(toggle(keyboard, "x:2", pattern), pattern).ids).toEqual([]);
+    expect(selectAll(keyboard, pattern)[2][0].text).toBe("✅ Apply");
+    expect(ticked(selectAll(keyboard, pattern), pattern).ids).toEqual(["1", "2"]);
+    expect(flip("plain")).toBe("plain");
   });
 
   it("reads each tap's action and ignores anything else", () => {
