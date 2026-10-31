@@ -74,7 +74,12 @@ select
     t.to_account_name,
     t.account_kind,
     t.entry_source,
-    coalesce(g.tags, '{}'::text[]) as tags
+    coalesce(g.tags, '{}'::text[]) as tags,
+    -- The same on every row: MetricFlow reads the targets from here.
+    b.needs_target_pct,
+    b.wants_target_pct,
+    b.financial_future_target_pct
 from lines as l
 join {{ ref('stg_transactions') }} as t on t.transaction_id = l.transaction_id
 left join tags as g on g.line_key = l.line_key
+left join {{ ref('stg_budget_targets') }} as b on true

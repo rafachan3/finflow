@@ -7,7 +7,8 @@
 2. `mf query` runs every metric by metric_time__month over the mart's months.
 3. Every metric of every month must equal marts.fct_monthly_summary: money
    to the cent, a ratio within 0.0001. A month or cell mf leaves empty is 0
-   for money and null for a ratio.
+   for money and null for a ratio; a target is not compared in a month with
+   no transactions (mf has no ledger line to read it from).
 
 A mismatch prints the metric and the month, never a value: CI logs are
 public. Connects with the FINFLOW_DBT_* variables profiles.yml reads.
@@ -27,7 +28,12 @@ import psycopg2
 
 DBT = Path(__file__).resolve().parents[1]
 CONTRACT = DBT.parent / "docs" / "SEMANTIC_LAYER.md"
-RATIOS = {"unspent_rate", "needs_wants_ratio"}
+# Targets are settings, not sums: mf reads them off the ledger lines, so it
+# has none for a month with no transactions, while the mart shows them every
+# month.
+TARGETS = {"needs_target_pct", "wants_target_pct", "financial_future_target_pct"}
+RATIOS = {"unspent_rate", "needs_wants_ratio", "needs_pct", "wants_pct",
+          "financial_future_pct", "unallocated_pct"} | TARGETS
 RATIO_TOLERANCE = Decimal("0.0001")
 CENT = Decimal("0.01")
 
@@ -85,6 +91,8 @@ def mismatches(names, mart, mf):
     bad = [("every metric", m) for m in sorted(set(mf) - set(mart))]
     for month in sorted(mart):
         for name in names:
+            if name in TARGETS and mart[month]["transaction_count"] == 0:
+                continue
             want, got = mart[month][name], mf.get(month, {}).get(name)
             if name in RATIOS:
                 same = (want is None and got is None) or (
@@ -106,7 +114,7 @@ def main():
             print(f"metric {name} is in SEMANTIC_LAYER.md but not in the MetricFlow YAML")
         sys.exit(1)
     names = sorted(contract)
-    mart = mart_months(names)
+    mart = mart_months(names + ["transaction_count"])
     mf = mf_months(names, min(mart), max(mart))
     bad = mismatches(names, mart, mf)
     for name, month in bad:

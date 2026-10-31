@@ -1,7 +1,8 @@
 -- One row per month, one column per metric in docs/SEMANTIC_LAYER.md, named
 -- exactly as there. Months run from the first data month to the current
 -- Toronto month (or a later month a row is already dated in), zero-filled
--- through dim_date so the running balance carries over an empty month.
+-- through dim_date so the running balance carries over an empty month. The
+-- three targets come from budget_targets and are the same every month.
 -- monthly_summary_matches_hand_written_sql recomputes every month from
 -- public with the contract's reference SQL.
 with months as (
@@ -62,6 +63,24 @@ select
         over (order by month_start)::numeric(12, 2)
         as unallocated_cash_cumulative,
     round(needs_spend / nullif(wants_spend, 0), 4)::numeric(9, 4) as needs_wants_ratio,
+    -- The 50/30/20 view: spendable_income = spend + financial_future +
+    -- unallocated_cash, exactly (dbt test financial_future_identity).
+    (income - savings_income)::numeric(12, 2) as spendable_income,
+    (transfers - withdrawals)::numeric(12, 2) as financial_future,
+    b.needs_target_pct,
+    b.wants_target_pct,
+    b.financial_future_target_pct,
+    round(b.financial_future_target_pct * (income - savings_income), 2)::numeric(12, 2)
+        as financial_future_target,
+    (round(b.financial_future_target_pct * (income - savings_income), 2)
+        - (transfers - withdrawals))::numeric(12, 2) as financial_future_gap,
+    round(needs_spend / nullif(income - savings_income, 0), 4)::numeric(9, 4) as needs_pct,
+    round(wants_spend / nullif(income - savings_income, 0), 4)::numeric(9, 4) as wants_pct,
+    round((transfers - withdrawals) / nullif(income - savings_income, 0), 4)::numeric(9, 4)
+        as financial_future_pct,
+    round((income - savings_income - spend - transfers + withdrawals)
+        / nullif(income - savings_income, 0), 4)::numeric(9, 4) as unallocated_pct,
     transaction_count::integer as transaction_count,
     month_start < date_trunc('month', {{ toronto_today() }})::date as is_complete_month
 from monthly
+left join {{ ref('stg_budget_targets') }} as b on true

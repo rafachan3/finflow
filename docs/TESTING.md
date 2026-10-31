@@ -201,7 +201,7 @@ eval "$(TEST_DATABASE_URL=$(npm --prefix ../lambda run -s db:url) .venv/bin/pyth
 .venv/bin/mf validate-configs && .venv/bin/python scripts/check_metrics.py
 ```
 
-Models: three staging views in schema `staging`, and four mart tables in
+Models: four staging views in schema `staging`, and four mart tables in
 `marts` (`dim_date`, `fct_transactions`, `fct_category_month`,
 `fct_monthly_summary`), all rebuilt in full every run.
 `monthly_summary_matches_hand_written_sql` is the acceptance check: it runs

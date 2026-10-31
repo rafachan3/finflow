@@ -83,3 +83,9 @@ models:
               arguments:
                 to: ref('stg_transactions')
                 field: transaction_id
+
+  - name: stg_budget_targets
+    description: >
+      The one budget_targets row (migration 0018) as fractions of spendable
+      income. Its constraints (one row, each 0-100, summing to 100) live in
+      the database; the mart's not_null tests catch a missing row.
