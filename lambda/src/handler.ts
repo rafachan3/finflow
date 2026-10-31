@@ -155,6 +155,21 @@ async function busyWaiting(
   return ok("ok");
 }
 
+/**
+ * Removes the buttons of a card that Fix date or Edit will replace with a new
+ * one. Its Confirm carries the series proposed for the old reading, so a tap
+ * after the correction would link the corrected payment to that series. Best
+ * effort: a failed clear is logged and the flow goes on.
+ */
+async function retireCard(botToken: string, chatId: number, messageId: number | undefined): Promise<void> {
+  if (messageId === undefined) return;
+  try {
+    await editMessageReplyMarkup(botToken, chatId, messageId, { inline_keyboard: [] });
+  } catch (err) {
+    console.error("card retire error", err);
+  }
+}
+
 function unauthorized(): APIGatewayProxyResultV2 {
   return { statusCode: 401, body: "unauthorized" };
 }
@@ -739,6 +754,7 @@ async function handleCallback(
     ack = started === "started" ? "Send the date." : "Already handled.";
     await answerCallbackQuery(botToken, cb.id, ack);
     if (started === "started") {
+      await retireCard(botToken, chatId, cb.message?.message_id);
       await sendMessage(
         botToken,
         chatId,
@@ -755,6 +771,7 @@ async function handleCallback(
     ack = started === "started" ? "Send the correction." : "Already handled.";
     await answerCallbackQuery(botToken, cb.id, ack);
     if (started === "started") {
+      await retireCard(botToken, chatId, cb.message?.message_id);
       await sendMessage(
         botToken,
         chatId,

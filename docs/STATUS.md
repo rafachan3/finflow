@@ -480,7 +480,9 @@ line when the amount is outside the series' band, and a last row
 `↻ not <series>` (keyboard only) and Confirm then saves the payment
 excluded from that series. Confirm re-reads the series inside its
 transaction, so a deleted or no-longer-fitting series saves the payment
-unlinked and the reply says so. Gemini's `is_recurring` guess is no longer
+unlinked and the reply says so. Fix date and Edit clear the old card's
+buttons before asking, so its Confirm cannot save the corrected payment
+linked to the series proposed for the old reading. Gemini's `is_recurring` guess is no longer
 saved; with no match it shows as `Recurring: not tracked yet` and puts
 `↻ Track as recurring` on the `Saved.` reply, which opens the add flow.
 

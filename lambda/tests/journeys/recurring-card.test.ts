@@ -218,6 +218,36 @@ describe("Confirm on a card with a series", () => {
     expect((await ledger.links())["Internet bill 2026-10-15"]).toEqual({ series: null, flagged: false });
   });
 
+  it("Edit clears the old card's buttons, so its Confirm cannot link the corrected payment to the old series", async () => {
+    await internetBill();
+    const shown = await card(billEvent());
+    expect(labels(shown)).toEqual([...REVIEW, "↻ Internet bill ✓"]);
+    await chat.tap(shown, "Edit");
+    expect(labels(chat.current(shown))).toEqual([]);
+
+    const gym = billEvent("25.00", "Gym membership").events[0];
+    gemini.patch = { ...gym, items: [{ ...gym.items[0], category: "Health and wellness", subcategory: "Fitness" }] };
+    await chat.text("it was the gym, 25");
+    const fixed = chat.last();
+    expect(recurringLines(fixed.text)).toEqual(["Funded by: self · Recurring: not tracked yet"]);
+
+    // The old card has no Confirm left to tap, and nothing was written.
+    expect(() => chat.tap(shown, "Confirm")).toThrow(/no "Confirm" button/);
+    expect(await ledger.transactions()).toHaveLength(4);
+
+    await chat.tap(fixed, "Confirm");
+    expect((await ledger.links())["Gym membership 2026-10-15"]).toEqual({ series: null, flagged: false });
+  });
+
+  it("Fix date clears the old card's buttons too", async () => {
+    await internetBill();
+    const shown = await card(billEvent());
+    await chat.tap(shown, "Fix date");
+    expect(labels(chat.current(shown))).toEqual([]);
+    await chat.text("Oct 16");
+    expect(labels(chat.last())).toEqual([...REVIEW, "↻ Internet bill ✓"]);
+  });
+
   it("a double tap on a card's Confirm saves and links once", async () => {
     await internetBill();
     const shown = await card(billEvent());
