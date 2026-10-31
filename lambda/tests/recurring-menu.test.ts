@@ -12,6 +12,7 @@ import {
   parseRecurringTap,
   pickScreen,
   range,
+  recount,
 } from "../src/recurring-menu.js";
 
 const TX = "11111111-1111-4111-8111-111111111111";
@@ -117,6 +118,18 @@ describe("adding a series", () => {
   });
 });
 
+describe("the review keyboards", () => {
+  it("label Apply and Clear with what they will write, from the ticks", () => {
+    const keyboard = [
+      [{ text: "✅ a", callback_data: `r:bt:${TX}` }],
+      [{ text: "☐ b", callback_data: "r:bt:22222222-2222-4222-8222-222222222222" }],
+      [{ text: "", callback_data: "r:bk:3" }],
+      [{ text: "", callback_data: "r:fk" }],
+    ];
+    expect(recount(keyboard).slice(2).map((row) => row[0].text)).toEqual(["✅ Link 1 · ignore 1", "Clear flag on ticked (1)"]);
+  });
+});
+
 describe("recurring callback data", () => {
   it("reads every button's action, and nothing else", () => {
     expect(parseRecurringTap("r:l:16")).toEqual({ op: "list", offset: 16 });
@@ -139,6 +152,17 @@ describe("recurring callback data", () => {
     expect(parseRecurringTap(`r:ac:${TX}:s1`)).toEqual({ op: "create", tx: TX, cadence: "semimonthly", varies: true });
     expect(parseRecurringTap(`r:ac:${TX}:x1`)).toBeNull();
     expect(Buffer.byteLength(`r:ac:${TX}:y0`)).toBe(44);
+    expect(parseRecurringTap("r:b")).toEqual({ op: "review", sid: null });
+    expect(parseRecurringTap("r:b:7")).toEqual({ op: "review", sid: 7 });
+    expect(parseRecurringTap(`r:bt:${TX}`)).toEqual({ op: "toggle", data: `r:bt:${TX}` });
+    expect(parseRecurringTap(`r:ft:${TX}`)).toEqual({ op: "toggle", data: `r:ft:${TX}` });
+    expect(parseRecurringTap("r:ba")).toEqual({ op: "all" });
+    expect(parseRecurringTap("r:bk:7")).toEqual({ op: "apply", sid: 7 });
+    expect(parseRecurringTap("r:bl")).toEqual({ op: "later" });
+    expect(parseRecurringTap("r:f:8")).toEqual({ op: "flags", offset: 8 });
+    expect(parseRecurringTap("r:fk")).toEqual({ op: "clear" });
+    expect(parseRecurringTap("r:sg")).toEqual({ op: "suggestions" });
+    expect(parseRecurringTap(`r:gd:${TX}`)).toEqual({ op: "dismiss", tx: TX });
     // The longest pause data, with a ten-digit series id, fits Telegram's 64 bytes.
     expect(Buffer.byteLength("r:pu:4294967295:20261023:20270131")).toBeLessThanOrEqual(64);
     for (const data of [undefined, "", "r:v:", "r:v:x", "r:l:12345", `c:${TX}`, "mt:1", "r:zz"]) {
