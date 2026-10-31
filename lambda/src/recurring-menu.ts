@@ -12,22 +12,30 @@
  * (only the last writes) · `r:u:<sid>:<date>` resume · `r:n:<sid>` rename
  * (a ForceReply prompt; the reply is routed by its `#<sid>`) · `r:pd:<sid>:<from>`
  * asks for a typed pause end the same way ·
- * `r:x:<sid>` / `r:xy:<sid>` delete, asked then done. Dates are yyyymmdd.
+ * `r:x:<sid>` / `r:xy:<sid>` delete, asked then done ·
+ * `r:a`, `r:ar:<offset>` pick a saved payment → `r:at:<uuid>` add from it,
+ * `r:av` flips "amount varies" in the keyboard only, `r:ac:<uuid>:<c><v>`
+ * creates the series with cadence code c and varies flag v.
+ * Dates are yyyymmdd.
  */
 import { collapseSpaces } from "./commands.js";
-import { parseDateReply } from "./extraction.js";
-import type { Keyboard } from "./mentions.js";
+import { parseCents, parseDateReply } from "./extraction.js";
+import { flip, type Keyboard } from "./mentions.js";
 import {
   amountBand,
   dayNumber,
+  matchStrength,
   occurrences,
+  suggestCadence,
   type Band,
   type Cadence,
   type Fit,
   type Pause,
+  type Series,
   type Slot,
 } from "./recurring.js";
 import {
+  createSeries,
   deleteSeries,
   loadBook,
   pauseSeries,
@@ -37,7 +45,7 @@ import {
   type BookRow,
   type BookSeries,
 } from "./recurring-db.js";
-import { answerCallbackQuery, editMessageText, esc, sendMessage } from "./telegram.js";
+import { answerCallbackQuery, editMessageReplyMarkup, editMessageText, esc, sendMessage } from "./telegram.js";
 
 export type Screen = { text: string; keyboard: Keyboard };
 
@@ -46,10 +54,25 @@ export type RecurringTap =
   | { op: "view" | "pause" | "rename" | "askDelete" | "delete"; sid: number }
   | { op: "pauseFrom" | "pauseDate"; sid: number; from: string }
   | { op: "pauseUntil"; sid: number; from: string; until: string | null }
-  | { op: "resume"; sid: number; on: string };
+  | { op: "resume"; sid: number; on: string }
+  | { op: "pick"; offset: number }
+  | { op: "addFrom"; tx: string }
+  | { op: "varies" }
+  | { op: "create"; tx: string; cadence: Cadence; varies: boolean };
 
 const SID = "(\\d{1,10})";
 const DATE = "(\\d{8})";
+const UUID = "([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})";
+
+/** One letter per cadence in `r:ac` data. */
+const CODES: Record<string, Cadence> = {
+  w: "weekly",
+  b: "biweekly",
+  s: "semimonthly",
+  m: "monthly",
+  q: "quarterly",
+  y: "yearly",
+};
 
 /** yyyymmdd → YYYY-MM-DD. */
 function iso(compact: string): string {
@@ -75,6 +98,13 @@ const TAPS: [RegExp, (m: RegExpExecArray) => RecurringTap][] = [
   [new RegExp(`^r:n:${SID}$`), (m) => ({ op: "rename", sid: Number(m[1]) })],
   [new RegExp(`^r:x:${SID}$`), (m) => ({ op: "askDelete", sid: Number(m[1]) })],
   [new RegExp(`^r:xy:${SID}$`), (m) => ({ op: "delete", sid: Number(m[1]) })],
+  [/^r:a(?:r:(\d{1,4}))?$/, (m) => ({ op: "pick", offset: Number(m[1] ?? 0) })],
+  [new RegExp(`^r:at:${UUID}$`), (m) => ({ op: "addFrom", tx: m[1] })],
+  [/^r:av$/, () => ({ op: "varies" })],
+  [
+    new RegExp(`^r:ac:${UUID}:([wbsmqy])([01])$`),
+    (m) => ({ op: "create", tx: m[1], cadence: CODES[m[2]], varies: m[3] === "1" }),
+  ],
 ];
 
 /** A /recurring button's action, or null for any other callback data. */
@@ -235,9 +265,9 @@ export function listScreen(book: Book, today: string, offset = 0): Screen {
       }),
     );
   }
-  if (sorted.length > offset + LIST_PAGE) {
-    keyboard.push([{ text: "More ›", callback_data: `r:l:${offset + LIST_PAGE}` }]);
-  }
+  const last = [{ text: "➕ Add", callback_data: "r:a" }];
+  if (sorted.length > offset + LIST_PAGE) last.push({ text: "More ›", callback_data: `r:l:${offset + LIST_PAGE}` });
+  keyboard.push(last);
   return { text: lines.join("\n"), keyboard };
 }
 
@@ -345,6 +375,131 @@ export function deleteAskScreen(book: Book, sid: number): Screen {
   };
 }
 
+// ---- Add from a saved transaction ------------------------------------------
+
+const PICK_PAGE = 8;
+const MONTH_WORD =
+  /^(jan(uary)?|feb(ruary)?|mar(ch)?|apr(il)?|may|june?|july?|aug(ust)?|sep(t(ember)?)?|oct(ober)?|nov(ember)?|dec(ember)?)[.,]?$/i;
+
+/** `Oct 15 · 64.99 · Internet bill October`, cut to fit a button. */
+function rowLabel(r: BookRow, max = 40): string {
+  return cut(`${day(r.date)} · ${money(parseCents(r.amount)!)} · ${collapseSpaces(r.description)}`, max);
+}
+
+/**
+ * A series' default name: the merchant, else the income source, else the
+ * description without digits or month names ("Internet bill October" →
+ * "Internet bill"); with a number after it when another series has it.
+ */
+export function defaultName(book: Book, r: BookRow): string {
+  const words = collapseSpaces(r.description).split(" ").filter((w) => !/\d/.test(w) && !MONTH_WORD.test(w));
+  const base = cut(r.merchant ?? r.source ?? capitalise(words.join(" ") || collapseSpaces(r.description)), 56);
+  const taken = new Set(book.series.map((s) => s.name.trim().toLowerCase()));
+  let name = base;
+  for (let n = 2; taken.has(name.toLowerCase()); n++) name = `${base} ${n}`;
+  return name;
+}
+
+/** The series a transaction would start: its kind and its keys. */
+function draftOf(r: BookRow, name: string): Series {
+  return {
+    id: 0,
+    name,
+    kind: r.type,
+    cadence: "monthly",
+    amountVaries: false,
+    merchantId: r.type === "expense" ? r.merchantId : null,
+    subcategoryId: r.type === "expense" ? r.subcategoryId : null,
+    incomeSourceId: r.type === "income" ? r.incomeSourceId : null,
+    fromAccountId: r.type === "transfer" ? r.fromAccountId : null,
+    toAccountId: r.type === "transfer" ? r.toAccountId : null,
+    keywords: [],
+  };
+}
+
+/** Add, step 1: the newest saved payments in no series, 8 a page. */
+export function pickScreen(book: Book, offset: number): Screen {
+  const free = book.rows.filter((r) => r.seriesId === null).reverse();
+  const page = free.slice(offset, offset + PICK_PAGE);
+  const keyboard: Keyboard = page.map((r) => [{ text: rowLabel(r), callback_data: `r:at:${r.id}` }]);
+  const last = [BACK_TO_LIST[0]];
+  if (free.length > offset + PICK_PAGE) last.push({ text: "More ›", callback_data: `r:ar:${offset + PICK_PAGE}` });
+  keyboard.push(last);
+  const text =
+    free.length === 0
+      ? "<b>➕ Add a recurring item</b>\nNo saved payment is outside a series. Log the first one as usual, then come back."
+      : "<b>➕ Add a recurring item</b>\nPick a saved payment that repeats. Newest first; payments already in a series are not listed.";
+  return { text, keyboard };
+}
+
+const CADENCE_ORDER: Cadence[] = ["monthly", "semimonthly", "biweekly", "weekly", "quarterly", "yearly"];
+const CADENCE_BUTTONS: Record<Cadence, string> = {
+  weekly: "Weekly",
+  biweekly: "Every 2 weeks",
+  semimonthly: "Twice a month",
+  monthly: "Monthly",
+  quarterly: "Quarterly",
+  yearly: "Yearly",
+};
+const CODE_OF = Object.fromEntries(Object.entries(CODES).map(([c, cadence]) => [cadence, c])) as Record<Cadence, string>;
+
+/**
+ * Add, step 2: the series this payment would start, with the cadence its
+ * similar past payments suggest listed first. Writes nothing; a cadence tap
+ * creates it.
+ */
+export function addScreen(book: Book, txId: string): Screen {
+  const back = [[{ text: "‹ Back", callback_data: "r:a" }]];
+  const r = book.rows.find((x) => x.id === txId);
+  if (!r) return { text: "That payment no longer exists.", keyboard: back };
+  if (r.seriesId !== null) {
+    const s = book.series.find((x) => x.id === r.seriesId)!;
+    return {
+      text: `That payment is already in ${esc(s.name)}.`,
+      keyboard: [[{ text: `↻ ${cut(s.name, 30)}`, callback_data: `r:v:${s.id}` }], ...back],
+    };
+  }
+  const name = defaultName(book, r);
+  const draft = { series: draftOf(r, name), linked: [r], excluded: [], pauses: [] };
+  const similar = book.rows.filter(
+    (x) => x.id !== r.id && x.seriesId === null && matchStrength(draft, x).strength === "strong",
+  );
+  const dates = [r, ...similar].map((x) => x.date).sort();
+  const best = suggestCadence(dates).best;
+  const suggested = best && best.score >= 0.5 ? best : null;
+  const lines = [
+    "<b>➕ New recurring item</b>",
+    `From ${esc(rowLabel(r, 200))}`,
+    `Name: ${esc(name)} (rename after)`,
+    suggested
+      ? `History: ${payments(dates.length)} since ${day(dates[0])}, looks ${cadenceText(suggested.cadence, suggested)}.`
+      : `History: ${payments(dates.length)}, not enough to tell. Pick how often.`,
+  ];
+  const order = suggested ? [suggested.cadence, ...CADENCE_ORDER.filter((c) => c !== suggested.cadence)] : CADENCE_ORDER;
+  const buttons = order.map((c) => ({
+    text: `${c === suggested?.cadence ? "✅ " : ""}${CADENCE_BUTTONS[c]}`,
+    callback_data: `r:ac:${r.id}:${CODE_OF[c]}0`,
+  }));
+  return {
+    text: lines.join("\n"),
+    keyboard: [buttons.slice(0, 3), buttons.slice(3), [{ text: "☐ Amount varies", callback_data: "r:av" }], ...back],
+  };
+}
+
+/** "Amount varies" flipped in the keyboard: its label, and the v flag of every cadence button. Stores nothing. */
+export function flipVaries(keyboard: Keyboard): Keyboard {
+  const on = keyboard.flat().some((b) => b.callback_data === "r:av" && b.text.startsWith("☐"));
+  return keyboard.map((row) =>
+    row.map((b) =>
+      b.callback_data === "r:av"
+        ? { ...b, text: flip(b.text) }
+        : b.callback_data.startsWith("r:ac:")
+          ? { ...b, callback_data: `${b.callback_data.slice(0, -1)}${on ? 1 : 0}` }
+          : b,
+    ),
+  );
+}
+
 // ---- Telegram ---------------------------------------------------------------
 
 /** `/recurring`: the list as a new message. */
@@ -369,7 +524,18 @@ export type TapContext = {
  * double tap, a Telegram retry) only pops up, so it never redraws over the
  * screen the first tap left.
  */
-type Outcome = { screen?: Screen; prompt?: string; ack?: string };
+type Outcome = { screen?: Screen; keyboard?: Keyboard; prompt?: string; ack?: string };
+
+/**
+ * A new series' screen: its detail, plus a shortcut for one that bills
+ * later than its history suggests (a free trial, a paused plan): a pause
+ * from today until a date the owner replies with.
+ */
+function createdScreen(book: Book, sid: number, today: string): Screen {
+  const { text, keyboard } = detailScreen(book, sid, today);
+  const later = [{ text: "⏳ Next payment not until…", callback_data: `r:pd:${sid}:${compact(today)}` }];
+  return { text, keyboard: [...keyboard.slice(0, -1), later, ...keyboard.slice(-1)] };
+}
 
 const RENAME = /^Rename #(\d{1,10}) /;
 const PAUSE_PROMPT = /^Pause #(\d{1,10}) from (\d{4}-\d{2}-\d{2}) /;
@@ -410,6 +576,24 @@ async function respond(tap: RecurringTap, ctx: TapContext): Promise<Outcome> {
     }
     case "askDelete":
       return { screen: deleteAskScreen(await loadBook(), tap.sid) };
+    case "pick":
+      return { screen: pickScreen(await loadBook(), tap.offset) };
+    case "addFrom":
+      return { screen: addScreen(await loadBook(), tap.tx) };
+    case "varies":
+      return { keyboard: flipVaries(ctx.keyboard) };
+    case "create": {
+      const book = await loadBook();
+      const row = book.rows.find((r) => r.id === tap.tx);
+      if (!row) return { screen: addScreen(book, tap.tx) };
+      const name = defaultName(book, row);
+      const result = await createSeries({ transactionId: tap.tx, name, cadence: tap.cadence, amountVaries: tap.varies });
+      if ("created" in result) return { screen: createdScreen(await loadBook(), result.created, ctx.today), ack: `Tracking ${name}.` };
+      if ("already" in result) return { ack: `Already tracked as ${result.name}.` };
+      if ("taken" in result) return { ack: "That name was just taken. Tap again." };
+      if ("missing" in result) return { screen: addScreen(await loadBook(), tap.tx) };
+      return { ack: "Can't make a series from this payment." };
+    }
     case "delete": {
       const deleted = await deleteSeries(tap.sid);
       if (!deleted) return { ack: "Already deleted." };
@@ -433,6 +617,10 @@ export async function handleRecurringTap(tap: RecurringTap, ctx: TapContext): Pr
   if (outcome.screen) {
     const { text, keyboard } = outcome.screen;
     await editMessageText(ctx.botToken, ctx.chatId, ctx.messageId, text, keyboard, { html: true });
+  }
+  // Telegram refuses an edit that changes nothing.
+  if (outcome.keyboard && JSON.stringify(outcome.keyboard) !== JSON.stringify(ctx.keyboard)) {
+    await editMessageReplyMarkup(ctx.botToken, ctx.chatId, ctx.messageId, { inline_keyboard: outcome.keyboard });
   }
   if (outcome.prompt) {
     await sendMessage(ctx.botToken, ctx.chatId, outcome.prompt, {

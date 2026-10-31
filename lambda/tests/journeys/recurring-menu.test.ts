@@ -116,6 +116,68 @@ describe("/recurring list and detail", () => {
   });
 });
 
+describe("add from a saved transaction", () => {
+  it("adding from a saved transaction suggests monthly and links it", async () => {
+    await ledger.add(
+      bill("2026-06-15"), bill("2026-07-14"), bill("2026-08-17"), bill("2026-09-15"),
+      bill("2026-10-15", "64.99", "Internet bill October"),
+      { date: "2026-10-20", amount: "12.50", description: "Lunch" },
+    );
+    const list = await open();
+    await chat.tap(list, "➕ Add");
+    expect(labels(chat.current(list)).slice(0, 2)).toEqual(["Oct 20 · 12.50 · Lunch", "Oct 15 · 64.99 · Internet bill October"]);
+
+    await chat.tap(list, "Oct 15 · 64.99 · Internet bill October");
+    expect(chat.current(list).text).toBe(
+      [
+        "➕ New recurring item",
+        "From Oct 15 · 64.99 · Internet bill October",
+        "Name: Internet bill (rename after)",
+        "History: 5 payments since Jun 15, looks monthly, around the 15th.",
+      ].join("\n"),
+    );
+    expect(labels(chat.current(list))).toEqual([
+      "✅ Monthly", "Twice a month", "Every 2 weeks", "Weekly", "Quarterly", "Yearly", "☐ Amount varies", "‹ Back",
+    ]);
+
+    // The toggle edits only the keyboard.
+    await chat.tap(list, "☐ Amount varies");
+    expect(labels(chat.current(list))).toContain("✅ Amount varies");
+    await chat.tap(list, "✅ Amount varies");
+    expect(await sql("select count(*)::int as n from recurring_series")).toEqual([{ n: 0 }]);
+
+    await chat.tap(list, "✅ Monthly");
+    expect(chat.acks().at(-1)).toBe("Tracking Internet bill.");
+    expect(await sql("select name, kind::text, cadence::text, amount_varies from recurring_series")).toEqual([
+      { name: "Internet bill", kind: "expense", cadence: "monthly", amount_varies: false },
+    ]);
+    const links = await ledger.links();
+    expect(links["Internet bill October 2026-10-15"]).toEqual({ series: "Internet bill", flagged: true });
+    // The other four wait for the owner's review.
+    expect(links["Internet bill 2026-09-15"]).toEqual({ series: null, flagged: false });
+
+    // A double tap creates nothing more.
+    await chat.retry();
+    expect(chat.acks().at(-1)).toBe("Already tracked as Internet bill.");
+    expect(await sql("select count(*)::int as n from recurring_series")).toEqual([{ n: 1 }]);
+    expect(gemini.calls).toEqual([]);
+  });
+
+  it("a payment with too little history asks for the cadence, and amount varies is stored", async () => {
+    await ledger.add({ date: "2026-10-30", type: "income", amount: "3.12", description: "Savings interest", source: "Refund" });
+    const list = await open();
+    await chat.tap(list, "➕ Add");
+    await chat.tap(list, "Oct 30 · 3.12 · Savings interest");
+    expect(chat.current(list).text).toContain("Name: Refund (rename after)\nHistory: 1 payment, not enough to tell. Pick how often.");
+    await chat.tap(list, "☐ Amount varies");
+    await chat.tap(list, "Monthly");
+    expect(await sql("select name, kind::text, amount_varies from recurring_series")).toEqual([
+      { name: "Refund", kind: "income", amount_varies: true },
+    ]);
+    expect(labels(chat.current(list))).toContain("⏳ Next payment not until…");
+  });
+});
+
 /** A salary that stopped: the last pay was Oct 9, so Oct 23 is not logged. */
 async function stoppedSalary(): Promise<number> {
   const fridays = ["07-31", "08-14", "08-28", "09-11", "09-25", "10-09"];

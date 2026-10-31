@@ -1,7 +1,18 @@
 import { describe, expect, it } from "vitest";
 import { fitCadence } from "../src/recurring.js";
-import type { Book } from "../src/recurring-db.js";
-import { cadenceText, day, listScreen, money, parseRecurringTap, range } from "../src/recurring-menu.js";
+import type { Book, BookRow } from "../src/recurring-db.js";
+import {
+  addScreen,
+  cadenceText,
+  day,
+  defaultName,
+  flipVaries,
+  listScreen,
+  money,
+  parseRecurringTap,
+  pickScreen,
+  range,
+} from "../src/recurring-menu.js";
 
 const TX = "11111111-1111-4111-8111-111111111111";
 
@@ -55,10 +66,54 @@ describe("the /recurring list", () => {
     const first = listScreen(book(17), "2026-10-31");
     expect(first.text.split("\n").filter((l) => l.startsWith("•"))).toHaveLength(16);
     expect(first.text).toContain("• Bill 01 — monthly · varies · no payments linked");
-    expect(first.keyboard.map((row) => row.length)).toEqual([2, 2, 2, 2, 2, 2, 2, 2, 1]);
-    expect(first.keyboard.at(-1)).toEqual([{ text: "More ›", callback_data: "r:l:16" }]);
+    expect(first.keyboard.map((row) => row.length)).toEqual([2, 2, 2, 2, 2, 2, 2, 2, 2]);
+    expect(first.keyboard.at(-1)).toEqual([
+      { text: "➕ Add", callback_data: "r:a" },
+      { text: "More ›", callback_data: "r:l:16" },
+    ]);
     const second = listScreen(book(17), "2026-10-31", 16);
-    expect(second.keyboard).toEqual([[{ text: "Bill 17", callback_data: "r:v:17" }]]);
+    expect(second.keyboard).toEqual([[{ text: "Bill 17", callback_data: "r:v:17" }], [{ text: "➕ Add", callback_data: "r:a" }]]);
+  });
+});
+
+describe("adding a series", () => {
+  const row = (over: Partial<BookRow>): BookRow => ({
+    id: TX, date: "2026-10-15", type: "expense", amount: "64.99", description: "Internet bill October",
+    merchantId: null, subcategoryId: null, incomeSourceId: null, fromAccountId: null, toAccountId: null,
+    seriesId: null, flagged: false, merchant: null, source: null, ...over,
+  });
+  const empty: Book = { series: [], rows: [], pauses: new Map(), skips: new Map(), excluded: new Map(), dismissed: [] };
+
+  it("names it after the merchant, the income source, or the description without dates, and numbers a taken name", () => {
+    expect(defaultName(empty, row({}))).toBe("Internet bill");
+    expect(defaultName(empty, row({ description: "gym 25 Aug 3" }))).toBe("Gym");
+    expect(defaultName(empty, row({ description: "2026-10" }))).toBe("2026-10");
+    expect(defaultName(empty, row({ merchant: "Acme Mart" }))).toBe("Acme Mart");
+    expect(defaultName(empty, row({ type: "income", source: "Salary" }))).toBe("Salary");
+    const taken = { ...empty, series: [{ name: "internet bill" }, { name: "Internet bill 2" }] } as unknown as Book;
+    expect(defaultName(taken, row({}))).toBe("Internet bill 3");
+  });
+
+  it("flips amount varies in the keyboard and in every cadence button, and nothing else", () => {
+    const keyboard = [
+      [{ text: "✅ Monthly", callback_data: `r:ac:${TX}:m0` }],
+      [{ text: "☐ Amount varies", callback_data: "r:av" }],
+      [{ text: "‹ Back", callback_data: "r:a" }],
+    ];
+    const on = flipVaries(keyboard);
+    expect(on).toEqual([
+      [{ text: "✅ Monthly", callback_data: `r:ac:${TX}:m1` }],
+      [{ text: "✅ Amount varies", callback_data: "r:av" }],
+      [{ text: "‹ Back", callback_data: "r:a" }],
+    ]);
+    expect(flipVaries(on)).toEqual(keyboard);
+  });
+
+  it("an add screen for a payment already in a series, or gone, says so", () => {
+    const linked = { ...empty, series: [{ id: 4, name: "Gym" }], rows: [row({ seriesId: 4 })] } as unknown as Book;
+    expect(addScreen(linked, TX).text).toBe("That payment is already in Gym.");
+    expect(addScreen(empty, TX).text).toBe("That payment no longer exists.");
+    expect(pickScreen(empty, 0).text).toContain("No saved payment is outside a series.");
   });
 });
 
@@ -77,6 +132,13 @@ describe("recurring callback data", () => {
     expect(parseRecurringTap("r:n:3")).toEqual({ op: "rename", sid: 3 });
     expect(parseRecurringTap("r:x:3")).toEqual({ op: "askDelete", sid: 3 });
     expect(parseRecurringTap("r:xy:3")).toEqual({ op: "delete", sid: 3 });
+    expect(parseRecurringTap("r:a")).toEqual({ op: "pick", offset: 0 });
+    expect(parseRecurringTap("r:ar:8")).toEqual({ op: "pick", offset: 8 });
+    expect(parseRecurringTap(`r:at:${TX}`)).toEqual({ op: "addFrom", tx: TX });
+    expect(parseRecurringTap("r:av")).toEqual({ op: "varies" });
+    expect(parseRecurringTap(`r:ac:${TX}:s1`)).toEqual({ op: "create", tx: TX, cadence: "semimonthly", varies: true });
+    expect(parseRecurringTap(`r:ac:${TX}:x1`)).toBeNull();
+    expect(Buffer.byteLength(`r:ac:${TX}:y0`)).toBe(44);
     // The longest pause data, with a ten-digit series id, fits Telegram's 64 bytes.
     expect(Buffer.byteLength("r:pu:4294967295:20261023:20270131")).toBeLessThanOrEqual(64);
     for (const data of [undefined, "", "r:v:", "r:v:x", "r:l:12345", `c:${TX}`, "mt:1", "r:zz"]) {
