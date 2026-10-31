@@ -105,6 +105,11 @@ type TelegramUpdate = {
 
 const CALLBACK_RE =
   /^([cdfe]):([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i;
+/** Confirm on a card that proposed a series: `cr:` links it, `cx:` records "not this series". */
+const CONFIRM_SERIES_RE =
+  /^(cr|cx):([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}):(\d{1,10})$/;
+
+const SERIES_GONE = "Not linked: that recurring series is gone or no longer fits.";
 
 const ASK_DATE =
   "Send the date as YYYY-MM-DD, Aug 10, or yesterday.";
@@ -675,7 +680,8 @@ async function handleCallback(
     return ok("ok");
   }
 
-  const match = cb.data?.match(CALLBACK_RE);
+  const withSeries = cb.data?.match(CONFIRM_SERIES_RE);
+  const match = withSeries ?? cb.data?.match(CALLBACK_RE);
   if (!match) {
     await answerCallbackQuery(botToken, cb.id, "Unknown action.");
     return ok("ok");
@@ -685,9 +691,13 @@ async function handleCallback(
   const ingestionId = match[2];
 
   let ack: string;
-  if (action === "c") {
-    const result = await confirmIngestion(ingestionId);
-    ack = result === "confirmed" ? withPosition("Saved.", cb.message?.text) : "Already handled.";
+  if (action === "c" || withSeries) {
+    const series = withSeries ? { id: Number(withSeries[3]), link: action === "cr" } : undefined;
+    const result = await confirmIngestion(ingestionId, series);
+    ack =
+      result === "already_handled"
+        ? "Already handled."
+        : `${withPosition("Saved.", cb.message?.text)}${result.seriesGone ? ` ${SERIES_GONE}` : ""}`;
   } else if (action === "f") {
     const started = await setIngestionAwaitingDate(ingestionId);
     if (started === "busy") return busyWaiting(botToken, cb.id, chatId);

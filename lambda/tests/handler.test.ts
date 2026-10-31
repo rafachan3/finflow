@@ -304,6 +304,26 @@ describe("handler", () => {
     },
   );
 
+  it("Confirm on a card with a series links it (cr) or excludes it (cx), and says when it could not link", async () => {
+    const { confirmIngestion } = await import("../src/db.js");
+    const id = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
+    const tap = (data: string) =>
+      handler(event({ update_id: 36, callback_query: { id: "cb", data, message: { message_id: 5, chat: { id: 1 } } } }));
+    vi.mocked(confirmIngestion).mockResolvedValue({ status: "confirmed", transactionId: "tx", seriesGone: false });
+    await tap(`cr:${id}:4294967295`);
+    vi.mocked(confirmIngestion).mockResolvedValue({ status: "confirmed", transactionId: "tx", seriesGone: true });
+    await tap(`cx:${id}:12`);
+
+    expect(vi.mocked(confirmIngestion).mock.calls).toEqual([
+      [id, { id: 4294967295, link: true }],
+      [id, { id: 12, link: false }],
+    ]);
+    expect(vi.mocked(answerCallbackQuery).mock.calls.map((c) => c[2])).toEqual([
+      "Saved.",
+      "Saved. Not linked: that recurring series is gone or no longer fits.",
+    ]);
+  });
+
   it("does not persist or offer Confirm when checks fail", async () => {
     vi.mocked(extractFromText).mockResolvedValue([{
       ...extraction,

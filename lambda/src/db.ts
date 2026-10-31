@@ -612,9 +612,28 @@ async function insertTags(
   }
 }
 
+/** The recurring series a card proposed: link to it, or record "not this series". */
+export type CardSeriesChoice = { id: number; link: boolean };
+
+export type Confirmed = {
+  status: "confirmed";
+  transactionId: string;
+  /** The card's series was deleted, or no longer fits the payment: saved in no series. */
+  seriesGone: boolean;
+};
+
+/**
+ * Saves a pending card as a transaction. With the card's series, it links the
+ * transaction to it or records that it is not that series, in the same
+ * transaction. The series is re-read and key-share locked first, so a series
+ * deleted or no longer fitting (kind, income source, accounts) saves the
+ * payment unlinked instead of failing Confirm. Gemini's is_recurring guess is
+ * not saved: the flag follows the link (migration 0016's trigger).
+ */
 export async function confirmIngestion(
   ingestionId: string,
-): Promise<"confirmed" | "already_handled"> {
+  series?: CardSeriesChoice,
+): Promise<Confirmed | "already_handled"> {
   const db = await getPool();
   const client = await db.connect();
   try {
@@ -705,12 +724,28 @@ export async function confirmIngestion(
         ])
       : null;
 
+    // FOR KEY SHARE holds off a concurrent delete until this commits; one that
+    // committed first leaves no row, so the payment saves in no series.
+    const seriesId = series
+      ? await lookupId(
+          client,
+          `SELECT id FROM recurring_series
+           WHERE id = $1 AND kind = $2::transaction_type
+             AND (kind <> 'income' OR income_source_id = $3)
+             AND (kind <> 'transfer' OR (from_account_id IS NOT DISTINCT FROM $4::smallint
+                                         AND to_account_id IS NOT DISTINCT FROM $5::smallint))
+           FOR KEY SHARE`,
+          [series.id, extraction.type, incomeSourceId, fromAccountId, toAccountId],
+        )
+      : null;
+    const linkId = series?.link ? seriesId : null;
+
     const tx = await client.query<{ id: string }>(
       `INSERT INTO transactions (
          occurred_on, type, amount, currency, description,
          merchant_id, venue_id, income_source_id, to_account_id,
-         funding_source_id, is_recurring, notes, from_account_id
-       ) VALUES ($1, $2, $3, 'CAD', $4, $5, $6, $7, $8, $9, $10, $11, $12)
+         funding_source_id, is_recurring, notes, from_account_id, recurring_series_id
+       ) VALUES ($1, $2, $3, 'CAD', $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
        RETURNING id`,
       [
         extraction.date,
@@ -722,12 +757,19 @@ export async function confirmIngestion(
         incomeSourceId,
         toAccountId,
         fundingId,
-        extraction.is_recurring,
+        linkId !== null,
         extraction.notes ?? null,
         fromAccountId,
+        linkId,
       ],
     );
     const transactionId = tx.rows[0].id;
+    if (series && !series.link && seriesId !== null) {
+      await client.query(
+        `INSERT INTO recurring_exclusions (series_id, transaction_id) VALUES ($1, $2)`,
+        [seriesId, transactionId],
+      );
+    }
 
     if (extraction.type === "expense") {
       for (const item of extraction.items) {
@@ -783,7 +825,7 @@ export async function confirmIngestion(
     );
 
     await client.query("COMMIT");
-    return "confirmed";
+    return { status: "confirmed", transactionId, seriesGone: series !== undefined && seriesId === null };
   } catch (err) {
     try {
       await client.query("ROLLBACK");

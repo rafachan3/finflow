@@ -74,7 +74,7 @@ describe("confirmIngestion", () => {
   it("writes the note to transactions.notes", async () => {
     routeQueries({ ...income, notes: "decluttering before the move" });
 
-    await expect(confirmIngestion("ing")).resolves.toBe("confirmed");
+    await expect(confirmIngestion("ing")).resolves.toMatchObject({ status: "confirmed" });
 
     expect(insertParams()).toContain("decluttering before the move");
   });
