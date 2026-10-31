@@ -2175,3 +2175,35 @@ Phase 4.5 PR 2, from the approved design (§D, §E, §H PR 2).
 
 **Reconsider if** a tap feels slow on real history: the book is read whole
 on every tap; an index-backed candidate query is the next step.
+
+## 2026-10-31 — A /recurring prompt never takes an expense; "today" means the tap's day
+
+Code review of PR #87 (Phase 4.5 PR 2).
+
+**Chosen:**
+
+- **Logging an expense wins over a prompt** (hard constraint 6). Only a
+  text reply to the bot's own rename or pause-end prompt, sent within 15
+  minutes of the prompt (`message.date − reply_to_message.date`), is taken
+  as the answer. A photo, voice note, audio, document or caption, an empty
+  text, a reply to anything else or a stale prompt goes on to extraction.
+  Text that is clearly no answer (a name over 60 characters, an unreadable
+  date) and reads as an expense (a standalone amount next to a word that
+  is not a date word) also goes to extraction; only an unmistakable
+  attempt gets the "try again" reply.
+- **A typed pause end with no year is its next occurrence** after the
+  later of the pause's start and today, not the most recent past one; a
+  day not after the start (today, yesterday, an earlier date) is refused.
+  Dates outside the current year show their year.
+- **"Today" buttons carry `t`**, resolved to the Toronto day of the tap, so
+  a menu tapped days after it was drawn resumes or pauses on the right
+  day.
+- **Racing double taps answer as repeats.** A create that waited on
+  another tap's create reads the series name in a second statement; a
+  pause that hit the exclusion constraint re-checks for the identical
+  pause and says "Already paused".
+
+**Ruled out:** a stored "awaiting prompt" state (the Lambda stays
+stateless; the prompt's own text and date carry everything needed), and
+undoing a review exclusion from the menu (logged as a follow-up; the spec
+makes an unticked shown row ignored for good).
