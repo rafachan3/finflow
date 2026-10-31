@@ -211,7 +211,7 @@ describe("pause, resume, rename and delete", () => {
     expect(labels(chat.current(list))).toEqual(["Today, Oct 31", "From Oct 23, first not logged", "Cancel"]);
     await chat.tap(list, "From Oct 23, first not logged");
     expect(chat.current(list).text).toBe("⏸ Pause Salary from Oct 23\nUntil when?");
-    expect(labels(chat.current(list))).toEqual(["Until I resume", "Until Nov 30", "Until Jan 31", "Until a date I type…", "Cancel"]);
+    expect(labels(chat.current(list))).toEqual(["Until I resume", "Until Nov 30", "Until Jan 31 2027", "Until a date I type…", "Cancel"]);
     expect(await pauses()).toEqual([]);
 
     await chat.tap(list, "Until I resume");
@@ -287,20 +287,53 @@ describe("pause, resume, rename and delete", () => {
     expect(await pauses()).toEqual([]);
 
     await chat.reply(prompt, "2026-10-01");
-    expect(chat.last().text).toBe("Send a date after Oct 5, like Dec 15 or 2027-01-15. Tap ⏸ Pause to try again.");
+    expect(chat.last().text).toBe("The pause starts Oct 5: send a later day, like Dec 15. Tap ⏸ Pause to try again.");
     await chat.reply(prompt, "not a date");
+    expect(chat.last().text).toBe("Send the day payments start again, like Dec 15 or 2027-01-15. Tap ⏸ Pause to try again.");
     expect(await pauses()).toEqual([]);
 
-    // A day with no year before the pause's start is next year's; this one is this year's.
+    // A month and day alone is its next occurrence: January is next year's.
     await chat.reply(prompt, "Jan 5");
-    expect(chat.last().text).toBe("Paused from Oct 5 until Jan 5.");
+    expect(chat.last().text).toBe("Paused from Oct 5 until Jan 5 2027.");
     expect(await pauses()).toEqual([{ from: "2026-10-05", until: "2027-01-05" }]);
     await chat.reply(prompt, "Jan 5");
     expect(await pauses()).toHaveLength(1);
     await chat.reply(prompt, "Feb 1");
     expect(chat.last().text).toBe("That overlaps an earlier pause. Nothing changed.");
 
-    expect((await open()).text).toContain("• Streaming subscription — ⏸ paused since Oct 5, resumes Jan 5");
+    expect((await open()).text).toContain("• Streaming subscription — ⏸ paused since Oct 5, resumes Jan 5 2027");
+    expect(gemini.calls).toEqual([]);
+  });
+
+  it("a typed end with no year is its next occurrence after today, even for a pause that began over a year ago", async () => {
+    const ids = await ledger.add(
+      bill("2025-07-15", "45.00", "Phone bill"),
+      bill("2025-08-15", "45.00", "Phone bill"),
+    );
+    await ledger.track("Phone bill", "monthly", ids);
+    const list = await open();
+    await chat.tap(list, "Phone bill");
+    await chat.tap(list, "⏸ Pause");
+    await chat.tap(list, "From Sep 15 2025, first not logged");
+    await chat.tap(list, "Until a date I type…");
+    await chat.reply(chat.last(), "Dec 15");
+    expect(chat.last().text).toBe("Paused from Sep 15 2025 until Dec 15.");
+    expect(await pauses()).toEqual([{ from: "2025-09-15", until: "2026-12-15" }]);
+  });
+
+  it("today or yesterday typed for a pause that starts today is refused, not read as next year", async () => {
+    await threeSeries();
+    const list = await open();
+    await chat.tap(list, "Internet bill");
+    await chat.tap(list, "⏸ Pause");
+    await chat.tap(list, "Today, Oct 31");
+    await chat.tap(list, "Until a date I type…");
+    const prompt = chat.last();
+    for (const typed of ["today", "yesterday", "Oct 31 2026"]) {
+      await chat.reply(prompt, typed);
+      expect(chat.last().text, typed).toBe("The pause starts Oct 31: send a later day, like Dec 15. Tap ⏸ Pause to try again.");
+    }
+    expect(await pauses()).toEqual([]);
     expect(gemini.calls).toEqual([]);
   });
 

@@ -235,13 +235,18 @@ function viewOf(book: Book, series: BookSeries, today: string): SeriesView {
   };
 }
 
-function pauseText(p: Pause): string {
-  return `⏸ paused since ${day(p.from)}${p.until ? `, resumes ${day(p.until)}` : ""}`;
+/** `Dec 15`, with the year when it is not today's: `Jan 5 2027`. */
+export function dayIn(iso: string, today: string): string {
+  return iso.slice(0, 4) === today.slice(0, 4) ? day(iso) : `${day(iso)} ${iso.slice(0, 4)}`;
+}
+
+function pauseText(p: Pause, today: string): string {
+  return `⏸ paused since ${dayIn(p.from, today)}${p.until ? `, resumes ${dayIn(p.until, today)}` : ""}`;
 }
 
 /** One list line's state: paused, or cadence, usual amount and what is next. */
-function summary(v: SeriesView): string {
-  if (v.pausedNow) return pauseText(v.pausedNow);
+function summary(v: SeriesView, today: string): string {
+  if (v.pausedNow) return pauseText(v.pausedNow, today);
   const parts = [cadenceText(v.series.cadence, v.fit)];
   if (v.band) parts.push(`~${money(v.band.typical)}`);
   else if (v.series.amountVaries) parts.push("varies");
@@ -274,7 +279,7 @@ export function listScreen(book: Book, today: string, offset = 0): Screen {
     const of = views.filter((v) => v.series.kind === kind);
     if (of.length === 0) continue;
     lines.push(`<b>${heading}</b>`);
-    for (const v of of) lines.push(`• ${esc(v.series.name)} — ${summary(v)}`);
+    for (const v of of) lines.push(`• ${esc(v.series.name)} — ${summary(v, today)}`);
   }
   const keyboard: Keyboard = [];
   for (let i = 0; i < views.length; i += 2) {
@@ -333,7 +338,7 @@ export function detailScreen(book: Book, sid: number, today: string): Screen {
   }
   let manage: Keyboard[number] = [{ text: "⏸ Pause", callback_data: `r:p:${sid}` }];
   if (v.pausedNow) {
-    lines.push(pauseText(v.pausedNow));
+    lines.push(pauseText(v.pausedNow, today));
     manage = [{ text: "▶️ Resume today", callback_data: `r:u:${sid}:${compact(today)}` }];
     // A payment logged during the pause says the series came back then.
     const back = v.linked.find((r) => r.date >= v.pausedNow!.from && r.date < today);
@@ -371,7 +376,7 @@ export function pauseFromScreen(book: Book, sid: number, today: string): Screen 
   const first = viewOf(book, series, today).missed[0];
   const options = [{ text: `Today, ${day(today)}`, callback_data: `r:pf:${sid}:${compact(today)}` }];
   if (first && first.due !== today) {
-    options.push({ text: `From ${day(first.due)}, first not logged`, callback_data: `r:pf:${sid}:${compact(first.due)}` });
+    options.push({ text: `From ${dayIn(first.due, today)}, first not logged`, callback_data: `r:pf:${sid}:${compact(first.due)}` });
   }
   return {
     text: `<b>⏸ Pause ${esc(series.name)}</b>\nFrom when? A payment expected from that day on is not counted as not logged.`,
@@ -386,10 +391,10 @@ export function pauseUntilScreen(book: Book, sid: number, from: string, today: s
   const until = (d: string | null) => `r:pu:${sid}:${compact(from)}:${d ? compact(d) : "0"}`;
   const later = [addMonths(today, 1), addMonths(today, 3)];
   return {
-    text: `<b>⏸ Pause ${esc(series.name)} from ${day(from)}</b>\nUntil when?`,
+    text: `<b>⏸ Pause ${esc(series.name)} from ${dayIn(from, today)}</b>\nUntil when?`,
     keyboard: [
       [{ text: "Until I resume", callback_data: until(null) }],
-      later.map((d) => ({ text: `Until ${day(d)}`, callback_data: until(d) })),
+      later.map((d) => ({ text: `Until ${dayIn(d, today)}`, callback_data: until(d) })),
       [{ text: "Until a date I type…", callback_data: `r:pd:${sid}:${compact(from)}` }],
       [{ text: "Cancel", callback_data: `r:v:${sid}` }],
     ],
@@ -751,7 +756,7 @@ async function respond(tap: RecurringTap, ctx: TapContext): Promise<Outcome> {
       const result = await pauseSeries(tap.sid, tap.from, tap.until);
       if (result === "already") return { ack: "Already paused." };
       if (result === "missing") return { screen: GONE };
-      const ack = result === "overlap" ? "Overlaps an earlier pause. Nothing changed." : `Paused from ${day(tap.from)}.`;
+      const ack = result === "overlap" ? "Overlaps an earlier pause. Nothing changed." : `Paused from ${dayIn(tap.from, ctx.today)}.`;
       return { screen: await detail(tap.sid), ack };
     }
     case "resume":
@@ -889,21 +894,38 @@ async function renameReply(sid: number, text: string): Promise<string | null> {
 }
 
 /**
- * The day a pause ends, typed: a date with no year that would fall on or
- * before the pause's start means next year's. Also how a series that starts
- * billing later (a free trial) is told not to expect a payment before then.
+ * The day a typed pause ends. A date with a year, or "today" / "yesterday",
+ * is that day. A month and day alone is its next occurrence after the
+ * later of the pause's start and today: "Dec 15" typed on Oct 31 is this
+ * December, and next December once this one has passed. Null when unreadable.
+ */
+export function pauseEnd(text: string, from: string, today: string): string | null {
+  const parsed = parseDateReply(text, today);
+  if (parsed === null || /\d{4}/.test(text) || /^\s*(today|yesterday)\s*$/i.test(text)) return parsed;
+  const after = from > today ? from : today;
+  for (let year = Number(after.slice(0, 4)); ; year++) {
+    const d = `${year}${parsed.slice(4)}`;
+    // Feb 29 exists only in leap years: a rolled-over date is not that day.
+    if (d > after && new Date(`${d}T00:00:00Z`).toISOString().startsWith(d)) return d;
+  }
+}
+
+/**
+ * The answer to a pause's end-date prompt. Also how a series that bills
+ * again only later (a free trial) is told not to expect a payment before then.
  */
 async function pauseReply(sid: number, from: string, text: string, today: string): Promise<string | null> {
-  let until = parseDateReply(text, today);
-  if (until !== null && until <= from && !/\d{4}/.test(text)) until = addMonths(until, 12);
-  if (until === null && looksLikeExpense(text)) return null;
-  if (until === null || until <= from) {
-    return `Send a date after ${day(from)}, like Dec 15 or 2027-01-15. Tap ⏸ Pause to try again.`;
+  const until = pauseEnd(text, from, today);
+  if (until === null) {
+    return looksLikeExpense(text)
+      ? null
+      : `Send the day payments start again, like Dec 15 or 2027-01-15. Tap ⏸ Pause to try again.`;
   }
+  if (until <= from) return `The pause starts ${dayIn(from, today)}: send a later day, like Dec 15. Tap ⏸ Pause to try again.`;
   const result = await pauseSeries(sid, from, until);
   if (result === "missing") return "That series no longer exists.";
   if (result === "overlap") return "That overlaps an earlier pause. Nothing changed.";
-  return `Paused from ${day(from)} until ${day(until)}.`;
+  return `Paused from ${dayIn(from, today)} until ${dayIn(until, today)}.`;
 }
 
 /** A prompt answered later than this is stale: the reply goes to extraction. */

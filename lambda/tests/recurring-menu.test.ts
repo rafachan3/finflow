@@ -4,7 +4,9 @@ import type { Book, BookRow } from "../src/recurring-db.js";
 import {
   addScreen,
   answerPrompt,
+  dayIn,
   looksLikeExpense,
+  pauseEnd,
   PROMPT_TTL_SECONDS,
   type PromptReply,
   cadenceText,
@@ -139,6 +141,19 @@ describe("replies to a /recurring prompt", () => {
     ["no dates", { date: undefined }],
   ])("leaves %s to extraction", async (_, over) => {
     expect(await answerPrompt(reply(over as Partial<PromptReply>), 1, "tok", "2026-10-31")).toBe(false);
+  });
+
+  it("reads a typed pause end: a month and day is its next occurrence after the later of the start and today", () => {
+    const today = "2026-10-31";
+    expect(pauseEnd("Dec 15", "2025-09-15", today)).toBe("2026-12-15");
+    expect(pauseEnd("Oct 31", "2026-10-31", today)).toBe("2027-10-31");
+    expect(pauseEnd("Jan 5", "2026-12-01", "2026-11-15")).toBe("2027-01-05");
+    expect(pauseEnd("Mar 1", "2027-03-01", today)).toBe("2028-03-01");
+    expect(pauseEnd("2026-11-02", "2026-10-31", today)).toBe("2026-11-02");
+    expect(pauseEnd("today", "2026-10-31", today)).toBe("2026-10-31");
+    expect(pauseEnd("no idea", "2026-10-31", today)).toBeNull();
+    expect(dayIn("2027-01-05", today)).toBe("Jan 5 2027");
+    expect(dayIn("2026-12-15", today)).toBe("Dec 15");
   });
 
   it("reads an amount next to a non-date word as an expense, and a date as none", () => {
