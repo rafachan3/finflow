@@ -64,6 +64,7 @@ import {
   type Keyboard,
   type MentionTap,
 } from "./mentions.js";
+import { handleRecurringTap, parseRecurringTap, sendRecurringList } from "./recurring-menu.js";
 import { putReceipt } from "./s3.js";
 import {
   answerCallbackQuery,
@@ -421,6 +422,7 @@ const RUN: Record<CommandName, (c: CommandContext) => Promise<void>> = {
     const reply = name === "" ? DELETE_USAGE : deleteReply(await deleteMerchant(name), name);
     await sendMessage(botToken, chatId, reply);
   },
+  recurring: ({ chatId, botToken }) => sendRecurringList(botToken, chatId, todayToronto()),
 };
 
 /** Check, persist, and present every event of one message, in order. */
@@ -646,6 +648,19 @@ async function handleCallback(
 
   const review = parseMentionTap(cb.data);
   if (review) return handleMentionTap(cb, review, chatId, botToken);
+
+  const recurring = parseRecurringTap(cb.data);
+  if (recurring) {
+    await handleRecurringTap(recurring, {
+      botToken,
+      chatId,
+      callbackId: cb.id,
+      messageId: cb.message!.message_id!,
+      keyboard: cb.message?.reply_markup?.inline_keyboard ?? [],
+      today: todayToronto(),
+    });
+    return ok("ok");
+  }
 
   const match = cb.data?.match(CALLBACK_RE);
   if (!match) {

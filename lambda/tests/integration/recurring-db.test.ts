@@ -55,7 +55,7 @@ describe("loadBook", () => {
       {
         id: sid, name: "Internet bill", kind: "expense", cadence: "monthly", amountVaries: false,
         merchantId: acme.id, subcategoryId: sub.id, incomeSourceId: null, fromAccountId: null, toAccountId: null,
-        keywords: [], subcategory: "Bills › Internet and phone",
+        keywords: [], subcategory: "Bills › Internet and phone", source: null, fromAccount: null, toAccount: null,
       },
     ]);
     expect(book.rows.map((r) => [r.id, r.date, r.type, r.amount, r.seriesId, r.flagged, r.merchant, r.source, r.subcategoryId])).toEqual([

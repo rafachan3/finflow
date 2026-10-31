@@ -20,6 +20,11 @@ export interface BookRow extends LedgerRow {
 export interface BookSeries extends Series {
   /** "Bills › Internet and phone" when the series matches on a subcategory. */
   subcategory: string | null;
+  /** An income series' source. */
+  source: string | null;
+  /** A transfer series' accounts; null is chequing. */
+  fromAccount: string | null;
+  toAccount: string | null;
 }
 
 export interface Book {
@@ -53,10 +58,14 @@ export async function loadBook(): Promise<Book> {
             s.amount_varies AS "amountVaries", s.merchant_id AS "merchantId",
             s.subcategory_id AS "subcategoryId", s.income_source_id AS "incomeSourceId",
             s.from_account_id AS "fromAccountId", s.to_account_id AS "toAccountId", s.keywords,
-            c.name || ' › ' || sc.name AS subcategory
+            c.name || ' › ' || sc.name AS subcategory, src.name AS source,
+            fa.name AS "fromAccount", ta.name AS "toAccount"
      FROM recurring_series s
      LEFT JOIN subcategories sc ON sc.id = s.subcategory_id
      LEFT JOIN categories c ON c.id = sc.category_id
+     LEFT JOIN income_sources src ON src.id = s.income_source_id
+     LEFT JOIN accounts fa ON fa.id = s.from_account_id
+     LEFT JOIN accounts ta ON ta.id = s.to_account_id
      ORDER BY lower(s.name), s.id`,
   );
   const rows = await db.query<BookRow>(

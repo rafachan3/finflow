@@ -5,7 +5,7 @@ import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
 import { afterAll, afterEach, beforeAll, beforeEach, expect } from "vitest";
 import { retryWait } from "../../src/gemini.js";
-import { closeHelpers, resetData, sql } from "../integration/db-helpers.js";
+import { closeHelpers, insertTransaction, resetData, sql, type TxSeed } from "../integration/db-helpers.js";
 import { testDbUrl } from "../integration/env.js";
 
 /**
@@ -414,6 +414,37 @@ export const ledger = {
                (select id from funding_sources where name = 'self'))`,
       [description],
     );
+  },
+  /** Saved transactions, as a history import writes them; their ids. */
+  async add(...rows: TxSeed[]): Promise<string[]> {
+    const ids: string[] = [];
+    for (const row of rows) ids.push(await insertTransaction(row));
+    return ids;
+  },
+  /**
+   * A series the owner already tracks, with these payments linked; its keys
+   * come from the first one, as the bot's Add takes them. Its id.
+   */
+  async track(name: string, cadence: string, ids: string[]): Promise<number> {
+    const [{ id }] = await sql<{ id: number }>(
+      `INSERT INTO recurring_series (name, kind, cadence, subcategory_id, income_source_id, from_account_id, to_account_id)
+       SELECT $1, t.type, $2::recurring_cadence,
+              (SELECT i.subcategory_id FROM transaction_items i WHERE i.transaction_id = t.id ORDER BY i.amount DESC LIMIT 1),
+              t.income_source_id, t.from_account_id, t.to_account_id
+       FROM transactions t WHERE t.id = $3::uuid
+       RETURNING id`,
+      [name, cadence, ids[0]],
+    );
+    await sql("UPDATE transactions SET recurring_series_id = $1 WHERE id = ANY($2::uuid[])", [id, ids]);
+    return id;
+  },
+  /** Each transaction's series name and is_recurring, by description and date. */
+  async links(): Promise<Record<string, { series: string | null; flagged: boolean }>> {
+    const rows = await sql<{ key: string; series: string | null; flagged: boolean }>(
+      `SELECT t.description || ' ' || t.occurred_on AS key, s.name AS series, t.is_recurring AS flagged
+       FROM transactions t LEFT JOIN recurring_series s ON s.id = t.recurring_series_id`,
+    );
+    return Object.fromEntries(rows.map((r) => [r.key, { series: r.series, flagged: r.flagged }]));
   },
   ingestions() {
     return sql<{
