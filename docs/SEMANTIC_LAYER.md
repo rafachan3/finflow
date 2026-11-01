@@ -128,7 +128,7 @@ visibly distorts a month.
 splits the money that reached chequing, `spendable_income`, into four parts:
 `needs_spend`, `wants_spend`, `financial_future` and `unallocated_cash`
 (what is still in chequing). `spendable_income` is `income` without
-`savings_income`: salary, allowance, refunds and one-off income count, but
+`savings_income`: salary, refunds and one-off income count, but
 interest paid inside a savings or investment account is growth, not income,
 in this view. `financial_future` is money actually moved: `transfers` (into
 savings, investment and debt accounts, so a loan's extra payment counts)
@@ -210,7 +210,7 @@ a metric, and CI fails if that set differs from the MetricFlow metrics.
 | `unallocated_cash` | Money that reached chequing this month and was neither spent nor moved out | `income - savings_income - spend - transfers + withdrawals` | Chequing's net flow for the month. Positive: surplus still sitting in chequing that should have been moved. Negative: more left chequing than came in, covered by earlier months' surplus. A withdrawal raises it; `savings_income` and a move between two accounts do not change it. |
 | `unallocated_cash_cumulative` | Running balance of `unallocated_cash` | `sum(unallocated_cash) over (order by month_start)`, from the first data month up to and including this month | Starts at `0` before 2026-06-01: it measures how chequing changed since coverage began, not its balance (the ledger has no opening balance). A partial month (August 2026) carries into every later month. A deposit or withdrawal that was never logged shows up here as drift. |
 | `needs_wants_ratio` | Needs per dollar of wants | `round(needs_spend / nullif(wants_spend, 0), 4)` | Null when `wants_spend` is `0`. A 50/30 split is about `1.67`. |
-| `spendable_income` | Income that reached chequing: the base of the 50/30/20 view | `income - savings_income` | Empty gives `0`. Refunds and the allowance count; interest paid inside a savings or investment account does not. `= spend + financial_future + unallocated_cash` exactly. |
+| `spendable_income` | Income that reached chequing: the base of the 50/30/20 view | `income - savings_income` | Empty gives `0`. Refunds and other income count; interest paid inside a savings or investment account does not. `= spend + financial_future + unallocated_cash` exactly. |
 | `financial_future` | Money set aside: moved into savings, investment and debt accounts, minus money taken back out | `transfers - withdrawals` | Empty gives `0`. Negative when more came out than went in. A loan's extra payment counts through `transfers`; its minimum payment is `spend`. A move between two accounts, `savings_income` and cash left in chequing are not part of it. |
 | `needs_target_pct` | Target share of `spendable_income` for needs | `budget_targets.needs_percent / 100` | Not computed from the ledger: the same every month, `0.5` as seeded. Changing the row restates every month on the next rebuild. |
 | `wants_target_pct` | Target share of `spendable_income` for wants | `budget_targets.wants_percent / 100` | As `needs_target_pct`; `0.3` as seeded. |

@@ -125,7 +125,7 @@ dbt models and the agent read it, so numbers agree everywhere.
 - Connect to Supabase through the **transaction pooler** (port 6543), not a
   direct connection — Lambda concurrency and per-connection Postgres do not mix.
   Irrelevant at 5 messages/day, correct by default.
-- Region: `ca-central-1` (Montreal) — lowest latency to the owner and keeps
+- Region: `ca-central-1` — low latency for a Canadian user and keeps
   personal financial data in Canada. Marginally pricier than `us-east-1` on S3
   ($0.025 vs $0.023/GB); immaterial at this volume.
 
