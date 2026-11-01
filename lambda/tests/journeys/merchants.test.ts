@@ -126,7 +126,7 @@ describe("merchant commands", () => {
   it("/addmerchant links an imported row named with a curly apostrophe, and leaves a longer description alone", async () => {
     await ledger.importRow("Joe’s Diner");
     await ledger.importRow("Joe’s Diner lunch");
-    await ledger.importRow("Bixi Monthly Pass");
+    await ledger.importRow("Bike Share Monthly Pass");
 
     expect(await send("/addmerchant Joe's Diner")).toEqual([
       "Added merchant: Joe's Diner. Linked 1 past transaction that names it exactly. The next message will use it.",
@@ -135,7 +135,7 @@ describe("merchant commands", () => {
     expect(await ledger.transactions()).toMatchObject([
       { description: "Joe’s Diner", merchant: "Joe's Diner" },
       { description: "Joe’s Diner lunch", merchant: null },
-      { description: "Bixi Monthly Pass", merchant: null },
+      { description: "Bike Share Monthly Pass", merchant: null },
     ]);
   });
 
