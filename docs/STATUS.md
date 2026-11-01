@@ -36,8 +36,8 @@ references. Supabase project provisioned via Terraform (`ca-central-1`),
 database password rotated out of band. Migrations 0001–0004 (schema, generic
 taxonomy seed, read-only role, accounts.kind check) applied via
 `supabase db push`. Personal seed overlay and the Notion import applied
-through the pooler: 332 transactions (317 expense / 12 income / 3 transfer,
-2026-06-01 → 2026-08-12). Production checks pass: counts match the rehearsed
+through the pooler: the history import (a few hundred transactions, mostly
+expenses). Production checks pass: counts match the rehearsed
 reconciliation, zero expenses without lines, zero line-sum mismatches. Owner
 spot-checked 10 random production rows against Notion — all matched.
 Read-only role password set out of band. The import tooling remains
@@ -196,7 +196,7 @@ the same or no place stays one expense with lines; income and
 transfers are always separate. Gemini returns `{events}` (split rule in
 the text, photo, and voice prompts only); one bucket call covers all
 lines; usage is stored on the first saved event. `event_index` default
-0, unique `(telegram_update_id, event_index)`; the 66 existing rows are
+0, unique `(telegram_update_id, event_index)`; the existing rows are
 event 0. A per-update advisory lock stops a retry from saving a second
 set (DECISIONS.md 2026-10-12). Only one card waits for a date or
 correction at a time: Fix date or Edit on another card gets "Finish the
@@ -381,8 +381,8 @@ expression and its TypeScript twin. Link-on-add also links a transaction with
 no ingestion (a Notion import) and no merchant when its whole description
 equals the name, never part of it, and `/addmerchant` on a visible merchant
 runs the link and replies `Already a merchant: X. Linked N past transactions.`
-Owner action after deploy: re-run `/addmerchant McDonald's` to link the four
-imported rows. No migration, prompt or golden change.
+Owner action after deploy: re-run `/addmerchant` for the merchant whose
+imported rows used a curly apostrophe. No migration, prompt or golden change.
 
 Merchant evidence on add (DECISIONS.md 2026-10-29, two confidence tiers):
 `/addmerchant X` (new, unhidden or existing) links at once every transaction
@@ -395,7 +395,7 @@ message, 8 rows at a time, one toggle button per row (`☐ Sep 15 · 12.50 ·
 in the message's keyboard (stateless); Link selected writes only ticked rows
 still without a merchant. Migration 0011 adds `ingestions.media_merchant`; the
 one-off `npm run backfill:media-merchant` fills it from the archived photos and
-voice notes (about 16 rows qualified on 2026-10-29). It reads only a message's
+voice notes (a few rows qualified on 2026-10-29). It reads only a message's
 sole saved row, and only if that row is event 0; it asks for every business
 the media names and stores one only when exactly one is named (at most 100
 characters), counting the rest as skipped. No extraction prompt or golden
@@ -625,9 +625,9 @@ Migration 0014 adds `transactions.from_account_id` (null = chequing) and
 `income_sources.deposit_account_id` (null = chequing), and replaces the
 "transfer needs `to_account_id`" check with "a transfer names at least one
 account, not the same one twice; only a transfer has `from_account_id`".
-The bot extracts `from_account`: "took 200 out of Emergency fund" gives a
-card with `From account: Emergency fund` / `To account: chequing`; "moved
-500 from Emergency fund to Retirement account" names both; a deposit's card
+The bot extracts `from_account`: "took 200 out of <savings account>" gives a
+card with `From account: <savings account>` / `To account: chequing`;
+"moved 500 from <savings account> to Retirement account" names both; a deposit's card
 is unchanged. The duplicate warning compares a transfer's two accounts. New
 golden `transfer-withdrawal` (20 of 20). Order: apply migration 0014 to
 production, put the owner's interest source's `deposit_account_id` in the
