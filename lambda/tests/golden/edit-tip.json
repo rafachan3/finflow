@@ -3,14 +3,14 @@
   "input": {
     "kind": "edit",
     "base": "receipt-with-tip",
-    "correction": "the tip was 6.00, not 4.50"
+    "correction": "the tip was 3.00, not 2.40"
   },
   "expect": {
     "events": [
       {
         "type": "expense",
         "lines": 2,
-        "amount": "34.74",
+        "amount": "16.35",
         "merchant": true,
         "date": true
       }
@@ -18,10 +18,10 @@
   },
   "recorded": {
     "type": "expense",
-    "amount": "34.74",
+    "amount": "16.35",
     "currency": "CAD",
     "date": "2026-10-24",
-    "description": "Club sandwich and garden salad at Riverside Diner",
+    "description": "Sourdough loaf and club sandwich at Riverside Diner",
     "merchant": "Riverside Diner",
     "venue": null,
     "tags": [],
@@ -30,17 +30,17 @@
     "to_account": null,
     "items": [
       {
-        "description": "Club sandwich",
-        "amount": "22.24",
+        "description": "Sourdough loaf",
+        "amount": "3.75",
         "category": "Food and drink",
-        "subcategory": "Restaurants",
-        "item_type": "Meals & Prepared Food",
-        "bucket_why": "default wants hint for Restaurants",
+        "subcategory": "Groceries",
+        "item_type": null,
+        "bucket_why": "no hint for Groceries, so wants",
         "bucket": "wants"
       },
       {
-        "description": "Garden salad",
-        "amount": "12.50",
+        "description": "Club sandwich",
+        "amount": "12.60",
         "category": "Food and drink",
         "subcategory": "Restaurants",
         "item_type": "Meals & Prepared Food",

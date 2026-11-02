@@ -18,6 +18,12 @@ export type ExpectedEvent = {
   amount?: string;
   merchant?: boolean;
   date?: boolean;
+  /** The exact date, when the case is about how a printed date is read. */
+  dateIs?: string;
+  /** The exact venue; null when the place is none of the listed venues. */
+  venue?: string | null;
+  /** Each line's amount, in order, when the case is about how tax and tip are allocated. */
+  lineAmounts?: string[];
   note?: boolean;
   /** Whole words the note must contain, case-insensitive (e.g. a typo's correction). */
   noteHas?: string[];
@@ -54,6 +60,7 @@ export type RawEvent = {
   amount?: unknown;
   date?: unknown;
   merchant?: unknown;
+  venue?: unknown;
   notes?: unknown;
   funded_by?: unknown;
   from_account?: unknown;
@@ -125,6 +132,19 @@ export function mismatches(events: RawEvent[], expected: ExpectedEvent[]): strin
       if (wanted !== undefined && present(value) !== wanted) {
         out.push(`${at}: ${field} ${wanted ? "missing" : "unexpected"}`);
       }
+    }
+    if (want.dateIs !== undefined && got.date !== want.dateIs) {
+      out.push(`${at}: date ${String(got.date)} != ${want.dateIs}`);
+    }
+    if (want.venue !== undefined && (got.venue ?? null) !== want.venue) {
+      out.push(`${at}: venue ${String(got.venue ?? null)} != ${String(want.venue)}`);
+    }
+    if (want.lineAmounts !== undefined && items.length === want.lines) {
+      want.lineAmounts.forEach((amount, j) => {
+        if (items[j].amount !== amount) {
+          out.push(`${at}: line ${j} (${String(items[j].description)}) amount ${String(items[j].amount)} != ${amount}`);
+        }
+      });
     }
     const note = typeof got.notes === "string" ? got.notes.replace(/\u2019/g, "'") : "";
     // Golden words are plain letters and apostrophes, so no escaping.
