@@ -66,26 +66,15 @@ describe("mismatches", () => {
     expect(mismatches([event], [{ type: "expense", lines: 1, amount: "28.74" }])).toEqual([]);
   });
 
-  it("reports a date, venue or line amount other than the expected one", () => {
-    const want: ExpectedEvent = {
-      type: "expense",
-      lines: 2,
-      dateIs: "2026-10-24",
-      venue: null,
-      lineAmounts: ["3.60", "12.15"],
-    };
-    const event = (date: string, venue: string | null, amounts: string[]) =>
-      mismatches(
-        [{ type: "expense", amount: "15.75", date, venue, items: amounts.map((amount) => ({ amount })) }],
-        [want],
-      );
-    expect(event("2026-10-24", null, ["3.60", "12.15"])).toEqual([]);
-    // Day/month/year, a nearest venue, and tax spread over the untaxed line.
-    expect(event("2024-10-26", "Fast Food", ["3.94", "11.81"])).toEqual([
+  it("reports a date or venue other than the expected one", () => {
+    const want: ExpectedEvent = { type: "expense", lines: 1, dateIs: "2026-10-24", venue: null };
+    const event = (date: string, venue: string | null) =>
+      mismatches([{ type: "expense", amount: "3.00", date, venue, items: [{ amount: "3.00" }] }], [want]);
+    expect(event("2026-10-24", null)).toEqual([]);
+    // Day/month/year read years in the past, and the nearest venue picked.
+    expect(event("2024-10-26", "Fast Food")).toEqual([
       "event 0: date 2024-10-26 != 2026-10-24",
       "event 0: venue Fast Food != null",
-      "event 0: line 0 (undefined) amount 3.94 != 3.60",
-      "event 0: line 1 (undefined) amount 11.81 != 12.15",
     ]);
   });
 

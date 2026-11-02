@@ -67,12 +67,9 @@ const BUCKETS =
 
 // Tax is allocated into the lines (DECISIONS 2026-08-13) and a tip follows
 // it: the taxonomy has no tip subcategory, so a tip line has nowhere to go
-// (#31). Shared by every prompt so an Edit keeps the same rule. Tax goes only
-// where the receipt charges it: spreading it over the subtotal moved tax onto
-// an untaxed line (DECISIONS 2026-11-02). validateExtraction still refuses
-// lines that do not sum to the header.
+// (#31). Shared by every prompt so an Edit keeps the same rule.
 const LINE_AMOUNTS =
-  "Amounts are strings with exactly two decimal places. For an expense, the header amount is the total paid, including tax and any tip (pourboire, gratuity) on the receipt or in the message, even when the tip is printed or written below the total. Never add a tax or tip line. Fold tax and tip into the item lines so the line amounts MUST sum to the header amount. Tax goes only on the lines the receipt flags as taxable (a code such as FP, F, P, T or TX printed beside the line); a line with no flag gets no tax. When a receipt shows tax but flags no line, spread the tax over all lines in proportion to each line's price. Split a tip over all lines in proportion to each line's price before tax: a line's tip is the tip × its pre-tax price ÷ the pre-tax subtotal, never its taxed amount. Round each line to the cent and put any leftover cent on the largest line. Example: Bagel 4.00 with no flag and Pudding 6.00 flagged FP, tax 0.70, tip 1.50: tip shares 1.50 × 4.00 ÷ 10.00 = 0.60 and 1.50 × 6.00 ÷ 10.00 = 0.90, so Bagel 4.00 + 0.60 tip = 4.60, Pudding 6.00 + 0.70 tax + 0.90 tip = 7.60, header 12.20.";
+  "Amounts are strings with exactly two decimal places. For an expense, the header amount is the total paid, including tax and any tip (pourboire, gratuity) on the receipt or in the message, even when the tip is printed or written below the total. Never add a tax or tip line. Fold tax and tip into the item lines in proportion to each line's price, putting any leftover cent on the largest line, so the line amounts MUST sum to the header amount.";
 
 // The venue list is short, so Gemini picked the nearest one for places that
 // are none of them (a discount-store receipt became Dépanneur).

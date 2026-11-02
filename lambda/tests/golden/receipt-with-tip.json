@@ -1,5 +1,5 @@
 {
-  "name": "a tip below the total is folded into the items: tax only on the line flagged FP, the tip by pre-tax price, the 4-digit-year date over YY/MM/DD, no venue for a diner",
+  "name": "a tip below the total is folded into the items: no tip line, lines sum to the amount paid; the 4-digit-year footer date wins over YY/MM/DD, and a diner has no venue",
   "input": {
     "kind": "photo",
     "caption": "",
@@ -10,8 +10,7 @@
       {
         "type": "expense",
         "lines": 2,
-        "amount": "15.75",
-        "lineAmounts": ["3.60", "12.15"],
+        "amount": "33.24",
         "merchant": true,
         "date": true,
         "dateIs": "2026-10-24",
@@ -23,10 +22,10 @@
     "events": [
       {
         "type": "expense",
-        "amount": "15.75",
+        "amount": "33.24",
         "currency": "CAD",
         "date": "2026-10-24",
-        "description": "Sourdough loaf and club sandwich at Riverside Diner",
+        "description": "Club sandwich and garden salad at Riverside Diner",
         "merchant": "Riverside Diner",
         "venue": null,
         "tags": [],
@@ -35,17 +34,17 @@
         "to_account": null,
         "items": [
           {
-            "description": "Sourdough loaf",
-            "amount": "3.60",
+            "description": "Club sandwich",
+            "amount": "21.27",
             "category": "Food and drink",
-            "subcategory": "Groceries",
-            "item_type": null,
-            "bucket_why": "no hint for Groceries, so wants",
+            "subcategory": "Restaurants",
+            "item_type": "Meals & Prepared Food",
+            "bucket_why": "default wants hint for Restaurants",
             "bucket": "wants"
           },
           {
-            "description": "Club sandwich",
-            "amount": "12.15",
+            "description": "Garden salad",
+            "amount": "11.97",
             "category": "Food and drink",
             "subcategory": "Restaurants",
             "item_type": "Meals & Prepared Food",

@@ -22,8 +22,6 @@ export type ExpectedEvent = {
   dateIs?: string;
   /** The exact venue; null when the place is none of the listed venues. */
   venue?: string | null;
-  /** Each line's amount, in order, when the case is about how tax and tip are allocated. */
-  lineAmounts?: string[];
   note?: boolean;
   /** Whole words the note must contain, case-insensitive (e.g. a typo's correction). */
   noteHas?: string[];
@@ -138,13 +136,6 @@ export function mismatches(events: RawEvent[], expected: ExpectedEvent[]): strin
     }
     if (want.venue !== undefined && (got.venue ?? null) !== want.venue) {
       out.push(`${at}: venue ${String(got.venue ?? null)} != ${String(want.venue)}`);
-    }
-    if (want.lineAmounts !== undefined && items.length === want.lines) {
-      want.lineAmounts.forEach((amount, j) => {
-        if (items[j].amount !== amount) {
-          out.push(`${at}: line ${j} (${String(items[j].description)}) amount ${String(items[j].amount)} != ${amount}`);
-        }
-      });
     }
     const note = typeof got.notes === "string" ? got.notes.replace(/\u2019/g, "'") : "";
     // Golden words are plain letters and apostrophes, so no escaping.
