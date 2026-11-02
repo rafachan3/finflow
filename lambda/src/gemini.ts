@@ -82,7 +82,7 @@ const VENUE =
 // Receipts often print YY/MM/DD, which the lighter model read as DD/MM/YY,
 // years in the past.
 const DATE_READING =
-  "Reading a printed date: when a receipt prints both a date with a 4-digit year (such as a footer 2026-09-22 20:50:50) and a 2-digit numeric date (such as 26/09/22), use the 4-digit one. When only an ambiguous NN/NN/NN date is printed, choose the reading that falls within the 12 months before today: read it as year/month/day (26/09/22 is 2026-09-22) when day/month/year would land years in the past or in the future. Never return a date more than a year from today unless the message says so.";
+  "Reading a printed date: when a receipt prints both a date with a 4-digit year (such as a footer 2031-03-14 18:02:11) and a 2-digit numeric date (such as 31/03/14), use the 4-digit one. When only an ambiguous NN/NN/NN date is printed, choose the reading that falls within the 12 months before today: read it as year/month/day (31/03/14 is year 31, month 03, day 14) when day/month/year would land years in the past or in the future. Never return a date more than a year from today unless the message says so.";
 
 const EXTRACTOR_STATIC_PROMPT = [
   "You extract Canadian personal-finance transactions from a short text.",

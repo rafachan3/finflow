@@ -1121,7 +1121,8 @@ describe("multi-event extraction", () => {
       expect(system).toContain("Today is 2026-08-17");
       expect(system).toContain("use the 4-digit one");
       expect(system).toContain("choose the reading that falls within the 12 months before today");
-      expect(system).toContain("read it as year/month/day (26/09/22 is 2026-09-22)");
+      expect(system).toContain("such as a footer 2031-03-14 18:02:11) and a 2-digit numeric date (such as 31/03/14)");
+      expect(system).toContain("read it as year/month/day (31/03/14 is year 31, month 03, day 14)");
       expect(system).toContain("Never return a date more than a year from today unless the message says so");
     }
   });
