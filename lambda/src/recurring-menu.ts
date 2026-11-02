@@ -614,6 +614,28 @@ export function addScreen(book: Book, txId: string, all = false): Screen {
   };
 }
 
+/**
+ * The `Saved.` reply's buttons for a payment saved in no series that Gemini
+ * called recurring: `↻ Add to <series>` first, only when the best series it
+ * could join fits it by both timing and amount (and is not one the owner
+ * just turned off on the card), then `↻ New recurring item`, the add flow.
+ * A failed read leaves only the second: the payment is saved either way.
+ */
+export async function savedKeyboard(txId: string): Promise<Keyboard> {
+  const add = [{ text: "↻ New recurring item", callback_data: `r:at:${txId}` }];
+  try {
+    const book = await loadBook();
+    const r = book.rows.find((x) => x.id === txId);
+    const best = r && joinable(book, r).find((j) => !(book.excluded.get(j.series.id) ?? []).includes(txId));
+    if (best?.dateFits && best.amountFits) {
+      return [[{ text: `↻ Add to ${cut(best.series.name, 30)}`, callback_data: `r:aj:${txId}:${best.series.id}` }], add];
+    }
+  } catch (err) {
+    console.error("saved reply series error", err);
+  }
+  return [add];
+}
+
 /** "Amount varies" flipped in the keyboard: its label, and the v flag of every cadence button. Stores nothing. */
 export function flipVaries(keyboard: Keyboard): Keyboard {
   const on = keyboard.flat().some((b) => b.callback_data === "r:av" && b.text.startsWith("☐"));

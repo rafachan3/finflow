@@ -146,16 +146,12 @@ describe("adding a payment to a series it already belongs to", () => {
 
   it("Add to a series of another kind or another income source links nothing", async () => {
     const hostingId = await hostingBill();
-    await sql(
-      `INSERT INTO income_sources (name) SELECT n FROM unnest(ARRAY['Allowance', 'Side job']) n
-       WHERE NOT EXISTS (SELECT 1 FROM income_sources WHERE name = n)`,
-    );
     const allowance = await ledger.track(
       "Allowance",
       "monthly",
-      await ledger.add({ date: "2026-09-01", type: "income", amount: "150.00", description: "Allowance", source: "Allowance" }),
+      await ledger.add({ date: "2026-09-01", type: "income", amount: "150.00", description: "Allowance", source: "Salary" }),
     );
-    const [pay] = await ledger.add({ date: "2026-10-01", type: "income", amount: "150.00", description: "Gig", source: "Side job" });
+    const [pay] = await ledger.add({ date: "2026-10-01", type: "income", amount: "150.00", description: "Gig", source: "Refund" });
     const screen = await addScreenFor("Oct 1 · 150.00 · Gig");
     // Neither series is offered: the screen draws only those of its kind and source.
     expect(labels(chat.current(screen)).filter((l) => l.startsWith("↻ Add to"))).toEqual([]);
@@ -175,6 +171,31 @@ describe("adding a payment to a series it already belongs to", () => {
     const result = await chat.tap(screen, "↻ Add to Cloud hosting bill", STRANGER);
     expect(result.body).toBe("ignored");
     expect((await ledger.links())["Nimbus web services 2026-09-03"]).toEqual({ series: null, flagged: false });
+  });
+
+  it("the Saved reply offers Add to the series a payment fits by timing and amount, first, and one tap links it", async () => {
+    await hostingBill();
+    const shown = await card(event("0.39", "2026-09-03", "Nimbus web services"), "nimbus web services 0.39 on Sep 3");
+    await chat.tap(shown, "Confirm");
+    const saved = chat.last();
+    expect(saved.text).toBe("Saved.");
+    expect(labels(saved)).toEqual(["↻ Add to Cloud hosting bill", "↻ New recurring item"]);
+
+    await chat.tap(saved, "↻ Add to Cloud hosting bill");
+    expect(chat.acks().at(-1)).toBe("Added to Cloud hosting bill.");
+    expect((await ledger.links())["Nimbus web services 2026-09-03"]).toEqual({ series: "Cloud hosting bill", flagged: true });
+    expect(gemini.calls).toHaveLength(1);
+  });
+
+  it("a payment that fits no series by both timing and amount gets only New recurring item, whose screen still lists the series", async () => {
+    await hostingBill();
+    const shown = await card(event("25.00", "2026-09-03", "Nimbus web services"), "nimbus web services 25 on Sep 3");
+    await chat.tap(shown, "Confirm");
+    const saved = chat.last();
+    expect(labels(saved)).toEqual(["↻ New recurring item"]);
+    await chat.tap(saved, "↻ New recurring item");
+    expect(labels(chat.current(saved))[0]).toBe("↻ Add to Cloud hosting bill");
+    expect(await sql("SELECT count(*)::int AS n FROM transactions WHERE recurring_series_id IS NOT NULL")).toEqual([{ n: 3 }]);
   });
 
   it("the add screen shows the best 4 series and All N series lists every one", async () => {

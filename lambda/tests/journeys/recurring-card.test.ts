@@ -161,15 +161,15 @@ describe("the card proposes the series a payment matches", () => {
   });
 });
 
-describe("Track as recurring on the Saved reply", () => {
-  it("a payment Gemini calls recurring but no series matches offers Track as recurring, which opens the add flow", async () => {
+describe("New recurring item on the Saved reply", () => {
+  it("a payment Gemini calls recurring but no series matches offers New recurring item, which opens the add flow", async () => {
     const shown = await card(billEvent());
     await chat.tap(shown, "Confirm");
     const saved = chat.last();
     expect(saved.text).toBe("Saved.");
-    expect(labels(saved)).toEqual(["↻ Track as recurring"]);
+    expect(labels(saved)).toEqual(["↻ New recurring item"]);
 
-    await chat.tap(saved, "↻ Track as recurring");
+    await chat.tap(saved, "↻ New recurring item");
     expect(chat.current(saved).text.split("\n")[0]).toBe("➕ New recurring item");
     await chat.tap(saved, "Monthly");
     expect((await ledger.links())["Internet bill 2026-10-15"]).toEqual({ series: "Internet bill", flagged: true });
@@ -193,7 +193,7 @@ describe("Track as recurring on the Saved reply", () => {
     const shown = await card(billEvent());
     await chat.tap(shown, "↻ Internet bill ✓");
     await chat.tap(shown, "Confirm");
-    expect(labels(chat.last())).toEqual(["↻ Track as recurring"]);
+    expect(labels(chat.last())).toEqual(["↻ New recurring item"]);
   });
 });
 

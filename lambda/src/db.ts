@@ -682,7 +682,7 @@ export type Confirmed = {
   transactionId: string;
   /** The card's series was deleted, or no longer fits the payment: saved in no series. */
   seriesGone: boolean;
-  /** Saved in no series, though Gemini called it recurring: worth offering Track as recurring. */
+  /** Saved in no series, though Gemini called it recurring: worth offering to make it recurring. */
   looksRecurring: boolean;
 };
 
