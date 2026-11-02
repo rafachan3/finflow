@@ -542,9 +542,12 @@ code (`Update nudge function code`).
 
 ## Next concrete step
 
-Phase 4.5 PR 5 (`feat/recurring-digest`) in review. Before merging: code
-review (its buttons write `recurring_skips` and, through Find's Apply,
-transaction links), then `supabase db push --dry-run` must list only
+Phase 4.5 PR 5 (`feat/recurring-digest`) in review. Code review done
+(2026-11-02, fix first): its five should-fix items and nits are fixed on
+the branch (skip only at a payment's own date, Undo only for skips since
+the digest's day, Find's own Apply `r:da`, every list cut to 3,500
+visible characters, one chat's failure no longer stops the others). Before
+merging: `supabase db push --dry-run` must list only
 `20261101000019_nudge_runs.sql`, then `supabase db push`. After the merge
 and the deploy run: invoke once by hand (`aws lambda invoke --function-name
 finflow-nudge` with today's `scheduled_time`) and check the log line's
