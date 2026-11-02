@@ -1,5 +1,5 @@
 {
-  "name": "two stores in one message become two purchases",
+  "name": "two stores in one message become two purchases; a dollar store has no venue, a pharmacy is Pharmacy",
   "input": {
     "kind": "text",
     "text": "3 at Dollar Corner and 5 at Corner Pharmacy"
@@ -9,12 +9,14 @@
       {
         "type": "expense",
         "lines": 1,
-        "merchant": true
+        "merchant": true,
+        "venue": null
       },
       {
         "type": "expense",
         "lines": 1,
-        "merchant": true
+        "merchant": true,
+        "venue": "Pharmacy"
       }
     ]
   },
@@ -72,5 +74,5 @@
       }
     ]
   },
-  "request_sha256": "87908b5a8c03d8c63578e8fdfb3868d34231b84f6010e289b734b562cefb27f6"
+  "request_sha256": "2ac52b8d1ab908d2654a2ad8f61e2f8517c6ea9c1ed5210ace8e58d4678bce92"
 }

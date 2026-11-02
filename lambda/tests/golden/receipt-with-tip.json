@@ -1,5 +1,5 @@
 {
-  "name": "a tip below the total is folded into the items: no tip line, lines sum to the amount paid",
+  "name": "a tip below the total is folded into the items: no tip line, lines sum to the amount paid; the 4-digit-year footer date wins over YY/MM/DD, and a diner has no venue",
   "input": {
     "kind": "photo",
     "caption": "",
@@ -12,7 +12,9 @@
         "lines": 2,
         "amount": "33.24",
         "merchant": true,
-        "date": true
+        "date": true,
+        "dateIs": "2026-10-24",
+        "venue": null
       }
     ]
   },
@@ -56,5 +58,5 @@
       }
     ]
   },
-  "request_sha256": "51090fc619b68ed98d5495ec7f1c1065d5f43696499e2df9eeb6cbe33d783913"
+  "request_sha256": "7bac5c66749c2bf1065b421365f60b79abd809fce3b295c2a44f2096e34da13a"
 }

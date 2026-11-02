@@ -66,6 +66,18 @@ describe("mismatches", () => {
     expect(mismatches([event], [{ type: "expense", lines: 1, amount: "28.74" }])).toEqual([]);
   });
 
+  it("reports a date or venue other than the expected one", () => {
+    const want: ExpectedEvent = { type: "expense", lines: 1, dateIs: "2026-10-24", venue: null };
+    const event = (date: string, venue: string | null) =>
+      mismatches([{ type: "expense", amount: "3.00", date, venue, items: [{ amount: "3.00" }] }], [want]);
+    expect(event("2026-10-24", null)).toEqual([]);
+    // Day/month/year read years in the past, and the nearest venue picked.
+    expect(event("2024-10-26", "Fast Food")).toEqual([
+      "event 0: date 2024-10-26 != 2026-10-24",
+      "event 0: venue Fast Food != null",
+    ]);
+  });
+
   it("reports a transfer's accounts, reading a recording without from_account as chequing", () => {
     const want: ExpectedEvent = { type: "transfer", lines: 0, fromAccount: "Savings", toAccount: null };
     const deposit = { type: "transfer", items: [], to_account: "Savings" };

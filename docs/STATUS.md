@@ -553,6 +553,16 @@ a receipt read as day/month/year instead of year/month/day put a purchase in
 than a year ago: check it` (or `is in the future`, or `is before your oldest
 saved entry (<date>): check it`). Warning only, no Gemini call, no migration.
 
+Extraction prompt rules (branch `fix/extraction-venue-date-tax-rules`,
+DECISIONS.md 2026-11-02): text, photo, voice and Edit prompts now say the
+venue is null unless the place clearly is a listed one, and a receipt's 4-digit-
+year date beats a 2-digit NN/NN/NN one (an NN/NN/NN alone is read within the
+12 months before today). The 20-case golden cap holds: `receipt-with-tip` and
+`two-stores` carry the new assertions. No migration. Not covered by a golden:
+an NN/NN/NN date with no 4-digit one. Next: tax only on the lines a receipt
+flags as taxable and the tip by pre-tax price, computed in code (separate PR;
+the prompt-only rule gave inconsistent splits under Lite).
+
 ## Next concrete step
 
 Phase 4.5 PR 5 (`feat/recurring-digest`) in review. Code review done

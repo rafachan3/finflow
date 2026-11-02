@@ -71,6 +71,16 @@ const BUCKETS =
 const LINE_AMOUNTS =
   "Amounts are strings with exactly two decimal places. For an expense, the header amount is the total paid, including tax and any tip (pourboire, gratuity) on the receipt or in the message, even when the tip is printed or written below the total. Never add a tax or tip line. Fold tax and tip into the item lines in proportion to each line's price, putting any leftover cent on the largest line, so the line amounts MUST sum to the header amount.";
 
+// The venue list is short, so Gemini picked the nearest one for places that
+// are none of them (a discount-store receipt became Dépanneur).
+const VENUE =
+  "venue is a name from the Venues list only when the place clearly is that kind of place (a pharmacy or drugstore is Pharmacy, a grocery store is Supermarket). A dollar or discount store, hardware store, department store, online shop, rideshare or warehouse store is none of them: return null. Never pick the nearest venue; when unsure, return null.";
+
+// Receipts often print YY/MM/DD, which the lighter model read as DD/MM/YY,
+// years in the past.
+const DATE_READING =
+  "Reading a printed date: when a receipt prints both a date with a 4-digit year (such as a footer 2031-03-14 18:02:11) and a 2-digit numeric date (such as 31/03/14), use the 4-digit one. When only an ambiguous NN/NN/NN date is printed, choose the reading that falls within the 12 months before today: read it as year/month/day (31/03/14 is year 31, month 03, day 14) when day/month/year would land years in the past or in the future. Never return a date more than a year from today unless the message says so.";
+
 const EXTRACTOR_STATIC_PROMPT = [
   "You extract Canadian personal-finance transactions from a short text.",
   "Today is YYYY-MM-DD (America/Toronto). Currency is CAD.",
@@ -80,12 +90,14 @@ const EXTRACTOR_STATIC_PROMPT = [
   "Use Other … subcategories only when nothing more specific fits.",
   ENGLISH_DESCRIPTIONS,
   MERCHANT,
+  VENUE,
   FUNDED_BY,
   TRANSFER_ACCOUNTS,
   NOTES,
   TAGS,
   SPLIT_EVENTS,
   BUCKETS,
+  DATE_READING,
   "date is YYYY-MM-DD only when the user stated a calendar date (including today, yesterday, or a month and day). If they did not, return an empty string. Never guess today's date.",
 ].join("\n");
 
@@ -98,12 +110,14 @@ const PHOTO_EXTRACTOR_STATIC_PROMPT = [
   "Use Other … subcategories only when nothing more specific fits.",
   ENGLISH_DESCRIPTIONS,
   MERCHANT,
+  VENUE,
   FUNDED_BY,
   TRANSFER_ACCOUNTS,
   NOTES,
   TAGS,
   SPLIT_EVENTS,
   BUCKETS,
+  DATE_READING,
   "date is YYYY-MM-DD only when printed on the receipt or stated in the caption (including today, yesterday, or a month and day). If neither, return an empty string. Never guess today's date or the photo send time.",
 ].join("\n");
 
@@ -116,12 +130,14 @@ const VOICE_EXTRACTOR_STATIC_PROMPT = [
   "Use Other … subcategories only when nothing more specific fits.",
   ENGLISH_DESCRIPTIONS,
   MERCHANT,
+  VENUE,
   FUNDED_BY,
   TRANSFER_ACCOUNTS,
   NOTES,
   TAGS,
   SPLIT_EVENTS,
   BUCKETS,
+  DATE_READING,
   "date is YYYY-MM-DD only when the user stated a calendar date in the recording or caption (including today, yesterday, or a month and day). If they did not, return an empty string. Never guess today's date or the voice send time.",
 ].join("\n");
 
@@ -131,6 +147,7 @@ const PATCH_EXTRACTOR_STATIC_PROMPT = [
   "The user message is the current extraction as JSON, then the correction.",
   "Keep every field the correction does not change.",
   "Keep date unless the correction changes the calendar date. Never guess today's date.",
+  DATE_READING,
   LINE_AMOUNTS,
   // The current JSON has no tip field: the old tip is already inside the
   // amount and the lines, so Lite added a corrected tip on top (#60).
@@ -139,6 +156,7 @@ const PATCH_EXTRACTOR_STATIC_PROMPT = [
   "category, subcategory, and item_type are separate fields. Never repeat the category inside subcategory or item_type. Example: category='Food and drink', subcategory='Takeout / Quick Service', item_type='Meals & Prepared Food'.",
   "Use Other … subcategories only when nothing more specific fits.",
   ENGLISH_DESCRIPTIONS,
+  VENUE,
   FUNDED_BY,
   TRANSFER_ACCOUNTS,
   NOTES,
