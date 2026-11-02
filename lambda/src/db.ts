@@ -384,14 +384,29 @@ export async function findAwaitingIngestion(): Promise<{
   return result.rows[0] ?? null;
 }
 
-/** Rows still waiting for Confirm or Discard, oldest first; the chat comes from the saved update. */
+/**
+ * Open cards of this chat, oldest first: still `pending`, or waiting for a
+ * date or correction. The chat comes from the saved update. Confirmed and
+ * discarded rows are skipped.
+ */
 export async function listPendingIngestions(
   chatId: number,
-): Promise<{ id: string; extraction: Extraction }[]> {
+): Promise<
+  {
+    id: string;
+    extraction: Extraction;
+    status: "pending" | "awaiting_date" | "awaiting_edit";
+  }[]
+> {
   const db = await getPool();
-  const result = await db.query<{ id: string; extraction: Extraction }>(
-    `SELECT id, extraction FROM ingestions
-     WHERE status = 'pending' AND raw_payload #>> '{message,chat,id}' = $1
+  const result = await db.query<{
+    id: string;
+    extraction: Extraction;
+    status: "pending" | "awaiting_date" | "awaiting_edit";
+  }>(
+    `SELECT id, extraction, status FROM ingestions
+     WHERE status IN ('pending', 'awaiting_date', 'awaiting_edit')
+       AND raw_payload #>> '{message,chat,id}' = $1
      ORDER BY created_at, event_index`,
     [String(chatId)],
   );
@@ -640,6 +655,24 @@ export async function applyIngestionEdit(
     [ingestionId, JSON.stringify(extraction)],
   );
   return Boolean(result.rowCount);
+}
+
+/**
+ * Leaves a date or edit wait without changing the stored extraction: status
+ * back to `pending` so Confirm works again. Idempotent; returns null when the
+ * row is no longer waiting.
+ */
+export async function restoreIngestionPending(
+  ingestionId: string,
+): Promise<{ id: string; extraction: Extraction } | null> {
+  const db = await getPool();
+  const result = await db.query<{ id: string; extraction: Extraction }>(
+    `UPDATE ingestions SET status = 'pending'
+     WHERE id = $1 AND status IN ('awaiting_date', 'awaiting_edit')
+     RETURNING id, extraction`,
+    [ingestionId],
+  );
+  return result.rows[0] ?? null;
 }
 
 async function lookupId(
