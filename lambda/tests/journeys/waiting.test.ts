@@ -11,8 +11,9 @@ vi.mock("../../src/config.js", async () => {
 useJourneys();
 
 const ASK_DATE = "Send the date as YYYY-MM-DD, Aug 10, or yesterday.";
+const WAITING_BUTTONS = ["Keep as is", "Discard"];
 const BUSY =
-  "Another card is waiting for a date or correction. Send it, or tap Discard on that card, then try again.";
+  "Another card is waiting for a date or correction. Send it, or tap Keep as is / Discard on the waiting prompt, then try again.";
 
 async function twoCards() {
   gemini.extract = golden("two-stores").recorded;
@@ -26,13 +27,43 @@ describe("a card waiting for a date", () => {
     await chat.tap(first, "Fix date");
     expect(chat.acks()).toEqual(["Send the date."]);
     expect(chat.last().text).toBe(ASK_DATE);
-    expect(labels(chat.last())).toEqual(["Discard", "Fix date"]);
+    expect(labels(chat.last())).toEqual(WAITING_BUTTONS);
 
     await chat.text("2026-10-01");
     const fixed = chat.last();
     expect(fixed.text.split("\n")[0]).toBe("Expense · 2026-10-01 · CAD 3.00");
     await chat.tap(fixed, "Confirm");
     expect(await ledger.transactions()).toMatchObject([{ date: "2026-10-01", amount: "3.00" }]);
+  });
+
+  it("Keep as is leaves the wait and resends the Confirm card without Gemini", async () => {
+    const [first] = await twoCards();
+    await chat.tap(first, "Fix date");
+    const callsBefore = gemini.calls.length;
+    await chat.tap(chat.last(), "Keep as is");
+
+    expect(chat.acks()).toEqual(["Send the date.", "Kept as is."]);
+    expect(gemini.calls).toHaveLength(callsBefore);
+    expect((await ledger.ingestions())[0].status).toBe("pending");
+    const resent = chat.last();
+    // Resent like /pending: no (i of n) from the original batch.
+    expect(resent.text.split("\n")[0]).toBe("Expense · 2026-11-02 · CAD 3.00");
+    expect(labels(resent)).toEqual(["Confirm", "Discard", "Fix date", "Edit"]);
+    await chat.tap(resent, "Confirm");
+    expect(await ledger.transactions()).toMatchObject([{ amount: "3.00" }]);
+  });
+
+  it("Keep as is twice says Already handled and writes nothing", async () => {
+    const [first] = await twoCards();
+    await chat.tap(first, "Fix date");
+    const prompt = chat.last();
+    const keep = prompt.buttons.find((b) => b.text === "Keep as is");
+    expect(keep).toBeDefined();
+    // Keep as is clears the prompt's buttons; a raced second tap still carries k:<id>.
+    await chat.press(prompt, keep!.data);
+    await chat.press(prompt, keep!.data);
+    expect(chat.acks()).toEqual(["Send the date.", "Kept as is.", "Already handled."]);
+    expect((await ledger.ingestions()).filter((r) => r.status === "pending")).toHaveLength(2);
   });
 
   it("Confirm on card 2 while card 1 waits for a date saves card 2 normally", async () => {

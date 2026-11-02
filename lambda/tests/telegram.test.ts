@@ -2,7 +2,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { COMMANDS, commandMenu } from "../src/commands.js";
 import {
   registerCommandMenu,
-  discardKeyboard,
   downloadTelegramFile,
   editMessageReplyMarkup,
   editMessageText,
@@ -11,6 +10,7 @@ import {
   reviewKeyboard,
   sendMessage,
   voiceFileId,
+  waitingKeyboard,
 } from "../src/telegram.js";
 
 describe("reviewKeyboard", () => {
@@ -53,12 +53,21 @@ describe("reviewKeyboard", () => {
   });
 });
 
-describe("discardKeyboard", () => {
-  it("is Discard only", () => {
+describe("waitingKeyboard", () => {
+  it("is Keep as is and Discard, with callback_data under 64 bytes", () => {
     const id = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
-    expect(discardKeyboard(id)).toEqual({
-      inline_keyboard: [[{ text: "Discard", callback_data: `d:${id}` }]],
+    const keyboard = waitingKeyboard(id);
+    expect(keyboard).toEqual({
+      inline_keyboard: [
+        [
+          { text: "Keep as is", callback_data: `k:${id}` },
+          { text: "Discard", callback_data: `d:${id}` },
+        ],
+      ],
     });
+    for (const b of keyboard.inline_keyboard.flat()) {
+      expect(Buffer.byteLength(b.callback_data, "utf8")).toBeLessThanOrEqual(64);
+    }
   });
 });
 

@@ -17,6 +17,7 @@ vi.mock("../src/db.js", () => ({
   applyIngestionDate: vi.fn(),
   setIngestionAwaitingEdit: vi.fn(),
   applyIngestionEdit: vi.fn(),
+  restoreIngestionPending: vi.fn(),
   findDuplicates: vi.fn(),
   findFrequentMerchant: vi.fn(),
   oldestTransactionDate: vi.fn(),
@@ -32,7 +33,7 @@ vi.mock("../src/gemini.js", () => ({
 vi.mock("../src/telegram.js", () => ({
   answerCallbackQuery: vi.fn(),
   reviewKeyboard: vi.fn((id: string) => ({ confirm: id })),
-  discardKeyboard: vi.fn((id: string) => ({ discard: id })),
+  waitingKeyboard: vi.fn((id: string) => ({ waiting: id })),
   sendMessage: vi.fn(),
   editMessageReplyMarkup: vi.fn(),
   editMessageText: vi.fn(),
@@ -60,6 +61,7 @@ import {
   oldestTransactionDate,
   insertPendingIngestions,
   loadTaxonomy,
+  restoreIngestionPending,
   setIngestionAwaitingDate,
   setIngestionAwaitingEdit,
 } from "../src/db.js";
@@ -71,12 +73,12 @@ import {
 } from "../src/gemini.js";
 import {
   answerCallbackQuery,
-  discardKeyboard,
   downloadTelegramFile,
   editMessageReplyMarkup,
   reviewKeyboard,
   sendMessage,
   voiceFileId,
+  waitingKeyboard,
 } from "../src/telegram.js";
 import { putReceipt } from "../src/s3.js";
 import { handler } from "../src/handler.js";
@@ -428,15 +430,14 @@ describe("handler", () => {
     expect(setIngestionAwaitingDate).toHaveBeenCalledWith(
       "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
     );
-    expect(reviewKeyboard).toHaveBeenCalledWith(
+    expect(waitingKeyboard).toHaveBeenCalledWith(
       "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
-      { confirm: false, edit: false },
     );
     expect(sendMessage).toHaveBeenCalledWith(
       "t",
       1,
       expect.stringMatching(/send the date/i),
-      { confirm: "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee" },
+      { waiting: "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee" },
     );
   });
 
@@ -462,7 +463,7 @@ describe("handler", () => {
     expect(sendMessage).toHaveBeenCalledWith(
       "t",
       1,
-      "Another card is waiting for a date or correction. Send it, or tap Discard on that card, then try again.",
+      "Another card is waiting for a date or correction. Send it, or tap Keep as is / Discard on the waiting prompt, then try again.",
     );
   });
 
@@ -520,6 +521,7 @@ describe("handler", () => {
       "t",
       1,
       expect.stringMatching(/waiting for a date/i),
+      { waiting: "ing-1" },
     );
   });
 
@@ -629,6 +631,7 @@ describe("handler", () => {
       "t",
       1,
       expect.stringMatching(/waiting for a date/i),
+      { waiting: "ing-1" },
     );
   });
 
@@ -800,6 +803,7 @@ describe("handler", () => {
       "t",
       1,
       expect.stringMatching(/waiting for a date/i),
+      { waiting: "ing-1" },
     );
   });
 
@@ -820,15 +824,72 @@ describe("handler", () => {
     expect(setIngestionAwaitingEdit).toHaveBeenCalledWith(
       "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
     );
-    expect(discardKeyboard).toHaveBeenCalledWith(
+    expect(waitingKeyboard).toHaveBeenCalledWith(
       "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
     );
     expect(sendMessage).toHaveBeenCalledWith(
       "t",
       1,
       expect.stringMatching(/correction/i),
-      { discard: "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee" },
+      { waiting: "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee" },
     );
+  });
+
+  it("Keep as is restores pending and resends the card without Gemini", async () => {
+    vi.mocked(restoreIngestionPending).mockResolvedValue({
+      id: "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+      extraction,
+    });
+
+    await handler(
+      event({
+        update_id: 24,
+        callback_query: {
+          id: "cb-keep",
+          data: "k:aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+          message: { chat: { id: 1 }, message_id: 9 },
+        },
+      }),
+    );
+
+    expect(restoreIngestionPending).toHaveBeenCalledWith(
+      "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+    );
+    expect(extractFromText).not.toHaveBeenCalled();
+    expect(patchExtraction).not.toHaveBeenCalled();
+    expect(answerCallbackQuery).toHaveBeenCalledWith("t", "cb-keep", "Kept as is.");
+    expect(editMessageReplyMarkup).toHaveBeenCalledWith("t", 1, 9, {
+      inline_keyboard: [],
+    });
+    expect(reviewKeyboard).toHaveBeenCalledWith(
+      "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+      { confirm: true, series: undefined },
+    );
+    expect(sendMessage).toHaveBeenCalledWith(
+      "t",
+      1,
+      expect.stringContaining("CAD 12.50"),
+      { confirm: "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee" },
+    );
+  });
+
+  it("Keep as is twice says Already handled and does not resend", async () => {
+    vi.mocked(restoreIngestionPending).mockResolvedValue(null);
+
+    await handler(
+      event({
+        update_id: 25,
+        callback_query: {
+          id: "cb-keep2",
+          data: "k:aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+          message: { chat: { id: 1 } },
+        },
+      }),
+    );
+
+    expect(answerCallbackQuery).toHaveBeenCalledWith("t", "cb-keep2", "Already handled.");
+    expect(sendMessage).toHaveBeenCalledWith("t", 1, "Already handled.");
+    expect(reviewKeyboard).not.toHaveBeenCalled();
   });
 
   it("applies a correction while awaiting_edit and does not start a new extraction", async () => {
@@ -893,8 +954,8 @@ describe("handler", () => {
       "t",
       1,
       expect.stringContaining("✗"),
+      { waiting: "ing-1" },
     );
-    expect(vi.mocked(sendMessage).mock.calls[0].length).toBe(3);
   });
 
   it("does not start a new photo while awaiting_edit", async () => {
@@ -921,6 +982,7 @@ describe("handler", () => {
       "t",
       1,
       expect.stringMatching(/waiting for a correction/i),
+      { waiting: "ing-1" },
     );
   });
 });

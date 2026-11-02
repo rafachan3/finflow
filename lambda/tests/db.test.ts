@@ -18,6 +18,7 @@ vi.mock("pg", () => ({
 const {
   confirmIngestion,
   insertPendingIngestions,
+  restoreIngestionPending,
   setIngestionAwaitingDate,
   setIngestionAwaitingEdit,
 } = await import("../src/db.js");
@@ -192,5 +193,42 @@ describe("setIngestionAwaiting*", () => {
       .mockResolvedValueOnce({ rowCount: 0, rows: [] });
 
     await expect(fn(id)).resolves.toBe("already_handled");
+  });
+});
+
+describe("restoreIngestionPending", () => {
+  const id = "00000000-0000-0000-0000-000000000001";
+  const extraction = {
+    type: "expense",
+    amount: "3.00",
+    currency: "CAD",
+    date: "2026-10-01",
+    description: "x",
+    merchant: null,
+    venue: null,
+    tags: [],
+    funded_by: "self",
+    is_recurring: false,
+    income_source: null,
+    to_account: null,
+    items: [],
+    confidence: 0.9,
+  };
+
+  it("returns the row when a waiting status flips to pending", async () => {
+    query.mockResolvedValue({ rowCount: 1, rows: [{ id, extraction }] });
+
+    await expect(restoreIngestionPending(id)).resolves.toEqual({ id, extraction });
+
+    const [sql, params] = query.mock.calls[0];
+    expect(sql).toMatch(/status = 'pending'/);
+    expect(sql).toMatch(/awaiting_date.*awaiting_edit|awaiting_edit.*awaiting_date/);
+    expect(sql).toMatch(/RETURNING id, extraction/i);
+    expect(params).toEqual([id]);
+  });
+
+  it("returns null when the row is no longer waiting", async () => {
+    query.mockResolvedValue({ rowCount: 0, rows: [] });
+    await expect(restoreIngestionPending(id)).resolves.toBeNull();
   });
 });

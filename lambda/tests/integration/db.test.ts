@@ -337,6 +337,18 @@ describe("waiting for a date or a correction", () => {
     await db.discardIngestion(a);
     await expect(db.setIngestionAwaitingDate(b)).resolves.toBe("started");
   });
+
+  it("Keep as is restores a waiting row to pending once, without changing the extraction", async () => {
+    const [a] = await save(305, expense({ date: "2026-10-02", description: "kept" }));
+    await db.setIngestionAwaitingDate(a);
+    await expect(db.restoreIngestionPending(a)).resolves.toMatchObject({
+      id: a,
+      extraction: expect.objectContaining({ date: "2026-10-02", description: "kept" }),
+    });
+    expect(await status(a)).toBe("pending");
+    await expect(db.restoreIngestionPending(a)).resolves.toBeNull();
+    await expect(db.findAwaitingIngestion()).resolves.toBeNull();
+  });
 });
 
 describe("listPendingIngestions", () => {
@@ -349,19 +361,20 @@ describe("listPendingIngestions", () => {
     return result.map((r) => r.id);
   }
 
-  it("lists the chat's pending rows oldest first, skipping handled, waiting and other chats' rows", async () => {
+  it("lists the chat's open rows oldest first, including waiting, skipping handled and other chats' rows", async () => {
     const [a, confirmed] = await saveFrom(1001, 400, expense(), income());
     await db.confirmIngestion(confirmed);
-    const [waiting] = await saveFrom(1001, 401, transfer());
+    const [waiting] = await saveFrom(1001, 401, expense({ description: "waiting one" }));
     await db.setIngestionAwaitingDate(waiting);
     await saveFrom(2002, 402, expense({ description: "not yours" }));
     const [b, c] = await saveFrom(1001, 403, expense({ description: "later" }), income());
 
     const rows = await db.listPendingIngestions(1001);
-    expect(rows.map((r) => [r.id, r.extraction.description])).toEqual([
-      [a, "groceries"],
-      [b, "later"],
-      [c, "paycheque"],
+    expect(rows.map((r) => [r.id, r.status, r.extraction.description])).toEqual([
+      [a, "pending", "groceries"],
+      [waiting, "awaiting_date", "waiting one"],
+      [b, "pending", "later"],
+      [c, "pending", "paycheque"],
     ]);
   });
 });

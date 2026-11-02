@@ -24,7 +24,7 @@ describe("correcting a card with Edit", () => {
     await chat.tap(card, "Edit");
     expect(chat.acks()).toEqual(["Send the correction."]);
     expect(chat.last().text).toBe(ASK_EDIT);
-    expect(labels(chat.last())).toEqual(["Discard"]);
+    expect(labels(chat.last())).toEqual(["Keep as is", "Discard"]);
 
     gemini.patch = golden("edit-amount").recorded;
     await chat.text("it was 14.50");
@@ -92,16 +92,30 @@ describe("correcting a card with Edit", () => {
     expect(await ledger.transactions()).toMatchObject([{ amount: "23.47", lines: 3 }]);
   });
 
-  it("a correction that breaks the card is shown without buttons and the card keeps waiting", async () => {
+  it("a correction that breaks the card keeps waiting with Keep as is and Discard", async () => {
     const card = await lunchCard();
     await chat.tap(card, "Edit");
     const patched = golden("edit-amount").recorded as { amount: string };
     gemini.patch = { ...patched, amount: "99.00" };
     await chat.text("it was 99");
 
-    expect(chat.last().buttons).toEqual([]);
+    expect(labels(chat.last())).toEqual(["Keep as is", "Discard"]);
     expect(chat.last().text).toContain("✗ lines sum 14.50 != header 99.00");
     expect((await ledger.ingestions())[0].status).toBe("awaiting_edit");
+  });
+
+  it("Keep as is on an edit wait resends the Confirm card without Gemini", async () => {
+    const card = await lunchCard();
+    const header = card.text.split("\n")[0];
+    await chat.tap(card, "Edit");
+    const callsBefore = gemini.calls.length;
+    await chat.tap(chat.last(), "Keep as is");
+
+    expect(chat.acks()).toEqual(["Send the correction.", "Kept as is."]);
+    expect(gemini.calls).toHaveLength(callsBefore);
+    expect((await ledger.ingestions())[0].status).toBe("pending");
+    expect(chat.last().text.split("\n")[0]).toBe(header);
+    expect(labels(chat.last())).toEqual(["Confirm", "Discard", "Fix date", "Edit"]);
   });
 
   it("a voice note sent while waiting for a correction is not read", async () => {
