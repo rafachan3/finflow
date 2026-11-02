@@ -211,6 +211,26 @@ describe("renderDigest", () => {
     expect(text).toMatch(/\n\+\d+ more in \/recurring\n/);
   });
 
+  it("cuts Due now and Coming up to fit too, saying how many more there are", () => {
+    const book = mockBook();
+    for (let i = 0; i < 60; i++) {
+      const sid = 100 + i;
+      book.series.push(series(sid, `Monthly membership with a long name ${"x".repeat(20)} ${i}`, "expense", "monthly"));
+      book.rows.unshift(row(sid, "2026-09-03", "12.00"), row(sid, "2026-10-03", "12.00"));
+    }
+    const text = renderDigest({ book, today: "2026-10-31" })!.text;
+    expect(text.replace(/<[^>]*>/g, "").length).toBeLessThanOrEqual(3500);
+    const section = text.split("\n\n").find((s) => s.startsWith("<b>Due now"))!.split("\n");
+    const shown = section.filter((l) => l.startsWith("💳") || l.startsWith("💰")).length;
+    const [, more] = /^\+(\d+) more in \/recurring$/.exec(section.at(-1)!)!;
+    // 60 memberships, plus the allowance, interest and gym of the fixtures.
+    expect(shown + Number(more)).toBe(63);
+    expect(shown).toBeGreaterThan(10);
+    // Coming up and the not-logged row went first, each with its count.
+    expect(text).toContain("<b>Coming up (7 days)</b>\n+1 more in /recurring");
+    expect(text).toContain("<b>Not logged · 1</b>\n+1 more in /recurring");
+  });
+
   it("parses the digest's buttons back to their action, and nothing else", () => {
     const data = renderDigest({ book: mockBook(), today: "2026-10-31" })!
       .keyboard.flat()

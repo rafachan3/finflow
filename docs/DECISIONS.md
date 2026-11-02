@@ -2371,8 +2371,11 @@ Phase 4.5 PR 5 (design §E.3, §F). Choices the design left open:
 - **Income and varying amounts have buttons too.** They never ring until
   not logged, but Find and Skip are offered on every due and not-logged row,
   as in the design's keyboard mock.
-- **Not logged is newest first**, 10 shown, the rest in an expandable quote
-  cut to 3,500 visible characters with "+N more in /recurring".
+- **Not logged is newest first**, 10 shown, the rest in an expandable quote.
+  Every list is cut from its end to keep the message within 3,500 visible
+  characters, each with "+N more in /recurring": the folded not-logged rows
+  go first, then Coming up (no buttons), then the shown not-logged rows,
+  Due now last. Too long a message is refused by Telegram every retry.
 - **A digest redraws for its own day** (`nudge_runs.run_date`), from the
   database as it is now, so yesterday's digest tapped today keeps its
   header and shows today's links and skips.

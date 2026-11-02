@@ -112,7 +112,9 @@ function itemButtons(item: Item, label: string): Keyboard[number] {
 
 /**
  * The digest for a day, or null when it has nothing to say. Up to 10
- * not-logged rows, the rest in an expandable quote cut to fit the message.
+ * not-logged rows, the rest in an expandable quote. Every list is cut to
+ * keep the message within 3,500 visible characters, saying how many more
+ * there are.
  */
 export function renderDigest(input: DigestInput): Digest | null {
   const { book, today } = input;
@@ -168,20 +170,31 @@ export function renderDigest(input: DigestInput): Digest | null {
   const footer = input.noDigestOn ? `⚠️ No digest on ${dayIn(input.noDigestOn, today)}` : "";
 
   const missedLines = missed.map((i) => missedLine(i, today));
-  const shown = missedLines.slice(0, NOT_LOGGED_SHOWN);
-  const folded = missedLines.slice(NOT_LOGGED_SHOWN);
   const notLogged = missed.filter((i) => !i.skipped).length;
-  const compose = (rest: string[], more: number) =>
-    [
+  // Due now, Coming up, the not-logged rows shown, and those folded into a quote.
+  const lists = [
+    due.map((i) => dueLine(i, today)),
+    coming.map(comingLine),
+    missedLines.slice(0, NOT_LOGGED_SHOWN),
+    missedLines.slice(NOT_LOGGED_SHOWN),
+  ];
+  const keep = lists.map((l) => l.length);
+  const more = (n: number) => (n > 0 ? [`+${n} more in /recurring`] : []);
+  const quote = (lines: string[], open: string) => (lines.length ? [`<${open}>${lines.join("\n")}</blockquote>`] : []);
+  const compose = () => {
+    const [d, c, s, f] = lists.map((l, i) => l.slice(0, keep[i]));
+    return [
       head,
-      due.length ? `<b>Due now</b>\n${due.map((i) => dueLine(i, today)).join("\n")}` : "",
-      coming.length ? `<b>Coming up (7 days)</b>\n<blockquote>${coming.map(comingLine).join("\n")}</blockquote>` : "",
+      due.length ? ["<b>Due now</b>", ...d, ...more(due.length - d.length)].join("\n") : "",
+      coming.length
+        ? ["<b>Coming up (7 days)</b>", ...quote(c, "blockquote"), ...more(coming.length - c.length)].join("\n")
+        : "",
       missed.length
         ? [
             `<b>Not logged · ${notLogged}</b>`,
-            ...shown,
-            ...(rest.length ? [`<blockquote expandable>${rest.join("\n")}</blockquote>`] : []),
-            ...(more ? [`+${more} more in /recurring`] : []),
+            ...s,
+            ...quote(f, "blockquote expandable"),
+            ...more(missed.length - s.length - f.length),
           ].join("\n")
         : "",
       counts.join("\n"),
@@ -189,11 +202,16 @@ export function renderDigest(input: DigestInput): Digest | null {
     ]
       .filter(Boolean)
       .join("\n\n");
-  let rest = folded;
-  let text = compose(rest, 0);
-  while (rest.length > 0 && visible(text).length > VISIBLE_MAX) {
-    rest = rest.slice(0, -1);
-    text = compose(rest, folded.length - rest.length);
+  };
+  // Over the limit, rows go from the end of a list, least needed list first:
+  // the folded not-logged rows, Coming up (no buttons), the shown not-logged
+  // rows, and Due now last.
+  let text = compose();
+  for (const i of [3, 1, 2, 0]) {
+    while (keep[i] > 0 && visible(text).length > VISIBLE_MAX) {
+      keep[i]--;
+      text = compose();
+    }
   }
 
   // One row per item the owner can act on, due first, names in the buttons.
