@@ -145,15 +145,19 @@ export type CreateResult =
 /**
  * A series made from one saved transaction, and that transaction linked to
  * it, in one statement. Its match keys come from the transaction: an
- * expense's merchant and largest line's subcategory, an income's source, a
- * transfer's accounts. A transaction already in a series (a second tap)
- * creates nothing and names that series.
+ * expense's largest line's subcategory, and its merchant only when `merchant`
+ * says so (a shop that sells other things must not make every purchase
+ * there look like the series), an income's source, a transfer's accounts;
+ * `keywords` are stored as given. A transaction already in a series (a
+ * second tap) creates nothing and names that series.
  */
 export async function createSeries(input: {
   transactionId: string;
   name: string;
   cadence: Cadence;
   amountVaries: boolean;
+  merchant: boolean;
+  keywords: string[];
 }): Promise<CreateResult> {
   const db = await getPool();
   try {
@@ -165,13 +169,14 @@ export async function createSeries(input: {
        ),
        ins AS (
          INSERT INTO recurring_series (name, kind, cadence, amount_varies, merchant_id, subcategory_id,
-                                       income_source_id, from_account_id, to_account_id)
+                                       income_source_id, from_account_id, to_account_id, keywords)
          SELECT $2::text, t.type, $3::recurring_cadence, $4::boolean,
-                CASE WHEN t.type = 'expense' THEN t.merchant_id END,
+                CASE WHEN t.type = 'expense' AND $5::boolean THEN t.merchant_id END,
                 CASE WHEN t.type = 'expense' THEN t.subcategory_id END,
                 CASE WHEN t.type = 'income' THEN t.income_source_id END,
                 CASE WHEN t.type = 'transfer' THEN t.from_account_id END,
-                CASE WHEN t.type = 'transfer' THEN t.to_account_id END
+                CASE WHEN t.type = 'transfer' THEN t.to_account_id END,
+                $6::text[]
          FROM t WHERE t.recurring_series_id IS NULL
          RETURNING id
        ),
@@ -181,7 +186,7 @@ export async function createSeries(input: {
        SELECT (SELECT id FROM ins) AS created, t.recurring_series_id AS already,
               (SELECT s.name FROM recurring_series s WHERE s.id = t.recurring_series_id) AS name
        FROM t`,
-      [input.transactionId, input.name, input.cadence, input.amountVaries],
+      [input.transactionId, input.name, input.cadence, input.amountVaries, input.merchant, input.keywords],
     );
     const row = res.rows[0];
     if (!row) return { missing: true };

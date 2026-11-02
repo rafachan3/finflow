@@ -2,8 +2,8 @@
 
 Living state of the project. Read this first; update it whenever work lands.
 
-**Last updated:** 2026-11-01
-**Current phase:** Phase 4.5 — Proactive nudges, in progress: PRs 1-4 merged (#86 with migration 0016 applied, #87, #88, #94 with Terraform applied); PR 5 (the daily digest, `feat/recurring-digest`, migration 0019) in review (see [ROADMAP.md](ROADMAP.md) and Next concrete step)
+**Last updated:** 2026-11-02
+**Current phase:** Phase 4.5 — Proactive nudges, in progress: PRs 1-5 merged (#86, #87, #88, #94, #105 with migration 0019 applied); recurring-join fix `#110` in review (see [ROADMAP.md](ROADMAP.md) and Next concrete step)
 
 ## Phase progress
 
@@ -16,7 +16,7 @@ Living state of the project. Read this first; update it whenever work lands.
 - [x] Phase 3.6 — Regression test suite — **accepted 2026-10-29: deliberate-break PR #48 blocked (unit + inventory failed, BLOCKED), clean PRs #46/#47 green, smoke step green on deploy run 40803017809, `main` protected** (2026-10-29)
 - [x] Phase 3.5 — Ingestion follow-ons — **accepted 2026-10-29 by the journey tests (no phone test): 25 of 25 passed in `line-tags`, `duplicates` and `merchants`; see Next concrete step** (2026-10-29)
 - [x] Phase 4 — dbt semantic layer + MetricFlow — **accepted 2026-10-30: `dbt build`, the hand-written-SQL reconciliation and `mf query` vs the marts green in CI on the fixture (#72-#78) and on production in `dbt-nightly` run 41157900716 (87 of 87 nodes, 14 metrics, 5 months); real-month hand verification deferred** (2026-10-30)
-- [ ] Phase 4.5 — Proactive nudges (recurring reminders, merchant recommendations) — **PRs 1-4 of 7 merged (#86 with migration 0016 applied, #87, #88, #94 with Terraform applied); PR 5 (daily digest, migration 0019) in review** (2026-11-01)
+- [ ] Phase 4.5 — Proactive nudges (recurring reminders, merchant recommendations) — **PRs 1-5 of 7 merged (#86, #87, #88, #94, #105); join/Close/naming fix `#110` in review** (2026-11-02)
 - [ ] Phase 5 — Grafana dashboards
 - [ ] Phase 6 — Claude analytics agent (subagents + Postgres MCP)
 - [ ] Phase 7 — Open-source polish
@@ -524,7 +524,7 @@ those inputs; the contract and the mart were right. The fixture gains
 2026-03 (only a withdrawal), 2026-04 (only a transfer) and 2026-05
 (income, interest and spend, nothing moved). No migration.
 
-Phase 4.5 PR 5 (`feat/recurring-digest`, in review): the daily digest. At
+Phase 4.5 PR 5 (`feat/recurring-digest`, #105, merged 2026-11-02): the daily digest. At
 09:00 Toronto `finflow-nudge` (`lambda/src/nudge.ts`, `npm run
 bundle:nudge`) sends each allowlisted chat one HTML message: Due now, Coming
 up (7 days), Not logged (10 shown, the rest in an expandable quote), the 🧹
@@ -565,18 +565,15 @@ the prompt-only rule gave inconsistent splits under Lite).
 
 ## Next concrete step
 
-Phase 4.5 PR 5 (`feat/recurring-digest`) in review. Code review done
-(2026-11-02, fix first): its five should-fix items and nits are fixed on
-the branch (skip only at a payment's own date, Undo only for skips since
-the digest's day, Find's own Apply `r:da`, every list cut to 3,500
-visible characters, one chat's failure no longer stops the others).
-Migration 0019 is already applied to production. After the merge
-and the deploy run: invoke once by hand (`aws lambda invoke --function-name
-finflow-nudge` with today's `scheduled_time`) and check the log line's
-outcome reads `sent` or `empty`. Then PR 6 (the flag-equals-link
-constraint, after the owner's backfill), PR 7 (acceptance).
-`fixed_base_burn` stays thin until the backfill links real history; expect
-it to rise then.
+Phase 4.5 PR 5 (`feat/recurring-digest`, #105) is merged; migration 0019 is
+applied; the first real digest was sent (2026-11-02). The follow-up fix PR
+`#110` (`feat/recurring-join-existing`) is in review: join an existing
+series from the add screen and Saved reply, Close / Back / Back to digest,
+and name mixed-merchant series from the description with keywords stored.
+Await five green checks and a Spec + Standards code review before merge.
+Then: waiting-prompts PR A, PR 6 (flag-equals-link CHECK, after the
+owner's backfill), PR 7 (acceptance). `fixed_base_burn` stays thin until
+the backfill links real history; expect it to rise then.
 
 Phase 4 is accepted (2026-10-30). Optional and deferred: hand-verify real
 numbers for one complete month against the owner's records (on hold until

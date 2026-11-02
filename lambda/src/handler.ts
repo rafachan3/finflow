@@ -69,7 +69,7 @@ import {
 } from "./mentions.js";
 import { cardSeries, type CardSeries } from "./recurring-card.js";
 import { handleDigestTap, parseDigestTap } from "./recurring-digest.js";
-import { handleRecurringTap, answerPrompt, parseRecurringTap, sendRecurringList } from "./recurring-menu.js";
+import { handleRecurringTap, answerPrompt, parseRecurringTap, savedKeyboard, sendRecurringList } from "./recurring-menu.js";
 import { putReceipt } from "./s3.js";
 import {
   answerCallbackQuery,
@@ -753,11 +753,10 @@ async function handleCallback(
       ack = "Already handled.";
     } else {
       ack = `${withPosition("Saved.", cb.message?.text)}${result.seriesGone ? ` ${SERIES_GONE}` : ""}`;
-      // After the save, so it adds no step: one tap opens /recurring's add flow on this payment.
+      // After the save, so it adds no step: one tap adds it to the series it
+      // fits by timing and amount, or opens /recurring's add flow on it.
       if (result.looksRecurring) {
-        ackButtons = {
-          inline_keyboard: [[{ text: "↻ Track as recurring", callback_data: `r:at:${result.transactionId}` }]],
-        };
+        ackButtons = { inline_keyboard: await savedKeyboard(result.transactionId) };
       }
     }
   } else if (action === "f") {

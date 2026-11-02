@@ -202,7 +202,7 @@ describe("legacy recurring flags with no series", () => {
       "☐ Sep 1 · 45.00 · Phone bill", "➕",
       "☐ Aug 1 · 30.00 · Gift", "➕",
       "☐ Jul 1 · 9.99 · Old app", "➕",
-      "Clear flag on ticked (0)", "Select all", "‹ All recurring",
+      "Clear flag on ticked (0)", "Select all", "‹ All recurring", "✕ Close",
     ]);
 
     await chat.tap(menu, "Clear flag on ticked (0)");
