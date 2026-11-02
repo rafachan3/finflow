@@ -3,7 +3,7 @@
 Living state of the project. Read this first; update it whenever work lands.
 
 **Last updated:** 2026-11-02
-**Current phase:** Phase 4.5 — Proactive nudges, in progress: PRs 1-5 merged (#86, #87, #88, #94, #105) plus join/Close/naming fix `#110` and waiting-prompts Keep as is (this PR); next is PR 6 after backfill (see [ROADMAP.md](ROADMAP.md) and Next concrete step)
+**Current phase:** Phase 4.5 — Proactive nudges, in progress: PRs 1-5 merged (#86, #87, #88, #94, #105) plus join/Close/naming `#110` and waiting-prompts `#112`; next is PR 6 after backfill (see [ROADMAP.md](ROADMAP.md) and Next concrete step)
 
 ## Phase progress
 
@@ -565,13 +565,11 @@ the prompt-only rule gave inconsistent splits under Lite).
 
 ## Next concrete step
 
-Waiting-prompts PR A (Keep as is on date/edit waits; `/pending` resends
-waiting prompts; busy/error keyboards) is in flight on
-`feat/waiting-keep-as-is`. After it merges and Deploy ingest Lambda is green:
-PR 6 (flag-equals-link CHECK, after the owner's backfill), then PR 7
-(acceptance). `fixed_base_burn` stays thin until the backfill links real
-history; expect it to rise then. Card redesign (#89 #92 #96 #97) stays after
-PR 6→7.
+Waiting-prompts PR A `#112` is merged (`3c995fb`); Deploy ingest Lambda run
+41535910313 SUCCESS. Next: PR 6 (flag-equals-link CHECK) once the owner's
+backfill is done — until then PR 6 stays blocked. Then PR 7 (acceptance).
+`fixed_base_burn` stays thin until the backfill links real history; expect
+it to rise then. Card redesign (#89 #92 #96 #97) stays after PR 6→7.
 
 Phase 4 is accepted (2026-10-30). Optional and deferred: hand-verify real
 numbers for one complete month against the owner's records (on hold until
