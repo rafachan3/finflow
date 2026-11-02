@@ -7,7 +7,7 @@ Reads TEST_DATABASE_URL and refuses any host but this machine. Builds the
 does (every migration in order, then the example seed), loads
 fixtures/synthetic.sql and then each extra file, gives finflow_dbt and
 finflow_analyst a throwaway password each (the role's name), and prints the FINFLOW_DBT_* exports profiles.yml
-reads. It shares the integration suite's database, so running either
+reads, plus the fixture's FINFLOW_LEDGER_START. It shares the integration suite's database, so running either
 rebuilds it for that one.
 """
 
@@ -73,6 +73,8 @@ def main(extra):
         "FINFLOW_DBT_USER": DBT_ROLE,
         "FINFLOW_DBT_PASSWORD": DBT_ROLE,
         "FINFLOW_DBT_DBNAME": TEST_DB,
+        # The fixture holds months before production's ledger start.
+        "FINFLOW_LEDGER_START": "2026-03-01",
     }
     for key, value in exports.items():
         print(f"export {key}={shlex.quote(value)}")

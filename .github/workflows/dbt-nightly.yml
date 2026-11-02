@@ -118,6 +118,14 @@ jobs:
             echo "dbt build wrote no run_results.json"
           fi
           echo "dbt build exited $status; its output is withheld from this public log"
+          # The warn-level tests' names, counts and ids, for the ledger-health
+          # step. Written only when the report succeeds, so a missing file
+          # never reads as a clean ledger.
+          if python scripts/ledger_health.py > "$RUNNER_TEMP/lh.md" 2>> "$RUNNER_TEMP/dbt-build.log"; then
+            mv "$RUNNER_TEMP/lh.md" "$RUNNER_TEMP/ledger-health.md"
+          else
+            echo "::warning::the ledger health report failed; its output is withheld"
+          fi
           exit "$status"
 
       - name: mf validate-configs and check_metrics.py on production
@@ -135,6 +143,44 @@ jobs:
           # check_metrics.py prints metric and month names only; its stderr
           # (mf's error text) is withheld.
           python scripts/check_metrics.py 2> "$RUNNER_TEMP/metrics.err" | tee "$RUNNER_TEMP/metrics.txt"
+
+      # Warnings never fail the run. They go to the job summary and to one
+      # rolling issue labelled ledger-health: its body is rewritten, with a
+      # comment, only when the findings change, and a clean build closes it.
+      # Test names, counts and ids only (ledger_health.py withholds anything
+      # else). No secrets here.
+      - name: Report ledger health warnings
+        if: always() && steps.build.outcome != 'skipped' && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          BUILD: ${{ steps.build.outcome }}
+          REPORT: ${{ runner.temp }}/ledger-health.md
+          BODY: ${{ runner.temp }}/ledger-health-issue.md
+        run: |
+          [ -f "$REPORT" ] || { echo "no ledger health report; the issue is left as it is"; exit 0; }
+          issue=$(gh api "repos/$GITHUB_REPOSITORY/issues?labels=ledger-health&state=open" \
+            --jq '[.[] | select(has("pull_request") | not)][0].number // empty')
+          if [ ! -s "$REPORT" ]; then
+            echo "ledger health: no warnings"
+            if [ "$BUILD" = success ] && [ -n "$issue" ]; then
+              gh issue close "$issue" --reason completed --comment "Clean: $RUN_URL"
+            fi
+            exit 0
+          fi
+          {
+            echo "The nightly ledger health tests found rows to check: likely duplicates, recurring flags with no series, and other warn-level tests. Ids and counts only; each test's comment in \`dbt/tests/\` says what it looks for. Fix or confirm the rows; the first clean night closes this issue."
+            echo
+            cat "$REPORT"
+          } > "$BODY"
+          cat "$BODY" >> "$GITHUB_STEP_SUMMARY"
+          gh label create ledger-health --color FBCA04 --description "The nightly dbt build found rows to check" --force
+          if [ -z "$issue" ]; then
+            gh issue create --label ledger-health --title "Ledger health warnings" --body-file "$BODY"
+          elif [ "$(gh issue view "$issue" --json body --jq .body)" != "$(cat "$BODY")" ]; then
+            gh issue edit "$issue" --body-file "$BODY"
+            gh issue comment "$issue" --body "The findings changed: $RUN_URL"
+          fi
 
       # One open issue at most: a failure, a timeout or a cancel opens it or
       # comments on it, a pass closes it. GitHub notifies the owner of both.
