@@ -14,6 +14,7 @@ import { ticked, type Keyboard } from "./mentions.js";
 import { dayNumber, halfPeriod, isoDate, proposeSeries, type Kind, type Slot } from "./recurring.js";
 import { applyReview, loadBook, missedRun, runDay, skipSlot, skipsSince, unskipSlot, type Book, type BookSeries } from "./recurring-db.js";
 import {
+  BACK_TO_DIGEST,
   candidates,
   cut,
   day,
@@ -258,7 +259,7 @@ export function parseDigestTap(data: string | undefined): DigestTap | null {
   return { op: OPS[m[1] as keyof typeof OPS], sid: Number(m[2]), due };
 }
 
-const BACK = [{ text: "‹ Back to digest", callback_data: "r:dv" }];
+const BACK = BACK_TO_DIGEST;
 /** Find's toggles are the review's: the menu flips them and recounts Apply. */
 const FIND_TOGGLE = /^r:bt:([0-9a-f-]{36})$/;
 

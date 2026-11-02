@@ -50,6 +50,8 @@ const telegram = {
   nextMessageId: 1,
   /** When each sent message was sent, in Unix seconds, by message_id. */
   sentAt: new Map<number, number>(),
+  /** Deletes refused, as Telegram refuses a message older than 48 hours. */
+  refuseDeletes: 0,
 };
 
 const EDITS = new Set(["editMessageText", "editMessageReplyMarkup"]);
@@ -204,6 +206,17 @@ const server = setupServer(
       telegram.sentAt.set(messageId, Math.floor(Date.now() / 1000));
       return HttpResponse.json({ ok: true, result: { message_id: messageId } });
     }
+    if (method === "deleteMessage") {
+      const id = Number(body.message_id);
+      const refused = telegram.refuseDeletes > 0 ? "message can't be deleted" : telegram.shown.has(id) ? null : "message to delete not found";
+      telegram.sent.push({ method, body, failed: refused !== null });
+      if (refused) {
+        if (telegram.refuseDeletes > 0) telegram.refuseDeletes--;
+        return HttpResponse.json({ ok: false, description: `Bad Request: ${refused}` }, { status: 400 });
+      }
+      telegram.shown.delete(id);
+      return HttpResponse.json({ ok: true, result: true });
+    }
     telegram.sent.push({ method, body, failed });
     if (EDITS.has(method)) {
       const id = Number(body.message_id);
@@ -286,6 +299,7 @@ export function useJourneys(): void {
     telegram.shown = new Map();
     telegram.nextMessageId = 1;
     telegram.sentAt = new Map();
+    telegram.refuseDeletes = 0;
     gemini.calls = [];
     gemini.lastSystem = "";
     gemini.lastUserText = [];
@@ -424,6 +438,14 @@ export const chat = {
         message: { message_id: reply.messageId, chat: { id: from }, text: shown.text, ...markup },
       },
     });
+  },
+  /** Whether a sent message is still in the chat (not deleted). */
+  exists(reply: Reply): boolean {
+    return telegram.shown.has(reply.messageId ?? -1);
+  },
+  /** The next n deletes are refused, as for a message older than 48 hours. */
+  refuseNextDeletes(n: number) {
+    telegram.refuseDeletes = n;
   },
   /** A sent message as it shows now, after any edits. */
   current(reply: Reply): Reply {

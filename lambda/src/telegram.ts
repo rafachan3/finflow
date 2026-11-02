@@ -135,6 +135,11 @@ export async function editMessageText(
   });
 }
 
+/** Deletes a sent message; Telegram refuses one older than 48 hours. */
+export async function deleteMessage(botToken: string, chatId: number, messageId: number): Promise<void> {
+  await postTelegram(botToken, "deleteMessage", { chat_id: chatId, message_id: messageId });
+}
+
 /** Sets the bot's command menu to the command table. Run by the deploy workflow. */
 export async function registerCommandMenu(botToken: string): Promise<void> {
   await postTelegram(botToken, "setMyCommands", { commands: commandMenu() });

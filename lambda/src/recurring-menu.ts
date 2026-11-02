@@ -13,10 +13,13 @@
  * (a ForceReply prompt; the reply is routed by its `#<sid>`) · `r:pd:<sid>:<from>`
  * asks for a typed pause end the same way ·
  * `r:x:<sid>` / `r:xy:<sid>` delete, asked then done ·
- * `r:a`, `r:ar:<offset>` pick a saved payment → `r:at:<uuid>` add from it
- * (`r:ae:<uuid>` lists every series it could join), `r:aj:<uuid>:<sid>`
+ * `r:a`, `r:ar:<offset>` pick a saved payment → `r:at:<uuid>[:<origin>]` add
+ * from it (`r:ae:…` lists every series it could join; ‹ Back goes to the
+ * origin, `r:sv:<uuid>` / `r:sc:<uuid>` put a Saved reply back with or
+ * without its buttons), `r:aj:<uuid>:<sid>`
  * adds it to that series, `r:av` flips "amount varies" in the keyboard only,
  * `r:ac:<uuid>:<c><v>` creates a new series with cadence code c and varies flag v.
+ * `r:z` closes the menu message (never a digest).
  * Dates are yyyymmdd, or `t` on a "today" button: the day it is tapped.
  */
 import { collapseSpaces } from "./commands.js";
@@ -49,13 +52,28 @@ import {
   pauseSeries,
   renameSeries,
   resumeSeries,
+  runDay,
   type Book,
   type BookRow,
   type BookSeries,
 } from "./recurring-db.js";
-import { answerCallbackQuery, editMessageReplyMarkup, editMessageText, esc, sendMessage } from "./telegram.js";
+import {
+  answerCallbackQuery,
+  deleteMessage,
+  editMessageReplyMarkup,
+  editMessageText,
+  esc,
+  sendMessage,
+} from "./telegram.js";
 
 export type Screen = { text: string; keyboard: Keyboard };
+
+/**
+ * Where the add screen was opened from, so ‹ Back returns there: the pick
+ * list (`a`, the default), the Saved reply (`s`), the legacy flags (`f`) or
+ * the suggestions (`g`).
+ */
+export type Origin = "a" | "s" | "f" | "g";
 
 export type RecurringTap =
   | { op: "list"; offset: number }
@@ -64,8 +82,10 @@ export type RecurringTap =
   | { op: "pauseUntil"; sid: number; from: string; until: string | null }
   | { op: "resume"; sid: number; on: string }
   | { op: "pick"; offset: number }
-  | { op: "addFrom"; tx: string; all?: boolean }
+  | { op: "addFrom"; tx: string; all?: boolean; from?: Origin }
   | { op: "join"; tx: string; sid: number }
+  | { op: "saved"; tx: string; buttons: boolean }
+  | { op: "close" }
   | { op: "varies" }
   | { op: "create"; tx: string; cadence: Cadence; varies: boolean }
   | { op: "review"; sid: number | null }
@@ -117,8 +137,9 @@ const TAPS: [RegExp, (m: RegExpExecArray) => RecurringTap][] = [
   [new RegExp(`^r:x:${SID}$`), (m) => ({ op: "askDelete", sid: Number(m[1]) })],
   [new RegExp(`^r:xy:${SID}$`), (m) => ({ op: "delete", sid: Number(m[1]) })],
   [/^r:a(?:r:(\d{1,4}))?$/, (m) => ({ op: "pick", offset: Number(m[1] ?? 0) })],
-  [new RegExp(`^r:at:${UUID}$`), (m) => ({ op: "addFrom", tx: m[1] })],
-  [new RegExp(`^r:ae:${UUID}$`), (m) => ({ op: "addFrom", tx: m[1], all: true })],
+  [new RegExp(`^r:a([te]):${UUID}(?::([sfg]))?$`), (m) => ({ op: "addFrom", tx: m[2], all: m[1] === "e", from: (m[3] ?? "a") as Origin })],
+  [new RegExp(`^r:s([vc]):${UUID}$`), (m) => ({ op: "saved", tx: m[2], buttons: m[1] === "v" })],
+  [/^r:z$/, () => ({ op: "close" })],
   [new RegExp(`^r:aj:${UUID}:${SID}$`), (m) => ({ op: "join", tx: m[1], sid: Number(m[2]) })],
   [/^r:av$/, () => ({ op: "varies" })],
   [
@@ -280,7 +301,10 @@ const KINDS = [
   ["transfer", "Transfers"],
 ] as const;
 
-const BACK_TO_LIST = [{ text: "‹ All recurring", callback_data: "r:l:0" }];
+const CLOSE = { text: "✕ Close", callback_data: "r:z" };
+const BACK_TO_LIST = [{ text: "‹ All recurring", callback_data: "r:l:0" }, CLOSE];
+/** First on every menu screen drawn on a digest message: the way back to it. */
+export const BACK_TO_DIGEST = [{ text: "‹ Back to digest", callback_data: "r:dv" }];
 const GONE: Screen = { text: "That series no longer exists.", keyboard: [BACK_TO_LIST] };
 
 /** The series, grouped by kind, 16 to a page, with a button each. */
@@ -321,10 +345,11 @@ export function listScreen(book: Book, today: string, offset = 0): Screen {
     ...(flagged > 0 ? [{ text: `⚑ Flagged (${flagged})`, callback_data: "r:f:0" }] : []),
   ];
   if (todo.length > 0) keyboard.push(todo);
-  const last = [{ text: "➕ Add", callback_data: "r:a" }];
-  if (offset > 0) last.push({ text: "‹ Back", callback_data: `r:l:${Math.max(0, offset - LIST_PAGE)}` });
-  if (sorted.length > offset + LIST_PAGE) last.push({ text: "More ›", callback_data: `r:l:${offset + LIST_PAGE}` });
-  keyboard.push(last);
+  const pages = [];
+  if (offset > 0) pages.push({ text: "‹ Back", callback_data: `r:l:${Math.max(0, offset - LIST_PAGE)}` });
+  if (sorted.length > offset + LIST_PAGE) pages.push({ text: "More ›", callback_data: `r:l:${offset + LIST_PAGE}` });
+  if (pages.length > 0) keyboard.push(pages);
+  keyboard.push([{ text: "➕ Add", callback_data: "r:a" }, CLOSE]);
   return { text: lines.join("\n"), keyboard };
 }
 
@@ -494,10 +519,11 @@ export function pickScreen(book: Book, offset: number): Screen {
   const free = book.rows.filter((r) => r.seriesId === null).reverse();
   const page = free.slice(offset, offset + PICK_PAGE);
   const keyboard: Keyboard = page.map((r) => [{ text: rowLabel(r), callback_data: `r:at:${r.id}` }]);
-  const last = [BACK_TO_LIST[0]];
-  if (offset > 0) last.push({ text: "‹ Back", callback_data: `r:ar:${Math.max(0, offset - PICK_PAGE)}` });
-  if (free.length > offset + PICK_PAGE) last.push({ text: "More ›", callback_data: `r:ar:${offset + PICK_PAGE}` });
-  keyboard.push(last);
+  const pages = [];
+  if (offset > 0) pages.push({ text: "‹ Back", callback_data: `r:ar:${Math.max(0, offset - PICK_PAGE)}` });
+  if (free.length > offset + PICK_PAGE) pages.push({ text: "More ›", callback_data: `r:ar:${offset + PICK_PAGE}` });
+  if (pages.length > 0) keyboard.push(pages);
+  keyboard.push(BACK_TO_LIST);
   const text =
     free.length === 0
       ? "<b>➕ Add a recurring item</b>\nNo saved payment is outside a series. Log the first one as usual, then come back."
@@ -557,14 +583,36 @@ export function joinable(book: Book, r: BookRow): Joinable[] {
 /** Join buttons the add screen shows before `All N series ›`. */
 const JOIN_SHOWN = 4;
 
+/** Where the add screen a tap came from was opened, read from its ‹ Back: for a redraw after a failed write. */
+function originOf(keyboard: Keyboard): Origin {
+  const back = keyboard.flat().find((b) => b.text === "‹ Back")?.callback_data ?? "";
+  if (back.startsWith("r:sv:")) return "s";
+  return back === ORIGIN_SCREEN.f ? "f" : back === ORIGIN_SCREEN.g ? "g" : "a";
+}
+
+/** The menu screen each origin's ‹ Back returns to; a Saved reply's is its own message. */
+const ORIGIN_SCREEN: Record<Exclude<Origin, "s">, string> = { a: "r:a", f: "r:f:0", g: "r:sg" };
+
+/** An add button's data ends in its origin, except the pick list's (the default, as older buttons carry). */
+function suffix(from: Origin): string {
+  return from === "a" ? "" : `:${from}`;
+}
+
 /**
  * Add, step 2: the series this payment could be added to, best fit first
  * (`↻ Add to <series>`, 4 of them, or all), then the new series it would
  * start, with the cadence its similar past payments suggest listed first.
- * Writes nothing; an Add to or a cadence tap does.
+ * Writes nothing; an Add to or a cadence tap does. ‹ Back returns to where
+ * it was opened from; Cancel leaves the add flow (a Saved reply goes back to
+ * a plain `Saved.`, a menu screen to the list).
  */
-export function addScreen(book: Book, txId: string, all = false): Screen {
-  const back = [[{ text: "‹ Back", callback_data: "r:a" }]];
+export function addScreen(book: Book, txId: string, all = false, from: Origin = "a"): Screen {
+  const back = [
+    [
+      { text: "‹ Back", callback_data: from === "s" ? `r:sv:${txId}` : ORIGIN_SCREEN[from] },
+      { text: "Cancel", callback_data: from === "s" ? `r:sc:${txId}` : "r:l:0" },
+    ],
+  ];
   const r = book.rows.find((x) => x.id === txId);
   if (!r) return { text: "That payment no longer exists.", keyboard: back };
   if (r.seriesId !== null) {
@@ -596,7 +644,7 @@ export function addScreen(book: Book, txId: string, all = false): Screen {
   const joinRows: Keyboard = shown.map((j) => [
     { text: `↻ Add to ${cut(j.series.name, 30)}`, callback_data: `r:aj:${r.id}:${j.series.id}` },
   ]);
-  if (shown.length < joins.length) joinRows.push([{ text: `All ${joins.length} series ›`, callback_data: `r:ae:${r.id}` }]);
+  if (shown.length < joins.length) joinRows.push([{ text: `All ${joins.length} series ›`, callback_data: `r:ae:${r.id}${suffix(from)}` }]);
   const order = suggested ? [suggested.cadence, ...CADENCE_ORDER.filter((c) => c !== suggested.cadence)] : CADENCE_ORDER;
   const buttons = order.map((c) => ({
     text: `${c === suggested?.cadence ? "✅ " : ""}${CADENCE_BUTTONS[c]}`,
@@ -622,10 +670,12 @@ export function addScreen(book: Book, txId: string, all = false): Screen {
  * A failed read leaves only the second: the payment is saved either way.
  */
 export async function savedKeyboard(txId: string): Promise<Keyboard> {
-  const add = [{ text: "↻ New recurring item", callback_data: `r:at:${txId}` }];
+  const add = [{ text: "↻ New recurring item", callback_data: `r:at:${txId}:s` }];
   try {
     const book = await loadBook();
     const r = book.rows.find((x) => x.id === txId);
+    // Added to a series since: nothing left to offer.
+    if (r && r.seriesId !== null) return [];
     const best = r && joinable(book, r).find((j) => !(book.excluded.get(j.series.id) ?? []).includes(txId));
     if (best?.dateFits && best.amountFits) {
       return [[{ text: `↻ Add to ${cut(best.series.name, 30)}`, callback_data: `r:aj:${txId}:${best.series.id}` }], add];
@@ -732,7 +782,7 @@ export function reviewScreen(book: Book, sid: number, today: string): Screen {
         ...(next.length ? [next] : []),
         // For a series that bills again only later (a free trial, a paused plan).
         [{ text: "⏳ Next payment not until…", callback_data: `r:pd:${sid}:t` }],
-        [{ text: `‹ ${cut(series.name, 30)}`, callback_data: `r:v:${sid}` }, BACK_TO_LIST[0]],
+        [{ text: `‹ ${cut(series.name, 30)}`, callback_data: `r:v:${sid}` }, ...BACK_TO_LIST],
       ],
     };
   }
@@ -772,15 +822,14 @@ export function flagsScreen(book: Book, offset: number): Screen {
   const page = rows.slice(offset, offset + REVIEW_PAGE);
   const keyboard: Keyboard = page.map((r) => [
     { text: `☐ ${rowLabel(r, 34)}`, callback_data: `r:ft:${r.id}` },
-    { text: "➕", callback_data: `r:at:${r.id}` },
+    { text: "➕", callback_data: `r:at:${r.id}:f` },
   ]);
   keyboard.push([
     { text: "", callback_data: "r:fk" },
     { text: "Select all", callback_data: "r:ba" },
   ]);
-  const nav = [BACK_TO_LIST[0]];
-  if (rows.length > offset + REVIEW_PAGE) nav.push({ text: "More ›", callback_data: `r:f:${offset + REVIEW_PAGE}` });
-  keyboard.push(nav);
+  if (rows.length > offset + REVIEW_PAGE) keyboard.push([{ text: "More ›", callback_data: `r:f:${offset + REVIEW_PAGE}` }]);
+  keyboard.push(BACK_TO_LIST);
   return {
     text: [
       `<b>⚑ Flagged recurring, in no series (${rows.length})</b>`,
@@ -803,7 +852,7 @@ export function suggestionsScreen(book: Book, today: string): Screen {
     const band = amountBand(members.map((r) => r.amount));
     lines.push(`• ${esc(name)} — ${cadenceText(p.fit.cadence, p.fit)} · ${payments(members.length)} · ~${money(band!.typical)}`);
     keyboard.push([
-      { text: `🔎 Track ${cut(name, 24)}`, callback_data: `r:at:${newest.id}` },
+      { text: `🔎 Track ${cut(name, 24)}`, callback_data: `r:at:${newest.id}:g` },
       { text: "Not recurring", callback_data: `r:gd:${newest.id}` },
     ]);
   }
@@ -881,39 +930,45 @@ async function respond(tap: RecurringTap, ctx: TapContext): Promise<Outcome> {
     case "pick":
       return { screen: pickScreen(await loadBook(), tap.offset) };
     case "addFrom":
-      return { screen: addScreen(await loadBook(), tap.tx, tap.all) };
+      return { screen: addScreen(await loadBook(), tap.tx, tap.all, tap.from) };
+    case "saved":
+      // The Saved reply the add flow was opened on, with its buttons (Back) or without (Cancel).
+      return { screen: { text: "Saved.", keyboard: tap.buttons ? await savedKeyboard(tap.tx) : [] } };
     case "join": {
       // applyReview links only a payment still in no series, of the series'
       // kind and keys, under a lock on the series; null when it is gone.
       const result = await applyReview(tap.sid, [tap.tx], []);
       const book = await loadBook();
       const series = book.series.find((s) => s.id === tap.sid);
-      if (result === null || !series) return { screen: addScreen(book, tap.tx), ack: "That series no longer exists." };
+      if (result === null || !series) return { screen: addScreen(book, tap.tx, false, originOf(ctx.keyboard)), ack: "That series no longer exists." };
       if (result.linked > 0) return { screen: detailScreen(book, tap.sid, ctx.today), ack: `Added to ${series.name}.` };
       const row = book.rows.find((r) => r.id === tap.tx);
       // A double tap or a Telegram retry: the first tap's screen stays.
       if (row?.seriesId === tap.sid) return { ack: `Already in ${series.name}.` };
       // Gone, or in another series: links are never moved. The add screen says which.
-      if (!row) return { screen: addScreen(book, tap.tx), ack: "That payment no longer exists." };
+      if (!row) return { screen: addScreen(book, tap.tx, false, originOf(ctx.keyboard)), ack: "That payment no longer exists." };
       if (row.seriesId !== null) {
         const other = book.series.find((s) => s.id === row.seriesId);
-        return { screen: addScreen(book, tap.tx), ack: `Not added: it is already in ${other?.name ?? "another series"}.` };
+        return { screen: addScreen(book, tap.tx, false, originOf(ctx.keyboard)), ack: `Not added: it is already in ${other?.name ?? "another series"}.` };
       }
       return { ack: `That payment can't join ${series.name}: another kind, source or account.` };
     }
+    case "close":
+      // Telegram calls, done by handleRecurringTap.
+      return {};
     case "varies":
       return { keyboard: flipVaries(ctx.keyboard) };
     case "create": {
       const book = await loadBook();
       const row = book.rows.find((r) => r.id === tap.tx);
-      if (!row) return { screen: addScreen(book, tap.tx) };
+      if (!row) return { screen: addScreen(book, tap.tx, false, originOf(ctx.keyboard)) };
       const name = defaultName(book, row);
       const result = await createSeries({ transactionId: tap.tx, name, cadence: tap.cadence, amountVaries: tap.varies });
       // Every series creation reviews all history at once (design §D.3, P2).
       if ("created" in result) return { screen: reviewScreen(await loadBook(), result.created, ctx.today), ack: `Tracking ${name}.` };
       if ("already" in result) return { ack: `Already tracked as ${result.name}.` };
       if ("taken" in result) return { ack: "That name was just taken. Tap again." };
-      if ("missing" in result) return { screen: addScreen(await loadBook(), tap.tx) };
+      if ("missing" in result) return { screen: addScreen(await loadBook(), tap.tx, false, originOf(ctx.keyboard)) };
       return { ack: "Can't make a series from this payment." };
     }
     case "review": {
@@ -969,19 +1024,53 @@ async function respond(tap: RecurringTap, ctx: TapContext): Promise<Outcome> {
   }
 }
 
+/** A menu screen drawn on a digest message: ‹ Back to digest first, and no Close. */
+function onDigest(screen: Screen): Screen {
+  const rows = screen.keyboard.map((row) => row.filter((b) => b.callback_data !== CLOSE.callback_data));
+  return { text: screen.text, keyboard: [BACK_TO_DIGEST, ...rows.filter((row) => row.length > 0)] };
+}
+
+/**
+ * Close: deletes the menu message. Telegram refuses to delete one older than
+ * 48 hours; that one is edited into a plain "Closed." with no buttons. A
+ * failure of both is only logged, so Telegram does not retry the tap.
+ */
+async function close(ctx: TapContext): Promise<void> {
+  try {
+    await deleteMessage(ctx.botToken, ctx.chatId, ctx.messageId);
+  } catch (err) {
+    console.error("menu delete refused", err);
+    try {
+      await editMessageText(ctx.botToken, ctx.chatId, ctx.messageId, "Closed.");
+    } catch (editErr) {
+      console.error("menu close error", editErr);
+    }
+  }
+}
+
 /**
  * A tap on a /recurring button. The message is edited first and the tap
  * answered after, so the button's spinner holds until the screen changes.
  */
 export async function handleRecurringTap(tap: RecurringTap, ctx: TapContext): Promise<void> {
+  // A digest the bot sent stays a digest: Close never deletes it, and every
+  // screen drawn on it starts with the way back to it.
+  const digest = (await runDay(ctx.chatId, ctx.messageId)) !== null;
+  if (tap.op === "close") {
+    if (!digest) await close(ctx);
+    await answerCallbackQuery(ctx.botToken, ctx.callbackId, digest ? "The digest stays. Tap ‹ Back to digest." : undefined);
+    return;
+  }
   const outcome = await respond(tap, ctx);
   if (outcome.screen) {
-    const { text, keyboard } = outcome.screen;
+    const { text, keyboard } = digest ? onDigest(outcome.screen) : outcome.screen;
     await editMessageText(ctx.botToken, ctx.chatId, ctx.messageId, text, keyboard, { html: true });
   }
+  // Later empties the keyboard: on a digest, the way back stays.
+  const keyboard = digest && outcome.keyboard?.length === 0 ? [BACK_TO_DIGEST] : outcome.keyboard;
   // Telegram refuses an edit that changes nothing.
-  if (outcome.keyboard && JSON.stringify(outcome.keyboard) !== JSON.stringify(ctx.keyboard)) {
-    await editMessageReplyMarkup(ctx.botToken, ctx.chatId, ctx.messageId, { inline_keyboard: outcome.keyboard });
+  if (keyboard && JSON.stringify(keyboard) !== JSON.stringify(ctx.keyboard)) {
+    await editMessageReplyMarkup(ctx.botToken, ctx.chatId, ctx.messageId, { inline_keyboard: keyboard });
   }
   if (outcome.prompt) {
     await sendMessage(ctx.botToken, ctx.chatId, outcome.prompt, {

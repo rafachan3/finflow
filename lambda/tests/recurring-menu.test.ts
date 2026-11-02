@@ -75,15 +75,16 @@ describe("the /recurring list", () => {
     const first = listScreen(book(17), "2026-10-31");
     expect(first.text.split("\n").filter((l) => l.startsWith("•"))).toHaveLength(16);
     expect(first.text).toContain("• Bill 01 — monthly · varies · no payments linked");
-    expect(first.keyboard.map((row) => row.length)).toEqual([2, 2, 2, 2, 2, 2, 2, 2, 2]);
-    expect(first.keyboard.at(-1)).toEqual([
-      { text: "➕ Add", callback_data: "r:a" },
-      { text: "More ›", callback_data: "r:l:16" },
+    expect(first.keyboard.map((row) => row.length)).toEqual([2, 2, 2, 2, 2, 2, 2, 2, 1, 2]);
+    expect(first.keyboard.slice(-2)).toEqual([
+      [{ text: "More ›", callback_data: "r:l:16" }],
+      [{ text: "➕ Add", callback_data: "r:a" }, { text: "✕ Close", callback_data: "r:z" }],
     ]);
     const second = listScreen(book(17), "2026-10-31", 16);
     expect(second.keyboard).toEqual([
       [{ text: "Bill 17", callback_data: "r:v:17" }],
-      [{ text: "➕ Add", callback_data: "r:a" }, { text: "‹ Back", callback_data: "r:l:0" }],
+      [{ text: "‹ Back", callback_data: "r:l:0" }],
+      [{ text: "➕ Add", callback_data: "r:a" }, { text: "✕ Close", callback_data: "r:z" }],
     ]);
   });
 });
@@ -126,11 +127,11 @@ describe("adding a series", () => {
       row({ id: `11111111-1111-4111-8111-${String(i).padStart(12, "0")}`, date: `2026-10-${String(i + 10)}` }),
     );
     const many = { ...empty, rows };
-    expect(pickScreen(many, 0).keyboard.at(-1)!.map((b) => b.callback_data)).toEqual(["r:l:0", "r:ar:8"]);
+    expect(pickScreen(many, 0).keyboard.slice(-2).map((row) => row.map((b) => b.callback_data))).toEqual([["r:ar:8"], ["r:l:0", "r:z"]]);
     const second = pickScreen(many, 8).keyboard;
-    expect(second).toHaveLength(2);
-    expect(second.at(-1)!.map((b) => b.text)).toEqual(["‹ All recurring", "‹ Back"]);
-    expect(second.at(-1)![1].callback_data).toBe("r:ar:0");
+    expect(second).toHaveLength(3);
+    expect(second.slice(-2).map((row) => row.map((b) => b.text))).toEqual([["‹ Back"], ["‹ All recurring", "✕ Close"]]);
+    expect(second.at(-2)![0].callback_data).toBe("r:ar:0");
   });
 
   it("an add screen for a payment already in a series, or gone, says so", () => {
@@ -300,8 +301,14 @@ describe("recurring callback data", () => {
     expect(parseRecurringTap("r:xy:3", "2026-10-31")).toEqual({ op: "delete", sid: 3 });
     expect(parseRecurringTap("r:a", "2026-10-31")).toEqual({ op: "pick", offset: 0 });
     expect(parseRecurringTap("r:ar:8", "2026-10-31")).toEqual({ op: "pick", offset: 8 });
-    expect(parseRecurringTap(`r:at:${TX}`, "2026-10-31")).toEqual({ op: "addFrom", tx: TX });
-    expect(parseRecurringTap(`r:ae:${TX}`, "2026-10-31")).toEqual({ op: "addFrom", tx: TX, all: true });
+    expect(parseRecurringTap(`r:at:${TX}`, "2026-10-31")).toEqual({ op: "addFrom", tx: TX, all: false, from: "a" });
+    expect(parseRecurringTap(`r:at:${TX}:s`, "2026-10-31")).toEqual({ op: "addFrom", tx: TX, all: false, from: "s" });
+    expect(parseRecurringTap(`r:ae:${TX}:g`, "2026-10-31")).toEqual({ op: "addFrom", tx: TX, all: true, from: "g" });
+    expect(parseRecurringTap(`r:ae:${TX}`, "2026-10-31")).toEqual({ op: "addFrom", tx: TX, all: true, from: "a" });
+    expect(parseRecurringTap(`r:at:${TX}:x`, "2026-10-31")).toBeNull();
+    expect(parseRecurringTap(`r:sv:${TX}`, "2026-10-31")).toEqual({ op: "saved", tx: TX, buttons: true });
+    expect(parseRecurringTap(`r:sc:${TX}`, "2026-10-31")).toEqual({ op: "saved", tx: TX, buttons: false });
+    expect(parseRecurringTap("r:z", "2026-10-31")).toEqual({ op: "close" });
     expect(parseRecurringTap(`r:aj:${TX}:4294967295`, "2026-10-31")).toEqual({ op: "join", tx: TX, sid: 4294967295 });
     expect(Buffer.byteLength(`r:aj:${TX}:4294967295`)).toBeLessThanOrEqual(64);
     expect(parseRecurringTap(`r:aj:${TX}`, "2026-10-31")).toBeNull();

@@ -108,7 +108,7 @@ describe("/recurring list and detail", () => {
     expect(labels(list)).toContain("Phone bill ⏸");
     await chat.tap(list, "Phone bill ⏸");
     expect(chat.current(list).text).toContain("\n⏸ paused since Sep 1, resumes Dec 1");
-    expect(labels(chat.current(list))).toEqual(["▶️ Resume today", "✏️ Rename", "🗑 Delete", "‹ All recurring"]);
+    expect(labels(chat.current(list))).toEqual(["▶️ Resume today", "✏️ Rename", "🗑 Delete", "‹ All recurring", "✕ Close"]);
   });
 
   it("a name or description with &, < or > is shown as typed in every HTML screen", async () => {
@@ -167,7 +167,7 @@ describe("add from a saved transaction", () => {
       ].join("\n"),
     );
     expect(labels(chat.current(list))).toEqual([
-      "✅ Monthly", "Twice a month", "Every 2 weeks", "Weekly", "Quarterly", "Yearly", "☐ Amount varies", "‹ Back",
+      "✅ Monthly", "Twice a month", "Every 2 weeks", "Weekly", "Quarterly", "Yearly", "☐ Amount varies", "‹ Back", "Cancel",
     ]);
 
     // The toggle edits only the keyboard.
