@@ -25,6 +25,10 @@ nightly pass closes it.
 5. **This repo is public.** No tokens, chat IDs, database URLs, or personal
    identifiers in tracked files. Secrets live in SSM Parameter Store, GitHub
    Actions secrets, or `.env` — never in Terraform variables or state.
+   Issue, PR and commit text is public; issue/PR edit history stays. Leave out who
+   pays, people by name or relation, immigration, legal, health or job status, real
+   amounts, home, school, employer; use invented items, "another person". After a
+   leak, recreate the issue or PR, `gh issue delete` the old, tell the owner what to delete.
 6. **Low friction wins.** Input priority is photos → voice → text. A change
    that adds a step to logging an expense is a regression.
 
