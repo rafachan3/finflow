@@ -28,8 +28,7 @@ nightly pass closes it.
    Issue, PR and commit text is public; issue/PR edit history stays. Leave out who
    pays, people by name or relation, immigration, legal, health or job status, real
    amounts, home, school, employer; use invented items, "another person". After a
-   leak, recreate the issue or PR, `gh issue delete` the old, tell the owner which
-   revisions to delete in the GitHub UI.
+   leak, recreate the issue or PR, `gh issue delete` the old, tell the owner what to delete.
 6. **Low friction wins.** Input priority is photos → voice → text. A change
    that adds a step to logging an expense is a regression.
 
