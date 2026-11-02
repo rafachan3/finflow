@@ -524,6 +524,13 @@ those inputs; the contract and the mart were right. The fixture gains
 2026-03 (only a withdrawal), 2026-04 (only a transfer) and 2026-05
 (income, interest and spend, nothing moved). No migration.
 
+Duplicate warning sums parts (branch `fix/duplicate-sum-of-parts`, DECISIONS.md
+2026-11-01): an expense card that no single entry matches also gets `! may
+repeat 2 earlier entries around <date> that add up to this total` when 2 or 3
+saved entries or open cards within 1 day add up to its amount exactly (nearest
+12 tried). Warning only. Follow-up: offer to merge a receipt into earlier typed
+entries: needs design.
+
 ## Next concrete step
 
 Phase 4.5 — Proactive nudges, PR 4 (`feat/nudge-infra`, Terraform only) in

@@ -602,6 +602,20 @@ describe("duplicateWarnings", () => {
     ).toEqual(['Possible duplicate: CAD 12.50 on 2026-10-27, "Lunch" (still pending) (+1 more)']);
   });
 
+  it("says in plain words that earlier entries add up to the total, and counts amount matches only", () => {
+    const parts = { ...saved, rule: "parts", date: "2026-10-24", parts: 2 } as const;
+    expect(duplicateWarnings([parts])).toEqual([
+      "may repeat 2 earlier entries around 2026-10-24 that add up to this total",
+    ]);
+    expect(duplicateWarnings([{ ...parts, parts: 3 }])[0]).toContain("may repeat 3 earlier entries");
+    expect(duplicateWarnings([saved, parts])).toEqual([
+      'Possible duplicate: CAD 23.47 on 2026-10-25, "Big Box Market groceries" (saved)',
+    ]);
+    expect(duplicateWarnings([{ ...saved, rule: "photo" }, saved, parts])).toEqual([
+      "Same photo as a card from 2026-10-25 (saved)",
+    ]);
+  });
+
   it("shows only the photo match when there is one", () => {
     expect(
       duplicateWarnings([{ ...saved, rule: "photo", date: "2026-10-26" }, saved, saved]),

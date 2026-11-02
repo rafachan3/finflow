@@ -21,7 +21,7 @@ function event(file: string, index = 0, over: Event = {}): Event {
 }
 
 function warnings(text: string): string[] {
-  return text.split("\n").filter((l) => /^! (Same photo|Possible duplicate)/.test(l));
+  return text.split("\n").filter((l) => /^! (Same photo|Possible duplicate|may repeat)/.test(l));
 }
 
 describe("duplicate warning", () => {
@@ -100,6 +100,40 @@ describe("duplicate warning", () => {
     const cards = chat.replies();
     expect(cards).toHaveLength(2);
     expect(cards.flatMap((c) => warnings(c.text))).toEqual([]);
+  });
+
+  it("items typed one by one, then sent as one receipt total, warn that earlier entries add up to it", async () => {
+    const [sub] = (golden("text-with-note").recorded as { events: { items: object[] }[] }).events[0].items;
+    const typed = (amount: string, description: string) => ({
+      events: [event("text-with-note", 0, { amount, description, items: [{ ...sub, description, amount }] })],
+    });
+    gemini.extract = typed("4.10", "Bagel");
+    await chat.text("4.10 bagel on Oct 25");
+    await chat.tap(chat.last(), "Confirm");
+    gemini.extract = typed("7.35", "Pudding");
+    await chat.text("7.35 pudding on Oct 25");
+    expect(warnings(chat.last().text)).toEqual([]);
+    await chat.tap(chat.last(), "Confirm");
+
+    gemini.extract = {
+      events: [
+        event("text-with-note", 0, {
+          amount: "11.45",
+          description: "Coffee shop receipt",
+          items: [
+            { ...sub, description: "Bagel", amount: "4.10" },
+            { ...sub, description: "Pudding", amount: "7.35" },
+          ],
+        }),
+      ],
+    };
+    await chat.photo();
+    const card = chat.last();
+    expect(warnings(card.text)).toEqual([
+      "! may repeat 2 earlier entries around 2026-10-25 that add up to this total",
+    ]);
+    expect(card.text).toContain("Confirm to save");
+    expect(labels(card)).toEqual(REVIEW);
   });
 
   it("a Fix date that moves a card next to a saved purchase warns on the new card", async () => {

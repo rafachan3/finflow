@@ -2348,3 +2348,24 @@ debt as a spend bucket (`bucket = 'financial_future'` would break `spend`
 and the identity); percentages of spend instead of income (the owner wants
 share of income); per-month target history; a cumulative financial-future
 metric; a Telegram command or card for this view (Phase 5 charts the mart).
+
+## 2026-11-01 - Duplicate warning also sums parts
+
+**Decision:** an expense card also warns when 2 or 3 earlier entries of the
+same type, each within 1 day of its day, add up exactly to its amount.
+Closes the gap where a receipt's items were typed one by one and the receipt
+total then matched no single entry.
+
+- **Warning only, one line.** `! may repeat 2 earlier entries around <date>
+  that add up to this total`; Confirm stays, nothing is stored, no Gemini
+  call, no migration, and a failed check still sends the card.
+- **Exact numeric sum, bounded.** Candidates are saved transactions and the
+  chat's open cards (never the card's own update, never discarded), nearest
+  day first, capped at 12; a pair is preferred to a triple. A photo match
+  and any single-amount match still come first.
+- **Expenses only for now.** Income and transfers are not summed: they are
+  rarely typed in parts.
+
+**Ruled out:** a "replace the earlier entries with this receipt" button (needs
+its own design); a wider window or more than 3 parts (more false hits on
+ordinary same-day purchases); summing in floating point.
