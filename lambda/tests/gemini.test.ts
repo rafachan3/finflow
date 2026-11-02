@@ -1075,6 +1075,57 @@ describe("multi-event extraction", () => {
     expect(patchSystem).toContain("A correction to the tip or tax replaces the old value, it does not add to it");
   });
 
+  /** The system prompt of each of the four calls: text, photo, voice, Edit. */
+  async function fourSystems(): Promise<string[]> {
+    const fetchMock = vi.fn().mockImplementation(async () => ({
+      ok: true,
+      json: async () => geminiJson(events(extracted)),
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    const base = { apiKey: "k", taxonomy, bucketRules: "", today: "2026-08-17" };
+    const media = { ...base, caption: "", mimeType: "image/jpeg" };
+    await extractFromText({ ...base, text: "lunch 20" });
+    await extractFromPhoto({ ...media, image: Buffer.from([0xff]) });
+    await extractFromVoice({ ...media, mimeType: "audio/ogg", audio: Buffer.from([0x4f]) });
+    fetchMock.mockImplementationOnce(async () => ({ ok: true, json: async () => geminiJson(extracted) }));
+    await patchExtraction({ ...base, current, correction: "it was 14" });
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+    return fetchMock.mock.calls.map(
+      ([, init]) => JSON.parse(init.body as string).systemInstruction.parts[0].text as string,
+    );
+  }
+
+  it("tells text, photo, voice and Edit to tax only the flagged lines and split a tip by pre-tax price", async () => {
+    for (const system of await fourSystems()) {
+      expect(system).toContain("Tax goes only on the lines the receipt flags as taxable (a code such as FP, F, P, T or TX");
+      expect(system).toContain("a line with no flag gets no tax");
+      expect(system).toContain("When a receipt shows tax but flags no line, spread the tax over all lines");
+      expect(system).toContain("Split a tip over all lines in proportion to each line's price before tax");
+      expect(system).toContain("put any leftover cent on the largest line");
+      expect(system).toContain("Bagel 4.00 + 0.60 tip = 4.60, Pudding 6.00 + 0.70 tax + 0.90 tip = 7.60, header 12.20");
+    }
+  });
+
+  it("tells text, photo, voice and Edit to leave the venue null unless the place clearly is a listed one", async () => {
+    for (const system of await fourSystems()) {
+      expect(system).toContain("venue is a name from the Venues list only when the place clearly is that kind of place");
+      expect(system).toContain(
+        "A dollar or discount store, hardware store, department store, online shop, rideshare or warehouse store is none of them: return null",
+      );
+      expect(system).toContain("Never pick the nearest venue");
+    }
+  });
+
+  it("tells text, photo, voice and Edit to prefer a 4-digit-year date and read NN/NN/NN within the last year", async () => {
+    for (const system of await fourSystems()) {
+      expect(system).toContain("Today is 2026-08-17");
+      expect(system).toContain("use the 4-digit one");
+      expect(system).toContain("choose the reading that falls within the 12 months before today");
+      expect(system).toContain("read it as year/month/day (26/09/22 is 2026-09-22)");
+      expect(system).toContain("Never return a date more than a year from today unless the message says so");
+    }
+  });
+
   it("asks text, photo, voice and Edit for each line's own tags, before its bucket", async () => {
     const fetchMock = vi.fn().mockImplementation(async () => ({
       ok: true,
