@@ -146,7 +146,7 @@ export function parseRecurringTap(data: string | undefined, today: string): Recu
 // ---- Formatting -----------------------------------------------------------
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+export const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 /** `Oct 15`. */
 export function day(iso: string): string {
@@ -199,13 +199,13 @@ function capitalise(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-function cut(text: string, max: number): string {
+export function cut(text: string, max: number): string {
   return text.length <= max ? text : `${text.slice(0, max - 1).trimEnd()}…`;
 }
 
 // ---- What a series looks like today ----------------------------------------
 
-interface SeriesView {
+export interface SeriesView {
   series: BookSeries;
   /** Its payments, oldest first. */
   linked: BookRow[];
@@ -219,7 +219,7 @@ interface SeriesView {
   next: Slot | null;
 }
 
-function viewOf(book: Book, series: BookSeries, today: string): SeriesView {
+export function viewOf(book: Book, series: BookSeries, today: string): SeriesView {
   const linked = book.rows.filter((r) => r.seriesId === series.id);
   const pauses = book.pauses.get(series.id) ?? [];
   const { fit, slots } = occurrences({
@@ -558,7 +558,7 @@ export function flipVaries(keyboard: Keyboard): Keyboard {
 
 // ---- Verify past payments, legacy flags, suggestions ------------------------
 
-const REVIEW_PAGE = 8;
+export const REVIEW_PAGE = 8;
 /** The toggles of the review (`r:bt`) and legacy-flag (`r:ft`) screens. */
 const REVIEW_TOGGLE = new RegExp(`^r:[bf]t:${UUID}$`);
 
@@ -567,7 +567,7 @@ const REVIEW_TOGGLE = new RegExp(`^r:[bf]t:${UUID}$`);
  * excluded from it, that match it strongly or weakly. Strong ones and those
  * flagged recurring before are ticked; weak ones are not.
  */
-function candidates(book: Book, s: BookSeries): { row: BookRow; ticked: boolean }[] {
+export function candidates(book: Book, s: BookSeries): { row: BookRow; ticked: boolean }[] {
   const history = {
     series: s,
     linked: book.rows.filter((r) => r.seriesId === s.id),
@@ -583,7 +583,7 @@ function candidates(book: Book, s: BookSeries): { row: BookRow; ticked: boolean 
 }
 
 /** Every payment some series still offers for review. */
-function toReview(book: Book): Set<string> {
+export function toReview(book: Book): Set<string> {
   return new Set(book.series.flatMap((s) => candidates(book, s).map((c) => c.row.id)));
 }
 
@@ -592,7 +592,7 @@ function flaggedRows(book: Book): BookRow[] {
   return book.rows.filter((r) => r.flagged && r.seriesId === null).reverse();
 }
 
-function toggleLabel(r: BookRow, ticked: boolean): string {
+export function toggleLabel(r: BookRow, ticked: boolean): string {
   return `${ticked ? "✅" : "☐"} ${r.flagged ? "⚑ " : ""}${rowLabel(r, 36)}`;
 }
 
@@ -604,7 +604,8 @@ export function recount(keyboard: Keyboard): Keyboard {
   const { ids, shown } = ticked(keyboard, REVIEW_TOGGLE);
   return keyboard.map((row) =>
     row.map((b) =>
-      b.callback_data.startsWith("r:bk:")
+      // r:da: is the digest's Find screen's Apply.
+      b.callback_data.startsWith("r:bk:") || b.callback_data.startsWith("r:da:")
         ? { ...b, text: `✅ Link ${ids.length} · ignore ${shown - ids.length}` }
         : b.callback_data === "r:fk"
           ? { ...b, text: `Clear flag on ticked (${ids.length})` }
@@ -736,6 +737,8 @@ export type TapContext = {
   messageId: number;
   /** The keyboard as Telegram sent it back with the tap. */
   keyboard: Keyboard;
+  /** The message's text as the reader sees it, as Telegram sent it back. */
+  text?: string;
   today: string;
 };
 

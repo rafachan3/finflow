@@ -2,8 +2,8 @@
 
 Living state of the project. Read this first; update it whenever work lands.
 
-**Last updated:** 2026-10-31
-**Current phase:** Phase 4.5 — Proactive nudges, in progress: PR 1 (schema and detection) merged and migration 0016 applied; PR 2 (`/recurring` menu, add, backfill-verify) merged as #87; PR 3 (the card proposes and links the series) merged as #88; PR 4 (nudge Terraform, `feat/nudge-infra`) in review, apply before PR 5 merges (see [ROADMAP.md](ROADMAP.md) and Next concrete step). Alongside: financial-future metrics PR C (`feat/financial-future-metrics`, migration 0018) in review
+**Last updated:** 2026-11-01
+**Current phase:** Phase 4.5 — Proactive nudges, in progress: PRs 1-4 merged (#86 with migration 0016 applied, #87, #88, #94 with Terraform applied); PR 5 (the daily digest, `feat/recurring-digest`, migration 0019) in review (see [ROADMAP.md](ROADMAP.md) and Next concrete step)
 
 ## Phase progress
 
@@ -16,7 +16,7 @@ Living state of the project. Read this first; update it whenever work lands.
 - [x] Phase 3.6 — Regression test suite — **accepted 2026-10-29: deliberate-break PR #48 blocked (unit + inventory failed, BLOCKED), clean PRs #46/#47 green, smoke step green on deploy run 40803017809, `main` protected** (2026-10-29)
 - [x] Phase 3.5 — Ingestion follow-ons — **accepted 2026-10-29 by the journey tests (no phone test): 25 of 25 passed in `line-tags`, `duplicates` and `merchants`; see Next concrete step** (2026-10-29)
 - [x] Phase 4 — dbt semantic layer + MetricFlow — **accepted 2026-10-30: `dbt build`, the hand-written-SQL reconciliation and `mf query` vs the marts green in CI on the fixture (#72-#78) and on production in `dbt-nightly` run 41157900716 (87 of 87 nodes, 14 metrics, 5 months); real-month hand verification deferred** (2026-10-30)
-- [ ] Phase 4.5 — Proactive nudges (recurring reminders, merchant recommendations) — **PRs 1-3 of 7 merged (#86 with migration 0016 applied, #87, #88); PR 4 (nudge Terraform) in review** (2026-10-31)
+- [ ] Phase 4.5 — Proactive nudges (recurring reminders, merchant recommendations) — **PRs 1-4 of 7 merged (#86 with migration 0016 applied, #87, #88, #94 with Terraform applied); PR 5 (daily digest, migration 0019) in review** (2026-11-01)
 - [ ] Phase 5 — Grafana dashboards
 - [ ] Phase 6 — Claude analytics agent (subagents + Postgres MCP)
 - [ ] Phase 7 — Open-source polish
@@ -524,6 +524,22 @@ those inputs; the contract and the mart were right. The fixture gains
 2026-03 (only a withdrawal), 2026-04 (only a transfer) and 2026-05
 (income, interest and spend, nothing moved). No migration.
 
+Phase 4.5 PR 5 (`feat/recurring-digest`, in review): the daily digest. At
+09:00 Toronto `finflow-nudge` (`lambda/src/nudge.ts`, `npm run
+bundle:nudge`) sends each allowlisted chat one HTML message: Due now, Coming
+up (7 days), Not logged (10 shown, the rest in an expandable quote), the 🧹
+review and 🔎 suggestion counts, and `⚠️ No digest on <day>` after a missed
+day. Silent unless a payment turned not logged or a fixed expense's window
+opened that day; a varying amount (interest) only says "log it when it
+posts". Each chat's day is claimed in `nudge_runs` (migration 0019) before
+the send: a duplicate or retry sends nothing, a send Telegram refused is
+retried by the schedule (three attempts at most), one with no answer is not.
+Its buttons arrive at the webhook: ⏭ Skip and ↩ Undo write or remove one
+`recurring_skips` row and redraw the digest in place (found by chat and
+message id); 🔍 Find lists unlinked look-alikes around that date as review
+toggles, or says how to log it. The deploy workflow now also ships the nudge
+code (`Update nudge function code`).
+
 Duplicate warning sums parts (branch `fix/duplicate-sum-of-parts`, DECISIONS.md
 2026-11-01): an expense card that no single entry matches also gets `! may
 repeat 2 earlier entries around <date> that add up to this total` when 2 or 3
@@ -549,19 +565,18 @@ the prompt-only rule gave inconsistent splits under Lite).
 
 ## Next concrete step
 
-Phase 4.5 — Proactive nudges, PR 4 (`feat/nudge-infra`, Terraform only) in
-review: the `finflow-nudge` Lambda shell (bootstrap stub, no Function URL,
-reads three SSM parameters), its log group, and an EventBridge Scheduler
-schedule at 09:00 America/Toronto whose role may only invoke that function;
-the deploy role may also update its code. After merge, `terraform plan`
-should show only adds in `infra/nudge_lambda.tf` plus one in-place change to
-`aws_iam_role_policy.ingest_deploy`; stop on anything else. Apply it
-**before PR 5 merges** (PR 5's deploy step needs the function to exist);
-until then the scheduled stub returns 200 and does nothing. The owner's
-backfill can run now: `/recurring` → ⚑ Flagged and ➕ Add for each real
-bill, salary and transfer. Then PR 5 (daily digest), PR 6 (migration 0017, after the owner's backfill), PR 7
-(acceptance). `fixed_base_burn` stays thin until the backfill links real
-history; expect it to rise then.
+Phase 4.5 PR 5 (`feat/recurring-digest`) in review. Code review done
+(2026-11-02, fix first): its five should-fix items and nits are fixed on
+the branch (skip only at a payment's own date, Undo only for skips since
+the digest's day, Find's own Apply `r:da`, every list cut to 3,500
+visible characters, one chat's failure no longer stops the others).
+Migration 0019 is already applied to production. After the merge
+and the deploy run: invoke once by hand (`aws lambda invoke --function-name
+finflow-nudge` with today's `scheduled_time`) and check the log line's
+outcome reads `sent` or `empty`. Then PR 6 (the flag-equals-link
+constraint, after the owner's backfill), PR 7 (acceptance).
+`fixed_base_burn` stays thin until the backfill links real history; expect
+it to rise then.
 
 Phase 4 is accepted (2026-10-30). Optional and deferred: hand-verify real
 numbers for one complete month against the owner's records (on hold until

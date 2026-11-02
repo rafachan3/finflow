@@ -106,6 +106,14 @@ erDiagram
     text group_key PK
   }
 
+  nudge_runs {
+    date run_date PK
+    bigint chat_id PK
+    text status "claimed | sent | empty | failed"
+    smallint attempts "1-3"
+    integer message_id "set once sent"
+  }
+
   transaction_items {
     uuid id PK
     uuid transaction_id FK
@@ -463,6 +471,23 @@ create table budget_targets (
 );
 insert into budget_targets (needs_percent, wants_percent, financial_future_percent)
 values (50, 30, 20);
+
+-- The daily digest's runs (migration 0019): one row per Toronto day per chat,
+-- claimed before the send so a retried or duplicated schedule sends nothing.
+-- Only a definite Telegram refusal ('failed') is claimed again, at most three
+-- attempts. message_id is the sent digest; its buttons find the run by it.
+create table nudge_runs (
+  run_date   date     not null,
+  chat_id    bigint   not null,
+  status     text     not null check (status in ('claimed', 'sent', 'empty', 'failed')),
+  attempts   smallint not null default 1 check (attempts between 1 and 3),
+  message_id integer,
+  updated_at timestamptz not null default now(),
+  primary key (run_date, chat_id),
+  check ((status = 'sent') = (message_id is not null))
+);
+create unique index nudge_runs_message_key on nudge_runs (chat_id, message_id)
+  where message_id is not null;
 ```
 
 ## Roles and schemas
@@ -637,4 +662,8 @@ bump when SSM rules change.
   (application logic, dbt test `recurring_link_not_excluded`).
 - Pauses of one series never overlap (exclusion constraint, dbt test
   `recurring_pauses_do_not_overlap`).
+- At most one digest run per Toronto day and chat (primary key), and a run
+  has a `message_id` exactly when it was sent (check constraint). A run
+  stuck at `claimed` (the send's outcome is unknown) is never claimed again:
+  the digest is sent at most once a day.
 - Migrations are never edited after merge; correct forward with a new one.

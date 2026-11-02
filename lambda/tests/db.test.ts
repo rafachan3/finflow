@@ -4,7 +4,7 @@ import type { Extraction } from "../src/extraction.js";
 const query = vi.fn();
 
 vi.mock("../src/config.js", () => ({
-  getConfig: vi.fn(async () => ({ databaseUrl: "postgres://x" })),
+  getDbUrl: vi.fn(async () => "postgres://x"),
 }));
 vi.mock("pg", () => ({
   Pool: vi.fn(function () {

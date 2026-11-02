@@ -65,6 +65,11 @@ const RULES: Record<Cadence, Rule> = {
 /** Shortest period first. */
 const CADENCES = Object.keys(RULES) as Cadence[];
 
+/** Half a cadence's period in days: how far a payment or a skip reaches to settle a slot. */
+export function halfPeriod(cadence: Cadence): number {
+  return RULES[cadence].period / 2;
+}
+
 /**
  * Where a cadence's slots fall. Weekly and biweekly: day number mod 7 or 14.
  * The others: every month in `months` (0-11), on each of `days`, where a day
