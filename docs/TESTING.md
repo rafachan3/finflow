@@ -312,6 +312,15 @@ it. Without
 the secrets (a fork, or before they are set) the build job is skipped and
 the run is green.
 
+Warn-level tests never fail the run. After the build, still inside the
+build step, `scripts/ledger_health.py` lists each test that warned with its
+row count, plus the ids `no_likely_duplicates` and
+`recurring_flag_has_series` returned (anything that is not a UUID is
+withheld). The next step, which has no secrets, writes that to the job
+summary and to one open issue labelled `ledger-health`. It rewrites the
+issue body, with a comment, only when the findings change, and closes the
+issue after the first clean, successful build.
+
 To see the detail behind an issue, run the same commands from `dbt/` with
 the production `FINFLOW_DBT_*` variables in your shell (keep them in the
 gitignored `.env`, never in a tracked file), plus `FINFLOW_DBT_PORT=5432`,
