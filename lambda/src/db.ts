@@ -1,6 +1,6 @@
 import { Pool, type PoolClient } from "pg";
 import { APOSTROPHE_VARIANTS } from "./commands.js";
-import { getConfig } from "./config.js";
+import { getDbUrl } from "./config.js";
 import {
   fundingSourceToPersist,
   validateExtraction,
@@ -14,8 +14,7 @@ let pool: Pool | undefined;
 
 export async function getPool(): Promise<Pool> {
   if (!pool) {
-    const { databaseUrl } = await getConfig();
-    pool = new Pool({ connectionString: databaseUrl, max: 1 });
+    pool = new Pool({ connectionString: await getDbUrl(), max: 1 });
   }
   return pool;
 }

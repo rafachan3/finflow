@@ -7,7 +7,7 @@ import { chat, gemini, ledger, STRANGER, useJourneys } from "./harness.js";
 vi.mock("../../src/config.js", async () => {
   const { journeyConfig } = await import("./harness.js");
   const config = journeyConfig();
-  return { getConfig: async () => config };
+  return { getConfig: async () => config, getDbUrl: async () => config.databaseUrl };
 });
 
 useJourneys();

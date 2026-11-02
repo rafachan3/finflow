@@ -3,7 +3,7 @@ import { closeHelpers, insertTransaction, resetData, sql, withClient } from "./d
 
 vi.mock("../../src/config.js", async () => {
   const { testDbUrl } = await import("./env.js");
-  return { getConfig: async () => ({ databaseUrl: testDbUrl() }) };
+  return { getDbUrl: async () => testDbUrl() };
 });
 
 const db = await import("../../src/db.js");
