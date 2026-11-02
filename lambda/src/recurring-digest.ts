@@ -273,13 +273,23 @@ export function findScreen(book: Book, sid: number, due: string, today: string):
   };
 }
 
-/** Why a slot cannot be skipped now, or null when it is due or not logged. */
+const OUT_OF_DATE = "That button is out of date. Open /recurring.";
+
+/**
+ * Why a slot cannot be skipped now, or null when the slot dated exactly `due`
+ * is due or not logged. A skip settles the slot nearest its date, so a date
+ * that is no slot's (the series' dates moved since the button was drawn, or
+ * a made-up button) could settle a different payment than the one checked:
+ * it is refused, and a skip is only ever stored at a slot's own date.
+ */
 function unskippable(book: Book, sid: number, due: string, today: string): string | null {
   const series = book.series.find((s) => s.id === sid);
   if (!series) return "That series no longer exists.";
-  const slot = viewOf(book, series, today).slots.find(
-    (s) => Math.abs(dayNumber(s.due) - dayNumber(due)) <= halfPeriod(series.cadence),
-  );
+  const slots = viewOf(book, series, today).slots;
+  const slot = slots.find((s) => s.due === due);
+  if (!slot && slots.some((s) => Math.abs(dayNumber(s.due) - dayNumber(due)) <= halfPeriod(series.cadence))) {
+    return OUT_OF_DATE;
+  }
   switch (slot?.status) {
     case "due":
     case "missed":

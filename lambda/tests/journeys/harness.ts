@@ -406,12 +406,21 @@ export const chat = {
     if (!button) {
       throw new Error(`no "${label}" button on: ${shown.text.split("\n")[0]}`);
     }
+    return chat.press(reply, button.callback_data, from);
+  },
+  /**
+   * A button with this callback data pressed on the message as it shows now:
+   * a button an older screen of it drew, or data a client made up.
+   */
+  press(reply: Reply, data: string, from = OWNER) {
+    const shown = telegram.shown.get(reply.messageId ?? -1);
+    if (!shown) throw new Error(`not a message the bot sent: ${reply.text.split("\n")[0]}`);
     const markup = shown.keyboard.length > 0 ? { reply_markup: { inline_keyboard: shown.keyboard } } : {};
     return deliver({
       update_id: ++updateId,
       callback_query: {
         id: `cb-${++callbackId}`,
-        data: button.callback_data,
+        data,
         message: { message_id: reply.messageId, chat: { id: from }, text: shown.text, ...markup },
       },
     });

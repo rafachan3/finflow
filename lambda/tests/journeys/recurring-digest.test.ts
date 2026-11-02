@@ -272,6 +272,31 @@ describe("digest buttons", () => {
     expect(chat.current(sent).text).toBe(DIGEST);
   });
 
+  it("a skip writes only at a payment's own date: an off-date or upcoming one writes nothing", async () => {
+    vi.setSystemTime(new Date(at("2027-02-20")));
+    try {
+      const months = ["2026-09-01", "2026-10-01", "2026-11-01", "2026-12-01", "2027-01-01"];
+      const id = await ledger.track("Gym", "monthly", await ledger.add(...months.map(gymRow)));
+      await invokeNudge(at("2027-02-20"));
+      const sent = chat.last();
+      expect(sent.text).toContain("⚠️ Gym — around Feb 1");
+      // Feb 16 is within half a month of the not-logged Feb 1, but nearer the upcoming Mar 1:
+      // stored, it would settle Mar 1 and leave Feb 1 not logged.
+      await chat.press(sent, `r:dk:${id}:20270216`);
+      expect(chat.acks().at(-1)).toBe("That button is out of date. Open /recurring.");
+      await chat.press(sent, `r:dk:${id}:20270301`);
+      expect(chat.acks().at(-1)).toBe("Nothing expected around Mar 1.");
+      expect(await skips()).toEqual([]);
+
+      await chat.tap(sent, "⏭ Skip");
+      expect(chat.acks().at(-1)).toBe("Skipped Feb 1.");
+      expect(await skips()).toEqual([{ due: "2027-02-01" }]);
+      expect(chat.current(sent).text).toContain("✓ Gym · Feb 1 skipped");
+    } finally {
+      vi.setSystemTime(new Date(at("2026-10-31")));
+    }
+  });
+
   it("a digest button tapped from another chat does nothing", async () => {
     await gym();
     const sent = await digest();
