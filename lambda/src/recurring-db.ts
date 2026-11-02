@@ -417,11 +417,27 @@ export async function skipSlot(seriesId: number, due: string, at: Date): Promise
   }
 }
 
-/** Removes that one skip; false when it was already gone. */
-export async function unskipSlot(seriesId: number, due: string): Promise<boolean> {
+/**
+ * Removes that one skip when it was recorded on or after a Toronto day (a
+ * digest offers Undo only for those): "older" when it was recorded before,
+ * "gone" when there is no such skip.
+ */
+export async function unskipSlot(seriesId: number, due: string, since: string): Promise<"undone" | "older" | "gone"> {
   const db = await getPool();
-  const res = await db.query(`DELETE FROM recurring_skips WHERE series_id = $1 AND due_on = $2::date`, [seriesId, due]);
-  return Boolean(res.rowCount);
+  // Both reads see the table as it was before the DELETE.
+  const res = await db.query<{ undone: boolean; kept: boolean }>(
+    `WITH d AS (
+       DELETE FROM recurring_skips
+       WHERE series_id = $1 AND due_on = $2::date
+         AND (skipped_at AT TIME ZONE 'America/Toronto')::date >= $3::date
+       RETURNING 1
+     )
+     SELECT EXISTS (SELECT 1 FROM d) AS undone,
+            EXISTS (SELECT 1 FROM recurring_skips WHERE series_id = $1 AND due_on = $2::date) AS kept`,
+    [seriesId, due, since],
+  );
+  const { undone, kept } = res.rows[0];
+  return undone ? "undone" : kept ? "older" : "gone";
 }
 
 /** Skips recorded on or after a Toronto day: the digest shows them with Undo. */

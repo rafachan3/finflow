@@ -321,7 +321,10 @@ async function respond(tap: DigestTap, ctx: TapContext): Promise<Outcome> {
   if (tap.op === "back") return { screen: await redraw(ctx.chatId, day) };
   const when = dayIn(tap.due, ctx.today);
   if (tap.op === "unskip") {
-    if (!(await unskipSlot(tap.sid, tap.due))) return { ack: "Already undone." };
+    // Only a skip this digest could show with Undo: one recorded on or after its day.
+    const undone = await unskipSlot(tap.sid, tap.due, day);
+    if (undone === "older") return { ack: OUT_OF_DATE };
+    if (undone === "gone") return { ack: "Already undone." };
     return { screen: await redraw(ctx.chatId, day), ack: `${when} is expected again.` };
   }
   const why = unskippable(await loadBook(), tap.sid, tap.due, ctx.today);

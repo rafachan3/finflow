@@ -297,6 +297,28 @@ describe("digest buttons", () => {
     }
   });
 
+  it("Undo removes only a skip recorded on or after the digest's day", async () => {
+    const id = await gym();
+    // Aug 3 was skipped before this digest's day: settled, listed nowhere, no Undo drawn for it.
+    await sql("INSERT INTO recurring_skips (series_id, due_on, skipped_at) VALUES ($1, '2026-08-03', '2026-10-20T16:00:00Z')", [id]);
+    const sent = await digest();
+    expect(sent.text).not.toContain("Aug 3");
+    await chat.press(sent, `r:du:${id}:20260803`);
+    expect(chat.acks().at(-1)).toBe("That button is out of date. Open /recurring.");
+    expect(await skips()).toEqual([{ due: "2026-08-03" }]);
+    expect(chat.current(sent).text).toBe(sent.text);
+
+    // Yesterday's digest, redrawn now, shows today's skip with Undo, so its Undo may remove it.
+    await invokeNudge(at("2026-10-30"));
+    const yesterday = chat.last();
+    await chat.tap(sent, "⏭ Skip");
+    expect(await skips()).toEqual([{ due: "2026-08-03" }, { due: "2026-11-03" }]);
+    await chat.press(yesterday, "r:dv");
+    await chat.tap(yesterday, "↩ Undo skip: Gym");
+    expect(chat.acks().at(-1)).toBe("Nov 3 is expected again.");
+    expect(await skips()).toEqual([{ due: "2026-08-03" }]);
+  });
+
   it("a digest button tapped from another chat does nothing", async () => {
     await gym();
     const sent = await digest();
