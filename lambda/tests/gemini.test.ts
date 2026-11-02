@@ -1101,6 +1101,7 @@ describe("multi-event extraction", () => {
       expect(system).toContain("a line with no flag gets no tax");
       expect(system).toContain("When a receipt shows tax but flags no line, spread the tax over all lines");
       expect(system).toContain("Split a tip over all lines in proportion to each line's price before tax");
+      expect(system).toContain("a line's tip is the tip × its pre-tax price ÷ the pre-tax subtotal, never its taxed amount");
       expect(system).toContain("put any leftover cent on the largest line");
       expect(system).toContain("Bagel 4.00 + 0.60 tip = 4.60, Pudding 6.00 + 0.70 tax + 0.90 tip = 7.60, header 12.20");
     }
@@ -1109,6 +1110,7 @@ describe("multi-event extraction", () => {
   it("tells text, photo, voice and Edit to leave the venue null unless the place clearly is a listed one", async () => {
     for (const system of await fourSystems()) {
       expect(system).toContain("venue is a name from the Venues list only when the place clearly is that kind of place");
+      expect(system).toContain("(a pharmacy or drugstore is Pharmacy, a grocery store is Supermarket)");
       expect(system).toContain(
         "A dollar or discount store, hardware store, department store, online shop, rideshare or warehouse store is none of them: return null",
       );
