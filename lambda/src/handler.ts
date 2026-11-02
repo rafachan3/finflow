@@ -32,6 +32,7 @@ import {
   listPendingIngestions,
   loadTaxonomy,
   type PendingIngestion,
+  restoreIngestionPending,
   setIngestionAwaitingDate,
   setIngestionAwaitingEdit,
 } from "./db.js";
@@ -73,7 +74,6 @@ import { handleRecurringTap, answerPrompt, parseRecurringTap, savedKeyboard, sen
 import { putReceipt } from "./s3.js";
 import {
   answerCallbackQuery,
-  discardKeyboard,
   downloadTelegramFile,
   editMessageReplyMarkup,
   editMessageText,
@@ -82,6 +82,7 @@ import {
   sendMessage,
   toggleCardSeries,
   voiceFileId,
+  waitingKeyboard,
 } from "./telegram.js";
 
 type TelegramChat = { id: number };
@@ -110,7 +111,7 @@ type TelegramUpdate = {
 };
 
 const CALLBACK_RE =
-  /^([cdfe]):([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i;
+  /^([cdfek]):([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i;
 /** Confirm on a card that proposed a series: `cr:` links it, `cx:` records "not this series". */
 const CONFIRM_SERIES_RE =
   /^(cr|cx):([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}):(\d{1,10})$/;
@@ -124,14 +125,14 @@ const SERIES_GONE = "Not linked: that recurring series is gone or no longer fits
 const ASK_DATE =
   "Send the date as YYYY-MM-DD, Aug 10, or yesterday.";
 const WAITING_DATE =
-  "Still waiting for a date for the previous item. Send YYYY-MM-DD, Aug 10, or yesterday — or tap Discard.";
+  "Still waiting for a date for the previous item. Send YYYY-MM-DD, Aug 10, or yesterday — or tap Keep as is / Discard.";
 const ASK_EDIT =
   "Send the correction — amount, category, a line, whatever is wrong.";
 const WAITING_EDIT =
-  "Still waiting for a correction for the previous item. Send the change — or tap Discard.";
+  "Still waiting for a correction for the previous item. Send the change — or tap Keep as is / Discard.";
 
 const BUSY_WAITING =
-  "Another card is waiting for a date or correction. Send it, or tap Discard on that card, then try again.";
+  "Another card is waiting for a date or correction. Send it, or tap Keep as is / Discard on the waiting prompt, then try again.";
 
 const NOTHING_PENDING = "No pending cards.";
 
@@ -233,7 +234,7 @@ async function handleAwaitingDate(
   const today = todayToronto();
   const parsed = parseDateReply(text, today);
   if (!parsed) {
-    await sendMessage(botToken, chatId, WAITING_DATE);
+    await sendMessage(botToken, chatId, WAITING_DATE, waitingKeyboard(awaiting.id));
     return ok("ok");
   }
 
@@ -245,7 +246,12 @@ async function handleAwaitingDate(
   const taxonomy = await loadTaxonomy();
   const checks = validateExtraction(extraction, taxonomy);
   if (!checks.ok) {
-    await sendMessage(botToken, chatId, formatPreview(extraction, checks));
+    await sendMessage(
+      botToken,
+      chatId,
+      formatPreview(extraction, checks),
+      waitingKeyboard(awaiting.id),
+    );
     return ok("ok");
   }
 
@@ -278,7 +284,12 @@ async function handleAwaitingEdit(
     });
     const checks = validateExtraction(extraction, taxonomy);
     if (!previewOffer(extraction, checks).persist) {
-      await sendMessage(config.botToken, chatId, formatPreview(extraction, checks));
+      await sendMessage(
+        config.botToken,
+        chatId,
+        formatPreview(extraction, checks),
+        waitingKeyboard(awaiting.id),
+      );
       return ok("ok");
     }
 
@@ -296,6 +307,7 @@ async function handleAwaitingEdit(
       config.botToken,
       chatId,
       failureReply(err, "Couldn't apply that. Try again."),
+      waitingKeyboard(awaiting.id),
     );
     return ok("ok");
   }
@@ -352,7 +364,11 @@ async function sendCard(
   );
 }
 
-/** Resends the card of every pending row, e.g. one whose first send failed after saving. */
+/**
+ * Resends every open card of the chat: a pending row as its Confirm card, a
+ * waiting row as its date/correction prompt (Keep as is / Discard). Does not
+ * flip awaiting → pending; that is Keep as is alone.
+ */
 async function resendPendingCards(chatId: number, botToken: string): Promise<void> {
   const rows = await listPendingIngestions(chatId);
   if (rows.length === 0) {
@@ -362,7 +378,19 @@ async function resendPendingCards(chatId: number, botToken: string): Promise<voi
   const taxonomy = await loadTaxonomy();
   for (const row of rows) {
     try {
-      await sendCard(botToken, chatId, row.id, row.extraction, validateExtraction(row.extraction, taxonomy));
+      if (row.status === "awaiting_date") {
+        await sendMessage(botToken, chatId, ASK_DATE, waitingKeyboard(row.id));
+      } else if (row.status === "awaiting_edit") {
+        await sendMessage(botToken, chatId, ASK_EDIT, waitingKeyboard(row.id));
+      } else {
+        await sendCard(
+          botToken,
+          chatId,
+          row.id,
+          row.extraction,
+          validateExtraction(row.extraction, taxonomy),
+        );
+      }
     } catch (err) {
       // One bad card must not hide the rest; /pending again retries it.
       console.error("card send error", err);
@@ -636,7 +664,12 @@ async function handleMessage(
       awaiting.status === "awaiting_edit" ? WAITING_EDIT : WAITING_DATE;
     const text = message.text?.trim();
     if (!text) {
-      await sendMessage(config.botToken, message.chat.id, waiting);
+      await sendMessage(
+        config.botToken,
+        message.chat.id,
+        waiting,
+        waitingKeyboard(awaiting.id),
+      );
       return ok("ok");
     }
     if (awaiting.status === "awaiting_edit") {
@@ -766,12 +799,7 @@ async function handleCallback(
     await answerCallbackQuery(botToken, cb.id, ack);
     if (started === "started") {
       await retireCard(botToken, chatId, cb.message?.message_id);
-      await sendMessage(
-        botToken,
-        chatId,
-        ASK_DATE,
-        reviewKeyboard(ingestionId, { confirm: false, edit: false }),
-      );
+      await sendMessage(botToken, chatId, ASK_DATE, waitingKeyboard(ingestionId));
     } else {
       await sendMessage(botToken, chatId, ack);
     }
@@ -783,15 +811,29 @@ async function handleCallback(
     await answerCallbackQuery(botToken, cb.id, ack);
     if (started === "started") {
       await retireCard(botToken, chatId, cb.message?.message_id);
-      await sendMessage(
-        botToken,
-        chatId,
-        ASK_EDIT,
-        discardKeyboard(ingestionId),
-      );
+      await sendMessage(botToken, chatId, ASK_EDIT, waitingKeyboard(ingestionId));
     } else {
       await sendMessage(botToken, chatId, ack);
     }
+    return ok("ok");
+  } else if (action === "k") {
+    // Keep as is: leave the wait, resend the Confirm card as stored. No Gemini.
+    const restored = await restoreIngestionPending(ingestionId);
+    if (!restored) {
+      await answerCallbackQuery(botToken, cb.id, "Already handled.");
+      await sendMessage(botToken, chatId, "Already handled.");
+      return ok("ok");
+    }
+    await answerCallbackQuery(botToken, cb.id, "Kept as is.");
+    await retireCard(botToken, chatId, cb.message?.message_id);
+    const taxonomy = await loadTaxonomy();
+    await sendCard(
+      botToken,
+      chatId,
+      restored.id,
+      restored.extraction,
+      validateExtraction(restored.extraction, taxonomy),
+    );
     return ok("ok");
   } else {
     const result = await discardIngestion(ingestionId);
