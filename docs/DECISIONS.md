@@ -2348,3 +2348,51 @@ debt as a spend bucket (`bucket = 'financial_future'` would break `spend`
 and the identity); percentages of spend instead of income (the owner wants
 share of income); per-month target history; a cumulative financial-future
 metric; a Telegram command or card for this view (Phase 5 charts the mart).
+
+## 2026-11-01 — The daily digest: what rings, what retries, what a button may write
+
+Phase 4.5 PR 5 (design §E.3, §F). Choices the design left open:
+
+- **Any answer from Telegram that is an error is a definite failure**
+  (HTTP 4xx or 5xx, or `ok: false`): the run is `failed` and the schedule's
+  retry claims it again. Only a send with no answer (timeout, reset, a
+  thrown fetch) is ambiguous and stays `claimed` forever. A 5xx could in
+  theory have delivered; the design's rule is "Telegram answered with an
+  error", and a rare duplicate on a Telegram outage is accepted.
+- **"No digest on <day>" needs an earlier run.** It shows when yesterday
+  has no run, or a `failed` one, and some run exists before yesterday, so
+  the very first digest after the deploy notes nothing. A `claimed`
+  yesterday (outcome unknown) is not noted. The footer alone is not content:
+  a day with nothing else to say still sends nothing.
+- **The counts are content.** A day whose only news is "🧹 3 past payments
+  look like …" or "🔎 1 possible new recurring item" is still sent
+  (silently), as open question 1's default says; it stops once reviewed or
+  dismissed.
+- **Income and varying amounts have buttons too.** They never ring until
+  not logged, but Find and Skip are offered on every due and not-logged row,
+  as in the design's keyboard mock.
+- **Not logged is newest first**, 10 shown, the rest in an expandable quote
+  cut to 3,500 visible characters with "+N more in /recurring".
+- **A digest redraws for its own day** (`nudge_runs.run_date`), from the
+  database as it is now, so yesterday's digest tapped today keeps its
+  header and shows today's links and skips.
+- **Undo shows only for a skip recorded on or after the digest's day**
+  (`recurring_skips.skipped_at`, Toronto). The app writes `skipped_at` from
+  its clock, not `now()`, so tests with a fixed clock agree with Postgres.
+  An older skip is just a settled payment and is not listed.
+- **Skip re-checks at tap time.** It writes only when the payment it names
+  is still due or not logged; a payment logged since, an earlier skip, a
+  pause or a deleted series answers why and writes nothing. Skip and Undo
+  act only on a message that is a digest the bot sent (`nudge_runs` by
+  chat and message); Find writes nothing and works on any message.
+- **Find adds `‹ Back to digest` (`r:dv`)**, not in the design's scheme:
+  without it the digest message is lost once Find replaces it.
+- **Digest taps live in `recurring-digest.ts`**, parsed by `parseDigestTap`
+  just before `parseRecurringTap` in `handleCallback`, so the menu module
+  does not import the digest (no import cycle).
+
+**Ruled out:** a dead-letter queue or a second schedule to "catch up" a
+lost day (the next digest recomputes everything); retrying an ambiguous send
+(a duplicate is the nag the owner asked to avoid); writing a skip from a
+stale button without re-deriving the slot (it could settle a payment the
+owner logged meanwhile).

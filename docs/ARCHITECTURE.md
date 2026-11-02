@@ -141,8 +141,12 @@ dbt models and the agent read it, so numbers agree everywhere.
   UTC and drift by an hour). The payload carries
   `<aws.scheduler.scheduled-time>`, so a retry keeps the original run date.
 - Retry policy: 2 retries within 1 hour, no dead-letter queue. Delivery is
-  at-least-once, so the handler claims a `nudge_runs` row before it sends;
-  a lost day is noted in the next digest, which recomputes everything.
+  at-least-once, so the handler (`lambda/src/nudge.ts`) claims a
+  `nudge_runs` row per chat and day before it sends. Only a send Telegram
+  answered with an error is marked `failed` and claimed again by the retry;
+  a send with no answer stays `claimed` and is never repeated (at most once:
+  a duplicate is the nag to avoid, a lost day costs one day). A lost day is
+  noted in the next digest, which recomputes everything.
 - Least privilege: the nudge role reads exactly three SSM parameters (bot
   token, chat-ID allowlist, database URL) and no Gemini key, webhook secret
   or S3.
@@ -151,7 +155,10 @@ dbt models and the agent read it, so numbers agree everywhere.
   day, at most 3 attempts), so it cannot run away; $0 added.
 - Taps on digest buttons still arrive at the webhook: Telegram has one
   webhook per bot. Sending is the nudge function's job; handling the taps is
-  the webhook's.
+  the webhook's (`parseDigestTap` in `handleCallback`, ahead of every other
+  button). A tap finds its digest's day by `(chat_id, message_id)` in
+  `nudge_runs` and redraws that digest in place from the database, so the
+  webhook stays stateless.
 
 ### Extraction — Gemini Flash (free tier)
 - Handles images (receipts) and audio (voice notes) natively — one API for all
