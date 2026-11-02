@@ -2370,6 +2370,28 @@ total then matched no single entry.
 its own design); a wider window or more than 3 parts (more false hits on
 ordinary same-day purchases); summing in floating point.
 
+## 2026-11-02 - Card warns about an implausible date
+
+A receipt printed `26/09/22` (year/month/day) beside a footer `2026-09-22`; the
+lighter model read it day/month/year, the card showed a 2022 date, and the
+purchase was confirmed and dropped out of the right month. Nothing on the card
+looked wrong.
+
+- **Warning only, one line, deterministic.** `! date <date> is in the future:
+  check it` (later than tomorrow, Toronto), `is more than a year ago: check
+  it` (before today minus 12 calendar months), or `is before your oldest saved
+  entry (<date>): check it` (over 31 days before the oldest saved transaction,
+  on a card over 90 days old). Confirm stays; no Gemini call, no migration.
+- **Same render path as the duplicate warning.** Computed in `sendCard`, so
+  first card, Fix date, Edit and `/pending` all show it. A failed lookup of
+  the oldest entry drops only that last check.
+- **Tomorrow is allowed**, for a late-night purchase; thresholds are named
+  constants in `extraction.ts`.
+
+**Ruled out:** rejecting such a date (a real old receipt is legitimate; the
+owner decides); fixing the misread in the prompt (separate change); a stricter
+window than 12 months (backfilling a few months is normal).
+
 ## 2026-11-02 - Venue, printed-date and tax/tip rules in the extraction prompt
 
 Three production cards were wrong in ways the prompt allowed: a discount
@@ -2403,5 +2425,5 @@ when the receipt taxed only one.
 **Ruled out:** a code step that allocates tax and tip (it would need the
 model to return pre-tax prices and flags per line, a schema change);
 a new golden case per rule (the suite is at the free tier's 20 a day);
-moving the date sanity check into the prompt only (a deterministic card
-check is separate work).
+relying on the prompt alone for dates (the card's implausible-date warning
+from #106 stays the deterministic backstop).

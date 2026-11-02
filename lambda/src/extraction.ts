@@ -476,6 +476,48 @@ export function duplicateWarnings(matches: DuplicateMatch[]): string[] {
   ];
 }
 
+/** A card dated later than this many days from today is flagged (tomorrow is allowed for a late-night purchase). */
+export const DATE_FUTURE_DAYS = 1;
+/** A card dated more than this many calendar months before today is flagged. */
+export const DATE_MAX_AGE_MONTHS = 12;
+/** A card older than DATE_OLD_CARD_DAYS and more than this many days before the oldest saved transaction is flagged. */
+export const DATE_BEFORE_LEDGER_DAYS = 31;
+export const DATE_OLD_CARD_DAYS = 90;
+
+function shiftDays(iso: string, days: number): string {
+  const [y, m, d] = iso.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10);
+}
+
+/** iso minus whole calendar months; a day the month lacks lands on its last day. */
+function minusMonths(iso: string, months: number): string {
+  const [y, m, d] = iso.split("-").map(Number);
+  const lastDay = new Date(Date.UTC(y, m - 1 - months + 1, 0));
+  return new Date(Date.UTC(lastDay.getUTCFullYear(), lastDay.getUTCMonth(), Math.min(d, lastDay.getUTCDate())))
+    .toISOString()
+    .slice(0, 10);
+}
+
+/**
+ * At most one card warning for an implausible date: in the future, more than
+ * a year back, or (when `oldest`, the oldest saved transaction's date, is
+ * given) a month or more before anything saved on a card over 90 days old.
+ * ISO dates compare as text. A card with no valid date has nothing to check.
+ */
+export function dateWarnings(date: string, today: string, oldest?: string | null): string[] {
+  if (!isValidIsoDate(date) || !isValidIsoDate(today)) return [];
+  if (date > shiftDays(today, DATE_FUTURE_DAYS)) return [`date ${date} is in the future: check it`];
+  if (date < minusMonths(today, DATE_MAX_AGE_MONTHS)) return [`date ${date} is more than a year ago: check it`];
+  if (
+    oldest &&
+    date < shiftDays(oldest, -DATE_BEFORE_LEDGER_DAYS) &&
+    date < shiftDays(today, -DATE_OLD_CARD_DAYS)
+  ) {
+    return [`date ${date} is before your oldest saved entry (${oldest}): check it`];
+  }
+  return [];
+}
+
 /** Saved purchases naming an unlisted merchant before a card suggests adding it. */
 export const FREQUENT_MERCHANT_MIN = 3;
 

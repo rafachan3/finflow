@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   applyDatePolicy,
+  dateWarnings,
   duplicateWarnings,
   formatPreview,
   merchantHint,
@@ -620,5 +621,44 @@ describe("duplicateWarnings", () => {
     expect(
       duplicateWarnings([{ ...saved, rule: "photo", date: "2026-10-26" }, saved, saved]),
     ).toEqual(["Same photo as a card from 2026-10-26 (saved)"]);
+  });
+});
+
+describe("dateWarnings", () => {
+  const today = "2026-11-02";
+
+  it("accepts today, tomorrow and the day exactly 12 months back, and flags the day before and the day after tomorrow", () => {
+    expect(dateWarnings("2026-11-02", today)).toEqual([]);
+    expect(dateWarnings("2026-11-03", today)).toEqual([]);
+    expect(dateWarnings("2025-11-02", today)).toEqual([]);
+    expect(dateWarnings("2026-11-04", today)).toEqual(["date 2026-11-04 is in the future: check it"]);
+    expect(dateWarnings("2025-11-01", today)).toEqual(["date 2025-11-01 is more than a year ago: check it"]);
+    expect(dateWarnings("2022-09-26", today)).toEqual(["date 2022-09-26 is more than a year ago: check it"]);
+  });
+
+  it("counts calendar months across month ends and leap days", () => {
+    expect(dateWarnings("2027-02-28", "2028-02-29")).toEqual([]);
+    expect(dateWarnings("2027-02-27", "2028-02-29")).toHaveLength(1);
+    expect(dateWarnings("2025-03-01", "2026-03-31")).toHaveLength(1);
+    expect(dateWarnings("2025-03-31", "2026-03-31")).toEqual([]);
+  });
+
+  it("flags a card over 90 days old and over 31 days before the oldest saved entry, and no other", () => {
+    const oldest = "2026-06-01";
+    expect(dateWarnings("2026-04-30", today, oldest)).toEqual([
+      "date 2026-04-30 is before your oldest saved entry (2026-06-01): check it",
+    ]);
+    expect(dateWarnings("2026-05-01", today, oldest)).toEqual([]);
+    expect(dateWarnings("2026-04-30", today, null)).toEqual([]);
+    // Before the ledger, but a recent card: the oldest entry is itself recent.
+    expect(dateWarnings("2026-09-01", today, "2026-10-20")).toEqual([]);
+    expect(dateWarnings("2026-07-31", today, "2026-10-20")).toEqual([
+      "date 2026-07-31 is before your oldest saved entry (2026-10-20): check it",
+    ]);
+  });
+
+  it("has nothing to say about a missing or malformed date", () => {
+    expect(dateWarnings("", today, "2026-06-01")).toEqual([]);
+    expect(dateWarnings("last friday", today)).toEqual([]);
   });
 });

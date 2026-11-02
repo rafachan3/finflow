@@ -531,6 +531,12 @@ saved entries or open cards within 1 day add up to its amount exactly (nearest
 12 tried). Warning only. Follow-up: offer to merge a receipt into earlier typed
 entries: needs design.
 
+Date sanity warning (branch `fix/card-date-sanity`, DECISIONS.md 2026-11-02):
+a receipt read as day/month/year instead of year/month/day put a purchase in
+2022 and the card said nothing. A saved card now adds `! date <date> is more
+than a year ago: check it` (or `is in the future`, or `is before your oldest
+saved entry (<date>): check it`). Warning only, no Gemini call, no migration.
+
 Extraction prompt rules (branch `fix/extraction-venue-date-tax-rules`,
 DECISIONS.md 2026-11-02): text, photo, voice and Edit prompts now say the
 venue is null unless the place clearly is a listed one; a receipt's 4-digit-
