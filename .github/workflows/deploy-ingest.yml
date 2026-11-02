@@ -35,6 +35,9 @@ jobs:
       - run: npm run bundle
       - name: Zip bundle
         run: (cd dist && zip -j ../ingest.zip index.js)
+      - run: npm run bundle:nudge
+      - name: Zip nudge bundle
+        run: (cd dist/nudge && zip -j ../../nudge.zip index.js)
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -45,6 +48,14 @@ jobs:
           aws lambda update-function-code \
             --function-name finflow-ingest \
             --zip-file fileb://ingest.zip
+      # The scheduled digest (Terraform owns the function, not its code). It
+      # has no URL to smoke-test; waiting for the update proves it applied.
+      - name: Update nudge function code
+        run: |
+          aws lambda update-function-code \
+            --function-name finflow-nudge \
+            --zip-file fileb://nudge.zip
+          aws lambda wait function-updated --function-name finflow-nudge
       - name: Smoke test (wrong secret must get 401)
         run: |
           aws lambda wait function-updated --function-name finflow-ingest

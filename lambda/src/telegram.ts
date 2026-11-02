@@ -1,5 +1,12 @@
 import { commandMenu } from "./commands.js";
 
+/**
+ * Telegram answered and refused the call (an HTTP error status or ok=false),
+ * so it did not happen. A network error or timeout is not one of these: the
+ * call may have gone through.
+ */
+export class TelegramError extends Error {}
+
 async function callTelegram(
   botToken: string,
   method: string,
@@ -16,7 +23,7 @@ async function callTelegram(
 
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    throw new Error(
+    throw new TelegramError(
       `Telegram ${method} HTTP ${res.status}${text ? `: ${text}` : ""}`,
     );
   }
@@ -27,7 +34,7 @@ async function callTelegram(
     result?: unknown;
   };
   if (!data.ok) {
-    throw new Error(
+    throw new TelegramError(
       `Telegram ${method} ok=false${data.description ? `: ${data.description}` : ""}`,
     );
   }
@@ -42,11 +49,17 @@ async function postTelegram(
   await callTelegram(botToken, method, body);
 }
 
-/** `html`: the text is Telegram HTML (parse_mode HTML), with link previews off. */
-export type Format = { html?: boolean };
+/**
+ * `html`: the text is Telegram HTML (parse_mode HTML), with link previews off.
+ * `silent`: delivered with no notification sound.
+ */
+export type Format = { html?: boolean; silent?: boolean };
 
 function formatFields(format: Format): Record<string, unknown> {
-  return format.html ? { parse_mode: "HTML", link_preview_options: { is_disabled: true } } : {};
+  return {
+    ...(format.html ? { parse_mode: "HTML", link_preview_options: { is_disabled: true } } : {}),
+    ...(format.silent ? { disable_notification: true } : {}),
+  };
 }
 
 /**
@@ -57,13 +70,14 @@ export function esc(text: string): string {
   return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
+/** Sends a message; its message_id, when Telegram returns one. */
 export async function sendMessage(
   botToken: string,
   chatId: number,
   text: string,
   replyMarkup?: object,
   format: Format = {},
-): Promise<void> {
+): Promise<number | undefined> {
   const body: Record<string, unknown> = {
     chat_id: chatId,
     text,
@@ -72,7 +86,9 @@ export async function sendMessage(
   if (replyMarkup !== undefined) {
     body.reply_markup = replyMarkup;
   }
-  await postTelegram(botToken, "sendMessage", body);
+  const { result } = await callTelegram(botToken, "sendMessage", body);
+  const id = (result as { message_id?: unknown } | undefined)?.message_id;
+  return typeof id === "number" ? id : undefined;
 }
 
 /**

@@ -79,3 +79,37 @@ describe("getConfig", () => {
     await expect((await load())()).rejects.toThrow("Missing RECEIPTS_BUCKET");
   });
 });
+
+const names = () => send.mock.calls.map(([cmd]) => (cmd as Cmd).input.Name).sort();
+
+describe("getNudgeConfig and getDbUrl", () => {
+  it("the nudge reads only the bot token, the chat ids and the database URL", async () => {
+    vi.stubEnv("RECEIPTS_BUCKET", "");
+    vi.resetModules();
+    const config = await import("../src/config.js");
+    const cfg = await config.getNudgeConfig();
+    expect(cfg).toEqual({ botToken: "tok", allowedChatIds: new Set([1, 2, -3]), databaseUrl: "postgres://x" });
+    expect(await config.getDbUrl()).toBe("postgres://x");
+    await config.getNudgeConfig();
+    expect(names()).toEqual([
+      "/finflow/supabase/database-url",
+      "/finflow/telegram/allowed-chat-ids",
+      "/finflow/telegram/bot-token",
+    ]);
+  });
+
+  it("the database URL alone reads one parameter, or none after a full config", async () => {
+    vi.resetModules();
+    const alone = await import("../src/config.js");
+    expect(await alone.getDbUrl()).toBe("postgres://x");
+    expect(names()).toEqual(["/finflow/supabase/database-url"]);
+
+    send.mockClear();
+    vi.resetModules();
+    const full = await import("../src/config.js");
+    await full.getConfig();
+    send.mockClear();
+    expect(await full.getDbUrl()).toBe("postgres://x");
+    expect(send).not.toHaveBeenCalled();
+  });
+});

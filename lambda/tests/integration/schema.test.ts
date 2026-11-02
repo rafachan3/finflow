@@ -92,6 +92,20 @@ describe("migrations", () => {
     expect(await errorCode("update budget_targets set needs_percent = 110, wants_percent = -30")).toBe("23514");
   });
 
+  it("keep one digest run per day and chat, with a known status, and a message id exactly when sent", async () => {
+    await sql("insert into nudge_runs (run_date, chat_id, status, message_id) values ('2026-10-31', 7, 'sent', 40)");
+    await sql("insert into nudge_runs (run_date, chat_id, status) values ('2026-10-31', 8, 'claimed')");
+    expect(await errorCode("insert into nudge_runs (run_date, chat_id, status) values ('2026-10-31', 7, 'empty')")).toBe("23505");
+    expect(await errorCode("insert into nudge_runs (run_date, chat_id, status) values ('2026-11-01', 7, 'done')")).toBe("23514");
+    expect(await errorCode("insert into nudge_runs (run_date, chat_id, status) values ('2026-11-01', 7, 'sent')")).toBe("23514");
+    expect(await errorCode("update nudge_runs set message_id = 41 where chat_id = 8")).toBe("23514");
+    expect(await errorCode("update nudge_runs set attempts = 4 where chat_id = 8")).toBe("23514");
+    // A tap finds its digest by chat and message: one run per message.
+    expect(
+      await errorCode("insert into nudge_runs (run_date, chat_id, status, message_id) values ('2026-11-01', 7, 'sent', 40)"),
+    ).toBe("23505");
+  });
+
   it("let an income source name the account its income lands in", async () => {
     await withClient(async (client) => {
       await client.query("begin");

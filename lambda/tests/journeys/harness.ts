@@ -41,6 +41,8 @@ type Shown = { text: string; keyboard: Button[][] };
 const telegram = {
   sent: [] as Sent[],
   failSends: 0,
+  /** Sends that get no answer at all, as on a timeout or a reset connection. */
+  dropSends: 0,
   files: {} as Record<string, string>,
   rejected: [] as string[],
   /** What each sent message shows now, after any edits, by message_id. */
@@ -184,6 +186,11 @@ const server = setupServer(
       telegram.sent.push({ method, body, failed: true });
       return HttpResponse.json({ ok: false, description: `Bad Request: ${violation}` }, { status: 400 });
     }
+    if (method === "sendMessage" && telegram.dropSends > 0) {
+      telegram.dropSends--;
+      telegram.sent.push({ method, body, failed: true });
+      return HttpResponse.error();
+    }
     const failed = method === "sendMessage" && telegram.failSends > 0;
     if (failed) telegram.failSends--;
     if (failed) {
@@ -274,6 +281,7 @@ export function useJourneys(): void {
     telegram.rejected = [];
     telegram.sent = [];
     telegram.failSends = 0;
+    telegram.dropSends = 0;
     telegram.files = {};
     telegram.shown = new Map();
     telegram.nextMessageId = 1;
@@ -333,6 +341,16 @@ async function deliver(update: unknown, secret = SECRET): Promise<Result> {
   return (await handler(event)) as Result;
 }
 
+/**
+ * The scheduled nudge function, as EventBridge Scheduler invokes it: the
+ * scheduled time in the payload. Resolves to what it returned, or rejects
+ * with what it threw (the schedule then retries).
+ */
+export async function invokeNudge(scheduledTime: string) {
+  const { handler } = await import("../../src/nudge.js");
+  return handler({ scheduled_time: scheduledTime });
+}
+
 /** Unix seconds, as Telegram dates a message. */
 const nowSeconds = () => Math.floor(Date.now() / 1000);
 
@@ -388,12 +406,21 @@ export const chat = {
     if (!button) {
       throw new Error(`no "${label}" button on: ${shown.text.split("\n")[0]}`);
     }
+    return chat.press(reply, button.callback_data, from);
+  },
+  /**
+   * A button with this callback data pressed on the message as it shows now:
+   * a button an older screen of it drew, or data a client made up.
+   */
+  press(reply: Reply, data: string, from = OWNER) {
+    const shown = telegram.shown.get(reply.messageId ?? -1);
+    if (!shown) throw new Error(`not a message the bot sent: ${reply.text.split("\n")[0]}`);
     const markup = shown.keyboard.length > 0 ? { reply_markup: { inline_keyboard: shown.keyboard } } : {};
     return deliver({
       update_id: ++updateId,
       callback_query: {
         id: `cb-${++callbackId}`,
-        data: button.callback_data,
+        data,
         message: { message_id: reply.messageId, chat: { id: from }, text: shown.text, ...markup },
       },
     });
@@ -411,6 +438,15 @@ export const chat = {
   },
   failNextSends(n: number) {
     telegram.failSends = n;
+  },
+  /** The next n sends get no answer (the connection drops). */
+  dropNextSends(n: number) {
+    telegram.dropSends = n;
+  },
+  /** Whether the latest message the owner received rings (no disable_notification). */
+  rang(): boolean {
+    const sent = telegram.sent.filter((s) => s.method === "sendMessage" && !s.failed);
+    return sent[sent.length - 1]?.body.disable_notification !== true;
   },
   /** Bot messages the owner actually received, in order. */
   replies(): Reply[] {

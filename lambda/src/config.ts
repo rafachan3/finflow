@@ -91,3 +91,38 @@ export async function getConfig(): Promise<Config> {
   }
   return cached;
 }
+
+/**
+ * What the scheduled nudge function needs, and nothing more: its role may
+ * read only these three parameters (no Gemini key, webhook secret or bucket).
+ */
+export type NudgeConfig = Pick<Config, "botToken" | "allowedChatIds" | "databaseUrl">;
+
+let cachedNudge: NudgeConfig | undefined;
+let cachedDbUrl: string | undefined;
+
+export async function getNudgeConfig(): Promise<NudgeConfig> {
+  if (!cachedNudge) {
+    const client = new SSMClient({});
+    const [botToken, allowedRaw, databaseUrl] = await Promise.all([
+      getParameter(client, PARAM_BOT_TOKEN),
+      getParameter(client, PARAM_ALLOWED_CHAT_IDS),
+      getParameter(client, PARAM_DATABASE_URL),
+    ]);
+    cachedNudge = { botToken, allowedChatIds: parseAllowedChatIds(allowedRaw), databaseUrl };
+  }
+  return cachedNudge;
+}
+
+/**
+ * The database URL for the pool: from whichever config this function already
+ * loaded, else that one parameter alone, so a database read never needs the
+ * ingest-only parameters.
+ */
+export async function getDbUrl(): Promise<string> {
+  cachedDbUrl ??=
+    cached?.databaseUrl ??
+    cachedNudge?.databaseUrl ??
+    (await getParameter(new SSMClient({}), PARAM_DATABASE_URL));
+  return cachedDbUrl;
+}
