@@ -23,6 +23,7 @@ import {
   findAwaitingIngestion,
   findDuplicates,
   findFrequentMerchant,
+  oldestTransactionDate,
   insertPendingIngestions,
   findMentions,
   linkMentions,
@@ -35,6 +36,7 @@ import {
 } from "./db.js";
 import {
   applyDatePolicy,
+  dateWarnings,
   duplicateWarnings,
   FREQUENT_MERCHANT_MIN,
   merchantHint,
@@ -306,7 +308,7 @@ async function handleAwaitingEdit(
   }
 }
 
-/** A saved row's card: the preview, any likely duplicate or merchant hint, and the buttons its checks allow. */
+/** A saved row's card: the preview, any implausible-date or likely-duplicate warning, any merchant hint, and the buttons its checks allow. */
 async function sendCard(
   botToken: string,
   chatId: number,
@@ -323,6 +325,14 @@ async function sendCard(
     // The row is saved: a card without the warning beats no card.
     console.error("duplicate check error", err);
   }
+  // Needs the ledger's oldest date only for the "before your first entry" check; without it the others still run.
+  let oldest: string | null = null;
+  try {
+    oldest = await oldestTransactionDate();
+  } catch (err) {
+    console.error("oldest date error", err);
+  }
+  const dates = dateWarnings(extraction.date, todayToronto(), oldest);
   let hint: string | undefined;
   try {
     hint = merchantHint(await findFrequentMerchant(ingestionId, FREQUENT_MERCHANT_MIN));
@@ -340,7 +350,7 @@ async function sendCard(
     }
   }
   // A warning or hint only adds a line; Confirm still follows the checks alone.
-  const shown = { ...checks, warnings: [...checks.warnings, ...duplicates] };
+  const shown = { ...checks, warnings: [...checks.warnings, ...dates, ...duplicates] };
   await sendMessage(
     botToken,
     chatId,
