@@ -3,7 +3,7 @@ import { sql } from "../integration/db-helpers.js";
 import { chat, invokeNudge, ledger, OWNER, STRANGER, useJourneys } from "./harness.js";
 
 /** Another allowlisted chat for the nudge, and database reads made to fail. */
-const fault = vi.hoisted(() => ({ chats: null as number[] | null, failLoads: 0 }));
+const fault = vi.hoisted(() => ({ chats: null as number[] | null, failLoads: 0, failClaims: 0, failSentRecord: false }));
 
 vi.mock("../../src/config.js", async () => {
   const { journeyConfig } = await import("./harness.js");
@@ -30,6 +30,17 @@ vi.mock("../../src/recurring-db.js", async (importOriginal) => {
       }
       return real.loadBook();
     },
+    claimRun: async (...args: Parameters<typeof real.claimRun>) => {
+      if (fault.failClaims > 0) {
+        fault.failClaims--;
+        throw new Error("Connection terminated unexpectedly");
+      }
+      return real.claimRun(...args);
+    },
+    finishRun: async (...args: Parameters<typeof real.finishRun>) => {
+      if (fault.failSentRecord && args[2].status === "sent") throw new Error("Connection terminated unexpectedly");
+      return real.finishRun(...args);
+    },
   };
 });
 
@@ -38,6 +49,8 @@ useJourneys();
 beforeEach(() => {
   fault.chats = null;
   fault.failLoads = 0;
+  fault.failClaims = 0;
+  fault.failSentRecord = false;
 });
 
 // The schedule fires at 09:00 Toronto; Oct 31 2026 is still daylight time (UTC-4).
@@ -284,6 +297,33 @@ describe("digest buttons", () => {
     expect(await sql("SELECT 1 FROM recurring_exclusions")).toEqual([]);
   });
 
+  it("Find's Apply ignores the unticked and links the ticked", async () => {
+    await gym();
+    await ledger.add(gymRow("2026-08-04"), gymRow("2026-08-05"));
+    const sent = await digest();
+    await chat.tap(sent, "🔍 Gym Aug 3: logged?");
+    await chat.tap(sent, "✅ Aug 5 · 25.00 · Gym");
+    await chat.tap(sent, "✅ Link 1 · ignore 1");
+    expect(chat.acks().at(-1)).toBe("Linked 1, ignored 1.");
+    expect(await ledger.links()).toMatchObject({
+      "Gym 2026-08-04": { series: "Gym" },
+      "Gym 2026-08-05": { series: null },
+    });
+    expect(await sql("SELECT 1 FROM recurring_exclusions")).toHaveLength(1);
+  });
+
+  it("an Apply for a date none of the toggled rows are near writes nothing", async () => {
+    const id = await gym();
+    await ledger.add(gymRow("2026-08-04"));
+    const sent = await digest();
+    // The message now shows another screen's toggles; Telegram attaches them to this stale Apply.
+    await chat.tap(sent, "🔍 Gym Aug 3: logged?");
+    await chat.press(sent, `r:da:${id}:20270115`);
+    expect(chat.acks().at(-1)).toBe("Already applied.");
+    expect((await ledger.links())["Gym 2026-08-04"]).toEqual({ series: null, flagged: false });
+    expect(await sql("SELECT 1 FROM recurring_exclusions")).toEqual([]);
+  });
+
   it("a stale or repeated digest button writes nothing", async () => {
     const id = await gym();
     const sent = await digest();
@@ -441,5 +481,30 @@ describe("sending once a day", () => {
     await invokeNudge(at("2026-10-31"));
     expect(chat.replies()).toEqual([]);
     expect(await runs()).toEqual([{ run_date: "2026-10-31", status: "claimed", attempts: 1, sent: false }]);
+  });
+
+  it("a chat whose run cannot be claimed counts as failed, claims nothing and the others still run", async () => {
+    await gym();
+    fault.chats = [STRANGER, OWNER];
+    fault.failClaims = 1;
+    await expect(invokeNudge(at("2026-10-31"))).rejects.toThrow("1 digest(s) failed");
+    expect(await runs()).toEqual([{ run_date: "2026-10-31", status: "sent", attempts: 1, sent: true }]);
+    expect(chat.replies()).toHaveLength(1);
+
+    // The retry claims only the chat that had no run.
+    expect(await invokeNudge(at("2026-10-31"))).toEqual({ runDate: "2026-10-31", outcomes: ["sent", "handled"] });
+    expect(chat.replies()).toHaveLength(2);
+  });
+
+  it("a sent digest whose record cannot be written is unknown and never sent twice", async () => {
+    await gym();
+    fault.failSentRecord = true;
+    expect(await invokeNudge(at("2026-10-31"))).toEqual({ runDate: "2026-10-31", outcomes: ["unknown"] });
+    expect(chat.replies()).toHaveLength(1);
+    expect(await runs()).toEqual([{ run_date: "2026-10-31", status: "claimed", attempts: 1, sent: false }]);
+
+    fault.failSentRecord = false;
+    expect(await invokeNudge(at("2026-10-31"))).toEqual({ runDate: "2026-10-31", outcomes: ["handled"] });
+    expect(chat.replies()).toHaveLength(1);
   });
 });
