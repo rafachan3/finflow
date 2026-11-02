@@ -398,16 +398,30 @@ export async function listPendingIngestions(
   return result.rows;
 }
 
+/** The date of the oldest saved transaction (YYYY-MM-DD), or null for an empty ledger. */
+export async function oldestTransactionDate(): Promise<string | null> {
+  const db = await getPool();
+  const result = await db.query<{ d: string | null }>("SELECT min(occurred_on)::text AS d FROM transactions");
+  return result.rows[0]?.d ?? null;
+}
+
 /** A card's day: its date, or the day it was sent when it has none yet. */
 const CARD_DAY = (row: string) =>
   `coalesce(nullif(${row}.extraction->>'date', '')::date, (${row}.created_at AT TIME ZONE 'America/Toronto')::date)`;
+
+/** An expense card's "parts" rule looks at no more than this many entries (nearest day first). */
+const PARTS_CANDIDATE_CAP = 12;
 
 /**
  * Likely earlier copies of a saved card, strongest first: an earlier card with
  * the same largest photo, then the same type and amount (and income source,
  * or a transfer's two accounts) within 3 days among confirmed transactions and this chat's open cards,
- * nearest first, saved ahead of pending. Nothing from the card's own
- * Telegram update matches, so one message's events never flag each other.
+ * nearest first, saved ahead of pending. Last, for an expense only, at most one
+ * "parts" match: 2 or 3 entries of the same type within 1 day of the card whose
+ * amounts sum exactly (numeric) to the card's amount, from the nearest
+ * PARTS_CANDIDATE_CAP candidates; a pair is preferred to a triple.
+ * Nothing from the card's own Telegram update matches, so one message's events
+ * never flag each other.
  */
 export async function findDuplicates(ingestionId: string): Promise<DuplicateMatch[]> {
   const db = await getPool();
@@ -434,20 +448,62 @@ export async function findDuplicates(ingestionId: string): Promise<DuplicateMatc
        FROM ingestions o, self s
        WHERE o.telegram_update_id <> s.telegram_update_id AND o.status <> 'discarded'
      ),
+     parts_pool AS (
+       SELECT t.amount AS amt, 'saved' AS status, t.occurred_on AS day,
+              abs(t.occurred_on - s.day) AS gap, t.description
+       FROM transactions t, self s
+       WHERE s.type = 'expense' AND t.type = 'expense' AND t.amount > 0
+         AND abs(t.occurred_on - s.day) <= 1
+         AND NOT EXISTS (
+           SELECT 1 FROM ingestions x
+           WHERE x.transaction_id = t.id AND x.telegram_update_id = s.telegram_update_id
+         )
+       UNION ALL
+       SELECT (o.extraction->>'amount')::numeric, 'pending', o.day,
+              abs(o.day - s.day), o.extraction->>'description'
+       FROM others o, self s
+       WHERE s.type = 'expense' AND o.extraction->>'type' = 'expense'
+         AND o.status IN ('pending', 'awaiting_date', 'awaiting_edit')
+         AND o.raw_payload #>> '{message,chat,id}' = s.chat
+         AND (o.extraction->>'amount')::numeric > 0
+         AND abs(o.day - s.day) <= 1
+     ),
+     cands AS (
+       SELECT * FROM (
+         SELECT p.*, row_number() OVER (
+                  ORDER BY p.gap, p.status = 'saved' DESC, p.day DESC, p.description) AS n
+         FROM parts_pool p
+       ) ranked
+       WHERE n <= ${PARTS_CANDIDATE_CAP}
+     ),
+     combos AS (
+       SELECT 2 AS parts, a.amt + b.amt AS total, greatest(a.day, b.day) AS day,
+              a.gap + b.gap AS gap,
+              CASE WHEN a.status = 'saved' AND b.status = 'saved' THEN 'saved' ELSE 'pending' END AS status,
+              concat_ws(' + ', a.description, b.description) AS description
+       FROM cands a JOIN cands b ON a.n < b.n
+       UNION ALL
+       SELECT 3, a.amt + b.amt + c.amt, greatest(a.day, b.day, c.day),
+              a.gap + b.gap + c.gap,
+              CASE WHEN a.status = 'saved' AND b.status = 'saved' AND c.status = 'saved'
+                   THEN 'saved' ELSE 'pending' END,
+              concat_ws(' + ', a.description, b.description, c.description)
+       FROM cands a JOIN cands b ON a.n < b.n JOIN cands c ON b.n < c.n
+     ),
      matches AS (
        SELECT 'photo' AS rule,
               CASE WHEN o.status = 'confirmed' THEN 'saved' ELSE 'pending' END AS status,
               (o.created_at AT TIME ZONE 'America/Toronto')::date AS day,
               (o.extraction->>'amount')::numeric(12,2) AS amount,
               o.extraction->>'description' AS description,
-              0 AS gap
+              0 AS gap, NULL::int AS parts
        FROM others o, self s
        WHERE s.photo_id IS NOT NULL AND o.created_at < s.created_at
          AND o.raw_payload -> 'message' -> 'photo'
              @> jsonb_build_array(jsonb_build_object('file_unique_id', s.photo_id))
        UNION ALL
        SELECT 'amount', 'saved', t.occurred_on, t.amount, t.description,
-              abs(t.occurred_on - s.day)
+              abs(t.occurred_on - s.day), NULL::int
        FROM transactions t
        CROSS JOIN self s
        LEFT JOIN income_sources src ON src.id = t.income_source_id
@@ -464,7 +520,7 @@ export async function findDuplicates(ingestionId: string): Promise<DuplicateMatc
          )
        UNION ALL
        SELECT 'amount', 'pending', o.day, (o.extraction->>'amount')::numeric(12,2),
-              o.extraction->>'description', abs(o.day - s.day)
+              o.extraction->>'description', abs(o.day - s.day), NULL::int
        FROM others o, self s
        WHERE o.status IN ('pending', 'awaiting_date', 'awaiting_edit')
          AND o.raw_payload #>> '{message,chat,id}' = s.chat
@@ -474,13 +530,20 @@ export async function findDuplicates(ingestionId: string): Promise<DuplicateMatc
          AND (s.type <> 'income' OR o.extraction->>'income_source' IS NOT DISTINCT FROM s.income_source)
          AND (s.type <> 'transfer' OR (o.extraction->>'from_account' IS NOT DISTINCT FROM s.from_account
                                        AND o.extraction->>'to_account' IS NOT DISTINCT FROM s.to_account))
+       UNION ALL
+       (SELECT 'parts', c.status, c.day, s.amount::numeric(12,2), c.description, c.gap, c.parts
+        FROM combos c, self s
+        WHERE c.total = s.amount
+        ORDER BY c.parts, c.gap, c.status = 'saved' DESC
+        LIMIT 1)
      )
-     SELECT rule, status, day::text AS date, amount::text AS amount, description
+     SELECT rule, status, day::text AS date, amount::text AS amount, description, parts
      FROM matches
-     ORDER BY rule = 'photo' DESC, gap, status = 'saved' DESC, day DESC`,
+     ORDER BY rule = 'photo' DESC, rule = 'parts', gap, status = 'saved' DESC, day DESC`,
     [ingestionId],
   );
-  return result.rows;
+  // Only a parts match carries its count.
+  return result.rows.map(({ parts, ...m }) => (parts == null ? m : { ...m, parts }));
 }
 
 /**

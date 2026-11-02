@@ -19,6 +19,7 @@ vi.mock("../src/db.js", () => ({
   applyIngestionEdit: vi.fn(),
   findDuplicates: vi.fn(),
   findFrequentMerchant: vi.fn(),
+  oldestTransactionDate: vi.fn(),
   addMerchant: vi.fn(),
   findMentions: vi.fn(),
 }));
@@ -56,6 +57,7 @@ import {
   findAwaitingIngestion,
   findDuplicates,
   findFrequentMerchant,
+  oldestTransactionDate,
   insertPendingIngestions,
   loadTaxonomy,
   setIngestionAwaitingDate,
@@ -155,6 +157,7 @@ beforeEach(() => {
   vi.mocked(findAwaitingIngestion).mockResolvedValue(null);
   vi.mocked(findDuplicates).mockResolvedValue([]);
   vi.mocked(findFrequentMerchant).mockResolvedValue(null);
+  vi.mocked(oldestTransactionDate).mockResolvedValue(null);
   vi.mocked(downloadTelegramFile).mockResolvedValue({
     bytes: Buffer.from([0xff, 0xd8, 0xff]),
     mimeType: "image/jpeg",
@@ -259,6 +262,21 @@ describe("handler", () => {
       expect.not.stringContaining("duplicate"),
       { confirm: "ing-1" },
     );
+    error.mockRestore();
+  });
+
+  it("still warns about an implausible date when the oldest-entry lookup fails", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.mocked(oldestTransactionDate).mockRejectedValue(new Error("db down"));
+    vi.mocked(extractFromText).mockResolvedValue([{ ...extraction, date: "2022-09-26" }]);
+
+    await handler(event({ update_id: 38, message: { chat: { id: 1 }, text: "12.50 lunch" } }));
+
+    expect(error).toHaveBeenCalledWith("oldest date error", expect.any(Error));
+    const text = String(vi.mocked(sendMessage).mock.calls[0][2]);
+    expect(text).toContain("! date 2022-09-26 is more than a year ago: check it");
+    expect(text).toContain("Confirm to save");
+    expect(reviewKeyboard).toHaveBeenCalledWith("ing-1", { confirm: true });
     error.mockRestore();
   });
 

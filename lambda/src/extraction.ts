@@ -77,15 +77,17 @@ export type CheckResult =
   | { ok: true; errors: string[]; warnings: string[] }
   | { ok: false; errors: string[]; warnings: string[] };
 
-/** A likely earlier copy of a saved card: the same photo, or the same money event. */
+/** A likely earlier copy of a saved card: the same photo, the same money event, or the same total typed in parts. */
 export type DuplicateMatch = {
-  rule: "photo" | "amount";
+  rule: "photo" | "amount" | "parts";
   /** saved = a confirmed transaction; pending = a card still open. */
   status: "saved" | "pending";
   /** The match's date; for a photo match, the day its card was sent. */
   date: string;
   amount: Money;
   description: string;
+  /** parts only: how many earlier entries (2 or 3) add up to the card's amount; `date` is the latest of them. */
+  parts?: number;
 };
 
 const CENTS = /^(\d+)\.(\d{2})$/;
@@ -455,7 +457,7 @@ export function withPosition(ack: string, cardText?: string): string {
   return ack + label;
 }
 
-/** At most one card warning for findDuplicates' ordered matches: a photo match wins. */
+/** At most one card warning for findDuplicates' ordered matches: photo, then one amount, then parts. */
 export function duplicateWarnings(matches: DuplicateMatch[]): string[] {
   const [first] = matches;
   if (!first) return [];
@@ -463,11 +465,57 @@ export function duplicateWarnings(matches: DuplicateMatch[]): string[] {
   if (first.rule === "photo") {
     return [`Same photo as a card from ${first.date} (${status})`];
   }
-  // Photo matches sort first, so every match here is an amount match.
-  const more = matches.length > 1 ? ` (+${matches.length - 1} more)` : "";
+  if (first.rule === "parts") {
+    return [`may repeat ${first.parts} earlier entries around ${first.date} that add up to this total`];
+  }
+  // Photo matches sort first, parts last; the count is of amount matches only.
+  const amounts = matches.filter((m) => m.rule === "amount").length;
+  const more = amounts > 1 ? ` (+${amounts - 1} more)` : "";
   return [
     `Possible duplicate: CAD ${first.amount} on ${first.date}, "${first.description}" (${status})${more}`,
   ];
+}
+
+/** A card dated later than this many days from today is flagged (tomorrow is allowed for a late-night purchase). */
+export const DATE_FUTURE_DAYS = 1;
+/** A card dated more than this many calendar months before today is flagged. */
+export const DATE_MAX_AGE_MONTHS = 12;
+/** A card older than DATE_OLD_CARD_DAYS and more than this many days before the oldest saved transaction is flagged. */
+export const DATE_BEFORE_LEDGER_DAYS = 31;
+export const DATE_OLD_CARD_DAYS = 90;
+
+function shiftDays(iso: string, days: number): string {
+  const [y, m, d] = iso.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10);
+}
+
+/** iso minus whole calendar months; a day the month lacks lands on its last day. */
+function minusMonths(iso: string, months: number): string {
+  const [y, m, d] = iso.split("-").map(Number);
+  const lastDay = new Date(Date.UTC(y, m - 1 - months + 1, 0));
+  return new Date(Date.UTC(lastDay.getUTCFullYear(), lastDay.getUTCMonth(), Math.min(d, lastDay.getUTCDate())))
+    .toISOString()
+    .slice(0, 10);
+}
+
+/**
+ * At most one card warning for an implausible date: in the future, more than
+ * a year back, or (when `oldest`, the oldest saved transaction's date, is
+ * given) a month or more before anything saved on a card over 90 days old.
+ * ISO dates compare as text. A card with no valid date has nothing to check.
+ */
+export function dateWarnings(date: string, today: string, oldest?: string | null): string[] {
+  if (!isValidIsoDate(date) || !isValidIsoDate(today)) return [];
+  if (date > shiftDays(today, DATE_FUTURE_DAYS)) return [`date ${date} is in the future: check it`];
+  if (date < minusMonths(today, DATE_MAX_AGE_MONTHS)) return [`date ${date} is more than a year ago: check it`];
+  if (
+    oldest &&
+    date < shiftDays(oldest, -DATE_BEFORE_LEDGER_DAYS) &&
+    date < shiftDays(today, -DATE_OLD_CARD_DAYS)
+  ) {
+    return [`date ${date} is before your oldest saved entry (${oldest}): check it`];
+  }
+  return [];
 }
 
 /** Saved purchases naming an unlisted merchant before a card suggests adding it. */

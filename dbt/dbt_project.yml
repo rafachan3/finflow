@@ -9,6 +9,12 @@ test-paths: ["tests"]
 flags:
   send_anonymous_usage_stats: false
 
+vars:
+  # The first day the ledger covers (DECISIONS 2026-08-13 and 2026-11-02);
+  # occurred_on_within_ledger fails a row dated before it. The synthetic
+  # fixture starts earlier, so test_db.py exports its own start.
+  ledger_start: "{{ env_var('FINFLOW_LEDGER_START', '2026-06-01') }}"
+
 models:
   finflow:
     staging:

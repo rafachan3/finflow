@@ -540,6 +540,19 @@ message id); 🔍 Find lists unlinked look-alikes around that date as review
 toggles, or says how to log it. The deploy workflow now also ships the nudge
 code (`Update nudge function code`).
 
+Duplicate warning sums parts (branch `fix/duplicate-sum-of-parts`, DECISIONS.md
+2026-11-01): an expense card that no single entry matches also gets `! may
+repeat 2 earlier entries around <date> that add up to this total` when 2 or 3
+saved entries or open cards within 1 day add up to its amount exactly (nearest
+12 tried). Warning only. Follow-up: offer to merge a receipt into earlier typed
+entries: needs design.
+
+Date sanity warning (branch `fix/card-date-sanity`, DECISIONS.md 2026-11-02):
+a receipt read as day/month/year instead of year/month/day put a purchase in
+2022 and the card said nothing. A saved card now adds `! date <date> is more
+than a year ago: check it` (or `is in the future`, or `is before your oldest
+saved entry (<date>): check it`). Warning only, no Gemini call, no migration.
+
 ## Next concrete step
 
 Phase 4.5 PR 5 (`feat/recurring-digest`) in review. Code review done
@@ -584,6 +597,15 @@ and the reconciliation test), `mf validate-configs` passed, and
 `check_metrics.py` reported "mf query matches fct_monthly_summary: 14
 metrics, 5 months". The public log held node names and statuses only, with
 host, user and password masked.
+
+Ledger health tests (branch `feat/ledger-health-tests`, 2026-11-02;
+DECISIONS.md, TESTING.md): `occurred_on_within_ledger` fails a row dated
+before the ledger start (dbt var, 2026-06-01) or after tomorrow;
+`no_likely_duplicates` and `recurring_flag_has_series` warn, and the
+nightly lists their ids in the job summary and one `ledger-health` issue,
+never failing on them. Green on the fixture in CI; **not yet run on
+production**: the first nightly after merge must pass, which needs the
+2022-dated row already re-dated.
 
 Pre-run check of `finflow_dbt` (2026-10-30, `has_table_privilege` and
 `has_schema_privilege` over `verify-ca` TLS with the tracked CA, no writes): SELECT on `public.transactions` true;

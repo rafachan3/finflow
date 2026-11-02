@@ -2370,8 +2370,9 @@ Phase 4.5 PR 5 (design §E.3, §F). Choices the design left open:
   the very first digest after the deploy notes nothing. A `claimed`
   yesterday (outcome unknown) is not noted, even one a database failure
   left there: it cannot be told from a send that may have arrived, and a
-  "may not have arrived" note was weighed and left out (2026-11-02 review). The footer alone is not content:
-  a day with nothing else to say still sends nothing.
+  "may not have arrived" note was weighed and left out (2026-11-02
+  review). The footer alone is not content: a day with nothing else to say
+  still sends nothing.
 - **The counts are content.** A day whose only news is "🧹 3 past payments
   look like …" or "🔎 1 possible new recurring item" is still sent
   (silently), as open question 1's default says; it stops once reviewed or
@@ -2407,3 +2408,81 @@ lost day (the next digest recomputes everything); retrying an ambiguous send
 (a duplicate is the nag the owner asked to avoid); writing a skip from a
 stale button without re-deriving the slot (it could settle a payment the
 owner logged meanwhile).
+
+## 2026-11-01 - Duplicate warning also sums parts
+
+**Decision:** an expense card also warns when 2 or 3 earlier entries of the
+same type, each within 1 day of its day, add up exactly to its amount.
+Closes the gap where a receipt's items were typed one by one and the receipt
+total then matched no single entry.
+
+- **Warning only, one line.** `! may repeat 2 earlier entries around <date>
+  that add up to this total`; Confirm stays, nothing is stored, no Gemini
+  call, no migration, and a failed check still sends the card.
+- **Exact numeric sum, bounded.** Candidates are saved transactions and the
+  chat's open cards (never the card's own update, never discarded), nearest
+  day first, capped at 12; a pair is preferred to a triple. A photo match
+  and any single-amount match still come first.
+- **Expenses only for now.** Income and transfers are not summed: they are
+  rarely typed in parts.
+
+**Ruled out:** a "replace the earlier entries with this receipt" button (needs
+its own design); a wider window or more than 3 parts (more false hits on
+ordinary same-day purchases); summing in floating point.
+
+## 2026-11-02 - Card warns about an implausible date
+
+A receipt printed `26/09/22` (year/month/day) beside a footer `2026-09-22`; the
+lighter model read it day/month/year, the card showed a 2022 date, and the
+purchase was confirmed and dropped out of the right month. Nothing on the card
+looked wrong.
+
+- **Warning only, one line, deterministic.** `! date <date> is in the future:
+  check it` (later than tomorrow, Toronto), `is more than a year ago: check
+  it` (before today minus 12 calendar months), or `is before your oldest saved
+  entry (<date>): check it` (over 31 days before the oldest saved transaction,
+  on a card over 90 days old). Confirm stays; no Gemini call, no migration.
+- **Same render path as the duplicate warning.** Computed in `sendCard`, so
+  first card, Fix date, Edit and `/pending` all show it. A failed lookup of
+  the oldest entry drops only that last check.
+- **Tomorrow is allowed**, for a late-night purchase; thresholds are named
+  constants in `extraction.ts`.
+
+**Ruled out:** rejecting such a date (a real old receipt is legitimate; the
+owner decides); fixing the misread in the prompt (separate change); a stricter
+window than 12 months (backfilling a few months is normal).
+
+## 2026-11-02 - Ledger health tests in the nightly dbt build
+
+The owner found by eye a row dated 2022 (a misread receipt date, the only one
+before the ledger start), one payment entered twice a day apart, and a row
+flagged recurring with no series. Nothing in the pipeline flagged them.
+
+- **The ledger start is a dbt var, `ledger_start`, default `2026-06-01`**
+  (the import scope of 2026-08-13). `occurred_on_within_ledger` fails, as an
+  error, any row before it or after Toronto's tomorrow. It replaces the
+  warn-only `occurred_on_not_in_future`: a date outside the window always
+  drops the row out of its month, so it is a bug, not a signal. The
+  synthetic fixture starts in March, so `test_db.py` exports
+  `FINFLOW_LEDGER_START=2026-03-01`; production never runs that script.
+  A genuine purchase older than the start must be dated inside the ledger or
+  the start moved here.
+- **Likely duplicates and recurring flags with no series are warnings.**
+  The ledger can hold a real repeat, and one unlinked recurring row is a
+  known leftover. A pair needs the same type and amount, at most 3 days
+  apart, and descriptions equal once case and all whitespace are dropped;
+  different descriptions at one price (two tickets, a washer and a dryer)
+  are never listed. All types, not only expenses, since a doubled income or
+  transfer skews the month the same way.
+- **Warnings surface in the job summary and one rolling issue labelled
+  `ledger-health`**, test names, counts and ids only.
+  `scripts/ledger_health.py` reruns the two id-only tests inside the build
+  step, which already holds the secrets, and withholds any value that is not
+  a UUID. The issue body is rewritten, with a comment, only when the findings
+  change, so a standing leftover does not notify every night; a clean,
+  successful build closes it.
+
+**Ruled out:** failing the nightly on warnings (the known leftover would keep
+it red); `--store-failures` for the ids (it creates an audit schema
+`finflow_dbt` may not create); fuzzy description matching (more false pairs
+than the cases seen so far justify).

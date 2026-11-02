@@ -499,6 +499,119 @@ describe("findDuplicates", () => {
     const [other] = await card([expense({ amount: "40.00" })], sizes("other-u"));
     expect(await db.findDuplicates(other)).toEqual([]);
   });
+
+  describe("parts", () => {
+    /** One purchase of `amount`, a single line, on `date`. */
+    const part = (amount: string, description: string, date = "2026-10-20", over: Partial<Extraction> = {}) =>
+      expense({
+        amount,
+        description,
+        date,
+        items: [{ ...expense().items[0], description, amount }],
+        ...over,
+      });
+
+    it("two or three entries a day either side that add up exactly to the card's total match", async () => {
+      await confirmed(part("4.10", "Bagel", "2026-10-19"));
+      await confirmed(part("7.35", "Pudding", "2026-10-21"));
+      const [receipt] = await card([part("11.45", "Receipt", "2026-10-20")]);
+      expect(await db.findDuplicates(receipt)).toEqual([
+        {
+          rule: "parts",
+          status: "saved",
+          date: "2026-10-21",
+          amount: "11.45",
+          description: "Pudding + Bagel",
+          parts: 2,
+        },
+      ]);
+
+      await db.discardIngestion(receipt);
+      await confirmed(part("1.05", "Juice", "2026-10-20"));
+      const [bigger] = await card([part("12.50", "Receipt", "2026-10-20")]);
+      expect(await db.findDuplicates(bigger)).toMatchObject([{ rule: "parts", parts: 3 }]);
+    });
+
+    it("an open card counts as a part, and a pair with a pending part is pending", async () => {
+      await confirmed(part("4.10", "Bagel"));
+      await card([part("7.35", "Pudding")]);
+      const [receipt] = await card([part("11.45", "Receipt")]);
+      expect(await db.findDuplicates(receipt)).toMatchObject([
+        { rule: "parts", status: "pending", parts: 2 },
+      ]);
+    });
+
+    it("entries two days apart do not match as parts", async () => {
+      await confirmed(part("4.10", "Bagel", "2026-10-18"));
+      await confirmed(part("7.35", "Pudding", "2026-10-20"));
+      const [receipt] = await card([part("11.45", "Receipt", "2026-10-20")]);
+      expect(await db.findDuplicates(receipt)).toEqual([]);
+    });
+
+    it("a total off by one cent does not match as parts", async () => {
+      await confirmed(part("4.10", "Bagel"));
+      await confirmed(part("7.35", "Pudding"));
+      const [high] = await card([part("11.46", "Receipt")]);
+      expect(await db.findDuplicates(high)).toEqual([]);
+      const [low] = await card([part("11.44", "Receipt")]);
+      expect(await db.findDuplicates(low)).toEqual([]);
+    });
+
+    it("entries of another type do not match as parts, and a single entry is not a part", async () => {
+      await confirmed(part("4.10", "Bagel"));
+      await confirmed(income({ amount: "7.35", date: "2026-10-20" }));
+      await confirmed(transfer({ amount: "7.35", date: "2026-10-20" }));
+      const [receipt] = await card([part("11.45", "Receipt")]);
+      expect(await db.findDuplicates(receipt)).toEqual([]);
+    });
+
+    it("the card's own message events never match as parts", async () => {
+      const [first, second, total] = await card([
+        part("4.10", "Bagel"),
+        part("7.35", "Pudding"),
+        part("11.45", "Receipt"),
+      ]);
+      expect(await db.findDuplicates(total)).toEqual([]);
+      await db.confirmIngestion(first);
+      await db.confirmIngestion(second);
+      expect(await db.findDuplicates(total)).toEqual([]);
+    });
+
+    it("a discarded card is not a part", async () => {
+      await confirmed(part("4.10", "Bagel"));
+      const [dropped] = await card([part("7.35", "Pudding")]);
+      await db.discardIngestion(dropped);
+      const [receipt] = await card([part("11.45", "Receipt")]);
+      expect(await db.findDuplicates(receipt)).toEqual([]);
+    });
+
+    it("an income card is not checked for parts", async () => {
+      await confirmed(income({ amount: "4.10" }));
+      await confirmed(income({ amount: "7.35" }));
+      const [total] = await card([income({ amount: "11.45" })]);
+      expect(await db.findDuplicates(total)).toEqual([]);
+    });
+
+    it("a single amount match comes ahead of a parts match and keeps its own count", async () => {
+      await confirmed(part("11.45", "Whole receipt", "2026-10-18"));
+      await confirmed(part("4.10", "Bagel"));
+      await confirmed(part("7.35", "Pudding"));
+      const [receipt] = await card([part("11.45", "Receipt")]);
+      expect((await db.findDuplicates(receipt)).map((m) => [m.rule, m.description])).toEqual([
+        ["amount", "Whole receipt"],
+        ["parts", "Bagel + Pudding"],
+      ]);
+    });
+
+    it("only the nearest 12 entries are tried as parts", async () => {
+      // Twelve same-day entries of 1.00 fill the cap; the pair that would total 11.45 is the 13th and 14th.
+      for (let i = 0; i < 12; i++) await confirmed(part("1.00", `Filler ${i}`, "2026-10-20"));
+      await confirmed(part("4.10", "Bagel", "2026-10-21"));
+      await confirmed(part("7.35", "Pudding", "2026-10-21"));
+      const [receipt] = await card([part("11.45", "Receipt", "2026-10-20")]);
+      expect(await db.findDuplicates(receipt)).toEqual([]);
+    });
+  });
 });
 
 describe("merchants", () => {
