@@ -27,7 +27,7 @@ function book(s: BookSeries[], rows: BookRow[]): Book {
   return { series: s, rows, pauses: new Map(), skips: new Map(), excluded: new Map(), dismissed: [] };
 }
 
-// Design §C.8 row 7b: 45.00, 61.25 (roaming), 45.00 → band [40.50, 49.50].
+// Design §C.8 row 7b: 45.00, 61.25 (one-off surcharge), 45.00 → band [40.50, 49.50].
 const history = [row("2026-06-15", "45.00"), row("2026-07-15", "61.25"), row("2026-08-14", "45.00")];
 const card = (amount: string, over: Partial<BookRow> = {}) =>
   row("2026-09-15", amount, { id: CARD, seriesId: null, flagged: false, ...over });

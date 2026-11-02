@@ -247,8 +247,8 @@ which is what proves the two systems are not fighting.
 
 **Supersedes** the 2026-07-12 "`bucket` and `cadence` live on `subcategories`"
 entry. The owner redesigned the taxonomy, and the actual Notion data
-invalidated the old premise: Groceries alone split 82 needs / 47 wants row by
-row, so bucket is not a property of the subcategory.
+invalidated the old premise: Groceries alone split close to evenly between
+needs and wants row by row, so bucket is not a property of the subcategory.
 
 `transactions` becomes a header; classification moves to a new
 `transaction_items` table — one row per receipt line, each carrying its own
@@ -297,7 +297,7 @@ SQL inserts).
 
 The Phase 1 history import pulls from Notion through the MCP server (settles
 the STATUS open question — no CSV export step). Scope is 2026-06-01 onward by
-owner decision: October 2025 rows were an early trial (108 of 109 lack a
+owner decision: October 2025 rows were an early trial (almost none carry a
 transaction type) and May 2026 was explicitly excluded as well. Each Notion
 row becomes one transaction with one line item — Notion has no receipt
 grouping key, so no grouping is invented. Database and data-source IDs for
@@ -761,7 +761,7 @@ infra for a problem the paid tier also solves); Lite as primary
 ## 2026-10-12 — Multi-event: one ingestions row per event
 
 One message can describe several separate purchases ("3 at Acme Mart
-and 5 at Pharmaprix"). Owner choices: split by place (one event per
+and 5 at Corner Pharmacy"). Owner choices: split by place (one event per
 merchant or place; the same place or no place stays one expense with
 lines; income and transfers are always separate), and separate cards
 only, labelled "(i of n)", with no "Confirm all".
@@ -1360,7 +1360,7 @@ no `merchants` row but is named by 3 or more confirmed purchases gets one
   third is a habit worth a lookup entry. One constant, changeable in one place.
 - **Counts only bot-era ingestions.** The count reads
   `ingestions.extraction->>'merchant'` of confirmed rows. The Notion import
-  (2026-06 to 2026-08) carries no merchant names, so those 332 rows never count.
+  (2026-06 to 2026-08) carries no merchant names, so those imported rows never count.
 - **Same normalisation as the link-on-add backfill** (spaces collapsed, case
   ignored; one shared SQL expression in `db.ts`), so the count is exactly the
   set `/addmerchant` would link. Purchases of the card's own Telegram update
@@ -1395,8 +1395,9 @@ linked 1 past transaction, but 4 Notion-imported rows were left, because their
 - **A history import row is linked when its whole description is the name.**
   A transaction with no `ingestions` row (the Notion import writes none) and
   no merchant is linked when `MERCHANT_KEY(description)` equals the key of the
-  merchant being added. Equality only, never substring or prefix: "Metro
-  ticket" and "Bixi Monthly Pass" stay unlinked for "Metro" and "Bixi" alone.
+  merchant being added. Equality only, never substring or prefix: "Transit
+  ticket" and "Bike Share Monthly Pass" stay unlinked for "Transit" and "Bike
+  Share" alone.
 - **Why equality is safe for these rows.** A Notion description is the owner's
   own title for the purchase. Where it is exactly a business name, the row is a
   purchase there; a longer title adds words that may mean something else, so it
@@ -1484,8 +1485,8 @@ prompt-changing PRs, run 40829256766).
 Owner request: adding a merchant should find past purchases there from every
 source, bot messages and Notion imports alike. Before this, link-on-add read
 only the stored extraction's merchant and an import's whole description. A
-read-only check that day found the merchant captured on confirmed photos 19/24,
-voice notes 5/16 and text 17/62, so most misses are in the owner's own words or
+read-only check that day found the merchant captured on most confirmed photos
+but on well under half of voice notes and text, so most misses are in the owner's own words or
 in media the extraction did not name.
 
 - **Tier 1, linked at once: an exact name.** A transaction with no merchant is
@@ -2067,9 +2068,9 @@ questions answered by their defaults). Migration 0016, three dbt tests,
 - **`btree_gist` in schema `extensions`**, where Supabase keeps extensions,
   so its functions stay out of `public` and out of the Data API guard's
   view. Pauses never overlap by a GiST exclusion constraint.
-- **Descriptions are word sets.** The owner's ledger (2026-10-31) logs one
-  bill several ways (an extra word one month, the same pass in different
-  case, a weekend pass in three word orders and wordings), most rows have no
+- **Descriptions are word sets.** A real ledger logs one bill several ways
+  (an extra word one month, the same item in different case, a bill logged
+  under several word orders and wordings), most rows have no
   merchant, and some bills have one to three rows. So matching and
   detection normalise (merchant-key rules, then drop digits, month names
   and filler words such as "bill", "plan", "monthly"), and score two
@@ -2266,7 +2267,7 @@ holds it, as on the review).
 
 - **`savings_rate` is renamed `unspent_rate`.** It measures money not
   spent, `(income − spend) / income`, not money moved into a savings,
-  investment or debt account. The owner follows 50/30/20, where the 20%
+  investment or debt account. The view follows 50/30/20, where the 20%
   counts only money actually moved; calling the residual a savings rate
   would read as that 20% when part of it may still sit in chequing
   (`unallocated_cash`).
@@ -2282,8 +2283,8 @@ another name (the familiar name would stay on the wrong number).
 
 ## 2026-10-31 — Debt is an account kind; extra payments are transfers into it
 
-The owner has no debt but wants the capability ready, for themselves and for
-anyone who forks the repo with a mortgage or a car loan.
+Debt support is built ahead of need, for anyone who forks the repo with a
+mortgage or a car loan.
 
 - **`accounts.kind` gains `debt` (migration 0017).** An extra payment on a
   loan is a transfer from chequing into a debt account, the existing deposit
@@ -2310,7 +2311,7 @@ neutral "Car loan" account proves it).
 
 ## 2026-10-31 — Financial future is money actually moved; 50/30/20 targets per person
 
-The owner follows 50/30/20: needs, wants and "financial future" (saving,
+The view follows 50/30/20: needs, wants and "financial future" (saving,
 investing, paying a loan down faster) as shares of the month's income.
 `unspent_rate` counts money not spent, which includes cash still sitting in
 chequing that can leak into next month's spending, so it is not the 20%.
@@ -2323,7 +2324,7 @@ chequing that can leak into next month's spending, so it is not the 20%.
   is the standard savings rate, just not the 20% line.
 - **The base is `spendable_income = income - savings_income`.** Savings
   interest is growth inside the account, so it is neither income nor
-  financial future in this view. Refunds and the allowance count.
+  financial future in this view. Refunds and other income count.
 - **A withdrawal lowers that month's financial future.** No carry-over: the
   owner dates a late transfer to the month it belongs to, so the transfer's
   `occurred_on` is enough.

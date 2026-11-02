@@ -62,7 +62,7 @@ function nextAfterLast(fit: { anchor: Parameters<typeof slots>[0] }, dates: stri
 const INTERNET = ["2026-06-15", "2026-07-14", "2026-08-17", "2026-09-15", "2026-10-15"];
 const MONTH_END = ["2026-06-30", "2026-08-01", "2026-09-01", "2026-09-30", "2026-10-30"];
 const SALARY = every("2026-06-05", 14, 11); // Fridays Jun 5 .. Oct 23
-const ALLOWANCE = [
+const PAYCHEQUE = [
   "2026-06-01", "2026-06-15", "2026-07-01", "2026-07-15", "2026-07-31",
   "2026-08-14", "2026-09-01", "2026-09-15", "2026-10-01", "2026-10-15",
 ];
@@ -80,7 +80,7 @@ const DETECTS: [string, string[], Cadence, number, number, Cadence, number, stri
   ["a monthly bill with day jitter", INTERNET, "monthly", 1, 0, "semimonthly", 0.56, "2026-11-15"],
   ["a month-end charge that crosses the boundary", MONTH_END, "monthly", 1, 1.48, "semimonthly", 0.56, "2026-11-30"],
   ["a biweekly salary", SALARY, "biweekly", 1, 0, "weekly", 0.52, "2026-11-06"],
-  ["a semi-monthly allowance shifted off weekends", ALLOWANCE, "semimonthly", 1, 0, "monthly", 0.5, "2026-11-01"],
+  ["a semi-monthly paycheque shifted off weekends", PAYCHEQUE, "semimonthly", 1, 0, "monthly", 0.5, "2026-11-01"],
   ["interest on the last day", INTEREST, "monthly", 1, 0, "semimonthly", 0.57, "2026-10-31"],
   ["a monthly gym with a missing month", GYM, "monthly", 0.8, 0, "quarterly", 0.5, "2026-11-03"],
   ["a monthly bill whose September was never logged", GAP, "monthly", 0.8, 0, "quarterly", 0.5, "2026-11-15"],
@@ -205,7 +205,7 @@ const PREDICTS: [string, Cadence, string[], string, string, string, string, stri
   ["a monthly bill due on a Sunday", "monthly", INTERNET, "2026-10-31", "2026-11-15", "2026-11-13", "2026-11-17", "2026-11-20", "upcoming"],
   ["a month-end charge, its window widened by the jitter", "monthly", MONTH_END, "2026-10-31", "2026-11-30", "2026-11-27", "2026-12-03", "2026-12-06", "upcoming"],
   ["a salary whose window ends on a Saturday", "biweekly", SALARY, "2026-10-31", "2026-11-06", "2026-11-05", "2026-11-09", "2026-11-11", "upcoming"],
-  ["an allowance whose window opens on a Saturday", "semimonthly", ALLOWANCE, "2026-10-31", "2026-11-01", "2026-10-30", "2026-11-02", "2026-11-04", "due"],
+  ["a paycheque whose window opens on a Saturday", "semimonthly", PAYCHEQUE, "2026-10-31", "2026-11-01", "2026-10-30", "2026-11-02", "2026-11-04", "due"],
   ["interest due today", "monthly", INTEREST, "2026-10-31", "2026-10-31", "2026-10-29", "2026-11-02", "2026-11-05", "due"],
   ["a gym due now", "monthly", GYM, "2026-10-31", "2026-11-03", "2026-10-30", "2026-11-05", "2026-11-08", "due"],
   ["a gym month never logged", "monthly", GYM, "2026-10-31", "2026-08-03", "2026-07-31", "2026-08-05", "2026-08-08", "missed"],
