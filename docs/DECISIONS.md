@@ -2427,11 +2427,11 @@ it red); `--store-failures` for the ids (it creates an audit schema
 `finflow_dbt` may not create); fuzzy description matching (more false pairs
 than the cases seen so far justify).
 
-## 2026-11-02 - Venue, printed-date and tax/tip rules in the extraction prompt
+## 2026-11-02 - Venue and printed-date rules in the extraction prompt; tax and tip allocation moves to code
 
-Three production cards were wrong in ways the prompt allowed: a discount
-store got the nearest venue on the list, a receipt's `YY/MM/DD` date was
-read as `DD/MM/YY` (years in the past), and tax was spread over every line
+Two production cards were wrong in ways the prompt allowed: a discount store
+got the nearest venue on the list, and a receipt's `YY/MM/DD` date was read
+as `DD/MM/YY` (years in the past). A third had tax spread over every line
 when the receipt taxed only one.
 
 - **Venue.** A venue is set only when the place clearly is one of the
@@ -2442,23 +2442,26 @@ when the receipt taxed only one.
   2-digit `NN/NN/NN` one. An `NN/NN/NN` alone is read so that it falls in
   the 12 months before today, as year/month/day when day/month/year would
   land years away. No date more than a year from today unless the message
-  says so.
-- **Tax and tip.** This refines 2026-08-13 and 2026-10-29. Tax goes only on
-  the lines the receipt flags as taxable (`FP`, `F`, `P`, `T`, `TX`); with
-  tax but no flags it spreads over all lines by price. A tip splits by each
-  line's pre-tax price. Lines round to the cent, the remainder on the
-  largest line, and still sum to the header.
-- **Where it lives.** Shared constants in `lambda/src/gemini.ts`
-  (`LINE_AMOUNTS`, `VENUE`, `DATE_READING`) in all four prompts, not the
-  owner's needs/wants rules (`rules_sha256` hashes those; they are personal
-  and live in SSM). The line-sum check in `validateExtraction` stays the
-  deterministic guard; the model computes the split, because only it sees
-  the flags.
-- **Goldens stay at 20.** The assertions fold into `receipt-with-tip` (new
-  synthetic receipt), `edit-tip` and `two-stores`.
+  says so. The card's implausible-date warning (#106) stays the
+  deterministic backstop.
+- **Where they live.** Shared constants `VENUE` and `DATE_READING` in
+  `lambda/src/gemini.ts`, in the text, photo, voice and Edit prompts; not
+  the owner's needs/wants rules (`rules_sha256` hashes those; they are
+  personal and live in SSM). Both passed the live eval under
+  gemini-3.5-flash-lite.
+- **Tax and tip allocation moves to deterministic code, in a separate PR.**
+  A prompt rule (tax only on the lines a receipt flags as taxable, the tip
+  by each line's pre-tax price) was tried here and removed before merge:
+  under gemini-3.5-flash-lite the synthetic receipt's lines came back
+  3.50 / 12.25 on one run and 3.90 / 11.85 on the next, never the expected
+  3.60 / 12.15. This removes a rule that does not reliably work under the
+  lighter model; it does not loosen an assertion. `LINE_AMOUNTS` stays as
+  it was (2026-08-13, 2026-10-29) until the code step lands.
+- **Goldens stay at 20.** `receipt-with-tip` now prints a `YY/MM/DD` date
+  and a 4-digit-year footer and checks the date and that a diner has no
+  venue; `two-stores` checks no venue for a dollar store and Pharmacy for a
+  pharmacy.
 
-**Ruled out:** a code step that allocates tax and tip (it would need the
-model to return pre-tax prices and flags per line, a schema change);
-a new golden case per rule (the suite is at the free tier's 20 a day);
-relying on the prompt alone for dates (the card's implausible-date warning
-from #106 stays the deterministic backstop).
+**Ruled out:** tax and tip allocation by prompt alone (inconsistent splits
+under Lite, above); a new golden case per rule (the suite is at the free
+tier's 20 a day).
