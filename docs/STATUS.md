@@ -531,6 +531,12 @@ saved entries or open cards within 1 day add up to its amount exactly (nearest
 12 tried). Warning only. Follow-up: offer to merge a receipt into earlier typed
 entries: needs design.
 
+Date sanity warning (branch `fix/card-date-sanity`, DECISIONS.md 2026-11-02):
+a receipt read as day/month/year instead of year/month/day put a purchase in
+2022 and the card said nothing. A saved card now adds `! date <date> is more
+than a year ago: check it` (or `is in the future`, or `is before your oldest
+saved entry (<date>): check it`). Warning only, no Gemini call, no migration.
+
 ## Next concrete step
 
 Phase 4.5 — Proactive nudges, PR 4 (`feat/nudge-infra`, Terraform only) in

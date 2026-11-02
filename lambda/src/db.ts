@@ -399,6 +399,13 @@ export async function listPendingIngestions(
   return result.rows;
 }
 
+/** The date of the oldest saved transaction (YYYY-MM-DD), or null for an empty ledger. */
+export async function oldestTransactionDate(): Promise<string | null> {
+  const db = await getPool();
+  const result = await db.query<{ d: string | null }>("SELECT min(occurred_on)::text AS d FROM transactions");
+  return result.rows[0]?.d ?? null;
+}
+
 /** A card's day: its date, or the day it was sent when it has none yet. */
 const CARD_DAY = (row: string) =>
   `coalesce(nullif(${row}.extraction->>'date', '')::date, (${row}.created_at AT TIME ZONE 'America/Toronto')::date)`;
