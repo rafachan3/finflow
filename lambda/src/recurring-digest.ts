@@ -379,7 +379,8 @@ async function respond(tap: DigestTap, ctx: TapContext): Promise<Outcome> {
     return { screen: await redraw(ctx.chatId, day), ack: `${when} is expected again.` };
   }
   const why = unskippable(await loadBook(), tap.sid, tap.due, ctx.today);
-  if (why) return { ack: why };
+  // An out-of-date button means the digest it sits on is stale: replace it.
+  if (why) return { screen: why === OUT_OF_DATE ? await redraw(ctx.chatId, day) : undefined, ack: why };
   const result = await skipSlot(tap.sid, tap.due, new Date());
   if (result === "already") return { ack: "Already skipped." };
   if (result === "missing") return { ack: "That series no longer exists." };

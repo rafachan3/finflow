@@ -317,8 +317,12 @@ describe("digest buttons", () => {
       expect(sent.text).toContain("⚠️ Gym — around Feb 1");
       // Feb 16 is within half a month of the not-logged Feb 1, but nearer the upcoming Mar 1:
       // stored, it would settle Mar 1 and leave Feb 1 not logged.
+      // From a stale screen of the same message (Find): the refusal also puts the digest back.
+      await chat.press(sent, `r:df:${id}:20270201`);
+      expect(chat.current(sent).text).toContain("Nothing logged around Feb 1");
       await chat.press(sent, `r:dk:${id}:20270216`);
       expect(chat.acks().at(-1)).toBe("That button is out of date. Open /recurring.");
+      expect(chat.current(sent).text).toBe(sent.text);
       await chat.press(sent, `r:dk:${id}:20270301`);
       expect(chat.acks().at(-1)).toBe("Nothing expected around Mar 1.");
       expect(await skips()).toEqual([]);
