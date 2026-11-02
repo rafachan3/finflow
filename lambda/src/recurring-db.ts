@@ -329,6 +329,76 @@ export async function clearFlags(transactionIds: string[]): Promise<number> {
   return res.rowCount ?? 0;
 }
 
+// ---- Digest runs (migration 0019) -------------------------------------------
+
+/**
+ * Claims the day's digest for a chat: a new run, or a run whose send Telegram
+ * refused ('failed') with attempts left. False when the day is already
+ * handled (sent, empty, or a send whose outcome is unknown), so a retried or
+ * duplicated schedule sends nothing. The claim commits before the send.
+ */
+export async function claimRun(runDate: string, chatId: number): Promise<boolean> {
+  const db = await getPool();
+  // One snapshot: a concurrent claimer's new row is invisible to this UPDATE,
+  // and its INSERT waits on the key and then does nothing.
+  const res = await db.query<{ claimed: boolean }>(
+    `WITH ins AS (
+       INSERT INTO nudge_runs (run_date, chat_id, status) VALUES ($1::date, $2, 'claimed')
+       ON CONFLICT DO NOTHING RETURNING 1
+     ),
+     re AS (
+       UPDATE nudge_runs SET status = 'claimed', attempts = attempts + 1, updated_at = now()
+       WHERE run_date = $1::date AND chat_id = $2 AND status = 'failed' AND attempts < 3
+       RETURNING 1
+     )
+     SELECT EXISTS (SELECT 1 FROM ins) OR EXISTS (SELECT 1 FROM re) AS claimed`,
+    [runDate, chatId],
+  );
+  return res.rows[0].claimed;
+}
+
+/** Records how a claimed run ended; a sent one keeps its message id for the buttons. */
+export async function finishRun(
+  runDate: string,
+  chatId: number,
+  outcome: { status: "sent"; messageId: number } | { status: "empty" | "failed" },
+): Promise<void> {
+  const db = await getPool();
+  await db.query(
+    `UPDATE nudge_runs SET status = $3, message_id = $4, updated_at = now()
+     WHERE run_date = $1::date AND chat_id = $2 AND status = 'claimed'`,
+    [runDate, chatId, outcome.status, "messageId" in outcome ? outcome.messageId : null],
+  );
+}
+
+/**
+ * The day before `runDate` when it had no digest: no run at all, once the
+ * digest has run on some earlier day, or a run Telegram refused every time.
+ * Null otherwise, so the first digest ever notes nothing.
+ */
+export async function missedRun(runDate: string, chatId: number): Promise<string | null> {
+  const db = await getPool();
+  const res = await db.query<{ day: string; status: string | null; earlier: boolean }>(
+    `SELECT ($1::date - 1)::text AS day,
+            (SELECT status FROM nudge_runs WHERE chat_id = $2 AND run_date = $1::date - 1) AS status,
+            EXISTS (SELECT 1 FROM nudge_runs WHERE chat_id = $2 AND run_date < $1::date - 1) AS earlier`,
+    [runDate, chatId],
+  );
+  const { day, status, earlier } = res.rows[0];
+  return status === "failed" || (status === null && earlier) ? day : null;
+}
+
+/** Skips recorded on or after a Toronto day: the digest shows them with Undo. */
+export async function skipsSince(day: string): Promise<{ seriesId: number; due: string }[]> {
+  const db = await getPool();
+  const res = await db.query<{ seriesId: number; due: string }>(
+    `SELECT series_id AS "seriesId", due_on::text AS due FROM recurring_skips
+     WHERE (skipped_at AT TIME ZONE 'America/Toronto')::date >= $1::date`,
+    [day],
+  );
+  return res.rows;
+}
+
 /** Records a detector proposal the owner answered "not recurring"; false when it already was. */
 export async function dismissGroup(groupKey: string): Promise<boolean> {
   const db = await getPool();

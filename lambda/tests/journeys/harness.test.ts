@@ -26,7 +26,7 @@ describe("the journey fakes", () => {
   });
 
   it("count only the text an HTML message shows towards Telegram's limit", async () => {
-    await expect(sendMessage("t", 1, `<b>${"x".repeat(4000)}</b> &amp;`, undefined, { html: true })).resolves.toBeUndefined();
+    await expect(sendMessage("t", 1, `<b>${"x".repeat(4000)}</b> &amp;`, undefined, { html: true })).resolves.toEqual(expect.any(Number));
   });
 
   it("reject HTML with an unsupported tag, an unclosed tag or an unescaped character", async () => {

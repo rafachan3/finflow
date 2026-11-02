@@ -91,3 +91,13 @@ export function deleteReply(
   const s = result.uses === 1 ? "" : "s";
   return `Hid ${result.hidden}: it stays on ${result.uses} saved transaction${s} but won't be suggested.`;
 }
+
+/** The Toronto calendar date of an instant, as YYYY-MM-DD. */
+export function todayToronto(now = new Date()): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Toronto",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(now);
+}

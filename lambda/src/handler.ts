@@ -10,6 +10,7 @@ import {
   deleteReply,
   formatMerchants,
   parseCommand,
+  todayToronto,
   type CommandName,
 } from "./commands.js";
 import { getConfig } from "./config.js";
@@ -187,15 +188,6 @@ function headerSecret(event: APIGatewayProxyEventV2): string | undefined {
     headers["x-telegram-bot-api-secret-token"] ??
     headers["X-Telegram-Bot-Api-Secret-Token"]
   );
-}
-
-export function todayToronto(now = new Date()): string {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "America/Toronto",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(now);
 }
 
 export function withDatePolicy(

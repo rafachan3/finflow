@@ -15,7 +15,8 @@
     "build": "tsc --noEmit",
     "backfill:media-merchant": "esbuild scripts/backfill-media-merchant.ts --bundle --platform=node --target=node22 --format=esm --packages=external --outfile=dist/backfill-media-merchant.mjs && node dist/backfill-media-merchant.mjs",
     "telegram:commands": "esbuild scripts/set-commands.ts --bundle --platform=node --target=node22 --format=esm --outfile=dist/set-commands.mjs && node dist/set-commands.mjs",
-    "bundle":"esbuild src/handler.ts --bundle --platform=node --target=node22 --outfile=dist/index.js --format=cjs"
+    "bundle":"esbuild src/handler.ts --bundle --platform=node --target=node22 --outfile=dist/index.js --format=cjs",
+    "bundle:nudge": "esbuild src/nudge.ts --bundle --platform=node --target=node22 --outfile=dist/nudge/index.js --format=cjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1120.0",

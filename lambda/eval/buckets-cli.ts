@@ -11,7 +11,7 @@ import { Client } from "pg";
 import { loadTaxonomy } from "../src/db.js";
 import type { Extraction } from "../src/extraction.js";
 import { extractFromText, GEMINI_FALLBACK_MODEL, GEMINI_LITE_MODEL, GEMINI_MODEL } from "../src/gemini.js";
-import { todayToronto } from "../src/handler.js";
+import { todayToronto } from "../src/commands.js";
 import {
   compareLines,
   geminiKey,

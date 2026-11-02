@@ -2,8 +2,8 @@
  * The daily digest (design §E.3): one HTML message over every series, in
  * order of urgency for the reader. Due now (the window is open), Coming up
  * (a window opens within 7 days), Not logged (past its window and grace),
- * then what is left to review. Pure: the caller loads the book and says
- * which day it is for.
+ * then what is left to review. `renderDigest` is pure; `loadDigest` reads
+ * what it needs for one chat and day.
  *
  * It rings only when something became new that day: a payment turned not
  * logged, or a fixed-amount expense's window opened. Income and an amount
@@ -12,7 +12,7 @@
  */
 import type { Keyboard } from "./mentions.js";
 import { dayNumber, halfPeriod, proposeSeries, type Kind, type Slot } from "./recurring.js";
-import type { Book } from "./recurring-db.js";
+import { loadBook, missedRun, skipsSince, type Book } from "./recurring-db.js";
 import {
   candidates,
   cut,
@@ -204,4 +204,10 @@ export function renderDigest(input: DigestInput): Digest | null {
   if (todo.length) keyboard.push(todo);
   keyboard.push([{ text: "↻ All recurring", callback_data: "r:l:0" }]);
   return { text, keyboard, ring };
+}
+
+/** The digest of a chat for a day, from the database as it is now. */
+export async function loadDigest(chatId: number, day: string): Promise<Digest | null> {
+  const book = await loadBook();
+  return renderDigest({ book, today: day, skipped: await skipsSince(day), noDigestOn: await missedRun(day, chatId) });
 }
