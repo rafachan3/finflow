@@ -77,15 +77,17 @@ export type CheckResult =
   | { ok: true; errors: string[]; warnings: string[] }
   | { ok: false; errors: string[]; warnings: string[] };
 
-/** A likely earlier copy of a saved card: the same photo, or the same money event. */
+/** A likely earlier copy of a saved card: the same photo, the same money event, or the same total typed in parts. */
 export type DuplicateMatch = {
-  rule: "photo" | "amount";
+  rule: "photo" | "amount" | "parts";
   /** saved = a confirmed transaction; pending = a card still open. */
   status: "saved" | "pending";
   /** The match's date; for a photo match, the day its card was sent. */
   date: string;
   amount: Money;
   description: string;
+  /** parts only: how many earlier entries (2 or 3) add up to the card's amount; `date` is the latest of them. */
+  parts?: number;
 };
 
 const CENTS = /^(\d+)\.(\d{2})$/;
@@ -455,7 +457,7 @@ export function withPosition(ack: string, cardText?: string): string {
   return ack + label;
 }
 
-/** At most one card warning for findDuplicates' ordered matches: a photo match wins. */
+/** At most one card warning for findDuplicates' ordered matches: photo, then one amount, then parts. */
 export function duplicateWarnings(matches: DuplicateMatch[]): string[] {
   const [first] = matches;
   if (!first) return [];
@@ -463,8 +465,12 @@ export function duplicateWarnings(matches: DuplicateMatch[]): string[] {
   if (first.rule === "photo") {
     return [`Same photo as a card from ${first.date} (${status})`];
   }
-  // Photo matches sort first, so every match here is an amount match.
-  const more = matches.length > 1 ? ` (+${matches.length - 1} more)` : "";
+  if (first.rule === "parts") {
+    return [`may repeat ${first.parts} earlier entries around ${first.date} that add up to this total`];
+  }
+  // Photo matches sort first, parts last; the count is of amount matches only.
+  const amounts = matches.filter((m) => m.rule === "amount").length;
+  const more = amounts > 1 ? ` (+${amounts - 1} more)` : "";
   return [
     `Possible duplicate: CAD ${first.amount} on ${first.date}, "${first.description}" (${status})${more}`,
   ];
