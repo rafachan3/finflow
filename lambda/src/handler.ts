@@ -697,6 +697,7 @@ async function handleCallback(
     callbackId: cb.id,
     messageId: cb.message!.message_id!,
     keyboard: cb.message?.reply_markup?.inline_keyboard ?? [],
+    text: cb.message?.text,
     today,
   });
   // The scheduled digest's buttons: the nudge function sends it, but every tap reaches this webhook.

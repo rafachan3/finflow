@@ -389,10 +389,14 @@ async function respond(tap: DigestTap, ctx: TapContext): Promise<Outcome> {
 /** A tap on a digest button: the message is edited in place, then the tap answered. */
 export async function handleDigestTap(tap: DigestTap, ctx: TapContext): Promise<void> {
   const outcome = await respond(tap, ctx);
-  if (outcome.screen) {
-    await editMessageText(ctx.botToken, ctx.chatId, ctx.messageId, outcome.screen.text, outcome.screen.keyboard, {
-      html: true,
-    });
+  const { screen } = outcome;
+  // Telegram refuses an edit that changes nothing (a double-tapped Back).
+  const unchanged =
+    screen &&
+    visible(screen.text) === ctx.text &&
+    JSON.stringify(screen.keyboard) === JSON.stringify(ctx.keyboard);
+  if (screen && !unchanged) {
+    await editMessageText(ctx.botToken, ctx.chatId, ctx.messageId, screen.text, screen.keyboard, { html: true });
   }
   await answerCallbackQuery(ctx.botToken, ctx.callbackId, outcome.ack);
 }

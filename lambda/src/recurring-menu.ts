@@ -737,6 +737,8 @@ export type TapContext = {
   messageId: number;
   /** The keyboard as Telegram sent it back with the tap. */
   keyboard: Keyboard;
+  /** The message's text as the reader sees it, as Telegram sent it back. */
+  text?: string;
   today: string;
 };
 

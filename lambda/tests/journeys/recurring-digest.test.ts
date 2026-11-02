@@ -249,6 +249,11 @@ describe("digest buttons", () => {
     );
     await chat.tap(sent, "‹ Back to digest");
     expect(chat.current(sent).text).toBe(DIGEST);
+    // Back tapped twice: the second finds the digest already shown and only answers the tap.
+    const acks = chat.acks().length;
+    await chat.press(sent, "r:dv");
+    expect(chat.acks()).toHaveLength(acks + 1);
+    expect(chat.current(sent).text).toBe(DIGEST);
     expect(await sql("SELECT 1 FROM recurring_skips")).toEqual([]);
   });
 
