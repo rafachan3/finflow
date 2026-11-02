@@ -110,7 +110,9 @@ included.
 | Ledger | A line's item type belongs to the same category as its subcategory | `dbt:item_type_matches_subcategory_category` |
 | Ledger | An expense has a funder, and income and transfers have none; a transfer names the account it leaves, the one it enters or both (null is chequing), never the same one twice, so a withdrawal passes; only a transfer has a from account | `dbt:expense_funding_rules`<br>`dbt:transfer_has_account` |
 | Ledger | A debt account only receives transfers: a transfer from one, or an income source depositing into one, fails the `dbt` job | `dbt:debt_account_only_receives_transfers` |
-| Ledger | Warnings, not failures: a line tag that repeats its header tag, a transaction with two confirmed ingestions, a date past Toronto's tomorrow | `dbt:line_tag_not_on_header`<br>`dbt:one_confirmed_ingestion_per_transaction`<br>`dbt:occurred_on_not_in_future` |
+| Ledger | Every transaction is dated from the ledger start (dbt var `ledger_start`, 2026-06-01; the fixture exports its own) to Toronto's tomorrow; a row dated years back or ahead fails the `dbt` job, as does the production start on the fixture's earlier months | `dbt:occurred_on_within_ledger`<br>`ci:misdated rows fail occurred_on_within_ledger, and a likely duplicate and an unlinked recurring row warn with their ids` |
+| Ledger | Warnings, not failures: a line tag that repeats its header tag, a transaction with two confirmed ingestions | `dbt:line_tag_not_on_header`<br>`dbt:one_confirmed_ingestion_per_transaction` |
+| Ledger | Ledger health warnings: two transactions of one type and amount at most 3 days apart whose descriptions match ignoring case and whitespace are reported as a pair of ids, while near misses (different descriptions at one price, the same description 5 days apart) are not; a transaction flagged recurring with no series link is reported by id (warn, since one legitimate leftover exists) | `dbt:no_likely_duplicates`<br>`dbt:recurring_flag_has_series`<br>`ci:misdated rows fail occurred_on_within_ledger, and a likely duplicate and an unlinked recurring row warn with their ids` |
 | Ledger | A transaction links to at most one recurring series, of its own kind only; linking sets `is_recurring` and unlinking clears it, while an unlinked insert keeps the flag it was given until migration 0017; a deleted series unlinks its transactions; a transaction is never both linked to and excluded from a series; pauses of a series never overlap; the nightly checks production | `links a transaction to a series of its own kind and refuses another kind`<br>`linking sets is_recurring and unlinking clears it`<br>`keeps a legacy flag on an unlinked insert and through merchant linking, and lets it be cleared`<br>`deleting a series unlinks its transactions and clears their flag`<br>`refuses a pause that overlaps another pause of the series`<br>`refuse a recurring series with %s`<br>`dbt:recurring_link_matches_series_kind`<br>`dbt:recurring_link_not_excluded`<br>`dbt:recurring_pauses_do_not_overlap` |
 | Recurring | Cadence detection reads calendar slots, not intervals: monthly, month-end, biweekly, semi-monthly and quarterly histories get their cadence and anchor, a month never logged lowers coverage but does not change the cadence, twice-a-week shopping is not proposed, a cadence needs a full period of history to be suggested, and a declared cadence fits even one payment | `detects %s`<br>`proposes a regular series with enough history, and not twice-a-week shopping`<br>`reads a gap in logging as a missing payment, not a change of cadence`<br>`needs a full period of history before it suggests a cadence`<br>`fits the owner's declared cadence to a single payment`<br>`suggests monthly for any regular monthly series with up to two days of jitter` |
 | Recurring | Each expected payment has a window (±2 spreads, weekend starts move to Friday and weekend ends to Monday) and counts as missed only after the window and its grace; a paused period is never missed (a slot on the pause's first day is paused, one on its resume day is expected), a skip settles one payment, a payment logged during a pause counts and is flagged, a second payment in one slot is reported | `predicts %s`<br>`counts a missed payment only after its window and grace`<br>`never counts a paused slot as missed`<br>`pauses a slot whose centre is the pause's first day, and expects one on its resume day`<br>`lets a skip settle the one payment that will not happen`<br>`counts a payment logged during a pause as met and flags it, and reports a second payment in one slot`<br>`never counts a slot inside a pause as missed, for any monthly series and pause` |
@@ -255,6 +257,13 @@ Extra SQL files given to `test_db.py` load after the fixture.
 `dbt/fixtures/off_by_a_cent.sql` moves one receipt line by 0.01; with it,
 `dbt build` must fail on `expense_lines_sum_to_header` and nothing else
 (the marts downstream are skipped, not built).
+`dbt/fixtures/ledger_health.sql` adds rows dated in 2022 and 2099, a likely
+duplicate pair, near misses that are not one, and an unlinked row flagged
+recurring; with it, `dbt build --exclude tag:fixture` must fail
+`occurred_on_within_ledger` (2 rows) and nothing else, warn
+`no_likely_duplicates` and `recurring_flag_has_series` (1 row each) and
+nothing else, and `scripts/ledger_health.py` must print those ids and no
+description or amount.
 
 The CI job `dbt` runs on every PR, against a `postgres:17` service:
 `dbt build` on the fixture must pass; `finflow_analyst` (throwaway password
@@ -305,6 +314,15 @@ failed nodes or checks and the run URL, never empty; the next pass closes
 it. Without
 the secrets (a fork, or before they are set) the build job is skipped and
 the run is green.
+
+Warn-level tests never fail the run. After the build, still inside the
+build step, `scripts/ledger_health.py` lists each test that warned with its
+row count, plus the ids `no_likely_duplicates` and
+`recurring_flag_has_series` returned (anything that is not a UUID is
+withheld). The next step, which has no secrets, writes that to the job
+summary and to one open issue labelled `ledger-health`. It rewrites the
+issue body, with a comment, only when the findings change, and closes the
+issue after the first clean, successful build.
 
 To see the detail behind an issue, run the same commands from `dbt/` with
 the production `FINFLOW_DBT_*` variables in your shell (keep them in the

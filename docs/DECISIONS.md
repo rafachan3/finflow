@@ -2392,6 +2392,41 @@ looked wrong.
 owner decides); fixing the misread in the prompt (separate change); a stricter
 window than 12 months (backfilling a few months is normal).
 
+## 2026-11-02 - Ledger health tests in the nightly dbt build
+
+The owner found by eye a row dated 2022 (a misread receipt date, the only one
+before the ledger start), one payment entered twice a day apart, and a row
+flagged recurring with no series. Nothing in the pipeline flagged them.
+
+- **The ledger start is a dbt var, `ledger_start`, default `2026-06-01`**
+  (the import scope of 2026-08-13). `occurred_on_within_ledger` fails, as an
+  error, any row before it or after Toronto's tomorrow. It replaces the
+  warn-only `occurred_on_not_in_future`: a date outside the window always
+  drops the row out of its month, so it is a bug, not a signal. The
+  synthetic fixture starts in March, so `test_db.py` exports
+  `FINFLOW_LEDGER_START=2026-03-01`; production never runs that script.
+  A genuine purchase older than the start must be dated inside the ledger or
+  the start moved here.
+- **Likely duplicates and recurring flags with no series are warnings.**
+  The ledger can hold a real repeat, and one unlinked recurring row is a
+  known leftover. A pair needs the same type and amount, at most 3 days
+  apart, and descriptions equal once case and all whitespace are dropped;
+  different descriptions at one price (two tickets, a washer and a dryer)
+  are never listed. All types, not only expenses, since a doubled income or
+  transfer skews the month the same way.
+- **Warnings surface in the job summary and one rolling issue labelled
+  `ledger-health`**, test names, counts and ids only.
+  `scripts/ledger_health.py` reruns the two id-only tests inside the build
+  step, which already holds the secrets, and withholds any value that is not
+  a UUID. The issue body is rewritten, with a comment, only when the findings
+  change, so a standing leftover does not notify every night; a clean,
+  successful build closes it.
+
+**Ruled out:** failing the nightly on warnings (the known leftover would keep
+it red); `--store-failures` for the ids (it creates an audit schema
+`finflow_dbt` may not create); fuzzy description matching (more false pairs
+than the cases seen so far justify).
+
 ## 2026-11-02 - Venue, printed-date and tax/tip rules in the extraction prompt
 
 Three production cards were wrong in ways the prompt allowed: a discount

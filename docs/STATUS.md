@@ -591,6 +591,15 @@ and the reconciliation test), `mf validate-configs` passed, and
 metrics, 5 months". The public log held node names and statuses only, with
 host, user and password masked.
 
+Ledger health tests (branch `feat/ledger-health-tests`, 2026-11-02;
+DECISIONS.md, TESTING.md): `occurred_on_within_ledger` fails a row dated
+before the ledger start (dbt var, 2026-06-01) or after tomorrow;
+`no_likely_duplicates` and `recurring_flag_has_series` warn, and the
+nightly lists their ids in the job summary and one `ledger-health` issue,
+never failing on them. Green on the fixture in CI; **not yet run on
+production**: the first nightly after merge must pass, which needs the
+2022-dated row already re-dated.
+
 Pre-run check of `finflow_dbt` (2026-10-30, `has_table_privilege` and
 `has_schema_privilege` over `verify-ca` TLS with the tracked CA, no writes): SELECT on `public.transactions` true;
 INSERT, UPDATE and DELETE on it false; CREATE on schema `public` false;
