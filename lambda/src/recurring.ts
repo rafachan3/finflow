@@ -536,17 +536,6 @@ export interface Match {
 }
 
 /**
- * How well a transaction fits a series: strong (pre-ticked on review, linked
- * by default on the card), weak (shown unticked) or none. Never across kinds,
- * never a row linked elsewhere or excluded from this series.
- *
- * - income: the same income source; transfer: the same two accounts.
- * - expense, strong: the same merchant or a similar description (to the
- *   name, a keyword or any linked description), and either the amount within
- *   twice the band or the date inside an expected window plus grace.
- * - expense, weak: only the subcategory, with both the amount and the date.
- */
-/**
  * A history's band and cadence fit, which do not depend on the transaction
  * matched: computed once per history object, so matching every row against
  * one history fits it once. A history is read, never mutated, by callers.
@@ -566,27 +555,31 @@ function derived(history: SeriesHistory, linked: LedgerRow[]): { band: Band | nu
   return d;
 }
 
-export function matchStrength(history: SeriesHistory, tx: LedgerRow): Match {
+/** The name, keywords and linked descriptions a series' payments are worded like. */
+function references(history: SeriesHistory): Set<string> {
+  return new Set([history.series.name, ...history.series.keywords, ...history.linked.map((r) => r.description)]);
+}
+
+/** How alike a description is to a series' name, keywords or any linked description, 0..1. */
+export function nameSimilarity(history: SeriesHistory, description: string): number {
+  return Math.max(0, ...[...references(history)].map((ref) => textSimilarity(ref, description)));
+}
+
+/** Where a payment's date and amount fall against a series' history, whatever its wording or keys. */
+export interface Timing {
+  /** Inside an expected payment's window plus grace. */
+  dateFits: boolean;
+  /** Within twice the usual band. */
+  amountFits: boolean;
+  /** Days from the nearest expected payment; Infinity with no history. */
+  slotDays: number;
+  /** Cents from the usual amount; Infinity with no band. */
+  amountCents: number;
+}
+
+export function timingOf(history: SeriesHistory, tx: Pick<LedgerRow, "date" | "amount">): Timing {
   const { series: s } = history;
   const linked = [...history.linked].sort((a, b) => a.date.localeCompare(b.date));
-  // The cheap keys first: a screen matches every series against every row,
-  // and the fit below is the costly part.
-  const unrelated =
-    tx.type !== s.kind ||
-    tx.seriesId !== null ||
-    history.excluded.includes(tx.id) ||
-    (s.kind === "income" && tx.incomeSourceId !== s.incomeSourceId) ||
-    (s.kind === "transfer" && (tx.fromAccountId !== s.fromAccountId || tx.toAccountId !== s.toAccountId));
-  const none: Match = { seriesId: s.id, strength: "none", slotDays: Infinity, amountCents: Infinity };
-  if (unrelated) return none;
-  const refs = new Set([s.name, ...s.keywords, ...linked.map((r) => r.description)]);
-  const named =
-    s.kind === "expense" &&
-    ((s.merchantId !== null && tx.merchantId === s.merchantId) ||
-      [...refs].some((ref) => textSimilarity(ref, tx.description) >= TEXT_MATCH));
-  const sameSub = s.kind === "expense" && s.subcategoryId !== null && tx.subcategoryId === s.subcategoryId;
-  if (s.kind === "expense" && !named && !sameSub) return none;
-
   const { band, fit } = derived(history, linked);
   const cents = parseCents(tx.amount);
   const amountCents = band && cents !== null ? Math.abs(cents - band.typical) : Infinity;
@@ -602,6 +595,40 @@ export function matchStrength(history: SeriesHistory, tx: LedgerRow): Match {
     slotGap = Math.abs(r);
     dateFits = day >= w.start && day <= w.lastDay;
   }
+  return { dateFits, amountFits, slotDays: slotGap, amountCents };
+}
+
+/**
+ * How well a transaction fits a series: strong (pre-ticked on review, linked
+ * by default on the card), weak (shown unticked) or none. Never across kinds,
+ * never a row linked elsewhere or excluded from this series.
+ *
+ * - income: the same income source; transfer: the same two accounts.
+ * - expense, strong: the same merchant or a similar description (to the
+ *   name, a keyword or any linked description), and either the amount within
+ *   twice the band or the date inside an expected window plus grace.
+ * - expense, weak: only the subcategory, with both the amount and the date.
+ */
+export function matchStrength(history: SeriesHistory, tx: LedgerRow): Match {
+  const { series: s } = history;
+  // The cheap keys first: a screen matches every series against every row,
+  // and the fit below is the costly part.
+  const unrelated =
+    tx.type !== s.kind ||
+    tx.seriesId !== null ||
+    history.excluded.includes(tx.id) ||
+    (s.kind === "income" && tx.incomeSourceId !== s.incomeSourceId) ||
+    (s.kind === "transfer" && (tx.fromAccountId !== s.fromAccountId || tx.toAccountId !== s.toAccountId));
+  const none: Match = { seriesId: s.id, strength: "none", slotDays: Infinity, amountCents: Infinity };
+  if (unrelated) return none;
+  const named =
+    s.kind === "expense" &&
+    ((s.merchantId !== null && tx.merchantId === s.merchantId) ||
+      [...references(history)].some((ref) => textSimilarity(ref, tx.description) >= TEXT_MATCH));
+  const sameSub = s.kind === "expense" && s.subcategoryId !== null && tx.subcategoryId === s.subcategoryId;
+  if (s.kind === "expense" && !named && !sameSub) return none;
+
+  const { dateFits, amountFits, slotDays: slotGap, amountCents } = timingOf(history, tx);
 
   const match = (strength: Strength): Match => ({ seriesId: s.id, strength, slotDays: slotGap, amountCents });
   // Income and transfers got here only with their hard key.

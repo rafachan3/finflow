@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { fitCadence } from "../src/recurring.js";
-import type { Book, BookRow } from "../src/recurring-db.js";
+import type { Book, BookRow, BookSeries } from "../src/recurring-db.js";
 import {
   addScreen,
+  joinable,
   answerPrompt,
   dayIn,
   hasMoney,
@@ -140,6 +141,81 @@ describe("adding a series", () => {
   });
 });
 
+describe("adding a payment to a series it is worded unlike", () => {
+  const PAYMENT = "22222222-2222-4222-8222-222222222222";
+  let n = 0;
+  const row = (over: Partial<BookRow>): BookRow => ({
+    id: `11111111-1111-4111-8111-${String(++n).padStart(12, "0")}`, date: "2026-09-03", type: "expense",
+    amount: "0.40", description: "x", merchantId: null, subcategoryId: null, incomeSourceId: null, fromAccountId: null,
+    toAccountId: null, seriesId: null, flagged: false, merchant: null, source: null, ...over,
+  });
+  const series = (id: number, name: string, over: Partial<BookSeries> = {}): BookSeries => ({
+    id, name, kind: "expense", cadence: "monthly", amountVaries: false, merchantId: null, subcategoryId: null,
+    incomeSourceId: null, fromAccountId: null, toAccountId: null, keywords: [], subcategory: null, source: null,
+    fromAccount: null, toAccount: null, ...over,
+  });
+  const monthly = (sid: number, day: string, amount: string, description: string) =>
+    ["06", "07", "08"].map((m) => row({ date: `2026-${m}-${day}`, amount, description, seriesId: sid }));
+  const payment = row({ id: PAYMENT, amount: "0.39", description: "Nimbus web services" });
+  const book: Book = {
+    series: [
+      series(1, "Zebra plan"),
+      series(2, "Nimbus storage"),
+      series(3, "Streaming plan"),
+      series(4, "Cloud hosting bill"),
+      series(5, "Allowance", { kind: "income", incomeSourceId: 9 }),
+      series(6, "Phone bill"),
+    ],
+    rows: [
+      ...monthly(4, "03", "0.40", "Cloud hosting bill"),
+      ...monthly(3, "20", "0.40", "Streaming plan"),
+      ...monthly(2, "15", "50.00", "Nimbus storage"),
+      ...monthly(6, "10", "45.00", "Phone bill"),
+      payment,
+    ],
+    pauses: new Map(), skips: new Map(), excluded: new Map(), dismissed: [],
+  };
+
+  it("ranks the series of its kind by timing, then amount, then name, with no name required", () => {
+    expect(joinable(book, payment).map((j) => [j.series.name, j.dateFits, j.amountFits])).toEqual([
+      ["Cloud hosting bill", true, true],
+      ["Streaming plan", false, true],
+      ["Nimbus storage", false, false],
+      ["Phone bill", false, false],
+      ["Zebra plan", false, false],
+    ]);
+  });
+
+  it("offers income only to series of its source, and a transfer only to series of its accounts", () => {
+    const income = row({ type: "income", incomeSourceId: 9 });
+    expect(joinable(book, income).map((j) => j.series.name)).toEqual(["Allowance"]);
+    expect(joinable(book, { ...income, incomeSourceId: 8 })).toEqual([]);
+    const transfers: Book = {
+      ...book,
+      series: [series(7, "Savings", { kind: "transfer", toAccountId: 2 }), series(8, "Card", { kind: "transfer", toAccountId: 3 })],
+    };
+    expect(joinable(transfers, row({ type: "transfer", toAccountId: 2 })).map((j) => j.series.name)).toEqual(["Savings"]);
+  });
+
+  it("lists the best 4 above the cadence rows, then All N series, and every series on request", () => {
+    const screen = addScreen(book, PAYMENT);
+    expect(screen.text.split("\n")[0]).toBe("<b>↻ Add to a series, or start a new one</b>");
+    expect(screen.keyboard.slice(0, 5).map((r) => r.map((b) => b.text))).toEqual([
+      ["↻ Add to Cloud hosting bill"],
+      ["↻ Add to Streaming plan"],
+      ["↻ Add to Nimbus storage"],
+      ["↻ Add to Phone bill"],
+      ["All 5 series ›"],
+    ]);
+    expect(screen.keyboard[0][0].callback_data).toBe(`r:aj:${PAYMENT}:4`);
+    expect(screen.keyboard[4][0].callback_data).toBe(`r:ae:${PAYMENT}`);
+    expect(screen.keyboard[5].map((b) => b.text)).toContain("Monthly");
+    const all = addScreen(book, PAYMENT, true);
+    expect(all.keyboard.filter((r) => r[0].text.startsWith("↻ Add to"))).toHaveLength(5);
+    expect(all.keyboard.flat().map((b) => b.text)).not.toContain("All 5 series ›");
+  });
+});
+
 describe("replies to a /recurring prompt", () => {
   const prompt = { text: "Rename #3 (Gym): reply with the new name.", date: 1000, from: { is_bot: true } };
   const reply = (over: Partial<PromptReply>): PromptReply => ({ text: "Home gym", date: 1010, reply_to_message: prompt, ...over });
@@ -225,6 +301,10 @@ describe("recurring callback data", () => {
     expect(parseRecurringTap("r:a", "2026-10-31")).toEqual({ op: "pick", offset: 0 });
     expect(parseRecurringTap("r:ar:8", "2026-10-31")).toEqual({ op: "pick", offset: 8 });
     expect(parseRecurringTap(`r:at:${TX}`, "2026-10-31")).toEqual({ op: "addFrom", tx: TX });
+    expect(parseRecurringTap(`r:ae:${TX}`, "2026-10-31")).toEqual({ op: "addFrom", tx: TX, all: true });
+    expect(parseRecurringTap(`r:aj:${TX}:4294967295`, "2026-10-31")).toEqual({ op: "join", tx: TX, sid: 4294967295 });
+    expect(Buffer.byteLength(`r:aj:${TX}:4294967295`)).toBeLessThanOrEqual(64);
+    expect(parseRecurringTap(`r:aj:${TX}`, "2026-10-31")).toBeNull();
     expect(parseRecurringTap("r:av", "2026-10-31")).toEqual({ op: "varies" });
     expect(parseRecurringTap(`r:ac:${TX}:s1`, "2026-10-31")).toEqual({ op: "create", tx: TX, cadence: "semimonthly", varies: true });
     expect(parseRecurringTap(`r:ac:${TX}:x1`, "2026-10-31")).toBeNull();

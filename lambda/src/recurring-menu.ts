@@ -13,9 +13,10 @@
  * (a ForceReply prompt; the reply is routed by its `#<sid>`) · `r:pd:<sid>:<from>`
  * asks for a typed pause end the same way ·
  * `r:x:<sid>` / `r:xy:<sid>` delete, asked then done ·
- * `r:a`, `r:ar:<offset>` pick a saved payment → `r:at:<uuid>` add from it,
- * `r:av` flips "amount varies" in the keyboard only, `r:ac:<uuid>:<c><v>`
- * creates the series with cadence code c and varies flag v.
+ * `r:a`, `r:ar:<offset>` pick a saved payment → `r:at:<uuid>` add from it
+ * (`r:ae:<uuid>` lists every series it could join), `r:aj:<uuid>:<sid>`
+ * adds it to that series, `r:av` flips "amount varies" in the keyboard only,
+ * `r:ac:<uuid>:<c><v>` creates a new series with cadence code c and varies flag v.
  * Dates are yyyymmdd, or `t` on a "today" button: the day it is tapped.
  */
 import { collapseSpaces } from "./commands.js";
@@ -25,14 +26,17 @@ import {
   amountBand,
   dayNumber,
   matchStrength,
+  nameSimilarity,
   occurrences,
   proposeSeries,
   suggestCadence,
+  timingOf,
   type Band,
   type Cadence,
   type Fit,
   type Pause,
   type Series,
+  type SeriesHistory,
   type Slot,
 } from "./recurring.js";
 import {
@@ -60,7 +64,8 @@ export type RecurringTap =
   | { op: "pauseUntil"; sid: number; from: string; until: string | null }
   | { op: "resume"; sid: number; on: string }
   | { op: "pick"; offset: number }
-  | { op: "addFrom"; tx: string }
+  | { op: "addFrom"; tx: string; all?: boolean }
+  | { op: "join"; tx: string; sid: number }
   | { op: "varies" }
   | { op: "create"; tx: string; cadence: Cadence; varies: boolean }
   | { op: "review"; sid: number | null }
@@ -113,6 +118,8 @@ const TAPS: [RegExp, (m: RegExpExecArray) => RecurringTap][] = [
   [new RegExp(`^r:xy:${SID}$`), (m) => ({ op: "delete", sid: Number(m[1]) })],
   [/^r:a(?:r:(\d{1,4}))?$/, (m) => ({ op: "pick", offset: Number(m[1] ?? 0) })],
   [new RegExp(`^r:at:${UUID}$`), (m) => ({ op: "addFrom", tx: m[1] })],
+  [new RegExp(`^r:ae:${UUID}$`), (m) => ({ op: "addFrom", tx: m[1], all: true })],
+  [new RegExp(`^r:aj:${UUID}:${SID}$`), (m) => ({ op: "join", tx: m[1], sid: Number(m[2]) })],
   [/^r:av$/, () => ({ op: "varies" })],
   [
     new RegExp(`^r:ac:${UUID}:([wbsmqy])([01])$`),
@@ -441,6 +448,16 @@ function rowLabel(r: BookRow, max = 40): string {
   return cut(`${day(r.date)} · ${money(parseCents(r.amount)!)} · ${collapseSpaces(r.description)}`, max);
 }
 
+/** A series with what matching reads of it: its payments, exclusions and pauses. */
+function historyOf(book: Book, s: BookSeries): SeriesHistory {
+  return {
+    series: s,
+    linked: book.rows.filter((r) => r.seriesId === s.id),
+    excluded: book.excluded.get(s.id) ?? [],
+    pauses: book.pauses.get(s.id) ?? [],
+  };
+}
+
 /**
  * A series' default name: the merchant, else the income source, else the
  * description without digits or month names ("Internet bill October" →
@@ -499,12 +516,54 @@ const CADENCE_BUTTONS: Record<Cadence, string> = {
 };
 const CODE_OF = Object.fromEntries(Object.entries(CODES).map(([c, cadence]) => [cadence, c])) as Record<Cadence, string>;
 
+/** A series a saved payment could be added to, and how its timing and amount fit. */
+export interface Joinable {
+  series: BookSeries;
+  dateFits: boolean;
+  amountFits: boolean;
+  similarity: number;
+}
+
 /**
- * Add, step 2: the series this payment would start, with the cadence its
- * similar past payments suggest listed first. Writes nothing; a cadence tap
- * creates it.
+ * The series a saved payment could be added to: the same kind, and for
+ * income the same source, for a transfer the same accounts (the keys
+ * applyReview re-checks when it links). No name is required: a payment
+ * worded unlike its series is what this is for. Best first: the date inside
+ * an expected window, then the amount within its usual range, then the most
+ * similar name.
  */
-export function addScreen(book: Book, txId: string): Screen {
+export function joinable(book: Book, r: BookRow): Joinable[] {
+  return book.series
+    .filter(
+      (s) =>
+        s.kind === r.type &&
+        (s.kind !== "income" || s.incomeSourceId === r.incomeSourceId) &&
+        (s.kind !== "transfer" || (s.fromAccountId === r.fromAccountId && s.toAccountId === r.toAccountId)),
+    )
+    .map((series) => {
+      const history = historyOf(book, series);
+      const { dateFits, amountFits } = timingOf(history, r);
+      return { series, dateFits, amountFits, similarity: nameSimilarity(history, r.description) };
+    })
+    .sort(
+      (a, b) =>
+        Number(b.dateFits) - Number(a.dateFits) ||
+        Number(b.amountFits) - Number(a.amountFits) ||
+        b.similarity - a.similarity ||
+        a.series.name.localeCompare(b.series.name),
+    );
+}
+
+/** Join buttons the add screen shows before `All N series ›`. */
+const JOIN_SHOWN = 4;
+
+/**
+ * Add, step 2: the series this payment could be added to, best fit first
+ * (`↻ Add to <series>`, 4 of them, or all), then the new series it would
+ * start, with the cadence its similar past payments suggest listed first.
+ * Writes nothing; an Add to or a cadence tap does.
+ */
+export function addScreen(book: Book, txId: string, all = false): Screen {
   const back = [[{ text: "‹ Back", callback_data: "r:a" }]];
   const r = book.rows.find((x) => x.id === txId);
   if (!r) return { text: "That payment no longer exists.", keyboard: back };
@@ -523,14 +582,21 @@ export function addScreen(book: Book, txId: string): Screen {
   const dates = [r, ...similar].map((x) => x.date).sort();
   const best = suggestCadence(dates).best;
   const suggested = best && best.score >= 0.5 ? best : null;
+  const joins = joinable(book, r);
   const lines = [
-    "<b>➕ New recurring item</b>",
+    `<b>${joins.length > 0 ? "↻ Add to a series, or start a new one" : "➕ New recurring item"}</b>`,
     `From ${esc(rowLabel(r, 200))}`,
-    `Name: ${esc(name)} (rename after)`,
+    ...(joins.length > 0 ? ["↻ Add to: series you track, the closest in timing and amount first."] : []),
+    `${joins.length > 0 ? "New series" : "Name"}: ${esc(name)} (rename after)`,
     suggested
       ? `History: ${payments(dates.length)} since ${day(dates[0])}, looks ${cadenceText(suggested.cadence, suggested)}.`
       : `History: ${payments(dates.length)}, not enough to tell. Pick how often.`,
   ];
+  const shown = all ? joins : joins.slice(0, JOIN_SHOWN);
+  const joinRows: Keyboard = shown.map((j) => [
+    { text: `↻ Add to ${cut(j.series.name, 30)}`, callback_data: `r:aj:${r.id}:${j.series.id}` },
+  ]);
+  if (shown.length < joins.length) joinRows.push([{ text: `All ${joins.length} series ›`, callback_data: `r:ae:${r.id}` }]);
   const order = suggested ? [suggested.cadence, ...CADENCE_ORDER.filter((c) => c !== suggested.cadence)] : CADENCE_ORDER;
   const buttons = order.map((c) => ({
     text: `${c === suggested?.cadence ? "✅ " : ""}${CADENCE_BUTTONS[c]}`,
@@ -538,7 +604,13 @@ export function addScreen(book: Book, txId: string): Screen {
   }));
   return {
     text: lines.join("\n"),
-    keyboard: [buttons.slice(0, 3), buttons.slice(3), [{ text: "☐ Amount varies", callback_data: "r:av" }], ...back],
+    keyboard: [
+      ...joinRows,
+      buttons.slice(0, 3),
+      buttons.slice(3),
+      [{ text: "☐ Amount varies", callback_data: "r:av" }],
+      ...back,
+    ],
   };
 }
 
@@ -568,12 +640,7 @@ const REVIEW_TOGGLE = new RegExp(`^r:[bf]t:${UUID}$`);
  * flagged recurring before are ticked; weak ones are not.
  */
 export function candidates(book: Book, s: BookSeries): { row: BookRow; ticked: boolean }[] {
-  const history = {
-    series: s,
-    linked: book.rows.filter((r) => r.seriesId === s.id),
-    excluded: book.excluded.get(s.id) ?? [],
-    pauses: book.pauses.get(s.id) ?? [],
-  };
+  const history = historyOf(book, s);
   return book.rows
     .filter((r) => r.seriesId === null)
     .map((row) => ({ row, strength: matchStrength(history, row).strength }))
@@ -792,7 +859,26 @@ async function respond(tap: RecurringTap, ctx: TapContext): Promise<Outcome> {
     case "pick":
       return { screen: pickScreen(await loadBook(), tap.offset) };
     case "addFrom":
-      return { screen: addScreen(await loadBook(), tap.tx) };
+      return { screen: addScreen(await loadBook(), tap.tx, tap.all) };
+    case "join": {
+      // applyReview links only a payment still in no series, of the series'
+      // kind and keys, under a lock on the series; null when it is gone.
+      const result = await applyReview(tap.sid, [tap.tx], []);
+      const book = await loadBook();
+      const series = book.series.find((s) => s.id === tap.sid);
+      if (result === null || !series) return { screen: addScreen(book, tap.tx), ack: "That series no longer exists." };
+      if (result.linked > 0) return { screen: detailScreen(book, tap.sid, ctx.today), ack: `Added to ${series.name}.` };
+      const row = book.rows.find((r) => r.id === tap.tx);
+      // A double tap or a Telegram retry: the first tap's screen stays.
+      if (row?.seriesId === tap.sid) return { ack: `Already in ${series.name}.` };
+      // Gone, or in another series: links are never moved. The add screen says which.
+      if (!row) return { screen: addScreen(book, tap.tx), ack: "That payment no longer exists." };
+      if (row.seriesId !== null) {
+        const other = book.series.find((s) => s.id === row.seriesId);
+        return { screen: addScreen(book, tap.tx), ack: `Not added: it is already in ${other?.name ?? "another series"}.` };
+      }
+      return { ack: `That payment can't join ${series.name}: another kind, source or account.` };
+    }
     case "varies":
       return { keyboard: flipVaries(ctx.keyboard) };
     case "create": {
