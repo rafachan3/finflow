@@ -531,6 +531,15 @@ saved entries or open cards within 1 day add up to its amount exactly (nearest
 12 tried). Warning only. Follow-up: offer to merge a receipt into earlier typed
 entries: needs design.
 
+Extraction prompt rules (branch `fix/extraction-venue-date-tax-rules`,
+DECISIONS.md 2026-11-02): text, photo, voice and Edit prompts now say the
+venue is null unless the place clearly is a listed one; a receipt's 4-digit-
+year date beats a 2-digit NN/NN/NN one, and an NN/NN/NN alone is read within
+the 12 months before today; tax goes only on the lines a receipt flags as
+taxable and a tip splits by pre-tax price. The 20-case golden cap holds:
+`receipt-with-tip`, `edit-tip` and `two-stores` carry the new assertions.
+No migration. Not covered by a golden: an NN/NN/NN date with no 4-digit one.
+
 ## Next concrete step
 
 Phase 4.5 — Proactive nudges, PR 4 (`feat/nudge-infra`, Terraform only) in

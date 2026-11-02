@@ -2369,3 +2369,39 @@ total then matched no single entry.
 **Ruled out:** a "replace the earlier entries with this receipt" button (needs
 its own design); a wider window or more than 3 parts (more false hits on
 ordinary same-day purchases); summing in floating point.
+
+## 2026-11-02 - Venue, printed-date and tax/tip rules in the extraction prompt
+
+Three production cards were wrong in ways the prompt allowed: a discount
+store got the nearest venue on the list, a receipt's `YY/MM/DD` date was
+read as `DD/MM/YY` (years in the past), and tax was spread over every line
+when the receipt taxed only one.
+
+- **Venue.** A venue is set only when the place clearly is one of the
+  listed venues. A dollar, discount, hardware, department, online,
+  rideshare or warehouse store is none of them and gets null; the nearest
+  venue is never picked.
+- **Printed date.** A 4-digit-year date (often a footer timestamp) beats a
+  2-digit `NN/NN/NN` one. An `NN/NN/NN` alone is read so that it falls in
+  the 12 months before today, as year/month/day when day/month/year would
+  land years away. No date more than a year from today unless the message
+  says so.
+- **Tax and tip.** This refines 2026-08-13 and 2026-10-29. Tax goes only on
+  the lines the receipt flags as taxable (`FP`, `F`, `P`, `T`, `TX`); with
+  tax but no flags it spreads over all lines by price. A tip splits by each
+  line's pre-tax price. Lines round to the cent, the remainder on the
+  largest line, and still sum to the header.
+- **Where it lives.** Shared constants in `lambda/src/gemini.ts`
+  (`LINE_AMOUNTS`, `VENUE`, `DATE_READING`) in all four prompts, not the
+  owner's needs/wants rules (`rules_sha256` hashes those; they are personal
+  and live in SSM). The line-sum check in `validateExtraction` stays the
+  deterministic guard; the model computes the split, because only it sees
+  the flags.
+- **Goldens stay at 20.** The assertions fold into `receipt-with-tip` (new
+  synthetic receipt), `edit-tip` and `two-stores`.
+
+**Ruled out:** a code step that allocates tax and tip (it would need the
+model to return pre-tax prices and flags per line, a schema change);
+a new golden case per rule (the suite is at the free tier's 20 a day);
+moving the date sanity check into the prompt only (a deterministic card
+check is separate work).
