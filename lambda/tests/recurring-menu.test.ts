@@ -4,6 +4,8 @@ import type { Book, BookRow, BookSeries } from "../src/recurring-db.js";
 import {
   addScreen,
   joinable,
+  keywordsOf,
+  merchantKeyed,
   answerPrompt,
   dayIn,
   hasMoney,
@@ -105,6 +107,20 @@ describe("adding a series", () => {
     expect(defaultName(empty, row({ type: "income", source: "Salary" }))).toBe("Salary");
     const taken = { ...empty, series: [{ name: "internet bill" }, { name: "Internet bill 2" }] } as unknown as Book;
     expect(defaultName(taken, row({}))).toBe("Internet bill 3");
+  });
+
+  it("names and keys a series on its merchant only when every other payment there is worded like it", () => {
+    const plan = row({ merchant: "Example Online", merchantId: 3, description: "Cloud storage plan" });
+    const same = row({ id: "33333333-3333-4333-8333-333333333333", merchant: "Example Online", merchantId: 3, description: "Cloud storage" });
+    const other = row({ id: "44444444-4444-4444-8444-444444444444", merchant: "Example Online", merchantId: 3, description: "Desk lamp" });
+    const elsewhere = row({ id: "55555555-5555-4555-8555-555555555555", merchant: "Acme Mart", merchantId: 4, description: "Desk lamp" });
+    expect(merchantKeyed({ ...empty, rows: [plan, same, elsewhere] }, plan)).toBe(true);
+    expect(defaultName({ ...empty, rows: [plan, same, elsewhere] }, plan)).toBe("Example Online");
+    expect(merchantKeyed({ ...empty, rows: [plan, same, other] }, plan)).toBe(false);
+    expect(defaultName({ ...empty, rows: [plan, same, other] }, plan)).toBe("Cloud storage plan");
+    expect(merchantKeyed(empty, row({}))).toBe(false);
+    expect(keywordsOf("Cloud storage plan")).toEqual(["cloud storage"]);
+    expect(keywordsOf("2026-10")).toEqual([]);
   });
 
   it("flips amount varies in the keyboard and in every cadence button, and nothing else", () => {

@@ -465,7 +465,7 @@ export function tokens(text: string): string[] {
 const TOKENS = new Map<string, string[]>();
 
 /** Two descriptions with at least this similarity name the same payment. */
-const TEXT_MATCH = 0.6;
+export const TEXT_MATCH = 0.6;
 
 /**
  * How alike two descriptions are, 0..1: the mean of the word sets' Jaccard

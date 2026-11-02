@@ -33,7 +33,10 @@ import {
   occurrences,
   proposeSeries,
   suggestCadence,
+  TEXT_MATCH,
+  textSimilarity,
   timingOf,
+  tokens,
   type Band,
   type Cadence,
   type Fit,
@@ -484,33 +487,59 @@ function historyOf(book: Book, s: BookSeries): SeriesHistory {
 }
 
 /**
- * A series' default name: the merchant, else the income source, else the
- * description without digits or month names ("Internet bill October" →
- * "Internet bill"); with a number after it when another series has it.
+ * Whether a series made from this payment may name and key itself on its
+ * merchant: only when no other saved payment there is worded unlike it. A
+ * shop that sells other things (an online store, a supermarket) would make
+ * every later purchase there look like the series, so the series goes by
+ * the payment's description instead.
+ */
+export function merchantKeyed(book: Book, r: BookRow): boolean {
+  if (r.merchant === null) return false;
+  return !book.rows.some(
+    (x) =>
+      x.id !== r.id &&
+      r.merchantId !== null &&
+      x.merchantId === r.merchantId &&
+      textSimilarity(x.description, r.description) < TEXT_MATCH,
+  );
+}
+
+/** A new series' keywords (design §E.5): its name's identifying words, kept through a rename. */
+export function keywordsOf(name: string): string[] {
+  const key = tokens(name).join(" ");
+  return key ? [key] : [];
+}
+
+/**
+ * A series' default name: the merchant when it keys the series, else the
+ * income source, else the description without digits or month names
+ * ("Internet bill October" → "Internet bill"); with a number after it when
+ * another series has it.
  */
 export function defaultName(book: Book, r: BookRow): string {
   const words = collapseSpaces(r.description).split(" ").filter((w) => !/\d/.test(w) && !MONTH_WORD.test(w));
-  const base = cut(r.merchant ?? r.source ?? capitalise(words.join(" ") || collapseSpaces(r.description)), 56);
+  const merchant = merchantKeyed(book, r) ? r.merchant : null;
+  const base = cut(merchant ?? r.source ?? capitalise(words.join(" ") || collapseSpaces(r.description)), 56);
   const taken = new Set(book.series.map((s) => s.name.trim().toLowerCase()));
   let name = base;
   for (let n = 2; taken.has(name.toLowerCase()); n++) name = `${base} ${n}`;
   return name;
 }
 
-/** The series a transaction would start: its kind and its keys. */
-function draftOf(r: BookRow, name: string): Series {
+/** The series a transaction would start: its kind and its keys, as createSeries stores them. */
+function draftOf(book: Book, r: BookRow, name: string): Series {
   return {
     id: 0,
     name,
     kind: r.type,
     cadence: "monthly",
     amountVaries: false,
-    merchantId: r.type === "expense" ? r.merchantId : null,
+    merchantId: r.type === "expense" && merchantKeyed(book, r) ? r.merchantId : null,
     subcategoryId: r.type === "expense" ? r.subcategoryId : null,
     incomeSourceId: r.type === "income" ? r.incomeSourceId : null,
     fromAccountId: r.type === "transfer" ? r.fromAccountId : null,
     toAccountId: r.type === "transfer" ? r.toAccountId : null,
-    keywords: [],
+    keywords: keywordsOf(name),
   };
 }
 
@@ -623,7 +652,7 @@ export function addScreen(book: Book, txId: string, all = false, from: Origin = 
     };
   }
   const name = defaultName(book, r);
-  const draft = { series: draftOf(r, name), linked: [r], excluded: [], pauses: [] };
+  const draft = { series: draftOf(book, r, name), linked: [r], excluded: [], pauses: [] };
   const similar = book.rows.filter(
     (x) => x.id !== r.id && x.seriesId === null && matchStrength(draft, x).strength === "strong",
   );
@@ -963,7 +992,14 @@ async function respond(tap: RecurringTap, ctx: TapContext): Promise<Outcome> {
       const row = book.rows.find((r) => r.id === tap.tx);
       if (!row) return { screen: addScreen(book, tap.tx, false, originOf(ctx.keyboard)) };
       const name = defaultName(book, row);
-      const result = await createSeries({ transactionId: tap.tx, name, cadence: tap.cadence, amountVaries: tap.varies });
+      const result = await createSeries({
+        transactionId: tap.tx,
+        name,
+        cadence: tap.cadence,
+        amountVaries: tap.varies,
+        merchant: merchantKeyed(book, row),
+        keywords: keywordsOf(name),
+      });
       // Every series creation reviews all history at once (design §D.3, P2).
       if ("created" in result) return { screen: reviewScreen(await loadBook(), result.created, ctx.today), ack: `Tracking ${name}.` };
       if ("already" in result) return { ack: `Already tracked as ${result.name}.` };

@@ -198,6 +198,23 @@ describe("adding a payment to a series it already belongs to", () => {
     expect(await sql("SELECT count(*)::int AS n FROM transactions WHERE recurring_series_id IS NOT NULL")).toEqual([{ n: 3 }]);
   });
 
+  it("a series made from a purchase at a shop that sells other things is named for the purchase, and the shop's next unrelated purchase is not proposed as it", async () => {
+    const shop = (date: string, description: string) => ({ date, amount: "4.99", description, merchant: "Example Online" });
+    await ledger.add(shop("2026-08-12", "Desk lamp"), shop("2026-09-20", "Phone case"), shop("2026-10-01", "Cloud storage plan"));
+    const screen = await addScreenFor("Oct 1 · 4.99 · Cloud storage plan");
+    expect(chat.current(screen).text).toContain("Name: Cloud storage plan (rename after)");
+    await chat.tap(screen, "Monthly");
+    expect(await sql("SELECT name, merchant_id, keywords FROM recurring_series")).toEqual([
+      { name: "Cloud storage plan", merchant_id: null, keywords: ["cloud storage"] },
+    ]);
+
+    const headphones = await card(
+      { events: [{ ...event("4.99", "2026-10-31", "Headphones").events[0], merchant: "Example Online", is_recurring: false }] },
+      "headphones 4.99 from example online",
+    );
+    expect(recurringLine(headphones.text)).toEqual(["Funded by: self · Recurring: no"]);
+  });
+
   it("the add screen shows the best 4 series and All N series lists every one", async () => {
     for (const [name, day] of [["Streaming plan", "20"], ["Phone bill", "10"], ["Gym", "25"], ["Music plan", "12"]]) {
       await ledger.track(name, "monthly", await ledger.add(hosting(`2026-08-${day}`, "9.99", name)));

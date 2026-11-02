@@ -19,7 +19,7 @@ const internet = (date: string, over: Record<string, unknown> = {}) =>
   insertTransaction({ date, amount: "64.99", description: "Internet bill", subcategory: "Internet and phone", ...over });
 
 async function created(transactionId: string, name = "Internet bill"): Promise<number> {
-  const result = await rdb.createSeries({ transactionId, name, cadence: "monthly", amountVaries: false });
+  const result = await rdb.createSeries({ transactionId, name, cadence: "monthly", amountVaries: false, merchant: true, keywords: [] });
   if (!("created" in result)) throw new Error(`not created: ${JSON.stringify(result)}`);
   return result.created;
 }
@@ -94,7 +94,7 @@ describe("createSeries", () => {
   it("a second tap on the same transaction creates nothing and names its series", async () => {
     const tx = await internet("2026-10-15");
     const sid = await created(tx);
-    expect(await rdb.createSeries({ transactionId: tx, name: "Internet bill", cadence: "monthly", amountVaries: false })).toEqual({
+    expect(await rdb.createSeries({ transactionId: tx, name: "Internet bill", cadence: "monthly", amountVaries: false, merchant: true, keywords: [] })).toEqual({
       already: sid,
       name: "Internet bill",
     });
@@ -104,14 +104,32 @@ describe("createSeries", () => {
   it("refuses a name another series has, in any case, and writes nothing", async () => {
     await created(await internet("2026-09-15"));
     const other = await internet("2026-10-15");
-    expect(await rdb.createSeries({ transactionId: other, name: " internet BILL", cadence: "monthly", amountVaries: false })).toEqual({ taken: true });
+    expect(await rdb.createSeries({ transactionId: other, name: " internet BILL", cadence: "monthly", amountVaries: false, merchant: true, keywords: [] })).toEqual({ taken: true });
     expect((await links())[other]).toEqual({ series: null, flagged: false });
   });
 
   it("reports a transaction that is gone", async () => {
     expect(
-      await rdb.createSeries({ transactionId: "00000000-0000-4000-8000-000000000000", name: "X", cadence: "monthly", amountVaries: true }),
+      await rdb.createSeries({ transactionId: "00000000-0000-4000-8000-000000000000", name: "X", cadence: "monthly", amountVaries: true, merchant: true, keywords: [] }),
     ).toEqual({ missing: true });
+  });
+
+  it("keys an expense on its merchant only when asked, and stores its keywords", async () => {
+    const shop = (date: string) =>
+      insertTransaction({ date, amount: "4.99", description: "Cloud storage plan", merchant: "Example Online" });
+    const keyed = await rdb.createSeries({
+      transactionId: await shop("2026-09-01"), name: "Example Online", cadence: "monthly", amountVaries: false,
+      merchant: true, keywords: ["example online"],
+    });
+    const plain = await rdb.createSeries({
+      transactionId: await shop("2026-10-01"), name: "Cloud storage plan", cadence: "monthly", amountVaries: false,
+      merchant: false, keywords: ["cloud storage"],
+    });
+    expect(await sql("select name, merchant_id is not null as merchant, keywords from recurring_series order by id")).toEqual([
+      { name: "Example Online", merchant: true, keywords: ["example online"] },
+      { name: "Cloud storage plan", merchant: false, keywords: ["cloud storage"] },
+    ]);
+    expect([keyed, plain].every((r) => "created" in r)).toBe(true);
   });
 });
 
@@ -138,7 +156,7 @@ describe("concurrent double taps", () => {
         )
       ).rows;
       await other.query("update transactions set recurring_series_id = $1 where id = $2", [id, tx]);
-      const second = rdb.createSeries({ transactionId: tx, name: "Internet bill", cadence: "monthly", amountVaries: false });
+      const second = rdb.createSeries({ transactionId: tx, name: "Internet bill", cadence: "monthly", amountVaries: false, merchant: true, keywords: [] });
       await blockedOnLock();
       await other.query("COMMIT");
       return { id, second: await second };
