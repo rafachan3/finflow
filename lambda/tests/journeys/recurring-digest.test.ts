@@ -1,6 +1,9 @@
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { sql } from "../integration/db-helpers.js";
 import { chat, invokeNudge, ledger, OWNER, STRANGER, useJourneys } from "./harness.js";
+
+/** Another allowlisted chat for the nudge, and database reads made to fail. */
+const fault = vi.hoisted(() => ({ chats: null as number[] | null, failLoads: 0 }));
 
 vi.mock("../../src/config.js", async () => {
   const { journeyConfig } = await import("./harness.js");
@@ -10,13 +13,32 @@ vi.mock("../../src/config.js", async () => {
     getDbUrl: async () => config.databaseUrl,
     getNudgeConfig: async () => ({
       botToken: config.botToken,
-      allowedChatIds: config.allowedChatIds,
+      allowedChatIds: fault.chats ? new Set(fault.chats) : config.allowedChatIds,
       databaseUrl: config.databaseUrl,
     }),
   };
 });
 
+vi.mock("../../src/recurring-db.js", async (importOriginal) => {
+  const real = await importOriginal<typeof import("../../src/recurring-db.js")>();
+  return {
+    ...real,
+    loadBook: async () => {
+      if (fault.failLoads > 0) {
+        fault.failLoads--;
+        throw new Error("Connection terminated unexpectedly");
+      }
+      return real.loadBook();
+    },
+  };
+});
+
 useJourneys();
+
+beforeEach(() => {
+  fault.chats = null;
+  fault.failLoads = 0;
+});
 
 // The schedule fires at 09:00 Toronto; Oct 31 2026 is still daylight time (UTC-4).
 const at = (day: string) => `${day}T13:00:00Z`;
@@ -349,13 +371,57 @@ describe("sending once a day", () => {
   it("a refused send is retried once the schedule retries", async () => {
     await gym();
     chat.failNextSends(1);
-    await expect(invokeNudge(at("2026-10-31"))).rejects.toThrow("Telegram refused 1 digest");
+    await expect(invokeNudge(at("2026-10-31"))).rejects.toThrow("1 digest(s) failed");
     expect(await runs()).toEqual([{ run_date: "2026-10-31", status: "failed", attempts: 1, sent: false }]);
     expect(chat.replies()).toEqual([]);
 
     await invokeNudge(at("2026-10-31"));
     expect(chat.replies()).toHaveLength(1);
     expect(await runs()).toEqual([{ run_date: "2026-10-31", status: "sent", attempts: 2, sent: true }]);
+  });
+
+  it("a refused send is tried three times in all, then left", async () => {
+    await gym();
+    chat.failNextSends(5);
+    for (let i = 0; i < 3; i++) await expect(invokeNudge(at("2026-10-31"))).rejects.toThrow("1 digest(s) failed");
+    expect(await runs()).toEqual([{ run_date: "2026-10-31", status: "failed", attempts: 3, sent: false }]);
+    // A fourth invocation claims nothing and tries no send.
+    expect(await invokeNudge(at("2026-10-31"))).toEqual({ runDate: "2026-10-31", outcomes: ["handled"] });
+    expect(await runs()).toEqual([{ run_date: "2026-10-31", status: "failed", attempts: 3, sent: false }]);
+    expect(chat.replies()).toEqual([]);
+  });
+
+  it("a digest that cannot be built after the claim is failed, and the retry sends it", async () => {
+    await gym();
+    fault.failLoads = 1;
+    await expect(invokeNudge(at("2026-10-31"))).rejects.toThrow("1 digest(s) failed");
+    expect(await runs()).toEqual([{ run_date: "2026-10-31", status: "failed", attempts: 1, sent: false }]);
+    expect(chat.replies()).toEqual([]);
+
+    await invokeNudge(at("2026-10-31"));
+    expect(chat.replies()).toHaveLength(1);
+    expect(await runs()).toEqual([{ run_date: "2026-10-31", status: "sent", attempts: 2, sent: true }]);
+  });
+
+  it("one chat failing does not stop the next chat's digest", async () => {
+    await gym();
+    fault.chats = [STRANGER, OWNER];
+    // The first chat's digest fails to build; the second is still sent.
+    fault.failLoads = 1;
+    await expect(invokeNudge(at("2026-10-31"))).rejects.toThrow("1 digest(s) failed");
+    const byChat = () =>
+      sql<{ chat_id: string; status: string; attempts: number }>(
+        "SELECT chat_id::text, status, attempts FROM nudge_runs ORDER BY attempts, chat_id",
+      );
+    expect(await byChat()).toEqual([
+      { chat_id: String(OWNER), status: "sent", attempts: 1 },
+      { chat_id: String(STRANGER), status: "failed", attempts: 1 },
+    ]);
+    expect(chat.replies()).toHaveLength(1);
+
+    // The retry sends only the failed chat's.
+    expect(await invokeNudge(at("2026-10-31"))).toEqual({ runDate: "2026-10-31", outcomes: ["sent", "handled"] });
+    expect(chat.replies()).toHaveLength(2);
   });
 
   it("a send that may have gone out is not sent again", async () => {

@@ -2354,15 +2354,23 @@ metric; a Telegram command or card for this view (Phase 5 charts the mart).
 Phase 4.5 PR 5 (design §E.3, §F). Choices the design left open:
 
 - **Any answer from Telegram that is an error is a definite failure**
-  (HTTP 4xx or 5xx, or `ok: false`): the run is `failed` and the schedule's
-  retry claims it again. Only a send with no answer (timeout, reset, a
-  thrown fetch) is ambiguous and stays `claimed` forever. A 5xx could in
-  theory have delivered; the design's rule is "Telegram answered with an
-  error", and a rare duplicate on a Telegram outage is accepted.
+  (HTTP 4xx or 5xx, or `ok: false`): the run is `failed` and Lambda's
+  asynchronous retry (the Scheduler invokes asynchronously) claims it
+  again. Only a send with no answer (timeout, reset, a thrown fetch) is
+  ambiguous and stays `claimed` forever. A 5xx could in theory have
+  delivered; the design's rule is "Telegram answered with an error", and a
+  rare duplicate on a Telegram outage is accepted.
+- **Each chat runs on its own.** A digest that cannot be built after the
+  claim is `failed` like a refused send, the other chats still get theirs,
+  and the function throws only after the loop. Recording `failed` is best
+  effort: if the database is gone the row stays `claimed` and the day is
+  lost, like an unanswered send.
 - **"No digest on <day>" needs an earlier run.** It shows when yesterday
   has no run, or a `failed` one, and some run exists before yesterday, so
   the very first digest after the deploy notes nothing. A `claimed`
-  yesterday (outcome unknown) is not noted. The footer alone is not content:
+  yesterday (outcome unknown) is not noted, even one a database failure
+  left there: it cannot be told from a send that may have arrived, and a
+  "may not have arrived" note was weighed and left out (2026-11-02 review). The footer alone is not content:
   a day with nothing else to say still sends nothing.
 - **The counts are content.** A day whose only news is "🧹 3 past payments
   look like …" or "🔎 1 possible new recurring item" is still sent
