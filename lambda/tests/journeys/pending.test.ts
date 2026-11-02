@@ -53,16 +53,33 @@ describe("/pending", () => {
     expect(await ledger.ingestions()).toEqual([]);
   });
 
-  it("/pending while a card waits for a date resends the others and the wait goes on", async () => {
+  it("/pending while a card waits for a date resends the waiting prompt and the others, and the wait goes on", async () => {
     const [first] = await twoCards();
     await chat.tap(first, "Fix date");
 
     const resent = await send("/pending");
-    expect(resent.map((r) => header(r.text))).toEqual([expect.stringMatching(/ · CAD 5\.00$/)]);
+    expect(resent.map((r) => r.text)).toEqual([
+      "Send the date as YYYY-MM-DD, Aug 10, or yesterday.",
+      expect.stringMatching(/ · CAD 5\.00/),
+    ]);
+    expect(labels(resent[0])).toEqual(["Keep as is", "Discard"]);
     expect((await ledger.ingestions()).map((r) => r.status)).toEqual(["awaiting_date", "pending"]);
 
     await chat.text("2026-10-01");
     expect(header(chat.last().text)).toBe("Expense · 2026-10-01 · CAD 3.00");
+    expect(gemini.calls).toHaveLength(1);
+  });
+
+  it("/pending with only a waiting card resends its prompt, not No pending cards", async () => {
+    const [first, second] = await twoCards();
+    await chat.tap(first, "Confirm");
+    await chat.tap(second, "Fix date");
+
+    const resent = await send("/pending");
+    expect(resent.map((r) => r.text)).toEqual([
+      "Send the date as YYYY-MM-DD, Aug 10, or yesterday.",
+    ]);
+    expect(labels(resent[0])).toEqual(["Keep as is", "Discard"]);
     expect(gemini.calls).toHaveLength(1);
   });
 

@@ -2525,3 +2525,32 @@ when the receipt taxed only one.
 **Ruled out:** tax and tip allocation by prompt alone (inconsistent splits
 under Lite, above); a new golden case per rule (the suite is at the free
 tier's 20 a day).
+
+## 2026-11-02 — Waiting prompts: Keep as is; `/pending` includes waits
+
+A card in `awaiting_date` / `awaiting_edit` only had Discard to leave the
+wait (menu-exit audit item 1). Photos and voice while waiting are still
+not read (2026-08-18 / 2026-09-08). `/pending` listed `pending` only, so
+a lone waiting card answered "No pending cards."
+
+- **Keep as is.** Both wait prompts carry `Keep as is` + `Discard`
+  (`k:<uuid>` / `d:<uuid>`). Keep as is sets status back to `pending`
+  without changing the extraction and resends the Confirm card (no Gemini).
+  Double-tap is idempotent ("Already handled."). Confirm still requires
+  its own tap.
+- **No Fix date on the date prompt.** The old keyboard reused
+  `reviewKeyboard({ confirm: false, edit: false })`, so Fix date while
+  already waiting said "Already handled." (audit item 2).
+- **Way back on errors.** A non-date reply, a photo/voice while waiting,
+  a date or correction that fails checks, and a Gemini failure on Edit
+  attach the same Keep as is / Discard keyboard (audit item 3).
+- **Busy copy.** Points at Keep as is / Discard on the waiting prompt,
+  not at the retired card (audit item 8).
+- **`/pending`.** Lists `pending`, `awaiting_date` and `awaiting_edit`.
+  A waiting row is resent as its wait prompt (status unchanged); Keep as
+  is is the exit that restores `pending`. Pending rows still get
+  `sendCard`.
+
+**Ruled out:** `/pending` auto-restoring awaiting → pending (would cancel
+an intentional Fix date / Edit); full stale-tap wording (#92); card
+redesign batch.
