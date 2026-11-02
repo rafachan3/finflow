@@ -232,21 +232,29 @@ describe("digest buttons", () => {
 
   it("Find lists the payments around the slot and Apply links the ticked", async () => {
     await gym();
-    // Logged, but never linked to the series.
-    await ledger.add(gymRow("2026-08-04"));
+    // Logged, but never linked to the series: one around Aug 3, one long before.
+    await ledger.add(gymRow("2026-08-04"), gymRow("2026-05-04"));
     const sent = await digest();
-    expect(sent.text).toContain("🧹 1 past payment looks like Gym");
+    expect(sent.text).toContain("🧹 2 past payments look like Gym");
     await chat.tap(sent, "🔍 Gym Aug 3: logged?");
     expect(chat.current(sent).text).toBe(
       "🔍 Gym around Aug 3\n1 unlinked payment looks like it. ✅ links it; ☐ leaves it out of this series for good.",
     );
-    expect(chat.current(sent).buttons.map((b) => b.text)).toEqual([
-      "✅ Aug 4 · 25.00 · Gym",
-      "✅ Link 1 · ignore 0",
-      "‹ Back to digest",
-    ]);
+    const find = chat.current(sent).buttons;
+    expect(find.map((b) => b.text)).toEqual(["✅ Aug 4 · 25.00 · Gym", "✅ Link 1 · ignore 0", "‹ Back to digest"]);
     await chat.tap(sent, "✅ Link 1 · ignore 0");
+    expect(chat.acks().at(-1)).toBe("Linked 1, ignored 0.");
     expect((await ledger.links())["Gym 2026-08-04"]).toEqual({ series: "Gym", flagged: true });
+    // Back on the digest: Aug 3 is logged now, the May payment still waits for review.
+    expect(chat.current(sent).text).toBe(
+      ["↻ Recurring · Sat Oct 31", "", "Due now", "💳 Gym — ~25.00, Oct 30–Nov 5", "", "🧹 1 past payment looks like Gym"].join("\n"),
+    );
+
+    // A second Apply carries the digest's buttons, not Find's toggles: nothing more is written.
+    await chat.press(sent, find[1].data);
+    expect(chat.acks().at(-1)).toBe("Already applied.");
+    expect((await ledger.links())["Gym 2026-05-04"]).toEqual({ series: null, flagged: false });
+    expect(await sql("SELECT 1 FROM recurring_exclusions")).toEqual([]);
   });
 
   it("a stale or repeated digest button writes nothing", async () => {

@@ -10,9 +10,9 @@
  * that varies (interest) are listed silently until they are not logged.
  * A series whose amount varies never shows an amount: "log it when it posts".
  */
-import type { Keyboard } from "./mentions.js";
+import { ticked, type Keyboard } from "./mentions.js";
 import { dayNumber, halfPeriod, isoDate, proposeSeries, type Kind, type Slot } from "./recurring.js";
-import { loadBook, missedRun, runDay, skipSlot, skipsSince, unskipSlot, type Book } from "./recurring-db.js";
+import { applyReview, loadBook, missedRun, runDay, skipSlot, skipsSince, unskipSlot, type Book, type BookSeries } from "./recurring-db.js";
 import {
   candidates,
   cut,
@@ -21,6 +21,7 @@ import {
   money,
   range,
   recount,
+  REVIEW_PAGE,
   toggleLabel,
   toReview,
   viewOf,
@@ -221,17 +222,17 @@ export async function loadDigest(chatId: number, day: string): Promise<Digest | 
 // ---- Taps on the digest's buttons (they arrive at the webhook) -----------------
 
 /**
- * `r:df:<sid>:<yyyymmdd>` find, `r:dk:…` skip, `r:du:…` undo a skip, `r:dv`
- * back to the digest. The date is the expected payment's (or, for undo, the
- * stored skip's).
+ * `r:df:<sid>:<yyyymmdd>` find, `r:dk:…` skip, `r:du:…` undo a skip, `r:da:…`
+ * apply the Find screen's ticks, `r:dv` back to the digest. The date is the
+ * expected payment's (or, for undo, the stored skip's).
  */
-export type DigestTap = { op: "find" | "skip" | "unskip"; sid: number; due: string } | { op: "back" };
+export type DigestTap = { op: "find" | "skip" | "unskip" | "apply"; sid: number; due: string } | { op: "back" };
 
-const OPS = { f: "find", k: "skip", u: "unskip" } as const;
+const OPS = { f: "find", k: "skip", u: "unskip", a: "apply" } as const;
 
 export function parseDigestTap(data: string | undefined): DigestTap | null {
   if (data === "r:dv") return { op: "back" };
-  const m = /^r:d([fku]):(\d{1,10}):(\d{4})(\d{2})(\d{2})$/.exec(data ?? "");
+  const m = /^r:d([fkua]):(\d{1,10}):(\d{4})(\d{2})(\d{2})$/.exec(data ?? "");
   if (!m) return null;
   const due = `${m[3]}-${m[4]}-${m[5]}`;
   // Only a real calendar day: callback data comes from the client.
@@ -240,19 +241,27 @@ export function parseDigestTap(data: string | undefined): DigestTap | null {
 }
 
 const BACK = [{ text: "‹ Back to digest", callback_data: "r:dv" }];
+/** Find's toggles are the review's: the menu flips them and recounts Apply. */
+const FIND_TOGGLE = /^r:bt:([0-9a-f-]{36})$/;
+
+/** What Find offers for a slot: unlinked payments like the series within half a period, newest first. */
+function nearSlot(book: Book, series: BookSeries, due: string) {
+  return candidates(book, series).filter(
+    (c) => Math.abs(dayNumber(c.row.date) - dayNumber(due)) <= halfPeriod(series.cadence),
+  );
+}
 
 /**
  * Find: the unlinked payments that look like the series within half a period
- * of that date, as the review's toggles (Apply links the ticked and leaves
- * the rest out of the series). With none, how to log it: the usual message,
- * whose card offers the link. Writes nothing.
+ * of that date, 8 at most, as the review's toggles (Apply, `r:da`, links the
+ * ticked and leaves the rest shown out of the series, then redraws the
+ * digest). With none, how to log it: the usual message, whose card offers
+ * the link. Writes nothing.
  */
 export function findScreen(book: Book, sid: number, due: string, today: string): Screen {
   const series = book.series.find((s) => s.id === sid);
   if (!series) return { text: "That series no longer exists.", keyboard: [BACK] };
-  const near = candidates(book, series).filter(
-    (c) => Math.abs(dayNumber(c.row.date) - dayNumber(due)) <= halfPeriod(series.cadence),
-  );
+  const near = nearSlot(book, series, due);
   const when = dayIn(due, today);
   if (near.length === 0) {
     const band = viewOf(book, series, today).band;
@@ -262,12 +271,14 @@ export function findScreen(book: Book, sid: number, due: string, today: string):
       keyboard: [BACK],
     };
   }
-  const keyboard: Keyboard = near.map((c) => [{ text: toggleLabel(c.row, c.ticked), callback_data: `r:bt:${c.row.id}` }]);
-  keyboard.push([{ text: "", callback_data: `r:bk:${sid}` }], BACK);
+  const page = near.slice(0, REVIEW_PAGE);
+  const keyboard: Keyboard = page.map((c) => [{ text: toggleLabel(c.row, c.ticked), callback_data: `r:bt:${c.row.id}` }]);
+  keyboard.push([{ text: "", callback_data: `r:da:${sid}:${compact(due)}` }], BACK);
+  const found = `${near.length} unlinked payment${near.length === 1 ? " looks" : "s look"} like it`;
   return {
     text: [
       `<b>🔍 ${esc(series.name)} around ${when}</b>`,
-      `${near.length} unlinked payment${near.length === 1 ? " looks" : "s look"} like it. ✅ links it; ☐ leaves it out of this series for good.`,
+      `${found}${page.length < near.length ? `, ${page.length} shown` : ""}. ✅ links it; ☐ leaves it out of this series for good.`,
     ].join("\n"),
     keyboard: recount(keyboard),
   };
@@ -307,6 +318,27 @@ function unskippable(book: Book, sid: number, due: string, today: string): strin
 
 type Outcome = { screen?: Screen; ack?: string };
 
+/**
+ * Find's Apply: links the ticked and ignores the rest, of the rows Find
+ * offers for that slot now and no others. The keyboard is Telegram's current
+ * copy, so a second tap after the redraw carries the digest's buttons, not
+ * these toggles, and writes nothing.
+ */
+async function apply(sid: number, due: string, ctx: TapContext, runDay: string): Promise<Outcome> {
+  const book = await loadBook();
+  const series = book.series.find((s) => s.id === sid);
+  if (!series) return { ack: "That series no longer exists." };
+  const offered = new Set(nearSlot(book, series, due).slice(0, REVIEW_PAGE).map((c) => c.row.id));
+  const { ids, all } = ticked(ctx.keyboard, FIND_TOGGLE);
+  const link = ids.filter((id) => offered.has(id));
+  const ignore = all.filter((id) => offered.has(id) && !ids.includes(id));
+  if (link.length + ignore.length === 0) return { ack: "Already applied." };
+  const result = await applyReview(sid, link, ignore);
+  if (!result) return { ack: "That series no longer exists." };
+  if (result.linked + result.ignored === 0) return { ack: "Already applied." };
+  return { screen: await redraw(ctx.chatId, runDay), ack: `Linked ${result.linked}, ignored ${result.ignored}.` };
+}
+
 /** The digest of that day as it is now, or a line saying nothing is left. */
 async function redraw(chatId: number, runDay: string): Promise<Screen> {
   const digest = await loadDigest(chatId, runDay);
@@ -319,6 +351,7 @@ async function respond(tap: DigestTap, ctx: TapContext): Promise<Outcome> {
   const day = await runDay(ctx.chatId, ctx.messageId);
   if (day === null) return { ack: "That digest is no longer current. Open /recurring." };
   if (tap.op === "back") return { screen: await redraw(ctx.chatId, day) };
+  if (tap.op === "apply") return apply(tap.sid, tap.due, ctx, day);
   const when = dayIn(tap.due, ctx.today);
   if (tap.op === "unskip") {
     // Only a skip this digest could show with Undo: one recorded on or after its day.

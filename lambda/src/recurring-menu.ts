@@ -558,7 +558,7 @@ export function flipVaries(keyboard: Keyboard): Keyboard {
 
 // ---- Verify past payments, legacy flags, suggestions ------------------------
 
-const REVIEW_PAGE = 8;
+export const REVIEW_PAGE = 8;
 /** The toggles of the review (`r:bt`) and legacy-flag (`r:ft`) screens. */
 const REVIEW_TOGGLE = new RegExp(`^r:[bf]t:${UUID}$`);
 
@@ -604,7 +604,8 @@ export function recount(keyboard: Keyboard): Keyboard {
   const { ids, shown } = ticked(keyboard, REVIEW_TOGGLE);
   return keyboard.map((row) =>
     row.map((b) =>
-      b.callback_data.startsWith("r:bk:")
+      // r:da: is the digest's Find screen's Apply.
+      b.callback_data.startsWith("r:bk:") || b.callback_data.startsWith("r:da:")
         ? { ...b, text: `✅ Link ${ids.length} · ignore ${shown - ids.length}` }
         : b.callback_data === "r:fk"
           ? { ...b, text: `Clear flag on ticked (${ids.length})` }

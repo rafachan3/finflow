@@ -220,6 +220,7 @@ describe("renderDigest", () => {
     expect(data.every((d) => parseDigestTap(d) !== null && Buffer.byteLength(d) <= 64)).toBe(true);
     expect(parseDigestTap("r:df:3:20261103")).toEqual({ op: "find", sid: 3, due: "2026-11-03" });
     expect(parseDigestTap("r:du:3:20260803")).toEqual({ op: "unskip", sid: 3, due: "2026-08-03" });
+    expect(parseDigestTap("r:da:3:20260803")).toEqual({ op: "apply", sid: 3, due: "2026-08-03" });
     expect(parseDigestTap("r:dv")).toEqual({ op: "back" });
     for (const other of ["r:dk:3:20261399", "r:dk:3:2026080", "r:dx:3:20260803", "r:b", "c:x", undefined]) {
       expect(parseDigestTap(other), String(other)).toBeNull();
