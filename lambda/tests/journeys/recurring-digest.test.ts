@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { sql } from "../integration/db-helpers.js";
-import { chat, invokeNudge, ledger, OWNER, useJourneys } from "./harness.js";
+import { chat, invokeNudge, ledger, OWNER, STRANGER, useJourneys } from "./harness.js";
 
 vi.mock("../../src/config.js", async () => {
   const { journeyConfig } = await import("./harness.js");
@@ -166,6 +166,119 @@ describe("the daily digest", () => {
     await sql(`INSERT INTO nudge_runs (run_date, chat_id, status) VALUES ('2026-10-29', $1, 'empty')`, [OWNER]);
     await invokeNudge(at("2026-10-31"));
     expect(chat.last().text.endsWith("⚠️ No digest on Oct 30")).toBe(true);
+  });
+});
+
+describe("digest buttons", () => {
+  const DIGEST = [
+    "↻ Recurring · Sat Oct 31",
+    "",
+    "Due now",
+    "💳 Gym — ~25.00, Oct 30–Nov 5",
+    "",
+    "Not logged · 1",
+    "⚠️ Gym — around Aug 3, nothing logged by Aug 8",
+  ].join("\n");
+
+  async function digest() {
+    await invokeNudge(at("2026-10-31"));
+    return chat.last();
+  }
+
+  const skips = () => sql<{ due: string }>("SELECT due_on::text AS due FROM recurring_skips ORDER BY due_on");
+
+  it("skipping from the digest marks it skipped in place and Undo restores it", async () => {
+    await gym();
+    const sent = await digest();
+    expect(sent.text).toBe(DIGEST);
+
+    await chat.tap(sent, "⏭ Skip");
+    expect(chat.current(sent).text).toBe(DIGEST.replace("💳 Gym — ~25.00, Oct 30–Nov 5", "✓ Gym · Nov 3 skipped"));
+    expect(chat.current(sent).buttons.map((b) => b.text)).toEqual([
+      "↩ Undo skip: Gym Nov 3",
+      "🔍 Gym Aug 3: logged?",
+      "⏭ Skip",
+      "⏸",
+      "↻ All recurring",
+    ]);
+    expect(chat.acks().at(-1)).toBe("Skipped Nov 3.");
+    expect(await skips()).toEqual([{ due: "2026-11-03" }]);
+    // Telegram resending the tap writes nothing more.
+    await chat.retry();
+    expect(chat.acks().at(-1)).toBe("Already skipped.");
+    expect(await skips()).toHaveLength(1);
+
+    await chat.tap(sent, "↩ Undo skip: Gym Nov 3");
+    expect(chat.current(sent).text).toBe(DIGEST);
+    expect(chat.acks().at(-1)).toBe("Nov 3 is expected again.");
+    expect(await skips()).toEqual([]);
+    await chat.retry();
+    expect(chat.acks().at(-1)).toBe("Already undone.");
+    // Only the one digest message, edited in place.
+    expect(chat.replies()).toHaveLength(1);
+  });
+
+  it("Find with nothing logged explains how to log it", async () => {
+    await gym();
+    const sent = await digest();
+    await chat.tap(sent, "🔍 Gym Aug 3: logged?");
+    expect(chat.current(sent).text).toBe(
+      'Nothing logged around Aug 3. Send it as usual ("gym 25.00 Aug 3"); the card will offer to link it.',
+    );
+    await chat.tap(sent, "‹ Back to digest");
+    expect(chat.current(sent).text).toBe(DIGEST);
+    expect(await sql("SELECT 1 FROM recurring_skips")).toEqual([]);
+  });
+
+  it("Find lists the payments around the slot and Apply links the ticked", async () => {
+    await gym();
+    // Logged, but never linked to the series.
+    await ledger.add(gymRow("2026-08-04"));
+    const sent = await digest();
+    expect(sent.text).toContain("🧹 1 past payment looks like Gym");
+    await chat.tap(sent, "🔍 Gym Aug 3: logged?");
+    expect(chat.current(sent).text).toBe(
+      "🔍 Gym around Aug 3\n1 unlinked payment looks like it. ✅ links it; ☐ leaves it out of this series for good.",
+    );
+    expect(chat.current(sent).buttons.map((b) => b.text)).toEqual([
+      "✅ Aug 4 · 25.00 · Gym",
+      "✅ Link 1 · ignore 0",
+      "‹ Back to digest",
+    ]);
+    await chat.tap(sent, "✅ Link 1 · ignore 0");
+    expect((await ledger.links())["Gym 2026-08-04"]).toEqual({ series: "Gym", flagged: true });
+  });
+
+  it("a stale or repeated digest button writes nothing", async () => {
+    const id = await gym();
+    const sent = await digest();
+    // The Nov 3 payment was logged after the digest went out.
+    const [paid] = await ledger.add(gymRow("2026-11-01"));
+    await sql("UPDATE transactions SET recurring_series_id = $1 WHERE id = $2", [id, paid]);
+    await chat.tap(sent, "⏭ Skip");
+    expect(chat.acks().at(-1)).toBe("Already logged: nothing to skip.");
+
+    // A deleted series.
+    await sql("UPDATE transactions SET recurring_series_id = NULL WHERE id = $1", [paid]);
+    await sql("DELETE FROM recurring_series WHERE id = $1", [id]);
+    await chat.tap(sent, "⏭ Skip");
+    expect(chat.acks().at(-1)).toBe("That series no longer exists.");
+
+    // A message that is not a digest the bot sent.
+    await sql("DELETE FROM nudge_runs");
+    await chat.tap(sent, "⏭ Skip");
+    expect(chat.acks().at(-1)).toBe("That digest is no longer current. Open /recurring.");
+    expect(await sql("SELECT 1 FROM recurring_skips")).toEqual([]);
+    expect(chat.current(sent).text).toBe(DIGEST);
+  });
+
+  it("a digest button tapped from another chat does nothing", async () => {
+    await gym();
+    const sent = await digest();
+    await chat.tap(sent, "⏭ Skip", STRANGER);
+    expect(chat.acks()).toEqual([]);
+    expect(await sql("SELECT 1 FROM recurring_skips")).toEqual([]);
+    expect(chat.current(sent).text).toBe(DIGEST);
   });
 });
 

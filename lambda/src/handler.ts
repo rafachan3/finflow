@@ -66,6 +66,7 @@ import {
   type MentionTap,
 } from "./mentions.js";
 import { cardSeries, type CardSeries } from "./recurring-card.js";
+import { handleDigestTap, parseDigestTap } from "./recurring-digest.js";
 import { handleRecurringTap, answerPrompt, parseRecurringTap, sendRecurringList } from "./recurring-menu.js";
 import { putReceipt } from "./s3.js";
 import {
@@ -690,16 +691,24 @@ async function handleCallback(
   if (review) return handleMentionTap(cb, review, chatId, botToken);
 
   const today = todayToronto();
+  const tapContext = () => ({
+    botToken,
+    chatId,
+    callbackId: cb.id,
+    messageId: cb.message!.message_id!,
+    keyboard: cb.message?.reply_markup?.inline_keyboard ?? [],
+    today,
+  });
+  // The scheduled digest's buttons: the nudge function sends it, but every tap reaches this webhook.
+  const digest = parseDigestTap(cb.data);
+  if (digest) {
+    await handleDigestTap(digest, tapContext());
+    return ok("ok");
+  }
+
   const recurring = parseRecurringTap(cb.data, today);
   if (recurring) {
-    await handleRecurringTap(recurring, {
-      botToken,
-      chatId,
-      callbackId: cb.id,
-      messageId: cb.message!.message_id!,
-      keyboard: cb.message?.reply_markup?.inline_keyboard ?? [],
-      today,
-    });
+    await handleRecurringTap(recurring, tapContext());
     return ok("ok");
   }
 

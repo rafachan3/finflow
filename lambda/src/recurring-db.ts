@@ -388,6 +388,42 @@ export async function missedRun(runDate: string, chatId: number): Promise<string
   return status === "failed" || (status === null && earlier) ? day : null;
 }
 
+/** The day of the digest a chat's message is, or null when that message is no digest the bot sent. */
+export async function runDay(chatId: number, messageId: number): Promise<string | null> {
+  const db = await getPool();
+  const res = await db.query<{ day: string }>(
+    `SELECT run_date::text AS day FROM nudge_runs WHERE chat_id = $1 AND message_id = $2`,
+    [chatId, messageId],
+  );
+  return res.rows[0]?.day ?? null;
+}
+
+/**
+ * "Not this time" for one expected payment, recorded at `at`. The same skip
+ * again (a double tap) is "already"; a deleted series is "missing".
+ */
+export async function skipSlot(seriesId: number, due: string, at: Date): Promise<"skipped" | "already" | "missing"> {
+  const db = await getPool();
+  try {
+    const res = await db.query(
+      `INSERT INTO recurring_skips (series_id, due_on, skipped_at) VALUES ($1, $2::date, $3)
+       ON CONFLICT DO NOTHING`,
+      [seriesId, due, at],
+    );
+    return res.rowCount ? "skipped" : "already";
+  } catch (err) {
+    if (hasCode(err, "23503")) return "missing";
+    throw err;
+  }
+}
+
+/** Removes that one skip; false when it was already gone. */
+export async function unskipSlot(seriesId: number, due: string): Promise<boolean> {
+  const db = await getPool();
+  const res = await db.query(`DELETE FROM recurring_skips WHERE series_id = $1 AND due_on = $2::date`, [seriesId, due]);
+  return Boolean(res.rowCount);
+}
+
 /** Skips recorded on or after a Toronto day: the digest shows them with Undo. */
 export async function skipsSince(day: string): Promise<{ seriesId: number; due: string }[]> {
   const db = await getPool();

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { renderDigest } from "../src/recurring-digest.js";
+import { parseDigestTap, renderDigest } from "../src/recurring-digest.js";
 import type { Book, BookRow, BookSeries } from "../src/recurring-db.js";
 import type { Cadence, Kind } from "../src/recurring.js";
 
@@ -209,6 +209,21 @@ describe("renderDigest", () => {
     const text = renderDigest({ book, today: "2026-10-31" })!.text;
     expect(text.replace(/<[^>]*>/g, "").length).toBeLessThanOrEqual(3500);
     expect(text).toMatch(/\n\+\d+ more in \/recurring\n/);
+  });
+
+  it("parses the digest's buttons back to their action, and nothing else", () => {
+    const data = renderDigest({ book: mockBook(), today: "2026-10-31" })!
+      .keyboard.flat()
+      .map((b) => b.callback_data)
+      .filter((d) => d.startsWith("r:d"));
+    expect(data.map(parseDigestTap)).toContainEqual({ op: "skip", sid: 3, due: "2026-08-03" });
+    expect(data.every((d) => parseDigestTap(d) !== null && Buffer.byteLength(d) <= 64)).toBe(true);
+    expect(parseDigestTap("r:df:3:20261103")).toEqual({ op: "find", sid: 3, due: "2026-11-03" });
+    expect(parseDigestTap("r:du:3:20260803")).toEqual({ op: "unskip", sid: 3, due: "2026-08-03" });
+    expect(parseDigestTap("r:dv")).toEqual({ op: "back" });
+    for (const other of ["r:dk:3:20261399", "r:dk:3:2026080", "r:dx:3:20260803", "r:b", "c:x", undefined]) {
+      expect(parseDigestTap(other), String(other)).toBeNull();
+    }
   });
 
   it("escapes names for HTML", () => {

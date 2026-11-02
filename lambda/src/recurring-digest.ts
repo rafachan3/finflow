@@ -11,8 +11,8 @@
  * A series whose amount varies never shows an amount: "log it when it posts".
  */
 import type { Keyboard } from "./mentions.js";
-import { dayNumber, halfPeriod, proposeSeries, type Kind, type Slot } from "./recurring.js";
-import { loadBook, missedRun, skipsSince, type Book } from "./recurring-db.js";
+import { dayNumber, halfPeriod, isoDate, proposeSeries, type Kind, type Slot } from "./recurring.js";
+import { loadBook, missedRun, runDay, skipSlot, skipsSince, unskipSlot, type Book } from "./recurring-db.js";
 import {
   candidates,
   cut,
@@ -20,12 +20,16 @@ import {
   dayIn,
   money,
   range,
+  recount,
+  toggleLabel,
   toReview,
   viewOf,
   WEEKDAYS,
+  type Screen,
   type SeriesView,
+  type TapContext,
 } from "./recurring-menu.js";
-import { esc } from "./telegram.js";
+import { answerCallbackQuery, editMessageText, esc } from "./telegram.js";
 
 export interface Digest {
   text: string;
@@ -52,7 +56,8 @@ const BUTTON_ROWS = 6;
 const VISIBLE_MAX = 3500;
 const ICON: Record<Kind, string> = { income: "💰", expense: "💳", transfer: "🔁" };
 
-type Item = { view: SeriesView; slot: Slot; skipped: boolean };
+/** A slot in the digest; `skipped` is the stored skip date when it shows as skipped. */
+type Item = { view: SeriesView; slot: Slot; skipped: string | null };
 
 function name(item: Item): string {
   return esc(item.view.series.name);
@@ -95,7 +100,7 @@ function compact(iso: string): string {
 function itemButtons(item: Item, label: string): Keyboard[number] {
   const sid = item.view.series.id;
   const at = `${sid}:${compact(item.slot.due)}`;
-  if (item.skipped) return [{ text: `↩ Undo skip: ${label}`, callback_data: `r:du:${at}` }];
+  if (item.skipped) return [{ text: `↩ Undo skip: ${label}`, callback_data: `r:du:${sid}:${compact(item.skipped)}` }];
   const row = [
     { text: `🔍 ${label}: logged?`, callback_data: `r:df:${at}` },
     { text: "⏭ Skip", callback_data: `r:dk:${at}` },
@@ -119,10 +124,11 @@ export function renderDigest(input: DigestInput): Digest | null {
     const view = viewOf(book, series, today);
     for (const slot of view.slots) {
       const shownSkip =
-        slot.status === "skipped" &&
-        skipped.some(
-          (s) => s.seriesId === series.id && Math.abs(dayNumber(s.due) - dayNumber(slot.due)) <= halfPeriod(series.cadence),
-        );
+        slot.status === "skipped"
+          ? (skipped.find(
+              (s) => s.seriesId === series.id && Math.abs(dayNumber(s.due) - dayNumber(slot.due)) <= halfPeriod(series.cadence),
+            )?.due ?? null)
+          : null;
       const item = { view, slot, skipped: shownSkip };
       if (slot.status === "due" || (shownSkip && t <= dayNumber(slot.lastDay))) due.push(item);
       else if (slot.status === "missed" || shownSkip) missed.push(item);
@@ -210,4 +216,119 @@ export function renderDigest(input: DigestInput): Digest | null {
 export async function loadDigest(chatId: number, day: string): Promise<Digest | null> {
   const book = await loadBook();
   return renderDigest({ book, today: day, skipped: await skipsSince(day), noDigestOn: await missedRun(day, chatId) });
+}
+
+// ---- Taps on the digest's buttons (they arrive at the webhook) -----------------
+
+/**
+ * `r:df:<sid>:<yyyymmdd>` find, `r:dk:…` skip, `r:du:…` undo a skip, `r:dv`
+ * back to the digest. The date is the expected payment's (or, for undo, the
+ * stored skip's).
+ */
+export type DigestTap = { op: "find" | "skip" | "unskip"; sid: number; due: string } | { op: "back" };
+
+const OPS = { f: "find", k: "skip", u: "unskip" } as const;
+
+export function parseDigestTap(data: string | undefined): DigestTap | null {
+  if (data === "r:dv") return { op: "back" };
+  const m = /^r:d([fku]):(\d{1,10}):(\d{4})(\d{2})(\d{2})$/.exec(data ?? "");
+  if (!m) return null;
+  const due = `${m[3]}-${m[4]}-${m[5]}`;
+  // Only a real calendar day: callback data comes from the client.
+  if (isoDate(dayNumber(due)) !== due) return null;
+  return { op: OPS[m[1] as keyof typeof OPS], sid: Number(m[2]), due };
+}
+
+const BACK = [{ text: "‹ Back to digest", callback_data: "r:dv" }];
+
+/**
+ * Find: the unlinked payments that look like the series within half a period
+ * of that date, as the review's toggles (Apply links the ticked and leaves
+ * the rest out of the series). With none, how to log it: the usual message,
+ * whose card offers the link. Writes nothing.
+ */
+export function findScreen(book: Book, sid: number, due: string, today: string): Screen {
+  const series = book.series.find((s) => s.id === sid);
+  if (!series) return { text: "That series no longer exists.", keyboard: [BACK] };
+  const near = candidates(book, series).filter(
+    (c) => Math.abs(dayNumber(c.row.date) - dayNumber(due)) <= halfPeriod(series.cadence),
+  );
+  const when = dayIn(due, today);
+  if (near.length === 0) {
+    const band = viewOf(book, series, today).band;
+    const example = [series.name.toLowerCase(), band ? money(band.typical) : "", day(due)].filter(Boolean).join(" ");
+    return {
+      text: `Nothing logged around ${when}. Send it as usual ("${esc(example)}"); the card will offer to link it.`,
+      keyboard: [BACK],
+    };
+  }
+  const keyboard: Keyboard = near.map((c) => [{ text: toggleLabel(c.row, c.ticked), callback_data: `r:bt:${c.row.id}` }]);
+  keyboard.push([{ text: "", callback_data: `r:bk:${sid}` }], BACK);
+  return {
+    text: [
+      `<b>🔍 ${esc(series.name)} around ${when}</b>`,
+      `${near.length} unlinked payment${near.length === 1 ? " looks" : "s look"} like it. ✅ links it; ☐ leaves it out of this series for good.`,
+    ].join("\n"),
+    keyboard: recount(keyboard),
+  };
+}
+
+/** Why a slot cannot be skipped now, or null when it is due or not logged. */
+function unskippable(book: Book, sid: number, due: string, today: string): string | null {
+  const series = book.series.find((s) => s.id === sid);
+  if (!series) return "That series no longer exists.";
+  const slot = viewOf(book, series, today).slots.find(
+    (s) => Math.abs(dayNumber(s.due) - dayNumber(due)) <= halfPeriod(series.cadence),
+  );
+  switch (slot?.status) {
+    case "due":
+    case "missed":
+      return null;
+    case "met":
+      return "Already logged: nothing to skip.";
+    case "skipped":
+      return "Already skipped.";
+    case "paused":
+      return "Paused then: nothing to skip.";
+    default:
+      return `Nothing expected around ${dayIn(due, today)}.`;
+  }
+}
+
+type Outcome = { screen?: Screen; ack?: string };
+
+/** The digest of that day as it is now, or a line saying nothing is left. */
+async function redraw(chatId: number, runDay: string): Promise<Screen> {
+  const digest = await loadDigest(chatId, runDay);
+  return digest ?? { text: `Nothing left to do for ${day(runDay)}.`, keyboard: [[{ text: "↻ All recurring", callback_data: "r:l:0" }]] };
+}
+
+async function respond(tap: DigestTap, ctx: TapContext): Promise<Outcome> {
+  if (tap.op === "find") return { screen: findScreen(await loadBook(), tap.sid, tap.due, ctx.today) };
+  // Writes and redraws need the digest this message is: never act on another message.
+  const day = await runDay(ctx.chatId, ctx.messageId);
+  if (day === null) return { ack: "That digest is no longer current. Open /recurring." };
+  if (tap.op === "back") return { screen: await redraw(ctx.chatId, day) };
+  const when = dayIn(tap.due, ctx.today);
+  if (tap.op === "unskip") {
+    if (!(await unskipSlot(tap.sid, tap.due))) return { ack: "Already undone." };
+    return { screen: await redraw(ctx.chatId, day), ack: `${when} is expected again.` };
+  }
+  const why = unskippable(await loadBook(), tap.sid, tap.due, ctx.today);
+  if (why) return { ack: why };
+  const result = await skipSlot(tap.sid, tap.due, new Date());
+  if (result === "already") return { ack: "Already skipped." };
+  if (result === "missing") return { ack: "That series no longer exists." };
+  return { screen: await redraw(ctx.chatId, day), ack: `Skipped ${when}.` };
+}
+
+/** A tap on a digest button: the message is edited in place, then the tap answered. */
+export async function handleDigestTap(tap: DigestTap, ctx: TapContext): Promise<void> {
+  const outcome = await respond(tap, ctx);
+  if (outcome.screen) {
+    await editMessageText(ctx.botToken, ctx.chatId, ctx.messageId, outcome.screen.text, outcome.screen.keyboard, {
+      html: true,
+    });
+  }
+  await answerCallbackQuery(ctx.botToken, ctx.callbackId, outcome.ack);
 }

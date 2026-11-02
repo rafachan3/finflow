@@ -592,7 +592,7 @@ function flaggedRows(book: Book): BookRow[] {
   return book.rows.filter((r) => r.flagged && r.seriesId === null).reverse();
 }
 
-function toggleLabel(r: BookRow, ticked: boolean): string {
+export function toggleLabel(r: BookRow, ticked: boolean): string {
   return `${ticked ? "✅" : "☐"} ${r.flagged ? "⚑ " : ""}${rowLabel(r, 36)}`;
 }
 
