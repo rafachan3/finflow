@@ -186,6 +186,11 @@ already dated in a later month (a bill logged ahead), the list runs to that
 month instead, so no ledger row is left out of every month.
 `fct_category_month` has one row per (`month_start`, `subcategory_id`) with
 expense data.
+`fct_ledger_entry` has one row per `transactions` row (the header). It is a
+listing mart for the Ledger dashboard, not a metric: no MetricFlow model,
+and nothing in `fct_monthly_summary` is summed from it. Its `amount` is the
+header amount. Expense line detail stays on `fct_transactions`; the ledger
+joins the two on `transaction_id`.
 
 ## Metrics
 
@@ -468,6 +473,30 @@ mean would skip the months a subcategory was absent and run high. Carries
 | `spend_avg_3m`, `line_count_avg_3m` | mean `spend` and `line_count` over the baseline months, zeros included | Null when `baseline_months = 0` |
 | `spend_delta` | `spend - spend_avg_3m` | Null when `baseline_months = 0` |
 | `is_few_lines` | `line_count + 3 * coalesce(line_count_avg_3m, 0) < 6`: fewer than 6 lines across the 4 months compared, scaled to 3 baseline months | Computed from the exact mean. A subcategory-month this thin is mostly noise: show it, flagged, never rank by it |
+
+## Listing marts (dashboard support)
+
+`fct_ledger_entry` lists whole logged entries for the Phase 5 Ledger
+dashboard and Phase 6's agent. It is **not a metric**: no
+`fct_monthly_summary` column and no MetricFlow metric. Nested line items
+are read from `fct_transactions` on `transaction_id`. Why the grain is the
+header, and how the derived columns are shaped: DECISIONS.md 2026-11-08.
+
+### `fct_ledger_entry`
+
+One row per `stg_transactions` row.
+
+| Column | Formula | Edge cases |
+|---|---|---|
+| `transaction_id`, `occurred_on`, `month_start`, `type`, `amount`, `description`, `notes`, `merchant_name`, `venue_name`, `income_source_name`, `from_account_name`, `to_account_name`, `funding_source_name`, `is_recurring`, `recurring_series_name`, `recurring_cadence`, `entry_source` | from `stg_transactions`; `amount` is the header | A null account name is chequing. Series name and cadence are null when unlinked |
+| `counterparty` | expense: `merchant · venue`, omitting a missing side; income: `income_source_name`; transfer: `from → to` with a null side shown as `Chequing` | Null when an expense has neither merchant nor venue |
+| `is_self_funded` | expense: `funding_source_name = 'self'`; otherwise null | |
+| `line_count` | count of expense lines | `0` on income and transfers |
+| `category_summary` | `category › subcategory` of the largest-amount line, then ` +n` for *n* other distinct paths | Null on income and transfers. A tie breaks on category, subcategory, then item id. Two lines in the same path do not add `+n` |
+| `subcategory_paths` | distinct `category › subcategory` of the lines, ordered by the largest line in that path, then the path | `'{}'` on income and transfers |
+| `bucket_summary` | `needs`, `wants`, or `mixed` when both `needs_amount` and `wants_amount` are `> 0` | Null on income and transfers |
+| `needs_amount`, `wants_amount` | sum of line amounts in that bucket | `0` on income and transfers. On an expense they sum to `amount` |
+| `tags` | distinct union of header tags and line tags, sorted | `'{}'` when none |
 
 ## Adding or changing a metric
 
