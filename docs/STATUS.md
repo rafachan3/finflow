@@ -333,7 +333,10 @@ parts. A tip correction replaces the old tip, and the total follows the
 recomputed lines unless the correction states one. Cards look the same.
 Goldens `receipt-with-tip` (Quebec GST + QST diner) and `edit-tip` pin each
 line's amount. A synthetic Quebec grocery receipt is covered by unit tests
-and a journey.
+and a journey. Fix on branch `fix/tax-tip-edit-old-cards` (DECISIONS.md
+2026-11-08): an Edit recomputes an unchanged total only for a tip or price
+correction, and never on a card stored before prices. Anything else keeps
+the stored total, so the line-sum check shows an error card.
 
 Duplicate warning (Phase 3.5 PR 1; DECISIONS.md 2026-10-29): every saved
 card (new message, `/pending`, Fix date, Edit) gets at most one `!` line

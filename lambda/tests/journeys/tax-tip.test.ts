@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { golden } from "../golden/golden.js";
 import { sql } from "../integration/db-helpers.js";
-import { chat, gemini, ledger, useJourneys } from "./harness.js";
+import { chat, gemini, labels, ledger, useJourneys } from "./harness.js";
 
 vi.mock("../../src/config.js", async () => {
   const { journeyConfig } = await import("./harness.js");
@@ -54,6 +54,40 @@ describe("tax and tip on a receipt", () => {
     await chat.tap(fixed, "Confirm");
     expect(await ledger.transactions()).toMatchObject([{ amount: "27.52", lines: 3 }]);
     expect((await lineAmounts()).map((l) => l.amount)).toEqual(["7.32", "8.93", "11.27"]);
+  });
+
+  it("a tip Edit on a card stored before prices shows an error card, not a wrong total", async () => {
+    const lunch = { ...quebec, amount: "50.00", taxes: [], tip: null, items: [{ ...quebec.items[0], price: "50.00", taxable: false }] };
+    gemini.extract = { events: [lunch] };
+    await chat.photo();
+    // As saved before prices: the one 50.00 line already holds a 5.00 tip.
+    await sql(
+      `update ingestions set extraction = (extraction - 'taxes' - 'tip')
+         || jsonb_build_object('items', (select jsonb_agg(i - 'price' - 'taxable') from jsonb_array_elements(extraction->'items') i))`,
+    );
+    await chat.tap(chat.last(), "Edit");
+    gemini.patch = { ...lunch, tip: "8.00" };
+    await chat.text("tip was 8");
+
+    const card = chat.last().text;
+    expect(card.split("\n")[0]).toBe("Expense · 2026-10-25 · CAD 50.00");
+    expect(card).toContain("✗ lines sum 58.00 != header 50.00");
+    expect(labels(chat.last())).not.toContain("Confirm");
+    expect(await ledger.transactions()).toEqual([]);
+  });
+
+  it("a date Edit that comes back with a tax dropped keeps the total and shows an error card", async () => {
+    gemini.extract = { events: [quebec] };
+    await chat.photo();
+    await chat.tap(chat.last(), "Edit");
+    gemini.patch = { ...quebec, date: "2026-10-24", taxes: ["0.35"] };
+    await chat.text("the date was Oct 24");
+
+    const card = chat.last().text;
+    expect(card.split("\n")[0]).toBe("Expense · 2026-10-24 · CAD 24.52");
+    expect(card).toContain("✗ lines sum 23.82 != header 24.52");
+    expect(labels(chat.last())).not.toContain("Confirm");
+    expect(await ledger.transactions()).toEqual([]);
   });
 
   it("a receipt whose prices, taxes and tip do not add up to its total cannot be confirmed", async () => {

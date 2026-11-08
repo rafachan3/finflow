@@ -558,10 +558,7 @@ export async function patchExtraction(args: {
     ],
   });
   const patched = normalizeTaxonomyNames(asExtraction(extractor.data), args.taxonomy);
-  const amount =
-    patched.type === "expense"
-      ? editedTotal(patched.amount, args.current.amount, patched.items.map((i) => i.amount))
-      : patched.amount;
+  const amount = patched.type === "expense" ? editedTotal(patched, args.current) : patched.amount;
   return {
     ...patched,
     amount,
