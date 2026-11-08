@@ -1,5 +1,5 @@
 import { readdirSync, readFileSync } from "node:fs";
-import { canonicalTags } from "../../src/extraction.js";
+import { canonicalTags, stripCategoryPrefix } from "../../src/extraction.js";
 import { discountsOf, editedTotal, lineAmounts, type EditParts } from "../../src/tax-tip.js";
 
 /**
@@ -232,8 +232,10 @@ export function mismatches(events: RawEvent[], expected: ExpectedEvent[]): strin
     if (want.classes !== undefined && items.length === want.lines) {
       want.classes.forEach((wanted, j) => {
         const line = items[j];
-        const type = line.item_type ? ` / ${String(line.item_type)}` : "";
-        const printed = `${String(line.category)} / ${String(line.subcategory)}${type}`;
+        // As stored: the model often repeats "Category / " in subcategory and item_type.
+        const category = String(line.category);
+        const type = line.item_type ? ` / ${stripCategoryPrefix(category, String(line.item_type))}` : "";
+        const printed = `${category} / ${stripCategoryPrefix(category, String(line.subcategory))}${type}`;
         if (printed !== wanted) {
           out.push(`${at}: line ${j} (${String(line.description)}) ${printed} != ${wanted}`);
         }

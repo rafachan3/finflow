@@ -163,6 +163,23 @@ describe("mismatches", () => {
     ]);
   });
 
+  it("compares classes as stored, after the repeated category prefix is stripped", () => {
+    const want: ExpectedEvent = { type: "expense", lines: 1, classes: ["Food and drink / Restaurants / Meals & Prepared Food"] };
+    const line = (subcategory: string, item_type: string) => ({
+      amount: "1.00",
+      category: "Food and drink",
+      subcategory,
+      item_type,
+    });
+    const event = (subcategory: string, item_type: string) =>
+      mismatches([{ type: "expense", amount: "1.00", items: [line(subcategory, item_type)] }], [want]);
+    expect(event("Restaurants", "Meals & Prepared Food")).toEqual([]);
+    expect(event("Food and drink / Restaurants", "Food and drink / Meals & Prepared Food")).toEqual([]);
+    expect(event("Food and drink / Takeout / Quick Service", "Meals & Prepared Food")).toEqual([
+      "event 0: line 0 (undefined) Food and drink / Takeout / Quick Service / Meals & Prepared Food != Food and drink / Restaurants / Meals & Prepared Food",
+    ]);
+  });
+
   it("reports header tags and each line's own tags, once a tag on every line counts as the header's", () => {
     const want: ExpectedEvent = { type: "expense", lines: 2, tags: ["Travel"], lineTags: [[], ["Partner"]] };
     const line = (tags?: string[]) => ({ amount: "1.00", tags });
