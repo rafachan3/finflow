@@ -1,6 +1,6 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { canonicalTags } from "../../src/extraction.js";
-import { editedTotal, lineAmounts, type EditParts } from "../../src/tax-tip.js";
+import { discountsOf, editedTotal, lineAmounts, type EditParts } from "../../src/tax-tip.js";
 
 /**
  * One owner message per file: the input, the shape Gemini's answer must have,
@@ -67,6 +67,7 @@ export type RawEvent = {
   from_account?: unknown;
   to_account?: unknown;
   tags?: unknown;
+  discounts?: unknown;
   taxes?: unknown;
   tip?: unknown;
   items?: {
@@ -100,7 +101,7 @@ export function bucketRules(g: Pick<Golden, "rules">): string {
 
 /**
  * A raw answer as the bot reads it: each line's amount from its price, the
- * taxes and the tip (tax-tip.ts). A recording from before prices already
+ * order discounts, the taxes and the tip (tax-tip.ts). A recording from before prices already
  * holds line amounts and is left as it is.
  */
 function shared(e: RawEvent): RawEvent {
@@ -110,6 +111,7 @@ function shared(e: RawEvent): RawEvent {
     items.map((i) => ({ price: String(i.price ?? i.amount ?? ""), taxable: i.taxable === true })),
     names(e.taxes),
     e.tip === null || e.tip === undefined ? null : String(e.tip),
+    discountsOf(e.discounts),
   );
   return amounts ? { ...e, items: items.map((i, j) => ({ ...i, amount: amounts[j] })) } : e;
 }
@@ -120,6 +122,7 @@ function editParts(e: RawEvent): EditParts {
     amount: String(e.amount ?? ""),
     taxes: names(e.taxes),
     tip: e.tip === null || e.tip === undefined || e.tip === "" ? null : String(e.tip),
+    discounts: discountsOf(e.discounts),
     items: (e.items ?? []).map((i) => ({
       amount: String(i.amount ?? ""),
       price: String(i.price ?? i.amount ?? ""),

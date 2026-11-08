@@ -90,6 +90,28 @@ describe("tax and tip on a receipt", () => {
     expect(await ledger.transactions()).toEqual([]);
   });
 
+  it("a coupon off the whole order is taken off the lines by price, and an Edit of the coupon recomputes them", async () => {
+    // A 3.00 coupon printed negative; GST and QST print on the taxed line's 6.10 left.
+    const coupon = { ...quebec, amount: "21.39", discounts: ["-3.00"], taxes: ["0.31", "0.61"] };
+    gemini.extract = { events: [coupon] };
+    await chat.photo();
+    const card = chat.last();
+    expect(card.text.split("\n")[0]).toBe("Expense · 2026-10-25 · CAD 21.39");
+    expect(card.text).toContain("✓ lines 8.71 + 5.66 + 7.02 = 21.39");
+    expect(labels(card)).toContain("Confirm");
+
+    await chat.tap(card, "Edit");
+    gemini.patch = { ...coupon, discounts: ["2.00"] };
+    await chat.text("the coupon was 2.00");
+    expect(JSON.parse(gemini.lastUserText[0])).toMatchObject({ amount: "21.39", discounts: ["3.00"] });
+
+    const fixed = chat.last();
+    expect(fixed.text.split("\n")[0]).toBe("Expense · 2026-10-25 · CAD 22.39");
+    expect(fixed.text).toContain("✓ lines 9.14 + 5.94 + 7.31 = 22.39");
+    await chat.tap(fixed, "Confirm");
+    expect((await lineAmounts()).map((l) => l.amount)).toEqual(["5.94", "7.31", "9.14"]);
+  });
+
   it("a receipt whose prices, taxes and tip do not add up to its total cannot be confirmed", async () => {
     gemini.extract = { events: [{ ...quebec, amount: "25.52" }] };
     await chat.photo();

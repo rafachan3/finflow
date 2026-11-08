@@ -164,10 +164,10 @@ describe("retryOnce", () => {
 });
 
 describe("recordedFile", () => {
-  const text = readFileSync(new URL("./golden/no-date-text.json", import.meta.url), "utf8");
+  const text = readFileSync(new URL("./golden/no-place-lines.json", import.meta.url), "utf8");
   const golden = JSON.parse(text);
   const live = {
-    events: [{ ...golden.recorded.events[0], description: "Coffee, live" }],
+    events: [{ ...golden.recorded.events[0], description: "Lunch and coffee, live" }],
   };
 
   it("rewrites only the recording and the request hash, in the file's own format", () => {
@@ -182,10 +182,10 @@ describe("recordedFile", () => {
   });
 
   it("refuses an answer that breaks the expectation", () => {
-    const twoLines = {
+    const extraLine = {
       events: [{ ...live.events[0], items: [...live.events[0].items, { amount: "0.00" }] }],
     };
-    expect(recordedFile(text, twoLines, "abc")).toBeNull();
+    expect(recordedFile(text, extraLine, "abc")).toBeNull();
     expect(recordedFile(text, { events: [] }, "abc")).toBeNull();
   });
 

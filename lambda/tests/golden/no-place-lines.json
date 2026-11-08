@@ -1,5 +1,5 @@
 {
-  "name": "two items with no place stay one purchase with two lines",
+  "name": "two items with no place and no date stay one purchase with two lines, the date and note left empty",
   "input": {
     "kind": "text",
     "text": "12 lunch and 4 coffee"
@@ -9,7 +9,9 @@
       {
         "type": "expense",
         "lines": 2,
-        "merchant": false
+        "merchant": false,
+        "date": false,
+        "note": false
       }
     ]
   },
@@ -49,5 +51,5 @@
       }
     ]
   },
-  "request_sha256": "64ce6a64437938c3d55d93dc8fdfca9b2272ae4397d97e9be06d6041680507ee"
+  "request_sha256": "0cb15a3fbba487e9ee52d7f4398d5da7af43f4b072703447f7462d51dd0688cd"
 }
