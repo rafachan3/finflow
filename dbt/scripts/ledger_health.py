@@ -19,7 +19,7 @@ from pathlib import Path
 import psycopg2
 
 # Tests whose rows are transaction ids only, so they can be listed.
-ID_TESTS = ("no_likely_duplicates",)
+ID_TESTS = ("likely_duplicates_reworded", "no_likely_duplicates")
 MAX_ROWS = 50
 UUID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 TARGET = Path(__file__).resolve().parents[1] / "target"

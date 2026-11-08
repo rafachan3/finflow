@@ -573,7 +573,8 @@ merged with migration 0020 applied. Next, in order:
 2. A not-a-duplicate acknowledgement for ledger-health: in review on
    branch `feat/ledger-health-acknowledge` (migration 0021 not yet applied
    to production; apply it before merging). After merge the owner
-   acknowledges the 34 pairs of #109 so the issue can close.
+   acknowledges the 34 pairs of #109, and any pairs the new reworded
+   test lists that are real, so the issue can close.
 3. Card redesign (#89 #92 #96 #97): brainstorm with the owner first.
 4. Phase 5 (Grafana).
 
@@ -622,7 +623,10 @@ Not-a-duplicate acknowledgements (branch `feat/ledger-health-acknowledge`,
 transaction ids, deleted with either transaction. `no_likely_duplicates`
 leaves acknowledged pairs out. The owner adds one with a SQL snippet in
 the Supabase SQL editor; there is no bot command, since the ledger-health
-surface is a GitHub issue, not Telegram.
+surface is a GitHub issue, not Telegram. A second warn test,
+`likely_duplicates_reworded` (#114), lists pairs of one type and amount at
+most a day apart whose descriptions differ, leaving out pairs under 3.00
+with an imported row, pairs in one series and acknowledged pairs.
 
 Pre-run check of `finflow_dbt` (2026-10-30, `has_table_privilege` and
 `has_schema_privilege` over `verify-ca` TLS with the tracked CA, no writes): SELECT on `public.transactions` true;

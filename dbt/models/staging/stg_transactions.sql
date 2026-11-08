@@ -20,6 +20,7 @@ select
     t.description,
     t.notes,
     t.is_recurring,
+    t.recurring_series_id,
     f.name as funding_source_name,
     m.name as merchant_name,
     v.name as venue_name,

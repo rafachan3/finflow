@@ -2611,3 +2611,27 @@ close.
 command or button (no surface to attach it to, more code than the task
 earns); marking the transactions themselves (a flag on one row cannot say
 which pair it was cleared from).
+
+## 2026-11-07 — A separate warn test for one payment logged under two descriptions
+
+One receipt was confirmed twice weeks apart, titled by its merchant the
+first time and by its items the second (#114). `no_likely_duplicates`
+requires matching descriptions, so it never listed the pair.
+
+- **A second test, `likely_duplicates_reworded`,** not a looser first
+  one: the same type and amount at most 1 day apart with descriptions that
+  differ. Kept apart so a pair whose descriptions match (most likely one
+  payment) stays distinguishable from two real purchases at one price.
+  1 day, not 3: a re-logged receipt keeps its printed date.
+- **Quiet by design.** The post-backfill audit found 28 pairs of this
+  shape, about 24 of them imported rows: fares and laundry machines from
+  the history. Left out are pairs under 3.00 where either row was imported
+  (no confirmed ingestion), pairs in one recurring series, and acknowledged
+  pairs (migration 0021). A bot-logged pair under 3.00 is still listed.
+- **Warn only, ids only,** like `no_likely_duplicates`; `ledger_health.py`
+  lists its pairs in the same issue.
+
+**Ruled out:** fuzzy description matching (cannot tell a merchant name from
+an item summary); a perceptual hash of receipt photos (code and storage
+for one case so far; #114 keeps it as an option); blocking Confirm on an
+amount match (adds a step to logging, AGENTS.md rule 6).

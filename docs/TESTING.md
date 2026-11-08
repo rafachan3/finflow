@@ -114,6 +114,7 @@ included.
 | Ledger | Every transaction is dated from the ledger start (dbt var `ledger_start`, 2026-06-01; the fixture exports its own) to Toronto's tomorrow; a row dated years back or ahead fails the `dbt` job, as does the production start on the fixture's earlier months | `dbt:occurred_on_within_ledger`<br>`ci:misdated rows fail occurred_on_within_ledger, and a likely duplicate warns with its ids` |
 | Ledger | Warnings, not failures: a line tag that repeats its header tag, a transaction with two confirmed ingestions | `dbt:line_tag_not_on_header`<br>`dbt:one_confirmed_ingestion_per_transaction` |
 | Ledger | Ledger health warnings: two transactions of one type and amount at most 3 days apart whose descriptions match ignoring case and whitespace are reported as a pair of ids, while near misses (different descriptions at one price, the same description 5 days apart) and a pair the owner acknowledged as not a duplicate are not | `dbt:no_likely_duplicates`<br>`ci:misdated rows fail occurred_on_within_ledger, and a likely duplicate warns with its ids` |
+| Ledger | Ledger health warnings, apart from the above: two transactions of one type and amount at most 1 day apart whose descriptions differ (one receipt titled by its merchant once and by its items again) are reported as a pair of ids, except a pair under 3.00 with an imported row, a pair in one recurring series, and an acknowledged pair; an under-3.00 pair of bot-logged rows is still reported | `dbt:likely_duplicates_reworded`<br>`ci:misdated rows fail occurred_on_within_ledger, and a likely duplicate warns with its ids` |
 | Ledger | A not-a-duplicate acknowledgement is stored once per unordered pair (smaller id first, so the reverse is refused) and is deleted with either transaction | `store a not-a-duplicate acknowledgement once per unordered pair, and drop it with either transaction` |
 | Ledger | A transaction links to at most one recurring series, of its own kind only; linking sets `is_recurring` and unlinking clears it, and `is_recurring` is true exactly when linked (CHECK, migration 0020: an unlinked insert flagged recurring is refused); a deleted series unlinks its transactions; a transaction is never both linked to and excluded from a series; pauses of a series never overlap; the nightly checks production | `links a transaction to a series of its own kind and refuses another kind`<br>`linking sets is_recurring and unlinking clears it`<br>`refuses is_recurring without a series, and takes a linked insert`<br>`dbt:recurring_flag_matches_series`<br>`deleting a series unlinks its transactions and clears their flag`<br>`refuses a pause that overlaps another pause of the series`<br>`refuse a recurring series with %s`<br>`dbt:recurring_link_matches_series_kind`<br>`dbt:recurring_link_not_excluded`<br>`dbt:recurring_pauses_do_not_overlap` |
 | Recurring | Cadence detection reads calendar slots, not intervals: monthly, month-end, biweekly, semi-monthly and quarterly histories get their cadence and anchor, a month never logged lowers coverage but does not change the cadence, twice-a-week shopping is not proposed, a cadence needs a full period of history to be suggested, and a declared cadence fits even one payment | `detects %s`<br>`proposes a regular series with enough history, and not twice-a-week shopping`<br>`reads a gap in logging as a missing payment, not a change of cadence`<br>`needs a full period of history before it suggests a cadence`<br>`fits the owner's declared cadence to a single payment`<br>`suggests monthly for any regular monthly series with up to two days of jitter` |
@@ -273,9 +274,10 @@ Extra SQL files given to `test_db.py` load after the fixture.
 duplicate pair, near misses that are not one, and a matching pair it
 acknowledges in `duplicate_acknowledgements`; with it,
 `dbt build --exclude tag:fixture` must fail `occurred_on_within_ledger`
-(2 rows) and nothing else, warn `no_likely_duplicates` (1 row) and nothing
-else, and `scripts/ledger_health.py` must print that pair's ids and no
-description or amount.
+(2 rows) and nothing else, warn `no_likely_duplicates` (1 row) and
+`likely_duplicates_reworded` (2 rows) and nothing else, and
+`scripts/ledger_health.py` must print those pairs' ids and no description
+or amount.
 
 The CI job `dbt` runs on every PR, against a `postgres:17` service:
 `dbt build` on the fixture must pass; `finflow_analyst` (throwaway password
@@ -329,8 +331,9 @@ the run is green.
 
 Warn-level tests never fail the run. After the build, still inside the
 build step, `scripts/ledger_health.py` lists each test that warned with its
-row count, plus the ids `no_likely_duplicates` returned (anything that is
-not a UUID is withheld). The next step, which has no secrets, writes that to the job
+row count, plus the ids `no_likely_duplicates` and
+`likely_duplicates_reworded` returned (anything that is not a UUID is
+withheld). The next step, which has no secrets, writes that to the job
 summary and to one open issue labelled `ledger-health`. It rewrites the
 issue body, with a comment, only when the findings change, and closes the
 issue after the first clean, successful build.
