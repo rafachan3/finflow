@@ -3,7 +3,7 @@
 Living state of the project. Read this first; update it whenever work lands.
 
 **Last updated:** 2026-11-07
-**Current phase:** Phase 4.5 accepted 2026-11-07; Phase 5 (Grafana) is next, after the follow-ups in Next concrete step
+**Current phase:** Phase 5 (Grafana) under way: the planning marts (PR A) are in review; Phase 4.5 accepted 2026-11-07
 
 ## Phase progress
 
@@ -17,7 +17,7 @@ Living state of the project. Read this first; update it whenever work lands.
 - [x] Phase 3.5 — Ingestion follow-ons — **accepted 2026-10-29 by the journey tests (no phone test): 25 of 25 passed in `line-tags`, `duplicates` and `merchants`; see Next concrete step** (2026-10-29)
 - [x] Phase 4 — dbt semantic layer + MetricFlow — **accepted 2026-10-30: `dbt build`, the hand-written-SQL reconciliation and `mf query` vs the marts green in CI on the fixture (#72-#78) and on production in `dbt-nightly` run 41157900716 (87 of 87 nodes, 14 metrics, 5 months); real-month hand verification deferred** (2026-10-30)
 - [x] Phase 4.5 — Proactive nudges (recurring series, daily digest, merchant recommendations) — **accepted 2026-11-07: the `recurring-digest`, `recurring-card` and `recurring-backfill` journeys passed 45 of 45 (3 files) against a throwaway Postgres, CI on `main` green for #115 (run 42443193526), and the production `nudge_runs` log holds 6 rows, all `sent`, 2026-11-02 to 2026-11-07; no phone test** (2026-11-07)
-- [ ] Phase 5 — Grafana dashboards
+- [ ] Phase 5 — Grafana dashboards — **PR A (planning marts) in review on `feat/phase5-planning-marts`; data source and dashboards to follow**
 - [ ] Phase 6 — Claude analytics agent (subagents + Postgres MCP)
 - [ ] Phase 7 — Open-source polish
 
@@ -576,15 +576,40 @@ Phase 4.5 is accepted (2026-11-07; check and output in Phase progress).
 The backfill is done: June-October 2026 are complete months. PR 6 (#115)
 merged with migration 0020 applied. Next, in order:
 
-1. Deterministic tax/tip PR (`feat/deterministic-tax-tip`): open, awaiting
-   CI and the owner's merge.
+1. Deterministic tax/tip PR: merged as #118.
 2. A not-a-duplicate acknowledgement for ledger-health: in review on
    branch `feat/ledger-health-acknowledge` (migration 0021 not yet applied
    to production; apply it before merging). After merge the owner
    acknowledges the 34 pairs of #109, and any pairs the new reworded
    test lists that are real, so the issue can close.
 3. Card redesign (#89 #92 #96 #97): brainstorm with the owner first.
-4. Phase 5 (Grafana).
+4. Phase 5 (Grafana). PR A, the planning marts, was built before the card
+   redesign at the owner's request (below). After it merges, the CoS confirms the next
+   `dbt-nightly` run is green on production. Then, each its own PR: live
+   marts as views (only if the owner says yes to freshness), the Grafana
+   folder and data source, and the This month, Explore and Monthly review
+   dashboards. Owner decisions still open (listed in the untracked design
+   spec): whether every transfer out of chequing is being logged, whether
+   August is complete (the coverage note still marks it partial), views or
+   nightly tables, and the ROADMAP Phase 5 scope.
+
+Planning marts (Phase 5 PR A, branch `feat/phase5-planning-marts`;
+SEMANTIC_LAYER.md "Planning marts", DECISIONS.md 2026-11-07, TESTING.md):
+three dbt tables in `marts` for the dashboards and the Phase 6 agent, not
+metrics (no MetricFlow change). `fct_month_plan` plans each month in
+dollars: a complete month from its actual `spendable_income`, the current
+month from the greater of income so far and the mean of the up-to-3
+complete months before it, so early-month shares of income so far never
+reach a dashboard; it also carries `as_of_day`, `income_received_share` and
+rolling 3-month shares of complete months. `fct_pace_day` gives each day's
+month-to-date for needs, wants, variable needs, financial future and
+spendable income against the usual curve of the baseline months (matched
+by day of month, the last day to their last day). `fct_subcategory_month`
+zero-fills every (bucket, subcategory) pair across months, with baseline
+means, deltas and a few-lines flag. The fixture now pins Toronto's today to
+2026-10-15 (`FINFLOW_TODAY`), so its October is a current month with a
+baseline. Five invariant tests run nightly on production; three hand-worked
+fixture tests pin the values. No migration.
 
 Phase 4 is accepted (2026-10-30). Optional and deferred: hand-verify real
 numbers for one complete month against the owner's records (on hold until

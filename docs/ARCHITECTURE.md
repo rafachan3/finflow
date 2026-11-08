@@ -245,7 +245,9 @@ rationale for its shape:
   `marts/` (tables in schema `marts`, rebuilt in full every run):
   `fct_transactions` (one row per ledger line), `fct_monthly_summary` (one
   row per month, one column per metric), `fct_category_month` (spend per
-  subcategory per month) and `dim_date` (the day spine).
+  subcategory per month) and `dim_date` (the day spine). The planning
+  marts `fct_month_plan`, `fct_pace_day` and `fct_subcategory_month` turn
+  those metrics into the dashboards' plans, pace and baselines.
 - Canonical metric definitions (formulas, grain, month boundaries, mart
   columns) live only in `docs/SEMANTIC_LAYER.md`. Both dbt models and the
   agent reference that file so numbers agree everywhere.
