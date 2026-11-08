@@ -221,18 +221,19 @@ names a complete month.*
 The bot speaks first. A separate scheduled Lambda (EventBridge
 Scheduler, free tier), not a new path in the webhook handler.
 
-- [ ] Recurring-expense reminders: a declared list of recurring
-      expenses; one Telegram nudge before the expected date and one
-      after it only if nothing matching was logged.
-- [ ] Merchant recommendations: unmatched merchant names counted from
+- [x] Recurring series, daily digest, pause and verify: expenses, income
+      and transfers are declared as series (detected from history or
+      added); one daily digest lists what is due, missed or unconfirmed,
+      with buttons to pause, skip or verify a series.
+- [x] Merchant recommendations: unmatched merchant names counted from
       confirmed transactions (a dbt model, not an LLM); past a frequency
       threshold the bot offers to track it. Accept → insert the merchant
-      and backfill `merchant_id` on past matching transactions.
+      and backfill `merchant_id` on past matching transactions. Delivered
+      by #62 and #64.
 
-**Done when:** a declared recurring expense produces the before-nudge and,
-when it goes unlogged, the after-nudge; a frequent untracked merchant gets
-a recommendation, and accepting it creates the merchant and backfills its
-past transactions.
+**Done when:** the recurring-digest, recurring-card and recurring-backfill
+journeys pass in CI, and one production digest is sent (run log `sent`).
+No phone test.
 
 ## Phase 5 — Dashboards (≈1–2 evenings)
 
