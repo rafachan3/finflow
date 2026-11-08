@@ -2,8 +2,8 @@
 
 Living state of the project. Read this first; update it whenever work lands.
 
-**Last updated:** 2026-11-07
-**Current phase:** Phase 5 (Grafana) under way: the planning marts (PR A) are in review; Phase 4.5 accepted 2026-11-07
+**Last updated:** 2026-11-08
+**Current phase:** Phase 5 (Grafana) under way: the planning marts (PR A) merged as #119; Phase 4.5 accepted 2026-11-07
 
 ## Phase progress
 
@@ -17,7 +17,7 @@ Living state of the project. Read this first; update it whenever work lands.
 - [x] Phase 3.5 — Ingestion follow-ons — **accepted 2026-10-29 by the journey tests (no phone test): 25 of 25 passed in `line-tags`, `duplicates` and `merchants`; see Next concrete step** (2026-10-29)
 - [x] Phase 4 — dbt semantic layer + MetricFlow — **accepted 2026-10-30: `dbt build`, the hand-written-SQL reconciliation and `mf query` vs the marts green in CI on the fixture (#72-#78) and on production in `dbt-nightly` run 41157900716 (87 of 87 nodes, 14 metrics, 5 months); real-month hand verification deferred** (2026-10-30)
 - [x] Phase 4.5 — Proactive nudges (recurring series, daily digest, merchant recommendations) — **accepted 2026-11-07: the `recurring-digest`, `recurring-card` and `recurring-backfill` journeys passed 45 of 45 (3 files) against a throwaway Postgres, CI on `main` green for #115 (run 42443193526), and the production `nudge_runs` log holds 6 rows, all `sent`, 2026-11-02 to 2026-11-07; no phone test** (2026-11-07)
-- [ ] Phase 5 — Grafana dashboards — **PR A (planning marts) in review on `feat/phase5-planning-marts`; data source and dashboards to follow**
+- [ ] Phase 5 — Grafana dashboards — **PR A (planning marts) merged as #119, production `dbt-nightly` green after merge (run 42452426227); dashboard spec under revision; data source and dashboards to follow**
 - [ ] Phase 6 — Claude analytics agent (subagents + Postgres MCP)
 - [ ] Phase 7 — Open-source polish
 
@@ -562,9 +562,9 @@ venue is null unless the place clearly is a listed one, and a receipt's 4-digit-
 year date beats a 2-digit NN/NN/NN one (an NN/NN/NN alone is read within the
 12 months before today). The 20-case golden cap holds: `receipt-with-tip` and
 `two-stores` carry the new assertions. No migration. Not covered by a golden:
-an NN/NN/NN date with no 4-digit one. Tax and tip moved to code on branch
-`feat/deterministic-tax-tip` (see Tax and tip above; DECISIONS.md
-2026-11-07). The 20 cases passed live and were recorded locally on
+an NN/NN/NN date with no 4-digit one. Tax and tip moved to code in #118
+(squash `c69a590`, deployed by run 42448444674; see Tax and tip above;
+DECISIONS.md 2026-11-07). The 20 cases passed live and were recorded locally on
 2026-11-07. Only `receipt-with-tip` and `edit-tip` take new answers. The
 other 18 keep the recordings the journeys quote, with new hashes. No
 migration. Not covered by a golden: the model reading a receipt's taxable
@@ -576,7 +576,10 @@ Phase 4.5 is accepted (2026-11-07; check and output in Phase progress).
 The backfill is done: June-October 2026 are complete months. PR 6 (#115)
 merged with migration 0020 applied. Next, in order:
 
-1. Deterministic tax/tip PR: merged as #118.
+1. Deterministic tax/tip PR: merged as #118 (squash `c69a590`); `Deploy
+   ingest Lambda` run 42448444674 succeeded. In progress: the receipt
+   follow-up PR (a golden for the model reading taxable codes, and
+   whole-order discounts) on `fix/receipt-tax-codes-and-order-discounts`.
 2. A not-a-duplicate acknowledgement for ledger-health: in review on
    branch `feat/ledger-health-acknowledge` (migration 0021 not yet applied
    to production; apply it before merging). After merge the owner
@@ -584,16 +587,20 @@ merged with migration 0020 applied. Next, in order:
    test lists that are real, so the issue can close.
 3. Card redesign (#89 #92 #96 #97): brainstorm with the owner first.
 4. Phase 5 (Grafana). PR A, the planning marts, was built before the card
-   redesign at the owner's request (below). After it merges, the CoS confirms the next
-   `dbt-nightly` run is green on production. Then, each its own PR: live
-   marts as views (only if the owner says yes to freshness), the Grafana
-   folder and data source, and the This month, Explore and Monthly review
-   dashboards. Owner decisions still open (listed in the untracked design
-   spec): whether every transfer out of chequing is being logged, whether
-   August is complete (the coverage note still marks it partial), views or
-   nightly tables, and the ROADMAP Phase 5 scope.
+   redesign at the owner's request (below) and merged as #119 (`a2b5dc2`);
+   the production `dbt-nightly` dispatched after merge passed (run
+   42452426227). In progress: revising the dashboard spec, which adds an
+   entries ledger mart and a trends dashboard, both pending owner
+   decisions. Then, each its own PR: live marts as views (only if the
+   owner says yes to freshness), the Grafana folder and data source, and
+   the This month, Explore and Monthly review dashboards. Owner decisions
+   answered 2026-11-07: every month-end transfer out of chequing is being
+   logged, and August is complete (the coverage note in SEMANTIC_LAYER.md
+   still marks it partial until updated). Still open (listed in the
+   untracked design spec): views or nightly tables, and the ROADMAP
+   Phase 5 scope.
 
-Planning marts (Phase 5 PR A, branch `feat/phase5-planning-marts`;
+Planning marts (Phase 5 PR A, merged as #119;
 SEMANTIC_LAYER.md "Planning marts", DECISIONS.md 2026-11-07, TESTING.md):
 three dbt tables in `marts` for the dashboards and the Phase 6 agent, not
 metrics (no MetricFlow change). `fct_month_plan` plans each month in
@@ -772,9 +779,9 @@ infra change.
 
 - Whether `merchants.aliases` is seeded by hand or learned from extractions
   over time.
-- Was anything spent or earned from 2026-08-13 to 2026-08-16, between the
-  Notion import and the bot going live? Until the owner confirms,
-  SEMANTIC_LAYER.md marks August 2026 partial.
+- ~~Was anything spent or earned from 2026-08-13 to 2026-08-16, between the
+  Notion import and the bot going live?~~ Answered 2026-11-07: August 2026
+  is complete. SEMANTIC_LAYER.md still marks it partial until updated.
 - Grafana Cloud free tier's connection limits against a Supabase free project
   that pauses on inactivity — verify before building Phase 5 dashboards on it.
 
