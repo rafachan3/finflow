@@ -38,6 +38,8 @@ export type ExpectedEvent = {
   toAccount?: string | null;
   /** Each line's bucket, in order. Only meaningful with `rules`. */
   buckets?: ("needs" | "wants")[];
+  /** Each line's "category / subcategory[ / item type]", in order, as the card prints it. */
+  classes?: string[];
   /** The whole-transaction tags, as a set. */
   tags?: string[];
   /** Each line's own tags, in line order, as sets. */
@@ -77,6 +79,9 @@ export type RawEvent = {
     description?: unknown;
     bucket?: unknown;
     tags?: unknown;
+    category?: unknown;
+    subcategory?: unknown;
+    item_type?: unknown;
   }[];
 };
 
@@ -221,6 +226,16 @@ export function mismatches(events: RawEvent[], expected: ExpectedEvent[]): strin
           out.push(
             `${at}: line ${j} (${String(line.description)}) bucket ${String(line.bucket)} != ${bucket}`,
           );
+        }
+      });
+    }
+    if (want.classes !== undefined && items.length === want.lines) {
+      want.classes.forEach((wanted, j) => {
+        const line = items[j];
+        const type = line.item_type ? ` / ${String(line.item_type)}` : "";
+        const printed = `${String(line.category)} / ${String(line.subcategory)}${type}`;
+        if (printed !== wanted) {
+          out.push(`${at}: line ${j} (${String(line.description)}) ${printed} != ${wanted}`);
         }
       });
     }

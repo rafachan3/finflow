@@ -146,6 +146,23 @@ describe("mismatches", () => {
     ]);
   });
 
+  it("reports each line whose category, subcategory or item type differs from the expected one", () => {
+    const want: ExpectedEvent = { type: "expense", lines: 2, classes: ["Housing / Laundry", "Housing / Laundry"] };
+    const line = (description: string, item_type: string | null) => ({
+      description,
+      amount: "1.00",
+      category: "Housing",
+      subcategory: "Laundry",
+      item_type,
+    });
+    const event = (types: (string | null)[]) =>
+      mismatches([{ type: "expense", amount: "2.00", items: [line("Washer", types[0]), line("Dryer", types[1])] }], [want]);
+    expect(event([null, null])).toEqual([]);
+    expect(event(["Laundry Supply", null])).toEqual([
+      "event 0: line 0 (Washer) Housing / Laundry / Laundry Supply != Housing / Laundry",
+    ]);
+  });
+
   it("reports header tags and each line's own tags, once a tag on every line counts as the header's", () => {
     const want: ExpectedEvent = { type: "expense", lines: 2, tags: ["Travel"], lineTags: [[], ["Partner"]] };
     const line = (tags?: string[]) => ({ amount: "1.00", tags });
