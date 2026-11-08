@@ -59,6 +59,8 @@ export type Extraction = {
   /** Each tax amount as printed or stated; absent on rows extracted before 2026-11-07. */
   taxes?: Money[];
   tip?: Money | null;
+  /** Whole-order discounts as positive amounts (coupons, total-bill discounts); absent before 2026-11-08. */
+  discounts?: Money[];
   items: ExtractionItem[];
   confidence: number;
   /** `bucket` only on rows from before 2026-10-28. */
@@ -368,8 +370,12 @@ export function validateExtraction(
     if (extraction.items.length < 1) {
       errors.push("expense needs at least one line");
     }
-    for (const extra of [...(extraction.taxes ?? []), extraction.tip ?? "0.00"]) {
-      if (parseCents(extra) === null) errors.push(`tax and tip must be two-decimal: ${extra}`);
+    for (const extra of [
+      ...(extraction.taxes ?? []),
+      ...(extraction.discounts ?? []),
+      extraction.tip ?? "0.00",
+    ]) {
+      if (parseCents(extra) === null) errors.push(`tax, tip and discount must be two-decimal: ${extra}`);
     }
     let lineSum = 0;
     let linesOk = headerCents !== null;

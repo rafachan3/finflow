@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { parseCents } from "../src/extraction.js";
-import { allocate, editedTotal, lineAmounts, type PricedLine } from "../src/tax-tip.js";
+import { allocate, discountsOf, editedTotal, lineAmounts, type PricedLine } from "../src/tax-tip.js";
 
 /** Deterministic pseudo-random cases (mulberry32), so a failure reproduces. */
 function rng(seed: number): () => number {
@@ -120,6 +120,60 @@ describe("lineAmounts", () => {
     }
     expect(bad).toEqual([]);
   });
+  it("takes a whole-order discount off every line by price, then shares the taxes by discounted price", () => {
+    // Synthetic: 20.00 of goods, a 5.00 coupon, GST and QST on the 15.00 left, no tax codes.
+    const hardware: PricedLine[] = [
+      { price: "12.00", taxable: false },
+      { price: "8.00", taxable: false },
+    ];
+    expect(lineAmounts(hardware, ["0.75", "1.50"], null, ["5.00"])).toEqual(["10.35", "6.90"]);
+    // A coupon on a Quebec grocery order: only the GQ line carries the taxes, on its discounted price.
+    const grocery: PricedLine[] = [
+      { price: "9.99", taxable: false },
+      { price: "6.99", taxable: true },
+    ];
+    expect(lineAmounts(grocery, ["0.31", "0.62"], null, ["2.00"])).toEqual(["8.81", "7.10"]);
+  });
+
+  it("reads a discount printed negative as what comes off", () => {
+    expect(discountsOf(["-5.00", "1.50"])).toEqual(["5.00", "1.50"]);
+    expect(discountsOf(undefined)).toEqual([]);
+  });
+
+  it("returns null when a discount is not two-decimal or is more than the prices", () => {
+    const line = { price: "3.00", taxable: true };
+    expect(lineAmounts([line], [], null, ["1.5"])).toBeNull();
+    expect(lineAmounts([line], [], null, ["3.01"])).toBeNull();
+    expect(lineAmounts([line], [], null, ["3.00"])).toEqual(["0.00"]);
+  });
+
+  it("always sums to prices - discounts + taxes + tip, takes each line's discount by price, and never below zero", () => {
+    const next = rng(118);
+    const bad: unknown[] = [];
+    for (let run = 0; run < 1000; run++) {
+      const n = 1 + Math.floor(next() * 6);
+      const lines = Array.from({ length: n }, () => ({
+        price: money(Math.floor(next() * 10_000)),
+        taxable: next() < 0.5,
+      }));
+      const prices = lines.map((l) => cents(l.price));
+      const discounts = Array.from({ length: Math.floor(next() * 3) }, () =>
+        money(Math.floor((next() * sum(prices)) / 2)),
+      );
+      const taxes = Array.from({ length: Math.floor(next() * 3) }, () => money(Math.floor(next() * 2000)));
+      const tip = next() < 0.5 ? null : money(Math.floor(next() * 3000));
+      const out = lineAmounts(lines, taxes, tip, discounts)!.map(cents);
+      const off = sum(discounts.map(cents));
+      const exactSum = sum(out) === sum(prices) - off + sum(taxes.map(cents)) + (tip ? cents(tip) : 0);
+      const negative = out.some((c) => c < 0);
+      // With no tax or tip, each line's reduction is within a cent of discount * price / total.
+      const bare = lineAmounts(lines, [], null, discounts)!.map(cents);
+      const offShare =
+        sum(prices) > 0 && bare.some((c, i) => Math.abs(prices[i] - c - (off * prices[i]) / sum(prices)) >= 1);
+      if (!exactSum || negative || offShare) bad.push({ lines, discounts, taxes, tip, out });
+    }
+    expect(bad).toEqual([]);
+  });
 });
 
 describe("editedTotal", () => {
@@ -184,6 +238,26 @@ describe("editedTotal", () => {
     expect(editedTotal(noTip, before)).toBe("33.24");
     expect(editedTotal({ ...before, items: [before.items[0]] }, before)).toBe("33.24");
     expect(editedTotal(before, before)).toBe("33.24");
+  });
+
+  it("follows the recomputed lines for a corrected or added discount, and keeps the total when one is dropped", () => {
+    // The hardware order: 12.00 and 8.00, a 5.00 coupon, GST and QST on the rest.
+    const coupon = {
+      amount: "17.25",
+      taxes: ["0.75", "1.50"],
+      tip: null,
+      discounts: ["5.00"],
+      items: [
+        { price: "12.00", taxable: false, amount: "10.35" },
+        { price: "8.00", taxable: false, amount: "6.90" },
+      ],
+    };
+    // The coupon was 4.00: lineAmounts gives 10.95 and 7.30.
+    const fourOff = { ...coupon, discounts: ["4.00"], items: [{ ...coupon.items[0], amount: "10.95" }, { ...coupon.items[1], amount: "7.30" }] };
+    expect(editedTotal(fourOff, coupon)).toBe("18.25");
+    const dropped = { ...coupon, discounts: [], items: [{ ...coupon.items[0], amount: "13.35" }, { ...coupon.items[1], amount: "8.90" }] };
+    expect(editedTotal({ ...coupon, amount: "22.25" }, { ...dropped, amount: "22.25" })).toBe("17.25");
+    expect(editedTotal(dropped, coupon)).toBe("17.25");
   });
 
   it("keeps the stored total on a card stored before prices, whose lines already hold its tax and tip", () => {

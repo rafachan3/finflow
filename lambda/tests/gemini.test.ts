@@ -1068,17 +1068,18 @@ describe("multi-event extraction", () => {
       const body = JSON.parse(init.body as string);
       const system = body.systemInstruction.parts[0].text as string;
       expect(system).toContain("including tax and any tip (pourboire, gratuity)");
-      expect(system).toContain("Never add tax or tip to a price, and never add a tax or tip line.");
+      expect(system).toContain("Never add tax or tip to a price");
+      expect(system).toContain("never add a tax, tip or discount line.");
       expect(system).toContain("GST/TPS and QST/TVQ are two entries");
       expect(system).toContain("the unmarked lines are the taxed ones");
       const schema = i < 3 ? body.generationConfig.responseSchema.properties.events.items : body.generationConfig.responseSchema;
-      expect(schema.required).toEqual(expect.arrayContaining(["taxes", "tip"]));
+      expect(schema.required).toEqual(expect.arrayContaining(["taxes", "discounts", "tip"]));
       expect(schema.properties.items.items.propertyOrdering.slice(0, 3)).toEqual(["description", "price", "taxable"]);
       expect(schema.properties.items.items.properties.amount).toBeUndefined();
     }
     const patchSystem = JSON.parse(fetchMock.mock.calls[3][1].body as string).systemInstruction.parts[0]
       .text as string;
-    expect(patchSystem).toContain("A correction to the tip or a tax replaces that value, it does not add to it");
+    expect(patchSystem).toContain("A correction to the tip, a tax or a discount replaces that value, it does not add to it");
     expect(patchSystem).toContain("Keep amount unchanged unless the correction states a new total paid");
   });
 
@@ -1116,7 +1117,29 @@ describe("multi-event extraction", () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => geminiJson(events(extracted)) }));
     const [result] = await extractFromText({ apiKey: "k", text: "lunch", taxonomy, bucketRules: "", today: "2026-08-17" });
     expect(result.items[0]).toMatchObject({ amount: "12.50", price: "12.50", taxable: false });
-    expect(result).toMatchObject({ taxes: [], tip: null });
+    expect(result).toMatchObject({ discounts: [], taxes: [], tip: null });
+  });
+
+  it("asks text, photo, voice and Edit for whole-order discounts as their own list, with no discount line", async () => {
+    const systems = await fourSystems();
+    for (const system of systems) {
+      expect(system).toContain("discounts lists each discount on the whole order rather than on one line");
+      expect(system).toContain("never take a whole-order discount off a price, and never add a tax, tip or discount line");
+      expect(system).toContain("the prices minus the discounts plus the taxes plus the tip MUST equal amount");
+    }
+    expect(systems[3]).toContain("A correction to the tip, a tax or a discount replaces that value");
+  });
+
+  it("takes a whole-order discount off the lines by price before the taxes are shared", async () => {
+    // A 2.00 coupon on the Quebec grocery order; GST and QST print on the GQ line's 6.17 left.
+    const coupon = { ...quebec, amount: "15.91", discounts: ["-2.00"], taxes: ["0.31", "0.62"] };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => geminiJson(events(coupon)) }));
+    const [result] = await extractFromText({ apiKey: "k", text: "x", taxonomy, bucketRules: "", today: "2026-08-17" });
+    expect(result.items.map((i) => [i.price, i.amount])).toEqual([
+      ["9.99", "8.81"],
+      ["6.99", "7.10"],
+    ]);
+    expect(result).toMatchObject({ amount: "15.91", discounts: ["2.00"] });
   });
 
   describe("an Edit of the tip", () => {
@@ -1172,7 +1195,7 @@ describe("multi-event extraction", () => {
       vi.stubGlobal("fetch", fetchMock);
       await patchExtraction({ apiKey: "k", current: old as Extraction, correction: "x", taxonomy, bucketRules: "", today: "2026-08-17" });
       const sent = JSON.parse(JSON.parse(fetchMock.mock.calls[0][1].body as string).contents[0].parts[0].text);
-      expect(sent).toMatchObject({ taxes: [], tip: null });
+      expect(sent).toMatchObject({ discounts: [], taxes: [], tip: null });
       expect(sent.items.map((i: { price: string; taxable: boolean }) => [i.price, i.taxable])).toEqual([
         ["21.27", false],
         ["11.97", false],

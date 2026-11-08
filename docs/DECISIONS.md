@@ -2773,3 +2773,40 @@ needs a slot, and two looked redundant.
 
 **Ruled out:** raising the cap (more Lite answers on busy days; see the
 2026-11-07 eval-cap research); retiring `transfer` (above).
+
+## 2026-11-08 — A discount on the whole order is its own list, shared by price in code
+
+After #118 the prompt allowed a discount only on one line ("pre-tax price
+... after any discount on that line"). A receipt with a coupon off the whole
+order then had prices that summed above the total: the line-sum check
+failed and the card had no Confirm. Before #118 the model folded the coupon
+into the line amounts itself, so this was a friction regression.
+
+- **What Gemini reads.** `discounts`: each discount on the whole order (a
+  coupon, a member or loyalty discount, a percentage off the subtotal) as
+  a positive amount, an empty list when none. It is never a line and never
+  taken off a price. A receipt prints it as `-5.00`; the bot ignores the
+  sign (`discountsOf`), so a model that copies it still gets Confirm.
+- **What code does** (`lineAmounts`, integer cents). The discounts come off
+  every line by price, with the same largest-remainder `allocate`. The
+  taxes then go to the taxed lines (all lines when none is marked) and the
+  tip to every line, both by discounted price. Lines sum to prices -
+  discounts + taxes + tip exactly and are never negative. When the
+  discounts exceed the prices, the prices stand and the line-sum check
+  fails.
+- **Taxes stay as printed.** A store coupon lowers the taxed base, and the
+  printed GST and QST already reflect that, so code never recomputes tax.
+- **Edit.** The patch request sends the discounts with the other parts. A
+  corrected or added discount counts as a tip or price correction does
+  under the 2026-11-08 Edit total rule: the total follows the recomputed
+  lines unless the correction states one. A discount the model drops keeps
+  the stored total, like a dropped tip, and the line-sum check fails it.
+- **No golden yet.** Recording one needs a new synthetic receipt and a live
+  Gemini call. The slot `no-date-text` freed is still open (19 cases), so a
+  `receipt-order-discount` case fits under the 20-case cap. Until then unit
+  tests and the `tax-tip` journey script the coupon.
+
+**Ruled out:** a discount line (the taxonomy has nowhere for one and the
+ledger would hold a negative line); putting the whole discount on the
+largest line (it shifts the needs/wants split); sharing the discount over
+the taxed lines only (a coupon is off the order, not off the taxed goods).

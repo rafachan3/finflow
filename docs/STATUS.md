@@ -337,7 +337,12 @@ whose `FP` code marks two lines taxed and leaves one zero-rated, and pins
 each line's amount (2026-11-08). #121 (DECISIONS.md 2026-11-08): an Edit
 recomputes an unchanged total only for a tip or price correction, and never
 on a card stored before prices. Anything else keeps the stored total, so the
-line-sum check shows an error card.
+line-sum check shows an error card. A discount on the whole order (a coupon)
+is read into its own `discounts` list and taken off every line by price
+before the taxes and tip are shared, so such a receipt keeps Confirm; an
+Edit treats a corrected discount like a tip correction (DECISIONS.md
+2026-11-08). No golden reads a coupon yet: unit tests and the `tax-tip`
+journey cover it, and the 20th golden slot is free for one.
 
 Duplicate warning (Phase 3.5 PR 1; DECISIONS.md 2026-10-29): every saved
 card (new message, `/pending`, Fix date, Edit) gets at most one `!` line
