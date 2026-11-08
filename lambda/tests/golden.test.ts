@@ -6,6 +6,7 @@ import {
   mismatches,
   recordedEvents,
   type ExpectedEvent,
+  type Golden,
 } from "./golden/golden.js";
 
 describe("golden files", () => {
@@ -64,6 +65,45 @@ describe("mismatches", () => {
       "event 0: amount 28.74 != 33.24",
     ]);
     expect(mismatches([event], [{ type: "expense", lines: 1, amount: "28.74" }])).toEqual([]);
+  });
+
+  it("reads prices, taxes and tip as the bot does, and reports line amounts other than the expected ones", () => {
+    const diner = {
+      type: "expense",
+      amount: "33.24",
+      taxes: ["1.25", "2.49"],
+      tip: "4.50",
+      items: [
+        { price: "16.00", taxable: false },
+        { price: "9.00", taxable: false },
+      ],
+    };
+    const g = { input: { kind: "photo" }, recorded: { events: [diner] } } as unknown as Golden;
+    const want: ExpectedEvent = { type: "expense", lines: 2, amount: "33.24", amounts: ["21.27", "11.97"] };
+    expect(mismatches(recordedEvents(g), [want])).toEqual([]);
+    expect(mismatches(recordedEvents(g), [{ ...want, amounts: ["21.26", "11.98"] }])).toEqual([
+      "event 0: line amounts 21.27 + 11.97 != 21.26 + 11.98",
+    ]);
+  });
+
+  it("judges an edit's total as patchExtraction keeps it: the recomputed lines unless the total changed", () => {
+    const base = recordedEvents(golden("receipt-with-tip"))[0];
+    const edit = (amount: string) =>
+      ({
+        input: { kind: "edit", base: "receipt-with-tip", correction: "tip 6" },
+        recorded: {
+          type: "expense",
+          amount,
+          taxes: ["1.25", "2.49"],
+          tip: "6.00",
+          items: [
+            { price: "16.00", taxable: false },
+            { price: "9.00", taxable: false },
+          ],
+        },
+      }) as unknown as Golden;
+    expect(recordedEvents(edit(String(base.amount)))[0].amount).toBe("34.74");
+    expect(recordedEvents(edit("39.24"))[0].amount).toBe("39.24");
   });
 
   it("reports a date or venue other than the expected one", () => {

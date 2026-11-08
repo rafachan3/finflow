@@ -6,7 +6,12 @@ export type TxType = "income" | "expense" | "transfer";
 
 export type ExtractionItem = {
   description: string;
+  /** What the line cost: its price plus its share of the taxes and tip (tax-tip.ts). */
   amount: Money;
+  /** Pre-tax price as read; absent on rows extracted before 2026-11-07. */
+  price?: Money;
+  /** The receipt marks this line as taxed. */
+  taxable?: boolean;
   category: string;
   subcategory: string;
   item_type: string | null;
@@ -51,6 +56,9 @@ export type Extraction = {
   to_account: string | null;
   /** Owner's stated why/circumstance; absent on rows extracted before notes. */
   notes?: string | null;
+  /** Each tax amount as printed or stated; absent on rows extracted before 2026-11-07. */
+  taxes?: Money[];
+  tip?: Money | null;
   items: ExtractionItem[];
   confidence: number;
   /** `bucket` only on rows from before 2026-10-28. */
@@ -359,6 +367,9 @@ export function validateExtraction(
   if (extraction.type === "expense") {
     if (extraction.items.length < 1) {
       errors.push("expense needs at least one line");
+    }
+    for (const extra of [...(extraction.taxes ?? []), extraction.tip ?? "0.00"]) {
+      if (parseCents(extra) === null) errors.push(`tax and tip must be two-decimal: ${extra}`);
     }
     let lineSum = 0;
     let linesOk = headerCents !== null;

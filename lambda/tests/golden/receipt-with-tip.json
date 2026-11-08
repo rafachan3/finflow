@@ -1,5 +1,5 @@
 {
-  "name": "a tip below the total is folded into the items: no tip line, lines sum to the amount paid; the 4-digit-year footer date wins over YY/MM/DD, and a diner has no venue",
+  "name": "a Quebec diner receipt (GST + QST) with a tip below the total: no tax or tip line, code shares tax and tip by price so the lines sum to the amount paid; the 4-digit-year footer date wins over YY/MM/DD, and a diner has no venue",
   "input": {
     "kind": "photo",
     "caption": "",
@@ -11,6 +11,10 @@
         "type": "expense",
         "lines": 2,
         "amount": "33.24",
+        "amounts": [
+          "21.27",
+          "11.97"
+        ],
         "merchant": true,
         "date": true,
         "dateIs": "2026-10-24",
@@ -25,38 +29,48 @@
         "amount": "33.24",
         "currency": "CAD",
         "date": "2026-10-24",
-        "description": "Club sandwich and garden salad at Riverside Diner",
+        "description": "Riverside Diner",
         "merchant": "Riverside Diner",
         "venue": null,
         "tags": [],
         "is_recurring": false,
         "income_source": null,
+        "from_account": null,
         "to_account": null,
+        "taxes": [
+          "1.25",
+          "2.49"
+        ],
+        "tip": "4.50",
         "items": [
           {
-            "description": "Club sandwich",
-            "amount": "21.27",
+            "description": "Club Sandwich",
+            "price": "16.00",
+            "taxable": false,
             "category": "Food and drink",
             "subcategory": "Restaurants",
             "item_type": "Meals & Prepared Food",
-            "bucket_why": "default wants hint for Restaurants",
+            "tags": [],
+            "bucket_why": "subcategory default hint",
             "bucket": "wants"
           },
           {
-            "description": "Garden salad",
-            "amount": "11.97",
+            "description": "Garden Salad",
+            "price": "9.00",
+            "taxable": false,
             "category": "Food and drink",
             "subcategory": "Restaurants",
             "item_type": "Meals & Prepared Food",
-            "bucket_why": "default wants hint for Restaurants",
+            "tags": [],
+            "bucket_why": "subcategory default hint",
             "bucket": "wants"
           }
         ],
-        "confidence": 1,
+        "confidence": 0.98,
         "funded_by": null,
         "notes": null
       }
     ]
   },
-  "request_sha256": "7bac5c66749c2bf1065b421365f60b79abd809fce3b295c2a44f2096e34da13a"
+  "request_sha256": "254ce6e2246a80a6f60ca0208f599cc4713089327d39086b1173aaae83aa7671"
 }

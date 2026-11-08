@@ -8,6 +8,7 @@ import {
   type TokenUsage,
   type TxType,
 } from "./extraction.js";
+import { editedTotal, lineAmounts, type PricedLine } from "./tax-tip.js";
 
 export const GEMINI_MODEL = "gemini-3.6-flash";
 // Previous Flash: same family, less contended when the current one sheds load.
@@ -65,11 +66,12 @@ const SPLIT_EVENTS =
 const BUCKETS =
   "For each expense line set bucket_why (one short clause naming the rule applied), then bucket (needs or wants). Apply the owner's needs/wants rules at the end of this prompt. They override the (hint …) on subcategories. If no rule fits or context is missing, choose wants. Income and transfer events have no lines: return an empty items list.";
 
-// Tax is allocated into the lines (DECISIONS 2026-08-13) and a tip follows
-// it: the taxonomy has no tip subcategory, so a tip line has nowhere to go
-// (#31). Shared by every prompt so an Edit keeps the same rule.
+// The model reads prices, taxes and the tip; tax-tip.ts shares them across
+// the lines, because Flash-Lite split them unevenly (DECISIONS 2026-11-07).
+// There is no tax or tip line: the taxonomy has nowhere for one (#31).
+// Shared by every prompt so an Edit keeps the same rule.
 const LINE_AMOUNTS =
-  "Amounts are strings with exactly two decimal places. For an expense, the header amount is the total paid, including tax and any tip (pourboire, gratuity) on the receipt or in the message, even when the tip is printed or written below the total. Never add a tax or tip line. Fold tax and tip into the item lines in proportion to each line's price, putting any leftover cent on the largest line, so the line amounts MUST sum to the header amount.";
+  "Amounts are strings with exactly two decimal places. For an expense, amount is the total paid, including tax and any tip (pourboire, gratuity) on the receipt or in the message, even when the tip is printed or written below the total. Each line's price is its pre-tax price as printed or said, after any discount on that line. Never add tax or tip to a price, and never add a tax or tip line. taxes lists each tax amount exactly as printed or stated (GST/TPS and QST/TVQ are two entries; an empty list when none is given). tip is the tip as printed or stated, or null. taxable is true when the receipt's tax codes mark the line as taxed; when the codes mark the untaxed lines instead, the unmarked lines are the taxed ones; false when the receipt has no tax codes. The bot shares the taxes and tip across the lines, so the prices plus the taxes plus the tip MUST equal amount.";
 
 // The venue list is short, so Gemini picked the nearest one for places that
 // are none of them (a discount-store receipt became Dépanneur).
@@ -149,9 +151,9 @@ const PATCH_EXTRACTOR_STATIC_PROMPT = [
   "Keep date unless the correction changes the calendar date. Never guess today's date.",
   DATE_READING,
   LINE_AMOUNTS,
-  // The current JSON has no tip field: the old tip is already inside the
-  // amount and the lines, so Lite added a corrected tip on top (#60).
-  "The current amount and lines already include the tax and any tip. A correction to the tip or tax replaces the old value, it does not add to it: subtract the old tip from the current amount and add the new one, then refold the lines. Example: a current amount of 50.00 with a 5.00 tip, corrected to an 8.00 tip, becomes 53.00, not 58.00.",
+  // Lite added a corrected tip on top of the old one (#60); the bot now
+  // recomputes the total, so the model only replaces the field.
+  "The current extraction lists each line's price, the taxes and the tip. A correction to the tip or a tax replaces that value, it does not add to it, and a correction to a line's price replaces that price. Keep amount unchanged unless the correction states a new total paid: the bot recomputes the total from the prices, taxes and tip. When the correction states a new total, set amount to it and change the prices so the prices plus the taxes plus the tip equal it.",
   "Item types must belong to the same category as the subcategory.",
   "category, subcategory, and item_type are separate fields. Never repeat the category inside subcategory or item_type. Example: category='Food and drink', subcategory='Takeout / Quick Service', item_type='Meals & Prepared Food'.",
   "Use Other … subcategories only when nothing more specific fits.",
@@ -206,7 +208,8 @@ function promptMeta(
 
 const ITEM_PROPERTIES = {
   description: { type: "STRING" },
-  amount: { type: "STRING" },
+  price: { type: "STRING" },
+  taxable: { type: "BOOLEAN" },
   category: { type: "STRING" },
   subcategory: { type: "STRING" },
   item_type: { type: "STRING", nullable: true },
@@ -233,6 +236,8 @@ const EXTRACTOR_SCHEMA = {
     from_account: { type: "STRING", nullable: true },
     to_account: { type: "STRING", nullable: true },
     notes: { type: "STRING", nullable: true },
+    taxes: { type: "ARRAY", items: { type: "STRING" } },
+    tip: { type: "STRING", nullable: true },
     items: {
       type: "ARRAY",
       items: {
@@ -258,6 +263,8 @@ const EXTRACTOR_SCHEMA = {
     "income_source",
     "from_account",
     "to_account",
+    "taxes",
+    "tip",
     "items",
     "confidence",
   ],
@@ -369,12 +376,16 @@ function asString(v: unknown): string | null {
   return String(v);
 }
 
-function asItem(raw: unknown): ExtractionItem {
+function asItem(raw: unknown): ExtractionItem & PricedLine {
   const o = raw as Record<string, unknown>;
   const why = asString(o.bucket_why);
+  // A recording from before the price contract has each line's amount paid.
+  const price = String(o.price ?? o.amount ?? "");
   return {
     description: String(o.description ?? ""),
-    amount: String(o.amount ?? ""),
+    amount: price,
+    price,
+    taxable: o.taxable === true,
     category: String(o.category ?? ""),
     subcategory: String(o.subcategory ?? ""),
     item_type: asString(o.item_type),
@@ -386,7 +397,12 @@ function asItem(raw: unknown): ExtractionItem {
 
 function asExtraction(raw: unknown): Extraction {
   const o = raw as Record<string, unknown>;
-  const items = Array.isArray(o.items) ? o.items.map(asItem) : [];
+  const priced = Array.isArray(o.items) ? o.items.map(asItem) : [];
+  const taxes = Array.isArray(o.taxes) ? o.taxes.map(String) : [];
+  const tip = asString(o.tip);
+  // Malformed parts keep the prices; validateExtraction names the bad amount.
+  const amounts = lineAmounts(priced, taxes, tip);
+  const items = amounts ? priced.map((item, i) => ({ ...item, amount: amounts[i] })) : priced;
   const type = o.type as TxType;
   const fundedBy = asString(o.funded_by);
   return {
@@ -405,6 +421,8 @@ function asExtraction(raw: unknown): Extraction {
     from_account: type === "transfer" ? asString(o.from_account) : null,
     to_account: asString(o.to_account),
     notes: asString(o.notes),
+    taxes,
+    tip,
     items,
     confidence: typeof o.confidence === "number" ? o.confidence : 0,
   };
@@ -498,9 +516,14 @@ function extractionForPatch(current: Extraction): unknown {
     from_account: current.from_account ?? null,
     to_account: current.to_account,
     notes: current.notes ?? null,
+    // A card from before 2026-11-07 has its tax and tip inside the amounts.
+    taxes: current.taxes ?? [],
+    tip: current.tip ?? null,
+    // The parts, not the allocated amounts: the model edits what was read.
     items: current.items.map((item) => ({
       description: item.description,
-      amount: item.amount,
+      price: item.price ?? item.amount,
+      taxable: item.taxable ?? false,
       category: item.category,
       subcategory: item.subcategory,
       item_type: item.item_type,
@@ -535,8 +558,13 @@ export async function patchExtraction(args: {
     ],
   });
   const patched = normalizeTaxonomyNames(asExtraction(extractor.data), args.taxonomy);
+  const amount =
+    patched.type === "expense"
+      ? editedTotal(patched.amount, args.current.amount, patched.items.map((i) => i.amount))
+      : patched.amount;
   return {
     ...patched,
+    amount,
     date_source: patched.date === args.current.date ? args.current.date_source : "fix",
     meta: promptMeta(extractor.model, args.taxonomy, PATCH_EXTRACTOR_STATIC_PROMPT, args.bucketRules),
     usage: { extractor: extractor.usage },

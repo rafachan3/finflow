@@ -1,5 +1,6 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { canonicalTags } from "../../src/extraction.js";
+import { editedTotal, lineAmounts } from "../../src/tax-tip.js";
 
 /**
  * One owner message per file: the input, the shape Gemini's answer must have,
@@ -16,6 +17,8 @@ export type ExpectedEvent = {
   lines: number;
   /** The header amount, when the case is about what was paid (a tip, a correction). */
   amount?: string;
+  /** Each line's amount paid, in order, when the case is about how tax and tip are shared. */
+  amounts?: string[];
   merchant?: boolean;
   date?: boolean;
   /** The exact date, when the case is about how a printed date is read. */
@@ -64,7 +67,16 @@ export type RawEvent = {
   from_account?: unknown;
   to_account?: unknown;
   tags?: unknown;
-  items?: { amount?: unknown; description?: unknown; bucket?: unknown; tags?: unknown }[];
+  taxes?: unknown;
+  tip?: unknown;
+  items?: {
+    amount?: unknown;
+    price?: unknown;
+    taxable?: unknown;
+    description?: unknown;
+    bucket?: unknown;
+    tags?: unknown;
+  }[];
 };
 
 const DIR = new URL("./", import.meta.url);
@@ -86,10 +98,33 @@ export function bucketRules(g: Pick<Golden, "rules">): string {
   return g.rules ? readFileSync(new URL(g.rules, DIR), "utf8") : "";
 }
 
-/** An edit records one extraction; every other case records `{ events }`. */
+/**
+ * A raw answer as the bot reads it: each line's amount from its price, the
+ * taxes and the tip (tax-tip.ts). A recording from before prices already
+ * holds line amounts and is left as it is.
+ */
+function shared(e: RawEvent): RawEvent {
+  const items = Array.isArray(e.items) ? e.items : [];
+  if (!items.some((i) => i.price !== undefined)) return e;
+  const amounts = lineAmounts(
+    items.map((i) => ({ price: String(i.price ?? i.amount ?? ""), taxable: i.taxable === true })),
+    names(e.taxes),
+    e.tip === null || e.tip === undefined ? null : String(e.tip),
+  );
+  return amounts ? { ...e, items: items.map((i, j) => ({ ...i, amount: amounts[j] })) } : e;
+}
+
+/** An edit records one extraction; every other case records `{ events }`. Judged as the bot reads them. */
 export function recordedEvents(g: Golden): RawEvent[] {
-  if (g.input.kind === "edit") return [g.recorded as RawEvent];
-  return (g.recorded as { events?: RawEvent[] }).events ?? [];
+  if (g.input.kind === "edit") {
+    const e = shared(g.recorded as RawEvent);
+    if (e.type !== "expense") return [e];
+    // The total patchExtraction keeps, against the base case's answer.
+    const current = String(recordedEvents(golden(g.input.base))[0]?.amount ?? "");
+    const lines = (e.items ?? []).map((i) => String(i.amount ?? ""));
+    return [{ ...e, amount: editedTotal(String(e.amount ?? ""), current, lines) }];
+  }
+  return ((g.recorded as { events?: RawEvent[] }).events ?? []).map(shared);
 }
 
 function present(v: unknown): boolean {
@@ -120,6 +155,10 @@ export function mismatches(events: RawEvent[], expected: ExpectedEvent[]): strin
     if (items.length !== want.lines) out.push(`${at}: ${items.length} lines != ${want.lines}`);
     if (want.amount !== undefined && got.amount !== want.amount) {
       out.push(`${at}: amount ${String(got.amount)} != ${want.amount}`);
+    }
+    const amounts = items.map((item) => String(item.amount)).join(" + ");
+    if (want.amounts !== undefined && amounts !== want.amounts.join(" + ")) {
+      out.push(`${at}: line amounts ${amounts} != ${want.amounts.join(" + ")}`);
     }
     const flags = [
       ["merchant", want.merchant, got.merchant],
