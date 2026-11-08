@@ -2,9 +2,9 @@
 
 The metric contract. Every number the dashboards (Phase 5), the nudges
 Lambda (Phase 4.5) and the analytics agent (Phase 6) report comes from a
-metric defined here. The dbt marts implement it and the MetricFlow YAML is
-its executable form. If a model disagrees with this file, the model is
-wrong. For the tables and columns named below, see
+metric or a planning mart defined here. The dbt marts implement it and the
+MetricFlow YAML is the metrics' executable form. If a model disagrees with
+this file, the model is wrong. For the tables and columns named below, see
 [DATA_MODEL.md](DATA_MODEL.md); for the bucket and subcategory rules, see
 [TAXONOMY.md](TAXONOMY.md); for why each definition was chosen, see
 [DECISIONS.md](DECISIONS.md) (2026-10-29, "Metric contract").
@@ -44,7 +44,10 @@ time of its Confirm.
 session time zone is UTC in CI). It decides the last month in the marts
 (unless a row is dated later, see "Grain") and
 `is_complete_month = month_start < date_trunc('month', <Toronto today>)`.
-The current month is always incomplete: read it as month-to-date.
+The current month is always incomplete: read it as month-to-date. The dbt
+var `today` (environment `FINFLOW_TODAY`) replaces Toronto's today with a
+fixed date. Only the synthetic fixture sets it, so its current month never
+moves; production never does.
 
 **Currency.** All amounts are CAD `numeric(12,2)`. Money columns stay
 `numeric(12,2)`, ratios are `numeric(9,4)`. Nothing is converted to float.
@@ -311,9 +314,9 @@ the previous balance forward. The dbt test builds that list itself with
 Recipes are filters on `fct_transactions`, not metrics. They are written
 here so the dashboard and the agent compute them the same way.
 
-- **Spend ex-rent** (Phase 5's cumulative monthly spend view): `spend`
-  minus the own spend lines with `subcategory_name = 'Rent'`. It already
-  excludes externally funded expenses, because `spend` does.
+- **Spend ex-rent:** `spend` minus the own spend lines with
+  `subcategory_name = 'Rent'`. It already excludes externally funded
+  expenses, because `spend` does.
 - **Spend by context tag:** own spend lines where `'<tag>' = any(tags)`.
   `fct_transactions.tags` is a line's effective tags: its own line tags plus
   its transaction's header tags.
@@ -321,6 +324,150 @@ here so the dashboard and the agent compute them the same way.
   (`savings`, `investment`, `debt`), the kind of the account entered.
 - **Withdrawals by account kind:** `withdrawals` grouped by
   `from_account_kind`, the kind of the account left.
+- **Rolling mean of a slice:** the mean of a filtered slice's own spend
+  over month M and the 2 months before it, over `fct_month_plan`'s month
+  list, so a month with no matching line counts as 0. Like the rolling
+  shares, it is null unless all three months are complete: the first two
+  months of the list and the current month have none.
+
+  ```sql
+  select p.month_start, p.is_complete_month,
+         coalesce(s.spend, 0) as spend,
+         case when count(*) filter (where p.is_complete_month) over w = 3
+              then round(avg(coalesce(s.spend, 0)) over w, 2) end as spend_mean_3m
+  from marts.fct_month_plan p
+  left join (
+    select month_start, sum(amount) as spend
+    from marts.fct_transactions
+    where type = 'expense' and is_self_funded  -- own spend lines
+      and bucket = 'wants'                     -- the slice's filters
+    group by month_start
+  ) s using (month_start)
+  window w as (order by p.month_start rows between 2 preceding and current row)
+  order by p.month_start;
+  ```
+
+## Planning marts (dashboard support)
+
+Three marts turn the metrics above into plans, pace and baselines for the
+Phase 5 dashboards. Phase 6's agent reads them directly. They are **not
+metrics**: none is a `fct_monthly_summary` column or a MetricFlow metric,
+because the metric table must equal the MetricFlow YAML and MetricFlow
+cannot express "complete preceding months only". Every value is built from
+a metric above with that metric's own filter, so it traces back to this
+file. Why the current month is planned in dollars from an expected income,
+and not as a share of income so far: DECISIONS.md 2026-11-07.
+
+Terms used below:
+
+- **Month list.** The months of `fct_monthly_summary` from the month of the
+  ledger start (dbt var `ledger_start`) on. A month before the ledger start
+  is left out, even if a stray row is dated in it.
+- **Current month.** The month of Toronto's today. A month after it exists
+  only when a row is dated tomorrow across a month end. It is a **future
+  month**: nothing in it has happened yet.
+- **Baseline months** of month M. The complete months among the 3 months
+  of the list before M (`baseline_months`, 0 to 3). With 3 complete months
+  before November, November's baseline is August to October. A complete
+  month with no rows counts as 0. A **baseline** (`_baseline`, `_avg_3m`) is
+  the mean over the baseline months, so M is never compared with itself.
+  It is null when `baseline_months = 0`.
+- **Rolling 3 months** (`_3m` on a share). M and the 2 months before it,
+  only when all three are complete and in the list. It is a ratio of sums,
+  `sum(x) / sum(spendable_income)`, not a mean of ratios, so a low-income
+  month does not get extra weight.
+
+Rounding: money is `numeric(12,2)`, ratios and mean line counts are
+`numeric(9,4)`. A mean is rounded once, from the exact sum. A column built
+from another column of the same mart (`spendable_income_expected`, the
+plans, `spend_delta`) uses that column's rounded value, so the columns a
+reader sees reconcile.
+
+### `fct_month_plan`
+
+One row per month of the month list.
+
+| Column | Formula | Edge cases |
+|---|---|---|
+| `month_start`, `is_complete_month`, `spendable_income` | from `fct_monthly_summary` | |
+| `days_in_month` | days in the calendar month | |
+| `as_of_day` | `days_in_month` for a complete month; Toronto today's day of month for the current month; `0` for a future month | |
+| `baseline_months` | count of the baseline months | `0` in the first month of the list |
+| `spendable_income_baseline` | mean `spendable_income` over the baseline months | Null when `baseline_months = 0` |
+| `spendable_income_expected` | A complete month: `spendable_income`. Otherwise `greatest(spendable_income, spendable_income_baseline)` | **Null when `baseline_months = 0`** in an incomplete month. Postgres `greatest` ignores nulls, so the `case` is written out; otherwise the plan would fall back to income so far. It follows income upward the moment income so far passes the baseline, and never downward |
+| `income_received_share` | `round(spendable_income / nullif(spendable_income_expected, 0), 4)` | `1` in a complete month with income; null with no expected income |
+| `needs_plan`, `wants_plan`, `financial_future_plan` | `round(<bucket>_target_pct * spendable_income_expected, 2)` | In a complete month each equals `target_pct * spendable_income`, and `financial_future_plan = financial_future_target` |
+| `needs_pct_3m`, `wants_pct_3m`, `financial_future_pct_3m`, `unallocated_pct_3m` | `round(sum(<needs_spend, wants_spend, financial_future, unallocated_cash>) / nullif(sum(spendable_income), 0), 4)` over the rolling 3 months | Null unless all three months are complete and in the list; null when their `spendable_income` sums to `0` |
+
+Reference SQL for the plan, over `fct_monthly_summary` (`m` is the month
+list, `b` its baseline). The `rows` frames count months, because the month
+list is zero-filled.
+
+```sql
+select month_start,
+  case when is_complete_month then spendable_income
+       when baseline_months > 0 then greatest(spendable_income, spendable_income_baseline)
+  end as spendable_income_expected
+from (
+  select month_start, is_complete_month, spendable_income,
+    count(*) filter (where is_complete_month) over b as baseline_months,
+    round(avg(spendable_income) filter (where is_complete_month) over b, 2)
+      as spendable_income_baseline
+  from marts.fct_monthly_summary
+  where month_start >= date_trunc('month', '<ledger_start>'::date)
+  window b as (order by month_start rows between 3 preceding and 1 preceding)
+) m;
+```
+
+### `fct_pace_day`
+
+One row per (`date_day`, `series`) for every day of every month of the
+month list, five series per day. Each series uses exactly its metric's
+filter, summed by `occurred_on`:
+
+| `series` | Metric it follows |
+|---|---|
+| `needs` | `needs_spend` |
+| `wants` | `wants_spend` |
+| `variable_needs` | `variable_needs` |
+| `financial_future` | `financial_future` (transfers in, withdrawals out, so it can fall) |
+| `spendable_income` | `spendable_income` |
+
+| Column | Formula | Edge cases |
+|---|---|---|
+| `date_day`, `month_start`, `day_of_month`, `series` | | |
+| `amount_day` | the series' sum on that day | `0` on a day with no rows. Null on a day after Toronto's today |
+| `amount_mtd` | the running sum of `amount_day` within the month, through that day | As `amount_day`. On the last day of a complete month it equals that month's metric in `fct_monthly_summary` |
+| `month_total` | the series' total for the month | Complete months only, null otherwise |
+| `pace_mtd_avg_3m` | mean over the baseline months of their `amount_mtd` on the matching day. Read: "what I usually have by this day" | Null when `baseline_months = 0`. Kept on days after today, so the usual curve draws to month end |
+| `pace_share_avg_3m` | mean over the baseline months of `amount_mtd / nullif(month_total, 0)` on the matching day. Read: "the share of a month usually done by today" | A baseline month with a `0` total is left out of the mean. Null when all of them total `0` or `baseline_months = 0`. `1` on the last day of the month whenever it is not null |
+
+**The matching day.** Days are aligned by day of month, not by fraction of
+the month, because rent and paydays fall on fixed dates. Day d of M matches
+day `least(d, days in the baseline month)`, so day 31 against a 30-day
+month reads its day 30. **The last day of M matches the last day of each
+baseline month**, so a 30-day M still closes at the baseline months' full
+totals and a February picks up the 29th to 31st of a longer month. Without
+that, a transfer made on the 31st, the usual day for one, would never
+reach a 30-day month's curve. "Plan at your usual timing" for D1 is
+`wants_plan * pace_share_avg_3m`.
+
+### `fct_subcategory_month`
+
+One row per (`month_start`, `bucket`, `subcategory_id`) for every month of
+the month list and every (bucket, subcategory) pair that has an own spend
+line in some month of the list, **zero-filled**. Without the zero-fill a
+mean would skip the months a subcategory was absent and run high. Carries
+`category_name` and `subcategory_name`.
+
+| Column | Formula | Edge cases |
+|---|---|---|
+| `spend` | `sum(amount)` over own spend lines in that bucket and subcategory | `0` in a month without one. Summed over bucket it equals `fct_category_month.spend` |
+| `line_count` | count of those lines | `0` likewise. Lines someone else paid for are not counted, unlike `fct_category_month.line_count` |
+| `baseline_months` | count of the baseline months | |
+| `spend_avg_3m`, `line_count_avg_3m` | mean `spend` and `line_count` over the baseline months, zeros included | Null when `baseline_months = 0` |
+| `spend_delta` | `spend - spend_avg_3m` | Null when `baseline_months = 0` |
+| `is_few_lines` | `line_count + 3 * coalesce(line_count_avg_3m, 0) < 6`: fewer than 6 lines across the 4 months compared, scaled to 3 baseline months | Computed from the exact mean. A subcategory-month this thin is mostly noise: show it, flagged, never rank by it |
 
 ## Adding or changing a metric
 

@@ -163,6 +163,7 @@ jobs:
       FINFLOW_DBT_PASSWORD: finflow_dbt
       FINFLOW_DBT_DBNAME: finflow_test
       FINFLOW_LEDGER_START: "2026-03-01"
+      FINFLOW_TODAY: "2026-10-15"
       # dbt 1.12.6's partial parse registers a metric twice when the YAML
       # changes between two parses, as the steps below make it do.
       DBT_PARTIAL_PARSE: "false"
@@ -190,9 +191,11 @@ jobs:
                                 user="finflow_analyst", password="finflow_analyst")
           db.autocommit = True
           cur = db.cursor()
-          cur.execute("select tablename from pg_tables where schemaname = 'marts' order by 1")
-          marts = [r[0] for r in cur.fetchall()]
-          expected = ["dim_date", "fct_category_month", "fct_monthly_summary", "fct_transactions"]
+          cur.execute("select tablename from pg_tables where schemaname = 'marts'")
+          marts = sorted(r[0] for r in cur.fetchall())
+          expected = sorted(["dim_date", "fct_category_month", "fct_monthly_summary", "fct_transactions",
+                             "fct_month_plan", "fct_pace_day",
+                             "fct_subcategory_month"])
           assert marts == expected, f"marts holds {marts}"
           for t in marts:
               cur.execute(f"select 1 from marts.{t} limit 1")
@@ -288,6 +291,29 @@ jobs:
             echo "::error::ledger_health.py printed more than test names, counts and ids"
             exit 1
           fi
+      # The base fixture's current month has a baseline and no income yet,
+      # so these two ledgers give month_plan_matches_targets the other
+      # shapes of an incomplete month.
+      - name: a current month with income above its baseline, and months with no baseline, pass month_plan_matches_targets
+        run: |
+          shape() {
+            python -c 'import sys, psycopg2
+          cur = psycopg2.connect(host="localhost", port=5432, dbname="finflow_test",
+                                 user="finflow_analyst", password="finflow_analyst").cursor()
+          cur.execute(sys.argv[1])
+          assert cur.fetchone()[0], sys.argv[1]' "$1"
+          }
+          env=$(python scripts/test_db.py fixtures/income_above_baseline.sql)
+          eval "$env"
+          dbt build --exclude tag:fixture
+          shape "select spendable_income > spendable_income_baseline and baseline_months = 3
+                 from marts.fct_month_plan where month_start = '2026-10-01' and not is_complete_month"
+          env=$(python scripts/test_db.py fixtures/first_month_current.sql)
+          eval "$env"
+          FINFLOW_LEDGER_START=2026-10-01 FINFLOW_TODAY=2026-10-31 dbt build --exclude tag:fixture
+          shape "select count(*) = 2 and bool_and(baseline_months = 0 and spendable_income > 0)
+                   and bool_or(as_of_day = 0)
+                 from marts.fct_month_plan where not is_complete_month"
       - name: a mart metric off by 0.01 fails the reconciliation, and nothing else
         run: |
           env=$(python scripts/test_db.py)

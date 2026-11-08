@@ -396,3 +396,145 @@ models:
               arguments:
                 values: [true, false]
                 quote: false
+
+  # The planning marts (docs/SEMANTIC_LAYER.md, "Planning marts"): plans,
+  # pace and baselines for the dashboards. Not metrics: no MetricFlow here.
+  - name: fct_month_plan
+    description: >
+      One row per month from the ledger start's month on. Dollar plans from
+      an expected income (the actual one in a complete month), the
+      baseline of the up-to-3 complete months before, and rolling 3-month
+      shares of complete months.
+    columns:
+      - name: month_start
+        data_tests:
+          - unique
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('fct_monthly_summary')
+                field: month_start
+      - name: is_complete_month
+        data_tests: [not_null]
+      - name: days_in_month
+        data_tests: [not_null]
+      - name: as_of_day
+        description: The month's last day if complete, today's day if current, 0 if later.
+        data_tests: [not_null]
+      - name: spendable_income
+        data_tests: [not_null]
+      - name: baseline_months
+        description: Complete months among the 3 before this one (0 to 3).
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [0, 1, 2, 3]
+                quote: false
+      - name: spendable_income_baseline
+        description: Mean spendable_income of the baseline months; null with none.
+      - name: spendable_income_expected
+        description: >
+          spendable_income in a complete month; otherwise the greater of
+          income so far and the baseline, null with no baseline.
+        data_tests:
+          - not_null:
+              config:
+                where: "is_complete_month or baseline_months > 0"
+      - name: income_received_share
+      - name: needs_plan
+      - name: wants_plan
+      - name: financial_future_plan
+      - name: needs_pct_3m
+        description: Ratio of sums over this month and the 2 before, all complete; null otherwise.
+      - name: wants_pct_3m
+      - name: financial_future_pct_3m
+      - name: unallocated_pct_3m
+
+  - name: fct_pace_day
+    description: >
+      One row per (date_day, series) for every day of every month of
+      fct_month_plan, five series each. Month-to-date per series, and the
+      usual month-to-date and share of a month done at the matching day
+      over the baseline months. Days after Toronto's today have no amount.
+    data_tests:
+      - unique:
+          arguments:
+            column_name: "date_day || '|' || series"
+    columns:
+      - name: date_day
+        data_tests: [not_null]
+      - name: month_start
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('fct_month_plan')
+                field: month_start
+      - name: day_of_month
+        data_tests: [not_null]
+      - name: series
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [needs, wants, variable_needs, financial_future, spendable_income]
+      - name: amount_day
+        description: The series' sum that day, 0 with none; null after today.
+      - name: amount_mtd
+        description: Running sum within the month through that day; null after today.
+      - name: month_total
+        description: The series' month total, complete months only.
+      - name: pace_mtd_avg_3m
+        description: Mean of the baseline months' amount_mtd at the matching day.
+      - name: pace_share_avg_3m
+        description: >
+          Mean of the baseline months' amount_mtd / month_total at the
+          matching day, leaving out a month that totals 0.
+
+  - name: fct_subcategory_month
+    description: >
+      One row per (month_start, bucket, subcategory_id) for every month of
+      fct_month_plan and every (bucket, subcategory) pair with an own spend
+      line in one of them, zero-filled. Own spend and line count, the
+      baseline means over the up-to-3 complete months before (zeros
+      included), the delta against it, and a few-lines flag.
+    data_tests:
+      - unique:
+          arguments:
+            column_name: "month_start || '|' || bucket || '|' || subcategory_id"
+    columns:
+      - name: month_start
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('fct_month_plan')
+                field: month_start
+      - name: bucket
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [needs, wants]
+      - name: subcategory_id
+        data_tests: [not_null]
+      - name: category_name
+        data_tests: [not_null]
+      - name: subcategory_name
+        data_tests: [not_null]
+      - name: spend
+        data_tests: [not_null]
+      - name: line_count
+        description: Own lines only, unlike fct_category_month.line_count.
+        data_tests: [not_null]
+      - name: baseline_months
+        data_tests: [not_null]
+      - name: spend_avg_3m
+        description: Mean spend over the baseline months, zeros included; null with none.
+      - name: line_count_avg_3m
+      - name: spend_delta
+        description: spend - spend_avg_3m; null with no baseline.
+      - name: is_few_lines
+        description: Fewer than 6 lines across this month and 3 baseline months' worth.
+        data_tests: [not_null]

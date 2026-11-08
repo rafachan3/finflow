@@ -14,6 +14,9 @@ vars:
   # occurred_on_within_ledger fails a row dated before it. The synthetic
   # fixture starts earlier, so test_db.py exports its own start.
   ledger_start: "{{ env_var('FINFLOW_LEDGER_START', '2026-06-01') }}"
+  # Toronto's today, fixed (toronto_today). Empty means the real today;
+  # only test_db.py sets it, so the fixture's current month never moves.
+  today: "{{ env_var('FINFLOW_TODAY', '') }}"
 
 models:
   finflow:
