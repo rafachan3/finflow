@@ -169,7 +169,7 @@ jobs:
             exit 0
           fi
           {
-            echo "The nightly ledger health tests found rows to check: likely duplicates, recurring flags with no series, and other warn-level tests. Ids and counts only; each test's comment in \`dbt/tests/\` says what it looks for. Fix or confirm the rows; the first clean night closes this issue."
+            echo "The nightly ledger health tests found rows to check: likely duplicates and other warn-level tests. Ids and counts only; each test's comment in \`dbt/tests/\` says what it looks for. Fix the rows, or acknowledge a pair that is not a duplicate (docs/TESTING.md, \"The nightly dbt build\"); the first clean night closes this issue."
             echo
             cat "$REPORT"
           } > "$BODY"

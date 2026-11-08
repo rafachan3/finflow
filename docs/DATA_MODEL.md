@@ -51,6 +51,7 @@ erDiagram
   transactions ||--o{ recurring_exclusions : ""
   recurring_series ||--o{ recurring_pauses : "paused for"
   recurring_series ||--o{ recurring_skips : "skipped once"
+  transactions ||--o{ duplicate_acknowledgements : "not a duplicate of"
 
   transactions {
     uuid id PK
@@ -112,6 +113,12 @@ erDiagram
     text status "claimed | sent | empty | failed"
     smallint attempts "1-3"
     integer message_id "set once sent"
+  }
+
+  duplicate_acknowledgements {
+    uuid first_id PK,FK "the smaller id"
+    uuid second_id PK,FK
+    timestamptz acknowledged_at
   }
 
   transaction_items {
@@ -493,6 +500,18 @@ create table nudge_runs (
 );
 create unique index nudge_runs_message_key on nudge_runs (chat_id, message_id)
   where message_id is not null;
+
+-- Pairs the owner ruled are not duplicates (migration 0021). The nightly
+-- ledger-health tests leave them out; the owner adds one with the SQL in
+-- TESTING.md ("The nightly dbt build"). One row per unordered pair, smaller
+-- id first; deleting either transaction deletes the row.
+create table duplicate_acknowledgements (
+  first_id        uuid        not null references transactions(id) on delete cascade,
+  second_id       uuid        not null references transactions(id) on delete cascade,
+  acknowledged_at timestamptz not null default now(),
+  primary key (first_id, second_id),
+  check (first_id < second_id)
+);
 ```
 
 ## Roles and schemas
@@ -672,4 +691,7 @@ bump when SSM rules change.
   has a `message_id` exactly when it was sent (check constraint). A run
   stuck at `claimed` (the send's outcome is unknown) is never claimed again:
   the digest is sent at most once a day.
+- A not-a-duplicate acknowledgement names two different transactions, the
+  smaller id first, once per pair (check constraint, primary key), and goes
+  when either transaction is deleted (cascade).
 - Migrations are never edited after merge; correct forward with a new one.

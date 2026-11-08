@@ -140,6 +140,28 @@ describe("migrations", () => {
     const [{ n }] = await sql<{ n: number }>("select count(*)::int n from transaction_item_tags");
     expect(n).toBe(0);
   });
+
+  it("store a not-a-duplicate acknowledgement once per unordered pair, and drop it with either transaction", async () => {
+    const ids = await sql<{ id: string }>(
+      `insert into transactions (occurred_on, type, amount, description, funding_source_id)
+       values ('2026-10-20', 'expense', 10, 'Ticket', ${SELF}), ('2026-10-20', 'expense', 10, 'Ticket', ${SELF}),
+              ('2026-10-21', 'expense', 10, 'Ticket', ${SELF})
+       returning id::text`,
+    );
+    const [a, b, c] = ids.map((r) => r.id).sort();
+    const ack = (x: string, y: string) =>
+      `insert into duplicate_acknowledgements (first_id, second_id) values ('${x}', '${y}')`;
+    await sql(ack(a, b));
+    expect(await errorCode(ack(a, b))).toBe("23505");
+    // The smaller id comes first, so the same pair cannot be stored reversed.
+    expect(await errorCode(ack(b, a))).toBe("23514");
+    expect(await errorCode(ack(a, a))).toBe("23514");
+    await sql(ack(b, c));
+
+    await sql("delete from transactions where id = $1", [b]);
+    const [{ n }] = await sql<{ n: number }>("select count(*)::int n from duplicate_acknowledgements");
+    expect(n).toBe(0);
+  });
 });
 
 describe("constraints", () => {
