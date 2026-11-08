@@ -4,7 +4,7 @@
 -- receipt is titled by its merchant once and by its items the next time.
 -- Kept apart from no_likely_duplicates, so two real purchases at one price
 -- stay distinguishable from a pair whose descriptions match. Left out, to
--- keep it quiet: pairs under 3.00 where either row was imported (no
+-- keep it quiet: pairs under 3.00 where both rows were imported (no
 -- ingestion: the history's fares and laundry machines), pairs in one
 -- recurring series, and pairs the owner acknowledged in
 -- duplicate_acknowledgements. Warn only; the nightly reports the pairs.
@@ -24,7 +24,7 @@ join t as b
    and b.description_key <> a.description_key
    and abs(b.occurred_on - a.occurred_on) <= 1
    and b.transaction_id < a.transaction_id
-where not (a.amount < 3.00 and 'import' in (a.entry_source, b.entry_source))
+where not (a.amount < 3.00 and a.entry_source = 'import' and b.entry_source = 'import')
   and not coalesce(a.recurring_series_id = b.recurring_series_id, false)
   and not exists (
     select from {{ source('ledger', 'duplicate_acknowledgements') }} as k

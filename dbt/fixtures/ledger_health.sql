@@ -16,10 +16,10 @@
 --   c...09  "Concert ticket" 45.00 on 07-24                    } owner acknowledged
 --   c...10  "Corner Grocer Inc" 23.40 on 07-22, photo          } one receipt,
 --   c...11  "Bread and cheese" 23.40 on 07-23, photo           } reworded: warns
---   c...12  "Laundry washer" 2.50 on 07-25, imported           } under 3.00 and
---   c...13  "Laundry dryer" 2.50 on 07-25, imported            } imported: quiet
---   c...14  "Coffee" 2.50 on 07-26, text                       } under 3.00 but
---   c...15  "Muffin" 2.50 on 07-26, text                       } logged: warns
+--   c...12  "Laundry washer" 2.50 on 07-30, imported           } under 3.00, both
+--   c...13  "Laundry dryer" 2.50 on 07-30, imported            } imported: quiet
+--   c...14  "Coffee" 2.50 on 07-26, text                       } under 3.00, one
+--   c...15  "Muffin" 2.50 on 07-26, imported                   } logged: warns
 --   c...16  "Gym" 30.00 on 07-27                               } one recurring
 --   c...17  "Gym fee" 30.00 on 07-28                           } series: quiet
 insert into transactions (id, occurred_on, type, amount, description, funding_source_id)
@@ -36,8 +36,8 @@ from (values
     ('c0000000-0000-0000-0000-000000000009', '2026-07-24', 'expense',  45.00, 'Concert ticket',  'self'),
     ('c0000000-0000-0000-0000-000000000010', '2026-07-22', 'expense',  23.40, 'Corner Grocer Inc', 'self'),
     ('c0000000-0000-0000-0000-000000000011', '2026-07-23', 'expense',  23.40, 'Bread and cheese', 'self'),
-    ('c0000000-0000-0000-0000-000000000012', '2026-07-25', 'expense',   2.50, 'Laundry washer',  'self'),
-    ('c0000000-0000-0000-0000-000000000013', '2026-07-25', 'expense',   2.50, 'Laundry dryer',   'self'),
+    ('c0000000-0000-0000-0000-000000000012', '2026-07-30', 'expense',   2.50, 'Laundry washer',  'self'),
+    ('c0000000-0000-0000-0000-000000000013', '2026-07-30', 'expense',   2.50, 'Laundry dryer',   'self'),
     ('c0000000-0000-0000-0000-000000000014', '2026-07-26', 'expense',   2.50, 'Coffee',          'self'),
     ('c0000000-0000-0000-0000-000000000015', '2026-07-26', 'expense',   2.50, 'Muffin',          'self'),
     ('c0000000-0000-0000-0000-000000000016', '2026-07-27', 'expense',  30.00, 'Gym',             'self'),
@@ -58,13 +58,12 @@ values ('c0000000-0000-0000-0000-000000000006', 'c0000000-0000-0000-0000-0000000
        ('c0000000-0000-0000-0000-000000000008', 'c0000000-0000-0000-0000-000000000009');
 
 -- Bot-logged rows: the confirmed ingestion each came from (two photos of
--- one receipt, and two typed snacks). The rest are history imports.
+-- one receipt, and one typed snack). The rest are history imports.
 insert into ingestions (source, telegram_update_id, event_index, raw_payload, media_path, status, transaction_id, created_at)
 values
     ('photo', 9010, 0, '{}', 'photo/2026-07/9010.jpg', 'confirmed', 'c0000000-0000-0000-0000-000000000010', '2026-07-22 18:00+00'),
     ('photo', 9011, 0, '{}', 'photo/2026-07/9011.jpg', 'confirmed', 'c0000000-0000-0000-0000-000000000011', '2026-07-23 18:00+00'),
-    ('text',  9014, 0, '{}', null,                     'confirmed', 'c0000000-0000-0000-0000-000000000014', '2026-07-26 14:00+00'),
-    ('text',  9015, 0, '{}', null,                     'confirmed', 'c0000000-0000-0000-0000-000000000015', '2026-07-26 15:00+00');
+    ('text',  9014, 0, '{}', null,                     'confirmed', 'c0000000-0000-0000-0000-000000000014', '2026-07-26 14:00+00');
 
 -- Linking sets is_recurring (migration 0016's trigger).
 insert into recurring_series (name, kind, cadence) values ('Gym membership', 'expense', 'monthly');

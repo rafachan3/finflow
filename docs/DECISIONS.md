@@ -2625,9 +2625,10 @@ requires matching descriptions, so it never listed the pair.
   1 day, not 3: a re-logged receipt keeps its printed date.
 - **Quiet by design.** The post-backfill audit found 28 pairs of this
   shape, about 24 of them imported rows: fares and laundry machines from
-  the history. Left out are pairs under 3.00 where either row was imported
+  the history. Left out are pairs under 3.00 where both rows were imported
   (no confirmed ingestion), pairs in one recurring series, and acknowledged
-  pairs (migration 0021). A bot-logged pair under 3.00 is still listed.
+  pairs (migration 0021). An under-3.00 pair with a bot-logged row is still
+  listed, so an import the bot logged again under another description shows.
 - **Warn only, ids only,** like `no_likely_duplicates`; `ledger_health.py`
   lists its pairs in the same issue.
 

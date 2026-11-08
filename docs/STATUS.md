@@ -626,7 +626,7 @@ the Supabase SQL editor; there is no bot command, since the ledger-health
 surface is a GitHub issue, not Telegram. A second warn test,
 `likely_duplicates_reworded` (#114), lists pairs of one type and amount at
 most a day apart whose descriptions differ, leaving out pairs under 3.00
-with an imported row, pairs in one series and acknowledged pairs.
+whose rows were both imported, pairs in one series and acknowledged pairs.
 
 Pre-run check of `finflow_dbt` (2026-10-30, `has_table_privilege` and
 `has_schema_privilege` over `verify-ca` TLS with the tracked CA, no writes): SELECT on `public.transactions` true;
