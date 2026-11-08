@@ -80,6 +80,8 @@ the table above — not appended here.
 
 ## Verification
 
+`make check` runs every CI check but the live eval (docs/TESTING.md, "Run the checks locally").
+
 The test harness refuses any host other than `localhost`, so it cannot reach
 production. dbt reaches production only in `dbt-nightly.yml`, on schedule and
 dispatch; keep its `FINFLOW_DBT_*` secrets out of every `pull_request` job.
