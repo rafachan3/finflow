@@ -682,3 +682,52 @@ models:
           - accepted_values:
               arguments:
                 values: [photo, voice, text, import]
+
+  # Account mart (docs/SEMANTIC_LAYER.md, "Account marts"): one row per
+  # (month, account) for Trends T4/T5. Not a metric: no MetricFlow here.
+  - name: fct_account_month
+    description: >
+      One row per (month_start, account) for every month of the month list
+      and every accounts row, zero-filled. Deposits are chequing into the
+      account, withdrawals the reverse, moves between two named accounts,
+      savings_income the interest that lands here. Balance is opening plus
+      flows after as_of through month end; null without an opening; never
+      for investment or debt.
+    data_tests:
+      - unique:
+          arguments:
+            column_name: "month_start || '|' || account_name"
+    columns:
+      - name: month_start
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('fct_month_plan')
+                field: month_start
+      - name: account_name
+        data_tests: [not_null]
+      - name: account_kind
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [savings, investment, debt]
+      - name: deposits
+        data_tests: [not_null]
+      - name: withdrawals
+        data_tests: [not_null]
+      - name: moves_in
+        data_tests: [not_null]
+      - name: moves_out
+        data_tests: [not_null]
+      - name: savings_income
+        data_tests: [not_null]
+      - name: net_flow
+        data_tests: [not_null]
+      - name: net_flow_cumulative
+        data_tests: [not_null]
+      - name: balance
+        description: >
+          Opening plus flows after as_of through month end. Null without
+          an opening, before as_of, and for investment and debt.

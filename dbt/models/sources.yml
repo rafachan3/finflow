@@ -30,3 +30,8 @@ sources:
         description: >
           Pairs the owner ruled are not duplicates, smaller id first
           (migration 0021). The ledger-health tests leave them out.
+      - name: account_opening_balances
+        description: >
+          One-off opening per account (migration 0022). Values are entered
+          by the owner, never stored in this repo. The account-month mart
+          turns a savings row into a balance.

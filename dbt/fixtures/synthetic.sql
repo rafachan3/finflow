@@ -24,6 +24,9 @@
 -- a...29): 2026-03 only a withdrawal, 2026-04 only a transfer of the same
 -- amount, 2026-05 income, savings interest and spend with nothing moved.
 -- Their cash left in chequing nets to 0, so June's carry-over is unchanged.
+-- Opening (migration 0022): Emergency fund 1000.00 as of 2026-05-31, a
+-- synthetic savings snapshot so the account-month mart can pin a balance.
+-- Retirement account and Car loan have none.
 --
 -- The recurring rows are linked to generic series and never set
 -- is_recurring themselves: migration 0016's trigger sets it from the link,
@@ -169,3 +172,9 @@ values
     ('photo', 1006, 0, '{}', 'photo/2026-06/1006.jpg', 'confirmed', 'a0000000-0000-0000-0000-000000000006', '2026-06-20 16:00+00'),
     ('text',  1007, 0, '{}', null,                     'confirmed', 'a0000000-0000-0000-0000-000000000007', '2026-07-01 03:00+00'),
     ('text',  1009, 0, '{}', null,                     'confirmed', 'a0000000-0000-0000-0000-000000000009', '2026-06-26 12:00+00');
+
+-- Synthetic savings opening, as of the last day of May, so March and April
+-- balances are null and the May 31 interest stays inside the snapshot.
+insert into account_opening_balances (account_id, as_of, amount)
+select id, date '2026-05-31', 1000.00
+from accounts where name = 'Emergency fund';
