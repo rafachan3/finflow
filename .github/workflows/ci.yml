@@ -163,6 +163,7 @@ jobs:
       FINFLOW_DBT_PASSWORD: finflow_dbt
       FINFLOW_DBT_DBNAME: finflow_test
       FINFLOW_LEDGER_START: "2026-03-01"
+      FINFLOW_TODAY: "2026-10-15"
       # dbt 1.12.6's partial parse registers a metric twice when the YAML
       # changes between two parses, as the steps below make it do.
       DBT_PARTIAL_PARSE: "false"
