@@ -100,6 +100,26 @@ describe("logging one purchase", () => {
     expect(await ledger.transactions()).toMatchObject([{ date }]);
   });
 
+  it("laundromat machine cycles are Housing / Laundry and are saved with no item type", async () => {
+    gemini.extract = golden("laundromat-cycles").recorded;
+    await chat.text("5 - washing machine, 3 - dryer");
+
+    const card = chat.last();
+    expect(card.text).toContain("  Housing / Laundry / needs");
+    expect(card.text).not.toContain("Laundry Supply");
+    await chat.tap(card, "Confirm");
+    expect(
+      await sql(
+        `select i.description, s.name as subcategory, i.item_type_id
+         from transaction_items i join subcategories s on s.id = i.subcategory_id
+         order by i.description`,
+      ),
+    ).toEqual([
+      { description: "Dryer", subcategory: "Laundry", item_type_id: null },
+      { description: "Washing machine", subcategory: "Laundry", item_type_id: null },
+    ]);
+  });
+
   it("someone else paying is saved with them as the funder", async () => {
     gemini.extract = golden("paid-by-family").recorded;
     await chat.text("20 dinner at Salad Bar on Oct 24, my family paid");

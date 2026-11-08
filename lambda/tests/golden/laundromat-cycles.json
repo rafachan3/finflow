@@ -1,0 +1,68 @@
+{
+  "name": "laundromat washer and dryer cycles are Housing / Laundry with no item type",
+  "input": {
+    "kind": "text",
+    "text": "5 - washing machine, 3 - dryer"
+  },
+  "expect": {
+    "events": [
+      {
+        "type": "expense",
+        "lines": 2,
+        "classes": [
+          "Housing / Laundry",
+          "Housing / Laundry"
+        ]
+      }
+    ]
+  },
+  "recorded": {
+    "events": [
+      {
+        "type": "expense",
+        "amount": "8.00",
+        "currency": "CAD",
+        "date": "",
+        "description": "Washing machine and dryer",
+        "merchant": null,
+        "venue": null,
+        "tags": [],
+        "is_recurring": false,
+        "income_source": null,
+        "from_account": null,
+        "to_account": null,
+        "taxes": [],
+        "discounts": [],
+        "tip": null,
+        "items": [
+          {
+            "description": "Washing machine",
+            "price": "5.00",
+            "taxable": false,
+            "category": "Housing",
+            "subcategory": "Laundry",
+            "item_type": null,
+            "tags": [],
+            "bucket_why": "Housing / Laundry subcategory defaults to needs",
+            "bucket": "needs"
+          },
+          {
+            "description": "Dryer",
+            "price": "3.00",
+            "taxable": false,
+            "category": "Housing",
+            "subcategory": "Laundry",
+            "item_type": null,
+            "tags": [],
+            "bucket_why": "Housing / Laundry subcategory defaults to needs",
+            "bucket": "needs"
+          }
+        ],
+        "confidence": 0.95,
+        "funded_by": null,
+        "notes": null
+      }
+    ]
+  },
+  "request_sha256": "5c09448538ef81247eb293dc84c55890e56a28cf2617ea649d2cec65cec977b5"
+}

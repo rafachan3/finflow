@@ -253,7 +253,7 @@ function hasName(list: string[], name: string | null): boolean {
   return name !== null && list.includes(name);
 }
 
-function stripCategoryPrefix(category: string, raw: string): string {
+export function stripCategoryPrefix(category: string, raw: string): string {
   const prefix = `${category} / `;
   return raw.startsWith(prefix) ? raw.slice(prefix.length) : raw;
 }

@@ -154,6 +154,11 @@ Kept deliberately restrained; this is not a medical ontology.
 7. Use "Other …" only when the available information cannot support a more
    specific classification. When genuinely ambiguous, prefer the option that
    best reflects the economic nature of the purchase; do not invent detail.
+8. An item type that names goods (such as Laundry Supply or Cleaning
+   Product) is for the goods themselves: a line paying for a machine cycle
+   instead of goods keeps its subcategory and has no item type. A laundromat
+   washer or dryer cycle is Housing / Laundry with no item type; detergent,
+   softener or dryer sheets are Laundry Supply.
 
 ## Needs / wants bucket
 

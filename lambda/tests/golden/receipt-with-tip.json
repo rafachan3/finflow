@@ -18,7 +18,11 @@
         "merchant": true,
         "date": true,
         "dateIs": "2026-10-24",
-        "venue": null
+        "venue": null,
+        "classes": [
+          "Food and drink / Restaurants / Meals & Prepared Food",
+          "Food and drink / Restaurants / Meals & Prepared Food"
+        ]
       }
     ]
   },
