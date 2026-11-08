@@ -4,7 +4,7 @@
 -- what it cannot read. The refs make this run after the marts are rebuilt;
 -- a relation added to marts later is caught by the catalog scan.
 {% set marts = [ref('dim_date'), ref('fct_transactions'), ref('fct_category_month'), ref('fct_monthly_summary'),
-                ref('fct_month_plan')] %}
+                ref('fct_month_plan'), ref('fct_pace_day')] %}
 
 select 'schema ' || '{{ marts[0].schema }}' as unreadable
 where not has_schema_privilege('finflow_analyst', '{{ marts[0].schema }}', 'USAGE')

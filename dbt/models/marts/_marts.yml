@@ -450,3 +450,44 @@ models:
       - name: wants_pct_3m
       - name: financial_future_pct_3m
       - name: unallocated_pct_3m
+
+  - name: fct_pace_day
+    description: >
+      One row per (date_day, series) for every day of every month of
+      fct_month_plan, five series each. Month-to-date per series, and the
+      usual month-to-date and share of a month done at the matching day
+      over the baseline months. Days after Toronto's today have no amount.
+    data_tests:
+      - unique:
+          arguments:
+            column_name: "date_day || '|' || series"
+    columns:
+      - name: date_day
+        data_tests: [not_null]
+      - name: month_start
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('fct_month_plan')
+                field: month_start
+      - name: day_of_month
+        data_tests: [not_null]
+      - name: series
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [needs, wants, variable_needs, financial_future, spendable_income]
+      - name: amount_day
+        description: The series' sum that day, 0 with none; null after today.
+      - name: amount_mtd
+        description: Running sum within the month through that day; null after today.
+      - name: month_total
+        description: The series' month total, complete months only.
+      - name: pace_mtd_avg_3m
+        description: Mean of the baseline months' amount_mtd at the matching day.
+      - name: pace_share_avg_3m
+        description: >
+          Mean of the baseline months' amount_mtd / month_total at the
+          matching day, leaving out a month that totals 0.
