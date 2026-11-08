@@ -3,6 +3,8 @@
 -- if there were ever two; a warn test watches for that), else 'import'.
 -- A null account is chequing: from_account_id on a transfer, to_account_id,
 -- and deposit_account_id (where the income source's money lands).
+-- recurring_series_name and recurring_cadence come from the linked series
+-- (null when unlinked); fct_transactions does not carry them.
 with confirmed as (
     select distinct on (transaction_id) transaction_id, source
     from {{ source('ledger', 'ingestions') }}
@@ -21,6 +23,8 @@ select
     t.notes,
     t.is_recurring,
     t.recurring_series_id,
+    rs.name as recurring_series_name,
+    rs.cadence::text as recurring_cadence,
     f.name as funding_source_name,
     m.name as merchant_name,
     v.name as venue_name,
@@ -43,4 +47,5 @@ left join {{ source('ledger', 'income_sources') }} as s on s.id = t.income_sourc
 left join {{ source('ledger', 'accounts') }} as d on d.id = s.deposit_account_id
 left join {{ source('ledger', 'accounts') }} as fa on fa.id = t.from_account_id
 left join {{ source('ledger', 'accounts') }} as a on a.id = t.to_account_id
+left join {{ source('ledger', 'recurring_series') }} as rs on rs.id = t.recurring_series_id
 left join confirmed as c on c.transaction_id = t.id
