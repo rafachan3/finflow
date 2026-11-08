@@ -332,11 +332,12 @@ and a total that does not match fails the line-sum check. An Edit sends the
 parts. A tip correction replaces the old tip, and the total follows the
 recomputed lines unless the correction states one. Cards look the same.
 Goldens `receipt-with-tip` (Quebec GST + QST diner) and `edit-tip` pin each
-line's amount. A synthetic Quebec grocery receipt is covered by unit tests
-and a journey. Fix on branch `fix/tax-tip-edit-old-cards` (DECISIONS.md
-2026-11-08): an Edit recomputes an unchanged total only for a tip or price
-correction, and never on a card stored before prices. Anything else keeps
-the stored total, so the line-sum check shows an error card.
+line's amount. `receipt-line-tag` reads a synthetic Quebec grocery receipt
+whose `FP` code marks two lines taxed and leaves one zero-rated, and pins
+each line's amount (2026-11-08). #121 (DECISIONS.md 2026-11-08): an Edit
+recomputes an unchanged total only for a tip or price correction, and never
+on a card stored before prices. Anything else keeps the stored total, so the
+line-sum check shows an error card.
 
 Duplicate warning (Phase 3.5 PR 1; DECISIONS.md 2026-10-29): every saved
 card (new message, `/pending`, Fix date, Edit) gets at most one `!` line
@@ -570,8 +571,8 @@ an NN/NN/NN date with no 4-digit one. Tax and tip moved to code in #118
 DECISIONS.md 2026-11-07). The 20 cases passed live and were recorded locally on
 2026-11-07. Only `receipt-with-tip` and `edit-tip` take new answers. The
 other 18 keep the recordings the journeys quote, with new hashes. No
-migration. Not covered by a golden: the model reading a receipt's taxable
-codes (unit tests and the `tax-tip` journey script it).
+migration. The model reading a receipt's taxable codes is covered by
+`receipt-line-tag` since 2026-11-08.
 
 ## Next concrete step
 
@@ -583,9 +584,8 @@ merged with migration 0020 applied. Next, in order:
    ingest Lambda` run 42448444674 succeeded. In progress: the receipt
    follow-up PR (a golden for the model reading taxable codes, and
    whole-order discounts) on `fix/receipt-tax-codes-and-order-discounts`.
-2. A not-a-duplicate acknowledgement for ledger-health: in review on
-   branch `feat/ledger-health-acknowledge` (migration 0021 not yet applied
-   to production; apply it before merging). After merge the owner
+2. A not-a-duplicate acknowledgement for ledger-health: merged as #117
+   (`2f7275f`); confirm migration 0021 is applied to production. Now the owner
    acknowledges the 34 pairs of #109, and any pairs the new reworded
    test lists that are real, so the issue can close.
 3. Card redesign (#89 #92 #96 #97): brainstorm with the owner first.

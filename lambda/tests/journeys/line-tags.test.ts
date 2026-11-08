@@ -38,15 +38,15 @@ describe("tags for one line or the whole message", () => {
 
     const card = chat.last().text.split("\n");
     expect(card).toContain("Tags: Travel");
-    const bananas = card.indexOf("• Bananas — 6.49");
+    const bananas = card.indexOf("• Bananas — 1.95");
     expect(card.slice(bananas + 1, bananas + 4)).toContain("  Tags: Partner");
     expect(card.filter((l) => l.trim().startsWith("Tags:"))).toEqual(["Tags: Travel", "  Tags: Partner"]);
 
     await chat.tap(chat.last(), "Confirm");
     expect(await ledger.lineTags()).toEqual([
       { description: "Bananas", own: ["Partner"], effective: ["Partner", "Travel"] },
-      { description: "Rotisserie chicken", own: [], effective: ["Travel"] },
-      { description: "Sparkling water", own: [], effective: ["Travel"] },
+      { description: "Sparkling Water", own: [], effective: ["Travel"] },
+      { description: "Trail Mix", own: [], effective: ["Travel"] },
     ]);
     expect(await ledger.transactionTags()).toEqual([{ type: "expense", tags: ["Travel"] }]);
   });
@@ -54,9 +54,9 @@ describe("tags for one line or the whole message", () => {
   it("whole-message context tags every line, stored once on the transaction", async () => {
     // A model that copies the trip onto each line: the tag still lands once, on the header.
     const everyLine = withLineTags({ ...receipt(), tags: [] }, {
-      "Rotisserie chicken": ["Travel"],
+      "Trail Mix": ["Travel"],
       Bananas: ["Travel"],
-      "Sparkling water": ["Travel"],
+      "Sparkling Water": ["Travel"],
     });
     gemini.extract = { events: [everyLine] };
     await chat.photo("road trip snacks");
@@ -84,8 +84,8 @@ describe("tags for one line or the whole message", () => {
     await chat.tap(chat.last(), "Confirm");
     expect((await ledger.lineTags()).map((l) => [l.description, l.own])).toEqual([
       ["Bananas", []],
-      ["Rotisserie chicken", []],
-      ["Sparkling water", []],
+      ["Sparkling Water", []],
+      ["Trail Mix", []],
     ]);
     expect(await ledger.transactionTags()).toEqual([{ type: "expense", tags: ["Travel"] }]);
   });
@@ -105,19 +105,19 @@ describe("tags for one line or the whole message", () => {
     gemini.extract = golden("receipt-line-tag").recorded;
     await chat.photo(CAPTION);
     await chat.tap(chat.last(), "Edit");
-    gemini.patch = withLineTags(receipt(), { "Sparkling water": ["Partner"] });
+    gemini.patch = withLineTags(receipt(), { "Sparkling Water": ["Partner"] });
     await chat.text("the sparkling water was for Partner, not the bananas");
 
     const card = chat.last().text.split("\n");
-    const water = card.indexOf("• Sparkling water — 6.99");
+    const water = card.indexOf("• Sparkling Water — 8.03");
     expect(card.slice(water + 1, water + 4)).toContain("  Tags: Partner");
     expect(card.filter((l) => l.trim().startsWith("Tags:"))).toEqual(["Tags: Travel", "  Tags: Partner"]);
 
     await chat.tap(chat.last(), "Confirm");
     expect((await ledger.lineTags()).map((l) => [l.description, l.own])).toEqual([
       ["Bananas", []],
-      ["Rotisserie chicken", []],
-      ["Sparkling water", ["Partner"]],
+      ["Sparkling Water", ["Partner"]],
+      ["Trail Mix", []],
     ]);
   });
 
@@ -128,13 +128,13 @@ describe("tags for one line or the whole message", () => {
 
     await chat.text("/pending");
     const card = chat.last().text.split("\n");
-    expect(card).toContain("• Bananas — 6.49");
+    expect(card).toContain("• Bananas — 1.95");
     expect(card.filter((l) => l.trim().startsWith("Tags:"))).toEqual(["Tags: Travel"]);
     await chat.tap(chat.last(), "Confirm");
     expect((await ledger.lineTags()).map((l) => [l.description, l.own, l.effective])).toEqual([
       ["Bananas", [], ["Travel"]],
-      ["Rotisserie chicken", [], ["Travel"]],
-      ["Sparkling water", [], ["Travel"]],
+      ["Sparkling Water", [], ["Travel"]],
+      ["Trail Mix", [], ["Travel"]],
     ]);
   });
 
@@ -152,8 +152,8 @@ describe("tags for one line or the whole message", () => {
     await chat.tap(chat.last(), "Confirm");
     expect((await ledger.lineTags()).map((l) => [l.description, l.own])).toEqual([
       ["Bananas", ["Partner"]],
-      ["Rotisserie chicken", []],
-      ["Sparkling water", []],
+      ["Sparkling Water", []],
+      ["Trail Mix", []],
     ]);
   });
 });

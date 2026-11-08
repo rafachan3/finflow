@@ -1,15 +1,21 @@
 {
-  "name": "a receipt caption tags the whole purchase with a trip and one item with who it was for",
+  "name": "a receipt caption tags the whole purchase with a trip and one item with who it was for; the receipt's FP code marks two lines taxed and leaves the bananas zero-rated, so code puts GST and QST on those two lines only",
   "input": {
     "kind": "photo",
     "caption": "road trip snacks; the bananas were for Partner",
-    "media": "receipt.png"
+    "media": "receipt-tax-codes.png"
   },
   "expect": {
     "events": [
       {
         "type": "expense",
         "lines": 3,
+        "amount": "18.59",
+        "amounts": [
+          "8.61",
+          "1.95",
+          "8.03"
+        ],
         "tags": [
           "Travel"
         ],
@@ -27,57 +33,66 @@
     "events": [
       {
         "type": "expense",
-        "amount": "23.47",
+        "amount": "18.59",
         "currency": "CAD",
         "date": "2026-10-25",
-        "description": "Grocery purchase",
-        "merchant": "BIG BOX MARKET",
+        "description": "Pinewood Grocer",
+        "merchant": "Pinewood Grocer",
         "venue": "Supermarket",
         "tags": [
           "Travel"
         ],
         "is_recurring": false,
         "income_source": null,
+        "from_account": null,
         "to_account": null,
+        "taxes": [
+          "0.72",
+          "1.44"
+        ],
+        "tip": null,
         "items": [
           {
-            "description": "Rotisserie chicken",
-            "amount": "9.99",
+            "description": "Trail Mix",
+            "price": "7.49",
+            "taxable": true,
             "category": "Food and drink",
-            "subcategory": "Food and drink / Groceries",
-            "item_type": "Food and drink / Meals & Prepared Food",
+            "subcategory": "Groceries",
+            "item_type": "Snacks & Sweets",
             "tags": [],
-            "bucket_why": "no subcategory hint, defaulting to wants",
+            "bucket_why": "default bucket for Groceries has no hint",
             "bucket": "wants"
           },
           {
             "description": "Bananas",
-            "amount": "6.49",
+            "price": "1.95",
+            "taxable": false,
             "category": "Food and drink",
-            "subcategory": "Food and drink / Groceries",
-            "item_type": "Food and drink / Ingredients & Staples",
+            "subcategory": "Groceries",
+            "item_type": "Ingredients & Staples",
             "tags": [
               "Partner"
             ],
-            "bucket_why": "no subcategory hint, defaulting to wants",
+            "bucket_why": "default bucket for Groceries has no hint",
             "bucket": "wants"
           },
           {
-            "description": "Sparkling water",
-            "amount": "6.99",
+            "description": "Sparkling Water",
+            "price": "6.99",
+            "taxable": true,
             "category": "Food and drink",
-            "subcategory": "Food and drink / Groceries",
-            "item_type": "Food and drink / Non-Alcoholic Beverages",
+            "subcategory": "Groceries",
+            "item_type": "Non-Alcoholic Beverages",
             "tags": [],
-            "bucket_why": "no subcategory hint, defaulting to wants",
+            "bucket_why": "default bucket for Groceries has no hint",
             "bucket": "wants"
           }
         ],
         "confidence": 0.98,
         "funded_by": null,
-        "notes": "Road trip snacks."
+        "notes": null
       }
     ]
   },
-  "request_sha256": "fcd55f159c247df5643fe246246b62046eb1d90ce86b66cd142a8e14102600c9"
+  "request_sha256": "94ec2341484ea26c06f9d63ea59973292efa30235ce774cd2c2b8ed2faacdc4a"
 }
