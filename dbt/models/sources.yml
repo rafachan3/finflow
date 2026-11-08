@@ -26,3 +26,7 @@ sources:
       - name: recurring_pauses
       - name: budget_targets
         description: One row, the 50/30/20 targets as percentages (migration 0018).
+      - name: duplicate_acknowledgements
+        description: >
+          Pairs the owner ruled are not duplicates, smaller id first
+          (migration 0021). The ledger-health tests leave them out.

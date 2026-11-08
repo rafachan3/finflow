@@ -113,7 +113,8 @@ included.
 | Ledger | A debt account only receives transfers: a transfer from one, or an income source depositing into one, fails the `dbt` job | `dbt:debt_account_only_receives_transfers` |
 | Ledger | Every transaction is dated from the ledger start (dbt var `ledger_start`, 2026-06-01; the fixture exports its own) to Toronto's tomorrow; a row dated years back or ahead fails the `dbt` job, as does the production start on the fixture's earlier months | `dbt:occurred_on_within_ledger`<br>`ci:misdated rows fail occurred_on_within_ledger, and a likely duplicate warns with its ids` |
 | Ledger | Warnings, not failures: a line tag that repeats its header tag, a transaction with two confirmed ingestions | `dbt:line_tag_not_on_header`<br>`dbt:one_confirmed_ingestion_per_transaction` |
-| Ledger | Ledger health warnings: two transactions of one type and amount at most 3 days apart whose descriptions match ignoring case and whitespace are reported as a pair of ids, while near misses (different descriptions at one price, the same description 5 days apart) are not | `dbt:no_likely_duplicates`<br>`ci:misdated rows fail occurred_on_within_ledger, and a likely duplicate warns with its ids` |
+| Ledger | Ledger health warnings: two transactions of one type and amount at most 3 days apart whose descriptions match ignoring case and whitespace are reported as a pair of ids, while near misses (different descriptions at one price, the same description 5 days apart) and a pair the owner acknowledged as not a duplicate are not | `dbt:no_likely_duplicates`<br>`ci:misdated rows fail occurred_on_within_ledger, and a likely duplicate warns with its ids` |
+| Ledger | A not-a-duplicate acknowledgement is stored once per unordered pair (smaller id first, so the reverse is refused) and is deleted with either transaction | `store a not-a-duplicate acknowledgement once per unordered pair, and drop it with either transaction` |
 | Ledger | A transaction links to at most one recurring series, of its own kind only; linking sets `is_recurring` and unlinking clears it, and `is_recurring` is true exactly when linked (CHECK, migration 0020: an unlinked insert flagged recurring is refused); a deleted series unlinks its transactions; a transaction is never both linked to and excluded from a series; pauses of a series never overlap; the nightly checks production | `links a transaction to a series of its own kind and refuses another kind`<br>`linking sets is_recurring and unlinking clears it`<br>`refuses is_recurring without a series, and takes a linked insert`<br>`dbt:recurring_flag_matches_series`<br>`deleting a series unlinks its transactions and clears their flag`<br>`refuses a pause that overlaps another pause of the series`<br>`refuse a recurring series with %s`<br>`dbt:recurring_link_matches_series_kind`<br>`dbt:recurring_link_not_excluded`<br>`dbt:recurring_pauses_do_not_overlap` |
 | Recurring | Cadence detection reads calendar slots, not intervals: monthly, month-end, biweekly, semi-monthly and quarterly histories get their cadence and anchor, a month never logged lowers coverage but does not change the cadence, twice-a-week shopping is not proposed, a cadence needs a full period of history to be suggested, and a declared cadence fits even one payment | `detects %s`<br>`proposes a regular series with enough history, and not twice-a-week shopping`<br>`reads a gap in logging as a missing payment, not a change of cadence`<br>`needs a full period of history before it suggests a cadence`<br>`fits the owner's declared cadence to a single payment`<br>`suggests monthly for any regular monthly series with up to two days of jitter` |
 | Recurring | Each expected payment has a window (±2 spreads, weekend starts move to Friday and weekend ends to Monday) and counts as missed only after the window and its grace; a paused period is never missed (a slot on the pause's first day is paused, one on its resume day is expected), a skip settles one payment, a payment logged during a pause counts and is flagged, a second payment in one slot is reported | `predicts %s`<br>`counts a missed payment only after its window and grace`<br>`never counts a paused slot as missed`<br>`pauses a slot whose centre is the pause's first day, and expects one on its resume day`<br>`lets a skip settle the one payment that will not happen`<br>`counts a payment logged during a pause as met and flags it, and reports a second payment in one slot`<br>`never counts a slot inside a pause as missed, for any monthly series and pause` |
@@ -269,7 +270,8 @@ Extra SQL files given to `test_db.py` load after the fixture.
 `dbt build` must fail on `expense_lines_sum_to_header` and nothing else
 (the marts downstream are skipped, not built).
 `dbt/fixtures/ledger_health.sql` adds rows dated in 2022 and 2099, a likely
-duplicate pair and near misses that are not one; with it,
+duplicate pair, near misses that are not one, and a matching pair it
+acknowledges in `duplicate_acknowledgements`; with it,
 `dbt build --exclude tag:fixture` must fail `occurred_on_within_ledger`
 (2 rows) and nothing else, warn `no_likely_duplicates` (1 row) and nothing
 else, and `scripts/ledger_health.py` must print that pair's ids and no
@@ -332,6 +334,21 @@ not a UUID is withheld). The next step, which has no secrets, writes that to the
 summary and to one open issue labelled `ledger-health`. It rewrites the
 issue body, with a comment, only when the findings change, and closes the
 issue after the first clean, successful build.
+
+A listed pair that is two real payments (two tickets, two laundry
+machines) is acknowledged in the database, never in this repo: the owner
+runs this in the Supabase SQL editor (as `postgres`) with the two ids from
+the issue, in either order, and the next night leaves the pair out.
+Deleting either transaction drops the acknowledgement with it.
+
+```sql
+insert into duplicate_acknowledgements (first_id, second_id)
+select least(a, b), greatest(a, b)
+from (values ('<id>'::uuid, '<other id>'::uuid)) as v (a, b)
+on conflict do nothing;
+```
+
+To take one back, delete its row (the smaller id is `first_id`).
 
 To see the detail behind an issue, run the same commands from `dbt/` with
 the production `FINFLOW_DBT_*` variables in your shell (keep them in the

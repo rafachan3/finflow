@@ -11,6 +11,8 @@
 --   c...05  "Metro ticket" 3.75 on 07-16, 5 days later         no pair
 --   c...06  "Washer" 400.00 on 07-20                           } same price,
 --   c...07  "Dryer" 400.00 on 07-20                            } no pair
+--   c...08  "Concert ticket" 45.00 on 07-24                    } a pair the
+--   c...09  "Concert ticket" 45.00 on 07-24                    } owner acknowledged
 insert into transactions (id, occurred_on, type, amount, description, funding_source_id)
 select v.id::uuid, v.occurred_on::date, v.type::transaction_type, v.amount, v.description, f.id
 from (values
@@ -20,7 +22,9 @@ from (values
     ('c0000000-0000-0000-0000-000000000004', '2026-07-11', 'expense',   3.75, 'metro  ticket ',  'self'),
     ('c0000000-0000-0000-0000-000000000005', '2026-07-16', 'expense',   3.75, 'Metro ticket',    'self'),
     ('c0000000-0000-0000-0000-000000000006', '2026-07-20', 'expense', 400.00, 'Washer',          'self'),
-    ('c0000000-0000-0000-0000-000000000007', '2026-07-20', 'expense', 400.00, 'Dryer',           'self')
+    ('c0000000-0000-0000-0000-000000000007', '2026-07-20', 'expense', 400.00, 'Dryer',           'self'),
+    ('c0000000-0000-0000-0000-000000000008', '2026-07-24', 'expense',  45.00, 'Concert ticket',  'self'),
+    ('c0000000-0000-0000-0000-000000000009', '2026-07-24', 'expense',  45.00, 'Concert ticket',  'self')
 ) as v (id, occurred_on, type, amount, description, funder)
 left join funding_sources as f on f.name = v.funder;
 
@@ -31,3 +35,6 @@ from transactions as t
 join categories as c on c.name = 'Transportation'
 join subcategories as sc on sc.category_id = c.id and sc.name = 'Public transit'
 where t.id::text like 'c0000000-%' and t.type = 'expense';
+
+insert into duplicate_acknowledgements (first_id, second_id)
+values ('c0000000-0000-0000-0000-000000000008', 'c0000000-0000-0000-0000-000000000009');

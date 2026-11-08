@@ -2581,3 +2581,33 @@ DATA_MODEL.md before this; it would make the CHECK unreachable and hide a
 bad write); deleting the dbt test as redundant (loses the nightly guard
 against the CHECK being dropped); keeping the legacy-flag screen as dead
 code (its tests can no longer seed a row).
+
+## 2026-11-07 — Not-a-duplicate acknowledgements live in the database (migration 0021)
+
+The owner reviewed the 35 pairs `no_likely_duplicates` reported (#109):
+34 were real separate payments (same-day tickets, laundry machines, fares)
+and one was a true duplicate, since removed. A warn test that keeps listing
+pairs already ruled on can never go clean, so the rolling issue can never
+close.
+
+- **A table, `duplicate_acknowledgements`.** One row per unordered pair
+  (`first_id < second_id`, primary key on both), each a foreign key to
+  `transactions` with `ON DELETE CASCADE`, so deleting either row drops the
+  acknowledgement and an id never dangles. The test excludes a pair with a
+  `NOT EXISTS` on it.
+- **In the database, not the repo.** The repo is public: a seed or YAML
+  list of acknowledged ids would publish transaction ids next to the
+  reason they were ruled on.
+- **An owner-run SQL snippet, not a bot command.** The ledger-health
+  surface is a GitHub issue, not a Telegram screen, so there is no button
+  to attach one to. A `/notdup` command would add a handler, parsing, tests
+  and a journey for a task done a few times a month. The snippet
+  (TESTING.md, "The nightly dbt build") takes the ids in either order.
+- **Grants by default privilege.** `finflow_dbt` and `finflow_readonly`
+  read it through 0003 and 0013; `finflow_analyst` reads marts only; the
+  Data API roles get nothing (0015, `data_api_roles_reach_nothing`).
+
+**Ruled out:** acknowledged ids in a tracked file (public); a Telegram
+command or button (no surface to attach it to, more code than the task
+earns); marking the transactions themselves (a flag on one row cannot say
+which pair it was cleared from).
