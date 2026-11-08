@@ -491,3 +491,50 @@ models:
         description: >
           Mean of the baseline months' amount_mtd / month_total at the
           matching day, leaving out a month that totals 0.
+
+  - name: fct_subcategory_month
+    description: >
+      One row per (month_start, bucket, subcategory_id) for every month of
+      fct_month_plan and every (bucket, subcategory) pair with an own spend
+      line in one of them, zero-filled. Own spend and line count, the
+      baseline means over the up-to-3 complete months before (zeros
+      included), the delta against it, and a few-lines flag.
+    data_tests:
+      - unique:
+          arguments:
+            column_name: "month_start || '|' || bucket || '|' || subcategory_id"
+    columns:
+      - name: month_start
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('fct_month_plan')
+                field: month_start
+      - name: bucket
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [needs, wants]
+      - name: subcategory_id
+        data_tests: [not_null]
+      - name: category_name
+        data_tests: [not_null]
+      - name: subcategory_name
+        data_tests: [not_null]
+      - name: spend
+        data_tests: [not_null]
+      - name: line_count
+        description: Own lines only, unlike fct_category_month.line_count.
+        data_tests: [not_null]
+      - name: baseline_months
+        data_tests: [not_null]
+      - name: spend_avg_3m
+        description: Mean spend over the baseline months, zeros included; null with none.
+      - name: line_count_avg_3m
+      - name: spend_delta
+        description: spend - spend_avg_3m; null with no baseline.
+      - name: is_few_lines
+        description: Fewer than 6 lines across this month and 3 baseline months' worth.
+        data_tests: [not_null]
