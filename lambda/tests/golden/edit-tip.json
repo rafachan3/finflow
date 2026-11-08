@@ -1,5 +1,5 @@
 {
-  "name": "a correction to the tip changes the amount paid and keeps the tip in the items",
+  "name": "a correction to the tip replaces the old tip: the amount paid and each line follow from the prices, taxes and new tip",
   "input": {
     "kind": "edit",
     "base": "receipt-with-tip",
@@ -11,6 +11,10 @@
         "type": "expense",
         "lines": 2,
         "amount": "34.74",
+        "amounts": [
+          "22.23",
+          "12.51"
+        ],
         "merchant": true,
         "date": true
       }
@@ -21,36 +25,46 @@
     "amount": "34.74",
     "currency": "CAD",
     "date": "2026-10-24",
-    "description": "Club sandwich and garden salad at Riverside Diner",
+    "description": "Riverside Diner",
     "merchant": "Riverside Diner",
     "venue": null,
     "tags": [],
     "is_recurring": false,
     "income_source": null,
+    "from_account": null,
     "to_account": null,
+    "taxes": [
+      "1.25",
+      "2.49"
+    ],
+    "tip": "6.00",
     "items": [
       {
-        "description": "Club sandwich",
-        "amount": "22.24",
+        "description": "Club Sandwich",
+        "price": "16.00",
+        "taxable": false,
         "category": "Food and drink",
         "subcategory": "Restaurants",
         "item_type": "Meals & Prepared Food",
-        "bucket_why": "default wants hint for Restaurants",
+        "tags": [],
+        "bucket_why": "subcategory default hint",
         "bucket": "wants"
       },
       {
-        "description": "Garden salad",
-        "amount": "12.50",
+        "description": "Garden Salad",
+        "price": "9.00",
+        "taxable": false,
         "category": "Food and drink",
         "subcategory": "Restaurants",
         "item_type": "Meals & Prepared Food",
-        "bucket_why": "default wants hint for Restaurants",
+        "tags": [],
+        "bucket_why": "subcategory default hint",
         "bucket": "wants"
       }
     ],
-    "confidence": 1,
+    "confidence": 0.98,
     "funded_by": "self",
     "notes": null
   },
-  "request_sha256": "d697e39210d27a29eabf244b0f0563f6ac6ac9234bf5631d8b58b9b042b8f420"
+  "request_sha256": "1d9efecb0244b1caf28ccc2f53ef5141130373ddbe4e3e83fdf66b41c81cad5d"
 }

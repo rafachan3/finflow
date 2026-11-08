@@ -172,6 +172,14 @@ describe("validateExtraction", () => {
     }
   });
 
+  it("rejects a tax or tip that is not two-decimal", () => {
+    expect(validateExtraction(expense({ taxes: ["0.40"], tip: "2.00" }), taxonomy).errors).toEqual([]);
+    expect(validateExtraction(expense({ taxes: ["0.4"], tip: "2" }), taxonomy).errors).toEqual([
+      "tax and tip must be two-decimal: 0.4",
+      "tax and tip must be two-decimal: 2",
+    ]);
+  });
+
   it("rejects an item_type from a different category than the subcategory", () => {
     const result = validateExtraction(
       expense({
