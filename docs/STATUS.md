@@ -586,14 +586,17 @@ The backfill is done: June-October 2026 are complete months. PR 6 (#115)
 merged with migration 0020 applied. Next, in order:
 
 1. Deterministic tax/tip PR: merged as #118 (squash `c69a590`); `Deploy
-   ingest Lambda` run 42448444674 succeeded. In progress: the receipt
-   follow-up PR (a golden for the model reading taxable codes, and
-   whole-order discounts) on `fix/receipt-tax-codes-and-order-discounts`.
+   ingest Lambda` run 42448444674 succeeded. The receipt follow-up (a golden
+   for the model reading taxable codes, and whole-order discounts) merged as
+   #122 (`f39374e`); CI and the deploy on it passed. `make check` now runs the
+   same checks as CI (#123, `8f42359`).
 2. A not-a-duplicate acknowledgement for ledger-health: merged as #117
-   (`2f7275f`); confirm migration 0021 is applied to production. Now the owner
-   acknowledges the 34 pairs of #109, and any pairs the new reworded
-   test lists that are real, so the issue can close.
-3. Card redesign (#89 #92 #96 #97): brainstorm with the owner first.
+   (`2f7275f`); migration 0021 is applied to production (`supabase migration
+   list --linked`, 2026-11-08). The owner acknowledged the pairs and #109 is
+   closed.
+3. Card redesign (#89 #92 #96 #97): #89 and #96 are data-correctness bugs and
+   go next, one at a time (they share prompts and goldens under the 20-case
+   eval cap, 19 used); #92 and #97 wait until after the first dashboards.
 4. Phase 5 (Grafana). PR A, the planning marts, was built before the card
    redesign at the owner's request (below) and merged as #119 (`a2b5dc2`);
    the production `dbt-nightly` dispatched after merge passed (run
