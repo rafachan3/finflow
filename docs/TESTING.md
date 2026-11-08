@@ -342,7 +342,8 @@ A listed pair that is two real payments (two tickets, two laundry
 machines) is acknowledged in the database, never in this repo: the owner
 runs this in the Supabase SQL editor (as `postgres`) with the two ids from
 the issue, in either order, and the next night leaves the pair out.
-Deleting either transaction drops the acknowledgement with it.
+Deleting either transaction drops the acknowledgement with it. Three
+identical rows make three pairs, and each pair needs its own insert.
 
 ```sql
 insert into duplicate_acknowledgements (first_id, second_id)
