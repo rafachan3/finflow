@@ -1,8 +1,8 @@
 name: dbt nightly
 
 # `dbt build` and the metric check against PRODUCTION, as finflow_dbt
-# (docs/TESTING.md, "The nightly dbt build"). The marts are rebuilt in full,
-# so late and backfilled rows land in their month on the next run.
+# (docs/TESTING.md, "The nightly dbt build"). The mart views are recreated
+# in full, so late and backfilled rows land in their month on the next run.
 #
 # Only schedule and workflow_dispatch: the FINFLOW_DBT_* secrets must never
 # be reachable from pull_request code (the repo is public and takes fork

@@ -185,7 +185,11 @@ jobs:
                                 user="finflow_analyst", password="finflow_analyst")
           db.autocommit = True
           cur = db.cursor()
-          cur.execute("select tablename from pg_tables where schemaname = 'marts'")
+          cur.execute(
+              "select table_name from information_schema.tables "
+              "where table_schema = 'marts' and table_type in "
+              "('BASE TABLE', 'VIEW')"
+          )
           marts = sorted(r[0] for r in cur.fetchall())
           expected = sorted(["dim_date", "fct_category_month", "fct_monthly_summary", "fct_transactions",
                              "fct_month_plan", "fct_pace_day",
