@@ -19,7 +19,6 @@ function row(seriesId: number | null, date: string, amount: string, over: Partia
     fromAccountId: null,
     toAccountId: null,
     seriesId,
-    flagged: seriesId !== null,
     merchant: null,
     source: null,
     ...over,

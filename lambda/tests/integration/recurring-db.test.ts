@@ -58,9 +58,9 @@ describe("loadBook", () => {
         keywords: [], subcategory: "Bills › Internet and phone", source: null, fromAccount: null, toAccount: null,
       },
     ]);
-    expect(book.rows.map((r) => [r.id, r.date, r.type, r.amount, r.seriesId, r.flagged, r.merchant, r.source, r.subcategoryId])).toEqual([
-      [tx, "2026-10-15", "expense", "64.99", sid, true, "Acme Mart", null, sub.id],
-      [pay, "2026-10-16", "income", "2000.00", null, false, null, "Salary", null],
+    expect(book.rows.map((r) => [r.id, r.date, r.type, r.amount, r.seriesId, r.merchant, r.source, r.subcategoryId])).toEqual([
+      [tx, "2026-10-15", "expense", "64.99", sid, "Acme Mart", null, sub.id],
+      [pay, "2026-10-16", "income", "2000.00", null, null, "Salary", null],
     ]);
     expect(book.pauses.get(sid)).toEqual([{ from: "2026-09-01", until: null }]);
     expect(book.skips.get(sid)).toEqual(["2026-08-15"]);
@@ -267,22 +267,7 @@ describe("applyReview", () => {
   });
 });
 
-describe("clearFlags and dismissGroup", () => {
-  it("clears the flag only on picked rows in no series, once", async () => {
-    const legacy = await internet("2026-09-15", { flagged: true });
-    const kept = await internet("2026-09-20", { flagged: true });
-    const linked = await internet("2026-10-15");
-    await created(linked);
-
-    expect(await rdb.clearFlags([legacy, linked])).toBe(1);
-    expect(await rdb.clearFlags([legacy])).toBe(0);
-    expect(await links()).toMatchObject({
-      [legacy]: { flagged: false },
-      [kept]: { flagged: true },
-      [linked]: { flagged: true },
-    });
-  });
-
+describe("dismissGroup", () => {
   it("records a dismissed group once", async () => {
     expect(await rdb.dismissGroup("desc:gym")).toBe(true);
     expect(await rdb.dismissGroup("desc:gym")).toBe(false);

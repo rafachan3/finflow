@@ -134,8 +134,8 @@ describe("menu screens reached from the digest", () => {
 });
 
 describe("leaving the add screen", () => {
-  it("‹ Back on the add screen returns to the pick list, the flags or the suggestions it came from, and Cancel to the list", async () => {
-    await ledger.add({ ...bill("2026-09-01", "45.00", "Phone bill"), flagged: true });
+  it("‹ Back on the add screen returns to the pick list it came from, and Cancel to the list", async () => {
+    await ledger.add(bill("2026-09-01", "45.00", "Phone bill"));
     const menu = await open();
     await chat.tap(menu, "➕ Add");
     await chat.tap(menu, "Sep 1 · 45.00 · Phone bill");
@@ -143,13 +143,7 @@ describe("leaving the add screen", () => {
     await chat.tap(menu, "‹ Back");
     expect(chat.current(menu).text.split("\n")[0]).toBe("➕ Add a recurring item");
 
-    await chat.tap(menu, "‹ All recurring");
-    await chat.tap(menu, "⚑ Flagged (1)");
-    await chat.tap(menu, "➕");
-    await chat.tap(menu, "‹ Back");
-    expect(chat.current(menu).text.split("\n")[0]).toBe("⚑ Flagged recurring, in no series (1)");
-
-    await chat.tap(menu, "➕");
+    await chat.tap(menu, "Sep 1 · 45.00 · Phone bill");
     await chat.tap(menu, "Cancel");
     expect(chat.current(menu).text.split("\n")[0]).toBe("↻ Recurring · 0 tracked");
     expect(await sql("SELECT count(*)::int AS n FROM recurring_series")).toEqual([{ n: 0 }]);

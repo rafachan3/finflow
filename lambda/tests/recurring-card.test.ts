@@ -18,7 +18,7 @@ function series(over: Partial<BookSeries>): BookSeries {
 function row(date: string, amount: string, over: Partial<BookRow> = {}): BookRow {
   return {
     id: `tx-${date}`, date, type: "expense", amount, description: "Phone bill", merchantId: null, subcategoryId: 7,
-    incomeSourceId: null, fromAccountId: null, toAccountId: null, seriesId: 1, flagged: true, merchant: null,
+    incomeSourceId: null, fromAccountId: null, toAccountId: null, seriesId: 1, merchant: null,
     source: null, ...over,
   };
 }
@@ -30,7 +30,7 @@ function book(s: BookSeries[], rows: BookRow[]): Book {
 // Design §C.8 row 7b: 45.00, 61.25 (one-off surcharge), 45.00 → band [40.50, 49.50].
 const history = [row("2026-06-15", "45.00"), row("2026-07-15", "61.25"), row("2026-08-14", "45.00")];
 const card = (amount: string, over: Partial<BookRow> = {}) =>
-  row("2026-09-15", amount, { id: CARD, seriesId: null, flagged: false, ...over });
+  row("2026-09-15", amount, { id: CARD, seriesId: null, ...over });
 
 describe("the series a card proposes", () => {
   it("proposes a strong match, with a note only outside its band", () => {

@@ -12,8 +12,6 @@ import type { Cadence, LedgerRow, Pause, Series } from "./recurring.js";
 
 /** A saved transaction as the recurring screens read it. */
 export interface BookRow extends LedgerRow {
-  /** is_recurring: true when linked, or a legacy flag (Gemini's guess, the Notion import) with no series. */
-  flagged: boolean;
   merchant: string | null;
   source: string | null;
 }
@@ -75,7 +73,7 @@ export async function loadBook(): Promise<Book> {
             ${DOMINANT_SUBCATEGORY("t")} AS "subcategoryId",
             t.income_source_id AS "incomeSourceId", t.from_account_id AS "fromAccountId",
             t.to_account_id AS "toAccountId", t.recurring_series_id AS "seriesId",
-            t.is_recurring AS flagged, m.name AS merchant, src.name AS source
+            m.name AS merchant, src.name AS source
      FROM transactions t
      LEFT JOIN merchants m ON m.id = t.merchant_id
      LEFT JOIN income_sources src ON src.id = t.income_source_id
@@ -321,17 +319,6 @@ export async function applyReview(
     [seriesId, link, ignore],
   );
   return res.rows[0] ?? null;
-}
-
-/** Clears the legacy is_recurring flag of picked rows that are in no series; how many it cleared. */
-export async function clearFlags(transactionIds: string[]): Promise<number> {
-  const db = await getPool();
-  const res = await db.query(
-    `UPDATE transactions SET is_recurring = false
-     WHERE id = ANY($1::uuid[]) AND recurring_series_id IS NULL AND is_recurring`,
-    [transactionIds],
-  );
-  return res.rowCount ?? 0;
 }
 
 // ---- Digest runs (migration 0019) -------------------------------------------
