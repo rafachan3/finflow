@@ -286,15 +286,21 @@ describe("recurring series", () => {
     expect(await flag(tx)).toEqual({ is_recurring: false, recurring_series_id: null });
   });
 
-  it("keeps a legacy flag on an unlinked insert and through merchant linking, and lets it be cleared", async () => {
-    // Transitional (migration 0016): Confirm still writes Gemini's guess until
-    // the card links series; 0017 closes the guarantee after the backfill.
-    const tx = await expense(null, true);
-    expect(await flag(tx)).toEqual({ is_recurring: true, recurring_series_id: null });
+  it("refuses is_recurring without a series, and takes a linked insert", async () => {
+    // Migration 0020: the flag is exactly the link (23514 = check_violation).
+    expect(
+      await errorCode(
+        `insert into transactions (occurred_on, type, amount, description, funding_source_id, is_recurring)
+         values ('2026-10-15', 'expense', 64.99, 'Internet bill', ${SELF}, true)`,
+      ),
+    ).toBe("23514");
+    const internet = await series("Internet bill");
+    // Linked with the flag given false: the trigger still marks it recurring.
+    const tx = await expense(internet, false);
+    expect(await flag(tx)).toEqual({ is_recurring: true, recurring_series_id: internet });
+    // An unrelated update keeps a linked row valid.
     await sql(`update transactions set merchant_id = (select id from merchants where name = 'Acme Mart') where id = '${tx}'`);
-    expect((await flag(tx)).is_recurring).toBe(true);
-    await sql(`update transactions set is_recurring = false where id = '${tx}'`);
-    expect((await flag(tx)).is_recurring).toBe(false);
+    expect(await flag(tx)).toEqual({ is_recurring: true, recurring_series_id: internet });
   });
 
   it("deleting a series unlinks its transactions and clears their flag", async () => {

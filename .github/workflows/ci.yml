@@ -268,7 +268,7 @@ jobs:
           # on a ledger that breaks an invariant.
           jq -e '[.results[] | select(.status == "fail" or .status == "error") | .unique_id]
             == ["test.finflow.expense_lines_sum_to_header"]' target/run_results.json
-      - name: misdated rows fail occurred_on_within_ledger, and a likely duplicate and an unlinked recurring row warn with their ids
+      - name: misdated rows fail occurred_on_within_ledger, and a likely duplicate warns with its ids
         run: |
           env=$(python scripts/test_db.py fixtures/ledger_health.sql)
           eval "$env"
@@ -279,10 +279,9 @@ jobs:
           jq -e '[.results[] | select(.status == "fail" or .status == "error") | "\(.unique_id) \(.failures)"]
             == ["test.finflow.occurred_on_within_ledger 2"]' target/run_results.json
           jq -e '[.results[] | select(.status == "warn") | "\(.unique_id) \(.failures)"] | sort
-            == ["test.finflow.no_likely_duplicates 1", "test.finflow.recurring_flag_has_series 1"]' target/run_results.json
+            == ["test.finflow.no_likely_duplicates 1"]' target/run_results.json
           python scripts/ledger_health.py | tee report.md
           grep -qx -- '- `c0000000-0000-0000-0000-000000000004` and `c0000000-0000-0000-0000-000000000003`' report.md
-          grep -qx -- '- `c0000000-0000-0000-0000-000000000008`' report.md
           if grep -qiE 'metro|washer|dryer|withheld|[0-9]\.[0-9]{2}' report.md; then
             echo "::error::ledger_health.py printed more than test names, counts and ids"
             exit 1
