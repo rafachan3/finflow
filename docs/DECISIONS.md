@@ -2810,3 +2810,43 @@ into the line amounts itself, so this was a friction regression.
 ledger would hold a negative line); putting the whole discount on the
 largest line (it shifts the needs/wants split); sharing the discount over
 the taxed lines only (a coupon is off the order, not off the taxed goods).
+
+## 2026-11-08 — A machine cycle has no goods item type: a prompt rule, not a code guard (#89)
+
+The overload fallback model gave a laundromat washer cycle `Housing /
+Laundry / Laundry Supply`; the main model answered `Housing / Laundry` with
+no item type for the same message. This is model judgement, not a taxonomy
+gap, so the taxonomy data (and its seed migration) is unchanged.
+
+- **The rule.** TAXONOMY.md classification rule 8, and the same sentence in
+  all four prompts (`ITEM_TYPE_GOODS`): an item type that names goods is for
+  the goods themselves, so a line paying for a machine cycle instead of
+  goods keeps its subcategory and has no item type. It names machine
+  cycles, not services: "never for a service" could lead a light model to
+  drop Meals & Prepared Food from restaurant lines (rules 3-4). Membership,
+  Cleaning Product and dryer sheets (Laundry Supply) are unaffected.
+- **The guard.** Golden `laundromat-cycles` ("5 - washing machine, 3 -
+  dryer") with a new `classes` expectation (each line's category /
+  subcategory / item type as the card prints it), a unit test for the
+  prompt sentence, and a journey that the saved lines carry no item type.
+  `receipt-with-tip` (a clear sit-down receipt) pins its restaurant lines to
+  Meals & Prepared Food with `classes`, so an over-broad reading of the rule
+  fails the eval. `paid-by-family` gets no `classes`: "dinner at Salad Bar"
+  may fairly be Takeout / Quick Service, and a flaky pin in a required check
+  blocks PRs. It takes the 20th golden slot, which the 2026-11-08
+  discount entry had pencilled in for a `receipt-order-discount` case; that
+  case now needs a slot freed first.
+- **Not yet proven for every model.** The issue's wrong answer came from
+  Flash-Lite. The one live recording was answered by gemini-3.6-flash, so
+  "whichever model answers" holds only once the nightly rotation has sent
+  `laundromat-cycles` to Flash-Lite and it passed.
+- **Hashes.** The prompt change makes every golden's `request_sha256`
+  stale. CI does not commit them: the PR's eval run uploads refreshed
+  goldens as its `goldens` artifact, and someone commits that by hand.
+
+**Ruled out:** a post-extraction code guard that clears `Laundry Supply`
+when a line's text names a machine cycle. The taxonomy has no column that
+marks an item type as goods-only, so the guard would need a migration plus a
+keyword list; "dryer" also names a supply ("dryer sheets"), so the keyword
+match would clear correct answers. The rule fixes the cause in the place
+the model reads.
