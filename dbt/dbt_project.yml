@@ -17,6 +17,10 @@ vars:
   # Toronto's today, fixed (toronto_today). Empty means the real today;
   # only test_db.py sets it, so the fixture's current month never moves.
   today: "{{ env_var('FINFLOW_TODAY', '') }}"
+  # Rolling window lengths in months for fct_month_rolling
+  # (SEMANTIC_LAYER.md, "Rolling N months"). fct_month_plan.*_pct_3m is
+  # N = 3, unchanged. Production uses this default.
+  window_months: [3, 12]
 
 models:
   finflow:
