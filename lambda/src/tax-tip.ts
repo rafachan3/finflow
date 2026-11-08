@@ -52,15 +52,25 @@ export function lineAmounts(lines: PricedLine[], taxes: Money[], tip: Money | nu
   return p.map((c, i) => money(c + taxShares[i] + tipShares[i]));
 }
 
+/** A card's money as an Edit sees it; `price` is absent on cards stored before 2026-11-07. */
+export type EditParts = {
+  amount: Money;
+  taxes?: Money[];
+  tip?: Money | null;
+  items: { amount: Money; price?: Money; taxable?: boolean }[];
+};
+
 /**
  * An Edit's header. A correction that leaves the total alone (a new tip, tax
  * or price) gets the sum of its recomputed lines, so the model does no
  * arithmetic. A total the correction changed stands, and the line-sum check
- * judges it.
+ * judges it. A card stored before prices keeps its total: its line amounts
+ * already hold the tax and tip, so a recomputed sum would count a tip twice.
  */
-export function editedTotal(patched: Money, current: Money, lines: Money[]): Money {
-  const cents = lines.map(parseCents);
-  const same = parseCents(patched) !== null && parseCents(patched) === parseCents(current);
-  if (!same || cents.length === 0 || cents.includes(null)) return patched;
+export function editedTotal(patched: EditParts, current: EditParts): Money {
+  const cents = patched.items.map((i) => parseCents(i.amount));
+  const same = parseCents(patched.amount) !== null && parseCents(patched.amount) === parseCents(current.amount);
+  const priced = current.items.every((i) => i.price !== undefined);
+  if (!same || !priced || cents.length === 0 || cents.includes(null)) return patched.amount;
   return money((cents as number[]).reduce((a, b) => a + b, 0));
 }

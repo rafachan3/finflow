@@ -123,17 +123,44 @@ describe("lineAmounts", () => {
 });
 
 describe("editedTotal", () => {
+  // The diner card as stored, and the same card after a tip correction to 6.00.
+  const before = {
+    amount: "33.24",
+    taxes: ["1.25", "2.49"],
+    tip: "4.50",
+    items: [
+      { price: "16.00", taxable: false, amount: "21.27" },
+      { price: "9.00", taxable: false, amount: "11.97" },
+    ],
+  };
+  const newTip = (amount: string) => ({
+    ...before,
+    amount,
+    tip: "6.00",
+    items: [
+      { price: "16.00", taxable: false, amount: "22.23" },
+      { price: "9.00", taxable: false, amount: "12.51" },
+    ],
+  });
+
   it("follows the recomputed lines when the correction left the total alone", () => {
-    expect(editedTotal("33.24", "33.24", ["22.23", "12.51"])).toBe("34.74");
+    expect(editedTotal(newTip("33.24"), before)).toBe("34.74");
   });
 
   it("keeps a total the correction changed, for the line-sum check to judge", () => {
-    expect(editedTotal("14.50", "14.00", ["14.50"])).toBe("14.50");
-    expect(editedTotal("39.24", "33.24", ["22.23", "12.51"])).toBe("39.24");
+    expect(editedTotal(newTip("39.24"), before)).toBe("39.24");
+    const lunch = { amount: "14.00", items: [{ price: "14.00", taxable: false, amount: "14.00" }] };
+    expect(editedTotal({ ...lunch, amount: "14.50", items: [{ ...lunch.items[0], price: "14.50", amount: "14.50" }] }, lunch)).toBe("14.50");
   });
 
   it("keeps the total when there are no lines or a line is not two-decimal", () => {
-    expect(editedTotal("50.00", "50.00", [])).toBe("50.00");
-    expect(editedTotal("50.00", "50.00", ["5"])).toBe("50.00");
+    expect(editedTotal({ ...before, tip: "6.00", items: [] }, before)).toBe("33.24");
+    expect(editedTotal({ ...newTip("33.24"), items: [{ price: "16.00", taxable: false, amount: "5" }] }, before)).toBe("33.24");
+  });
+
+  it("keeps the stored total on a card stored before prices, whose lines already hold its tax and tip", () => {
+    const old = { amount: "50.00", items: [{ amount: "50.00" }] };
+    const patched = { amount: "50.00", taxes: [], tip: "8.00", items: [{ price: "50.00", taxable: false, amount: "58.00" }] };
+    expect(editedTotal(patched, old)).toBe("50.00");
   });
 });

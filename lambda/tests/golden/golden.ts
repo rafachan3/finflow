@@ -1,6 +1,6 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { canonicalTags } from "../../src/extraction.js";
-import { editedTotal, lineAmounts } from "../../src/tax-tip.js";
+import { editedTotal, lineAmounts, type EditParts } from "../../src/tax-tip.js";
 
 /**
  * One owner message per file: the input, the shape Gemini's answer must have,
@@ -114,15 +114,28 @@ function shared(e: RawEvent): RawEvent {
   return amounts ? { ...e, items: items.map((i, j) => ({ ...i, amount: amounts[j] })) } : e;
 }
 
+/** An answer's money as patchExtraction sees it: asExtraction reads a line with no price as priced at its amount. */
+function editParts(e: RawEvent): EditParts {
+  return {
+    amount: String(e.amount ?? ""),
+    taxes: names(e.taxes),
+    tip: e.tip === null || e.tip === undefined || e.tip === "" ? null : String(e.tip),
+    items: (e.items ?? []).map((i) => ({
+      amount: String(i.amount ?? ""),
+      price: String(i.price ?? i.amount ?? ""),
+      taxable: i.taxable === true,
+    })),
+  };
+}
+
 /** An edit records one extraction; every other case records `{ events }`. Judged as the bot reads them. */
 export function recordedEvents(g: Golden): RawEvent[] {
   if (g.input.kind === "edit") {
     const e = shared(g.recorded as RawEvent);
     if (e.type !== "expense") return [e];
     // The total patchExtraction keeps, against the base case's answer.
-    const current = String(recordedEvents(golden(g.input.base))[0]?.amount ?? "");
-    const lines = (e.items ?? []).map((i) => String(i.amount ?? ""));
-    return [{ ...e, amount: editedTotal(String(e.amount ?? ""), current, lines) }];
+    const base = recordedEvents(golden(g.input.base))[0] ?? {};
+    return [{ ...e, amount: editedTotal(editParts(e), editParts(base)) }];
   }
   return ((g.recorded as { events?: RawEvent[] }).events ?? []).map(shared);
 }

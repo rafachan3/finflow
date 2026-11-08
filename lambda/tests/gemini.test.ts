@@ -1178,6 +1178,16 @@ describe("multi-event extraction", () => {
         ["11.97", false],
       ]);
     });
+
+    it("keeps the stored total on a card stored before prices, so a tip already inside its line fails the line-sum check", async () => {
+      // One 50.00 line that already holds a 5.00 tip; the model answers tip 8.00 and keeps the total.
+      const old = { ...current, amount: "50.00", items: [{ ...current.items[0], amount: "50.00" }] };
+      const answer = { ...extracted, amount: "50.00", taxes: [], tip: "8.00", items: [{ ...extracted.items[0], price: "50.00" }] };
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => geminiJson(answer) }));
+      const result = await patchExtraction({ apiKey: "k", current: old as Extraction, correction: "tip was 8", taxonomy, bucketRules: "", today: "2026-08-17" });
+      expect(result.amount).toBe("50.00");
+      expect(result.items.map((i) => i.amount)).toEqual(["58.00"]);
+    });
   });
 
   /** The system prompt of each of the four calls: text, photo, voice, Edit. */
