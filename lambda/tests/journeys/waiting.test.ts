@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { golden } from "../golden/golden.js";
-import { chat, gemini, labels, ledger, useJourneys } from "./harness.js";
+import { chat, gemini, labels, ledger, todayToronto, useJourneys } from "./harness.js";
 
 vi.mock("../../src/config.js", async () => {
   const { journeyConfig } = await import("./harness.js");
@@ -47,7 +47,7 @@ describe("a card waiting for a date", () => {
     expect((await ledger.ingestions())[0].status).toBe("pending");
     const resent = chat.last();
     // Resent like /pending: no (i of n) from the original batch.
-    expect(resent.text.split("\n")[0]).toBe("Expense · 2026-11-02 · CAD 3.00");
+    expect(resent.text.split("\n")[0]).toBe(`Expense · ${todayToronto()} · CAD 3.00`);
     expect(labels(resent)).toEqual(["Confirm", "Discard", "Fix date", "Edit"]);
     await chat.tap(resent, "Confirm");
     expect(await ledger.transactions()).toMatchObject([{ amount: "3.00" }]);
