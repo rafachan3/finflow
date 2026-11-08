@@ -326,14 +326,14 @@ here so the dashboard and the agent compute them the same way.
   `from_account_kind`, the kind of the account left.
 - **Rolling mean of a slice:** the mean of a filtered slice's own spend
   over month M and the 2 months before it, over `fct_month_plan`'s month
-  list, so a month with no matching line counts as 0. Null for the first
-  two months of the list. For the current month it includes month-to-date
-  spend, so `is_complete_month` marks it.
+  list, so a month with no matching line counts as 0. Like the rolling
+  shares, it is null unless all three months are complete: the first two
+  months of the list and the current month have none.
 
   ```sql
   select p.month_start, p.is_complete_month,
          coalesce(s.spend, 0) as spend,
-         case when count(*) over w = 3
+         case when count(*) filter (where p.is_complete_month) over w = 3
               then round(avg(coalesce(s.spend, 0)) over w, 2) end as spend_mean_3m
   from marts.fct_month_plan p
   left join (
