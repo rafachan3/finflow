@@ -1,5 +1,5 @@
 {
-  "name": "two items with no place stay one purchase with two lines",
+  "name": "two items with no place and no date stay one purchase with two lines, the date and note left empty",
   "input": {
     "kind": "text",
     "text": "12 lunch and 4 coffee"
@@ -9,7 +9,9 @@
       {
         "type": "expense",
         "lines": 2,
-        "merchant": false
+        "merchant": false,
+        "date": false,
+        "note": false
       }
     ]
   },

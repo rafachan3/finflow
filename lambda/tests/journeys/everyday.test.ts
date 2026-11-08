@@ -84,15 +84,15 @@ describe("logging one purchase", () => {
   });
 
   it("a purchase with no date uses today, warns, and can still be confirmed", async () => {
-    gemini.extract = golden("no-date-text").recorded;
+    gemini.extract = golden("no-place-lines").recorded;
     const before = todayToronto();
-    await chat.text("4.50 coffee");
+    await chat.text("12 lunch and 4 coffee");
     const after = todayToronto();
 
     const card = chat.last();
     // A run that crosses midnight may default to either day.
     const header = card.text.split("\n")[0];
-    expect(header).toMatch(/^Expense · \d{4}-\d{2}-\d{2} · CAD 4\.50$/);
+    expect(header).toMatch(/^Expense · \d{4}-\d{2}-\d{2} · CAD 16\.00$/);
     const date = header.split(" · ")[1];
     expect([before, after]).toContain(date);
     expect(card.text).toContain("! date defaulted to today");

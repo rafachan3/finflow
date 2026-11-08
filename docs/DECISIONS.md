@@ -2752,3 +2752,24 @@ card, and the owner states the total.
 
 **Ruled out:** inferring from the correction text which field it targets
 (another model judgement in the money path).
+
+## 2026-11-08 — Keep `transfer`; retire `no-date-text` to free a golden slot
+
+The 20-case cap stays (the eval project's free Flash quota). A new case
+needs a slot, and two looked redundant.
+
+- **`transfer` stays.** It is the only case where Gemini reads a deposit:
+  money moved from chequing into an account (`from_account` null,
+  `to_account` set), the most common transfer. `transfer-withdrawal` covers
+  a withdrawal (from an account to chequing) and a move between two
+  accounts, never a deposit. A deposit read as coming from "chequing" (not
+  an account) would lose Confirm, and only `transfer` would catch it live.
+- **`no-date-text` goes.** It checked that a dateless text leaves the date
+  empty and adds no note. `no-place-lines` ("12 lunch and 4 coffee") is also
+  a dateless text with no reason, and its recording already satisfied both
+  checks, so it now asserts `date: false` and `note: false`. The
+  dateless-text journey replays it. `receipt-no-date` and `voice-note` still
+  check a missing date on a photo and a voice note.
+
+**Ruled out:** raising the cap (more Lite answers on busy days; see the
+2026-11-07 eval-cap research); retiring `transfer` (above).
