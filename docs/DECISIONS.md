@@ -2850,3 +2850,57 @@ marks an item type as goods-only, so the guard would need a migration plus a
 keyword list; "dryer" also names a supply ("dryer sheets"), so the keyword
 match would clear correct answers. The rule fixes the cause in the place
 the model reads.
+
+## 2026-11-08 — A header that holds another funder's lines drops them, in code (#96)
+
+A message listing purchases paid by another person and purchases the owner
+paid gave two cards, one per funder, but the first header held the whole
+message: 126.00 over lines of 120.00, the 6.00 being the owner's lines on
+the second card. The line-sum check refused it, so nothing wrong was saved,
+but the owner had to fix it by hand.
+
+- **The split already exists.** `funded_by` is a field of the event, not
+  of a line, in both the extraction and the Edit schemas. One event, and so
+  one card or stored transaction, can never hold two funders, and no code
+  partition by line is possible or needed. What can leak is a header total.
+- **What code does** (`withoutLeakedTotals`, integer cents, after each
+  event's discount, tax and tip are shared over its own lines and before
+  validation). When an expense header exceeds its own line sum by exactly
+  the line sums of all the other expenses in the same message with a
+  different funder, its own line sum replaces it. Order and every other
+  field are kept.
+- **The card says so.** The replaced header is kept as `stated_amount`, and
+  the card shows `! total 126.00 included 6.00 from the other funder's
+  card; using 120.00`. Confirm stays. A card whose header already matched
+  shows no such line. An Edit drops `stated_amount` with the rest of the
+  model's answer, so the warning goes with it.
+- **Tax, tip and discount** are parts of one event. Code shares them only
+  over that event's lines, so they never cross a funder. A sibling counts by
+  its lines as paid (tax and tip in), so a leak of its pre-tax price does
+  not match.
+- **Refuse otherwise.** Any other gap, a header below its lines, a gap
+  that only some of the other funders' lines explain (a partial leak among
+  three funders), or one that only a same-funder sibling explains keeps the
+  header, and the card
+  fails the line-sum check with nothing saved. Same-funder grouping is #97
+  and is left to it.
+- **Edit.** The patch returns one event with one `funded_by`, so an Edit
+  that names who paid for one line changes the funder of the whole
+  transaction. It cannot create a mixed one; it has no siblings, so the rule
+  does not run there.
+
+The risk that remains: a header that is right while a line is misread,
+with a gap that happens to equal the differently funded siblings to the
+cent (a 10.00 header over 6.00 of lines next to a 4.00 sibling), gets the
+misread total and Confirm. No narrower rule tells that apart from #96, so
+the warning line puts it in front of the owner instead of passing silently.
+
+**Ruled out:** a subset search (the first version: any subset of the other
+funders' lines). A model that leaks the whole message leaks every sibling,
+so the subset only added matches, and each extra match is another chance
+of the coincidence above; a partial leak now fails safe. A prompt rule
+(stale goldens, about 20 live calls, and it would hold only for the model
+that reads it); always recomputing a mixed
+message's headers from the lines (drops the receipt total as a check on
+every misread line); a `funded_by` per line (a schema change, and a line
+never has a funder of its own).

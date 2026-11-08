@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { parseCents } from "../src/extraction.js";
-import { allocate, discountsOf, editedTotal, lineAmounts, type PricedLine } from "../src/tax-tip.js";
+import {
+  allocate,
+  discountsOf,
+  editedTotal,
+  lineAmounts,
+  withoutLeakedTotals,
+  type FundedEvent,
+  type PricedLine,
+} from "../src/tax-tip.js";
 
 /** Deterministic pseudo-random cases (mulberry32), so a failure reproduces. */
 function rng(seed: number): () => number {
@@ -264,5 +272,68 @@ describe("editedTotal", () => {
     const old = { amount: "50.00", items: [{ amount: "50.00" }] };
     const patched = { amount: "50.00", taxes: [], tip: "8.00", items: [{ price: "50.00", taxable: false, amount: "58.00" }] };
     expect(editedTotal(patched, old)).toBe("50.00");
+  });
+});
+
+describe("withoutLeakedTotals", () => {
+  const expense = (amount: string, funded_by: string, ...lines: string[]): FundedEvent & { type: string } => ({
+    type: "expense",
+    amount,
+    funded_by,
+    items: lines.map((l) => ({ amount: l })),
+  });
+  const headers = (events: FundedEvent[]) => withoutLeakedTotals(events).map((e) => e.amount);
+
+  it("takes another funder's lines out of a header that holds the whole message, keeping order", () => {
+    const events = [expense("126.00", "family", "20.00", "100.00"), expense("6.00", "self", "4.00", "2.00")];
+    const out = withoutLeakedTotals(events);
+    expect(out.map((e) => e.amount)).toEqual(["120.00", "6.00"]);
+    expect(out.map((e) => e.stated_amount)).toEqual(["126.00", undefined]);
+  });
+
+  it("fixes every header when each carries the message total", () => {
+    const events = [expense("126.00", "family", "20.00", "100.00"), expense("126.00", "self", "4.00", "2.00")];
+    expect(headers(events)).toEqual(["120.00", "6.00"]);
+  });
+
+  it("leaves a single funder alone, even a mismatched header", () => {
+    expect(headers([expense("126.00", "family", "20.00", "100.00")])).toEqual(["126.00"]);
+    const same = [expense("126.00", "family", "20.00", "100.00"), expense("6.00", "family", "4.00", "2.00")];
+    const out = withoutLeakedTotals(same);
+    expect(out.map((e) => e.amount)).toEqual(["126.00", "6.00"]);
+    expect(out[0]).toBe(same[0]);
+    expect(out[0].stated_amount).toBeUndefined();
+  });
+
+  it("with three funders, takes out all the other funders' lines and refuses a partial leak", () => {
+    const sibs = [expense("5.00", "family", "5.00"), expense("3.00", "friend", "3.00")];
+    expect(headers([expense("18.00", "self", "10.00"), ...sibs])).toEqual(["10.00", "5.00", "3.00"]);
+    expect(headers([expense("13.00", "self", "10.00"), ...sibs])).toEqual(["13.00", "5.00", "3.00"]);
+    expect(headers([expense("15.00", "self", "10.00"), ...sibs])).toEqual(["15.00", "5.00", "3.00"]);
+  });
+
+  it("keeps a header whose gap matches no other funder's lines, so the line-sum check refuses it", () => {
+    const sib = expense("6.00", "self", "4.00", "2.00");
+    expect(headers([expense("125.00", "family", "20.00", "100.00"), sib])).toEqual(["125.00", "6.00"]);
+    expect(headers([expense("110.00", "family", "20.00", "100.00"), sib])).toEqual(["110.00", "6.00"]);
+  });
+
+  it("keeps an event's own tip, tax and discount, which are already in its line amounts", () => {
+    const tipped = lineAmounts([{ price: "20.00", taxable: false }], [], "2.00") as string[];
+    const sib = expense("4.00", "self", "4.00");
+    expect(headers([expense("26.00", "family", ...tipped), sib])).toEqual(["22.00", "4.00"]);
+    const discounted = lineAmounts([{ price: "20.00", taxable: false }], [], null, ["2.00"]) as string[];
+    expect(headers([expense("22.00", "family", ...discounted), sib])).toEqual(["18.00", "4.00"]);
+  });
+
+  it("does not take out a sibling's pre-tax price when its lines hold tax", () => {
+    const taxed = lineAmounts([{ price: "4.00", taxable: true }], ["0.60"], null) as string[];
+    const events = [expense("124.00", "family", "20.00", "100.00"), expense("4.60", "self", ...taxed)];
+    expect(headers(events)).toEqual(["124.00", "4.60"]);
+  });
+
+  it("never counts or changes income, which has no lines", () => {
+    const income = { type: "income", amount: "120.00", funded_by: null, items: [] };
+    expect(headers([expense("126.00", "family", "20.00", "100.00"), income])).toEqual(["126.00", "120.00"]);
   });
 });

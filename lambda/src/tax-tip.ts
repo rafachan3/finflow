@@ -66,6 +66,41 @@ export function lineAmounts(
   return net.map((c, i) => money(c + taxShares[i] + tipShares[i]));
 }
 
+/** An event as the funder rule sees it: its header, funder and line amounts paid. */
+export type FundedEvent = {
+  amount: Money;
+  funded_by: string | null;
+  items: { amount: Money }[];
+  /** The header the model gave, set only when this rule replaced it. */
+  stated_amount?: Money;
+};
+
+/**
+ * The funder belongs to a whole transaction, so a message that mixes funders
+ * gives one event per funder. A model can still put the message's total on
+ * one of them (#96): a header of 126.00 over lines of 120.00, the 6.00 being
+ * a sibling paid by someone else. When an expense header exceeds its own
+ * lines by exactly the line sums of all the other expenses in the message
+ * with a different funder, the header is the whole message's total: the
+ * event's own line sum replaces it, and `stated_amount` keeps the model's
+ * header so the card warns. Any other mismatch stands, and the line-sum check
+ * refuses the card. Same-funder siblings never count (#97).
+ */
+export function withoutLeakedTotals<T extends FundedEvent>(events: T[]): T[] {
+  const sums = events.map((e) => {
+    const cents = e.items.map((i) => parseCents(i.amount));
+    // Income and transfers have no lines, so they never count or change.
+    return cents.length > 0 && !cents.includes(null) ? total(cents as number[]) : null;
+  });
+  return events.map((e, i) => {
+    const header = parseCents(e.amount);
+    const own = sums[i];
+    if (own === null || header === null || header <= own) return e;
+    const others = total(sums.filter((s, j): s is number => s !== null && events[j].funded_by !== e.funded_by));
+    return header - own === others ? { ...e, amount: money(own), stated_amount: e.amount } : e;
+  });
+}
+
 /** A card's money as an Edit sees it; `price` is absent on cards stored before 2026-11-07. */
 export type EditParts = {
   amount: Money;

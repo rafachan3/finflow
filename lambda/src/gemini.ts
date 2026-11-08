@@ -8,7 +8,7 @@ import {
   type TokenUsage,
   type TxType,
 } from "./extraction.js";
-import { discountsOf, editedTotal, lineAmounts, type PricedLine } from "./tax-tip.js";
+import { discountsOf, editedTotal, lineAmounts, withoutLeakedTotals, type PricedLine } from "./tax-tip.js";
 
 export const GEMINI_MODEL = "gemini-3.6-flash";
 // Previous Flash: same family, less contended when the current one sheds load.
@@ -460,11 +460,9 @@ async function extractEvents(args: {
   if (raw.length === 0) throw new Error("Gemini returned no events");
   // One call serves every event: meta on each, usage on event 0 only.
   const meta = promptMeta(extractor.model, args.taxonomy, args.extractorStatic, args.bucketRules);
-  return raw.map((e, i) => ({
-    ...normalizeTaxonomyNames(asExtraction(e), args.taxonomy),
-    meta,
-    usage: i === 0 ? { extractor: extractor.usage } : undefined,
-  }));
+  return withoutLeakedTotals(raw.map((e) => normalizeTaxonomyNames(asExtraction(e), args.taxonomy))).map(
+    (e, i) => ({ ...e, meta, usage: i === 0 ? { extractor: extractor.usage } : undefined }),
+  );
 }
 
 export async function extractFromText(args: {
