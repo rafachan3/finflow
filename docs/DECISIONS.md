@@ -2554,3 +2554,30 @@ a lone waiting card answered "No pending cards."
 **Ruled out:** `/pending` auto-restoring awaiting → pending (would cancel
 an intentional Fix date / Edit); full stale-tap wording (#92); card
 redesign batch.
+
+## 2026-11-07 — `is_recurring` is exactly the series link (migration 0020)
+
+The owner's backfill is done, and a read-only production check found no
+row flagged recurring without a series and none linked without the flag.
+
+- **CHECK, trigger kept.** 0020 adds `CHECK (is_recurring =
+  (recurring_series_id is not null))` and keeps 0016's trigger as it is.
+  Updates still derive the flag from the link and a linked insert is still
+  marked recurring, but an unlinked insert flagged true is refused, not
+  silently cleared: a caller that still writes a guess fails loudly.
+- **Legacy-flag screen removed.** The `/recurring` screen that listed
+  flagged rows with no series, its counter, the review's ⚑ pre-tick and
+  `clearFlags` existed to empty that list before this CHECK. With the CHECK
+  they can never show anything, so they go in the same PR; their old
+  buttons read as nothing.
+- **dbt test kept as a mirror.** `recurring_flag_has_series` (warn, one
+  direction) becomes `recurring_flag_matches_series` (error, both
+  directions). It can only fail if a later migration drops the CHECK; it
+  stays for that, as `expense_funding_rules` mirrors 0007's CHECK.
+
+**Ruled out:** replacing the trigger with an unconditional
+`new.is_recurring := new.recurring_series_id is not null` (the plan in
+DATA_MODEL.md before this; it would make the CHECK unreachable and hide a
+bad write); deleting the dbt test as redundant (loses the nightly guard
+against the CHECK being dropped); keeping the legacy-flag screen as dead
+code (its tests can no longer seed a row).

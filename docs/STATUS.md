@@ -2,8 +2,8 @@
 
 Living state of the project. Read this first; update it whenever work lands.
 
-**Last updated:** 2026-11-02
-**Current phase:** Phase 4.5 — Proactive nudges, in progress: PRs 1-5 merged (#86, #87, #88, #94, #105) plus join/Close/naming `#110` and waiting-prompts `#112`; next is PR 6 after backfill (see [ROADMAP.md](ROADMAP.md) and Next concrete step)
+**Last updated:** 2026-11-07
+**Current phase:** Phase 4.5 — Proactive nudges, in progress: PRs 1-5 merged (#86, #87, #88, #94, #105) plus join/Close/naming `#110` and waiting-prompts `#112`; PR 6 (flag CHECK, migration 0020) in review; PR 7 acceptance next (see [ROADMAP.md](ROADMAP.md) and Next concrete step)
 
 ## Phase progress
 
@@ -565,11 +565,16 @@ the prompt-only rule gave inconsistent splits under Lite).
 
 ## Next concrete step
 
-Waiting-prompts PR A `#112` is merged (`3c995fb`); Deploy ingest Lambda run
-41535910313 SUCCESS. Next: PR 6 (flag-equals-link CHECK) once the owner's
-backfill is done — until then PR 6 stays blocked. Then PR 7 (acceptance).
-`fixed_base_burn` stays thin until the backfill links real history; expect
-it to rise then. Card redesign (#89 #92 #96 #97) stays after PR 6→7.
+The owner's backfill is done (2026-11-07). Phase 4.5 PR 6 (branch
+`feat/recurring-flag-check`) is in review: migration 0020 adds
+`CHECK (is_recurring = (recurring_series_id is not null))`; a read-only
+production precheck found no row flagged without a series and none linked
+without the flag. The legacy-flag screen on `/recurring` (empty since the
+backfill) is removed with it, and the warn-level dbt test
+`recurring_flag_has_series` becomes the error-level
+`recurring_flag_matches_series`. **Before merge:** `supabase db push`
+(dry run first) applies 0020. Next: PR 7 (acceptance). Card redesign
+(#89 #92 #96 #97) stays after PR 7.
 
 Phase 4 is accepted (2026-10-30). Optional and deferred: hand-verify real
 numbers for one complete month against the owner's records (on hold until
@@ -603,7 +608,8 @@ host, user and password masked.
 Ledger health tests (branch `feat/ledger-health-tests`, 2026-11-02;
 DECISIONS.md, TESTING.md): `occurred_on_within_ledger` fails a row dated
 before the ledger start (dbt var, 2026-06-01) or after tomorrow;
-`no_likely_duplicates` and `recurring_flag_has_series` warn, and the
+`no_likely_duplicates` warns (and `recurring_flag_has_series` did until
+PR 6 made it an error-level mirror of 0020's CHECK), and the
 nightly lists their ids in the job summary and one `ledger-health` issue,
 never failing on them. Green on the fixture in CI; **not yet run on
 production**: the first nightly after merge must pass, which needs the
