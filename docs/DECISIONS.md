@@ -2969,3 +2969,26 @@ Phase 5 PR A3. Trends T1 needs 3-month and 12-month share ratios of sums.
 **Ruled out:** `*_pct_12m` columns on `fct_month_plan` (wide format grows
 with every N); showing partial windows (a 5-month mean labelled 12 would
 lie).
+
+## 2026-11-08 — Opening balances for savings accounts only
+
+Phase 5 PR A4. Trends T4/T5 need a real savings pot, not just flows.
+
+- **Schema only in the migration.** `account_opening_balances` is one row
+  per account (`as_of`, `amount numeric(12,2)`). The owner enters values
+  with a placeholder SQL snippet in the Supabase editor. Nothing in a
+  tracked file holds a real name, date or amount.
+- **`fct_account_month`**, one row per (month of the month list, account),
+  zero-filled. Deposits are chequing into the account (they sum to
+  `transfers`); withdrawals the reverse (they sum to `withdrawals`);
+  moves between named accounts net to 0. `balance` is opening plus
+  flows with `occurred_on > as_of` through month end.
+- **Investment never gets a computed balance**, even if an opening row
+  exists: market values are not logged, so the line is
+  contributed-since-tracking (`net_flow_cumulative`). Debt already has
+  no balance (DATA_MODEL).
+- **Not a MetricFlow model**, same reason as the other dashboard marts.
+
+**Ruled out:** putting owner amounts in the gitignored seed overlay or
+any tracked file (the repo is public); treating an investment opening as
+a market value; reconstructing months that end before `as_of`.
