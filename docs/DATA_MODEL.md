@@ -40,6 +40,7 @@ erDiagram
   accounts |o--o{ transactions : "transferred to"
   accounts |o--o{ transactions : "transferred from"
   accounts |o--o{ income_sources : "deposited into"
+  accounts ||--o| account_opening_balances : "opening"
   funding_sources |o--o{ transactions : "paid by"
   transactions ||--o{ transaction_tags : ""
   tags ||--o{ transaction_tags : ""
@@ -197,6 +198,12 @@ erDiagram
     text kind "savings | investment | debt"
   }
 
+  account_opening_balances {
+    smallint account_id PK,FK
+    date as_of
+    numeric amount "12,2"
+  }
+
   funding_sources {
     smallint id PK
     text name UK
@@ -257,6 +264,16 @@ create table accounts (
   name text not null unique,                      -- values seeded locally
   -- debt (migration 0017): a loan an extra payment is transferred into
   kind text not null check (kind in ('savings', 'investment', 'debt'))
+);
+
+-- One-off opening per account (migration 0022). Values are entered by the
+-- owner in the database, never in tracked files. The mart turns this into
+-- a savings balance; investment and debt never get one.
+create table account_opening_balances (
+  account_id smallint      not null references accounts(id) on delete cascade,
+  as_of      date          not null,
+  amount     numeric(12,2) not null,
+  primary key (account_id)
 );
 
 -- deposit_account_id is where income from this source lands (interest paid
@@ -665,6 +682,12 @@ bump when SSM rules change.
   transfer's `from_account_id` and never an income source's
   `deposit_account_id` (dbt test `debt_account_only_receives_transfers`). It
   has no balance; an extra payment on the loan is a transfer into it.
+- An opening balance is at most one row per account (`account_id` PK),
+  with `as_of` and `amount numeric(12,2)` (migration 0022). The owner
+  enters values in the database, never in this repo. `fct_account_month`
+  computes a balance only for a savings account that has a row; an
+  investment account is contributed-since-tracking, and a debt account
+  still has no balance.
 - An item's `item_type_id`, when set, must belong to the same category as
   its `subcategory_id` (dbt test).
 - `(ingestions.telegram_update_id, event_index)` is UNIQUE. One Telegram
