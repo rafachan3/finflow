@@ -322,15 +322,18 @@ read back from the tapped card's header, so a card resent by `/pending`
 (no label) and a single card keep plain `Saved.` / `Discarded.`.
 "Already handled." never carries it.
 
-Tips (#31; DECISIONS.md 2026-10-29): every extractor prompt (text,
-photo, voice, Edit) shares one line-amount rule. An expense's header is
-the total paid including tax and any tip, even a tip printed below the
-total; tax and tip are folded into the item lines in proportion to each
-line's price, with no tax or tip line, and the lines sum to the header.
-Golden cases `receipt-with-tip` (synthetic diner receipt) and `edit-tip`
-check the amount paid as well as the line count. The Edit prompt also says
-the current amount already holds the old tip, so a tip correction replaces
-it rather than adding to it (#60: Lite answered 39.24 for 34.74).
+Tax and tip (#31, #60; DECISIONS.md 2026-10-29, 2026-11-07): an expense's
+header is the total paid, tax and any tip included, even a tip printed below
+the total. Gemini reads each line's pre-tax price and taxable mark, plus each
+printed tax and the tip. `lambda/src/tax-tip.ts` shares the taxes over the
+taxed lines (every line when none is marked) and the tip over every line, by
+price, in integer cents with largest remainder. There is no tax or tip line,
+and a total that does not match fails the line-sum check. An Edit sends the
+parts. A tip correction replaces the old tip, and the total follows the
+recomputed lines unless the correction states one. Cards look the same.
+Goldens `receipt-with-tip` (Quebec GST + QST diner) and `edit-tip` pin each
+line's amount. A synthetic Quebec grocery receipt is covered by unit tests
+and a journey.
 
 Duplicate warning (Phase 3.5 PR 1; DECISIONS.md 2026-10-29): every saved
 card (new message, `/pending`, Fix date, Edit) gets at most one `!` line
@@ -559,9 +562,13 @@ venue is null unless the place clearly is a listed one, and a receipt's 4-digit-
 year date beats a 2-digit NN/NN/NN one (an NN/NN/NN alone is read within the
 12 months before today). The 20-case golden cap holds: `receipt-with-tip` and
 `two-stores` carry the new assertions. No migration. Not covered by a golden:
-an NN/NN/NN date with no 4-digit one. Next: tax only on the lines a receipt
-flags as taxable and the tip by pre-tax price, computed in code (separate PR;
-the prompt-only rule gave inconsistent splits under Lite).
+an NN/NN/NN date with no 4-digit one. Tax and tip moved to code on branch
+`feat/deterministic-tax-tip` (see Tax and tip above; DECISIONS.md
+2026-11-07). The 20 cases passed live and were recorded locally on
+2026-11-07. Only `receipt-with-tip` and `edit-tip` take new answers. The
+other 18 keep the recordings the journeys quote, with new hashes. No
+migration. Not covered by a golden: the model reading a receipt's taxable
+codes (unit tests and the `tax-tip` journey script it).
 
 ## Next concrete step
 
@@ -569,7 +576,8 @@ Phase 4.5 is accepted (2026-11-07; check and output in Phase progress).
 The backfill is done: June-October 2026 are complete months. PR 6 (#115)
 merged with migration 0020 applied. Next, in order:
 
-1. Deterministic tax/tip PR.
+1. Deterministic tax/tip PR (`feat/deterministic-tax-tip`): open, awaiting
+   CI and the owner's merge.
 2. A not-a-duplicate acknowledgement for ledger-health: in review on
    branch `feat/ledger-health-acknowledge` (migration 0021 not yet applied
    to production; apply it before merging). After merge the owner

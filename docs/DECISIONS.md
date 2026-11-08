@@ -2636,3 +2636,53 @@ requires matching descriptions, so it never listed the pair.
 an item summary); a perceptual hash of receipt photos (code and storage
 for one case so far; #114 keeps it as an option); blocking Confirm on an
 amount match (adds a step to logging, AGENTS.md rule 6).
+
+## 2026-11-07 — Tax and tip are shared across the lines in code, not by the model
+
+The prompt rule (2026-10-29) asked Gemini to fold tax and tip into the
+lines. Flash-Lite split them unevenly. On an Edit it also added a corrected
+tip on top of the old one (#60). The 2026-11-02 attempt at a taxable-lines
+prompt rule gave a different split on every run. Arithmetic now moves to
+code. The model only reads numbers.
+
+- **What Gemini returns.** Each line's pre-tax `price` (after any discount
+  on that line) and `taxable`: true when the receipt's tax codes mark the
+  line as taxed. When the codes mark the untaxed lines instead, the
+  unmarked lines are the taxed ones. Also `taxes`, each tax amount as
+  printed (GST and QST are two entries), and `tip` (or null). The header
+  `amount` is still the total paid, tax and tip included. There is no tax
+  or tip line, and the response has no per-line amount.
+- **What code does** (`lambda/src/tax-tip.ts`, integer cents). The taxes
+  go to the taxed lines, or to every line when none is marked. The tip goes
+  to every line. Both are weighted by pre-tax price and rounded with
+  largest remainder (ties: the larger line, then the earlier one). The lines
+  sum to prices + taxes + tip exactly and are never below their price.
+  `transaction_items.amount` is that allocated amount. The extra fields
+  ride in `ingestions.extraction` jsonb, so there is no migration.
+- **Checks unchanged.** When prices + taxes + tip differ from the printed
+  total, the existing line-sum check fails and the card has no Confirm. The
+  difference is never absorbed into the lines. A tax or tip that is not
+  two-decimal is an error.
+- **Edit.** The patch request sends the parts (prices, taxable flags,
+  taxes, tip), not the allocated amounts. The prompt says a new tip or tax
+  replaces the old value, and to keep `amount` unless the correction states
+  a new total. When the patched `amount` equals the current one, the header
+  becomes the sum of the recomputed lines. A total the model changed stands,
+  and the line-sum check judges it, so a tip added on top fails visibly.
+- **Cards look the same.** Header, lines and `✓ lines a + b = total` keep
+  their layout, with no tax or tip row. Only line amounts can differ, when a
+  receipt taxes some lines and not others.
+- **Goldens.** The judge (`golden.ts`) reads a raw answer through the same
+  `lineAmounts` and Edit-total rule. A new optional `amounts` pins each
+  line: `receipt-with-tip` (Quebec GST + QST diner, tip below the total)
+  and `edit-tip`. The suite stays at 20 cases. A synthetic Quebec grocery
+  receipt, with a zero-rated line and a taxed one, is covered by unit tests
+  and a journey with a scripted answer, not a golden.
+- **A card pending at deploy time** has no prices. Its line amounts are
+  sent as prices, with no taxes and no tip.
+
+**Ruled out:** absorbing a header mismatch into the lines (it would hide a
+misread price); deriving every header from the parts (a total the owner
+states in an Edit would be ignored); per-tax taxable flags for lines taxed
+by GST only (rare, and a bigger schema); a second Gemini call (free-tier
+quota).
