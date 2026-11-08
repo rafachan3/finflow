@@ -23,10 +23,13 @@ models:
     staging:
       +schema: staging
       +materialized: view
-    # Tables rebuilt in full on every run, never incremental: a late or
+    # Views recreated in full on every run, never incremental: a late or
     # backfilled row dated in a past month changes that month on the next
-    # build. The analyst's SELECT comes from migration 0013's default
-    # privilege, not from a dbt grants config (DECISIONS 2026-10-29).
+    # query (and on the next dbt run that replaces the view). Live views so
+    # Grafana sees a Confirm without waiting for the nightly rebuild
+    # (DECISIONS 2026-11-08). The analyst's SELECT comes from migration
+    # 0013's default privilege, not from a dbt grants config
+    # (DECISIONS 2026-10-29).
     marts:
       +schema: marts
-      +materialized: table
+      +materialized: view

@@ -242,7 +242,7 @@ rationale for its shape:
 
 ### Semantic layer — dbt-core + SEMANTIC_LAYER.md
 - dbt project in `dbt/`: `staging/` (light renames from raw tables) →
-  `marts/` (tables in schema `marts`, rebuilt in full every run):
+  `marts/` (views in schema `marts`, recreated in full every run):
   `fct_transactions` (one row per ledger line), `fct_monthly_summary` (one
   row per month, one column per metric), `fct_category_month` (spend per
   subcategory per month) and `dim_date` (the day spine). The planning

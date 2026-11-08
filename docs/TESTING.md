@@ -253,9 +253,10 @@ eval "$(TEST_DATABASE_URL=$(npm --prefix ../lambda run -s db:url) .venv/bin/pyth
 .venv/bin/mf validate-configs && .venv/bin/python scripts/check_metrics.py
 ```
 
-Models: four staging views in schema `staging`, and four mart tables in
+Models: four staging views in schema `staging`, and seven mart views in
 `marts` (`dim_date`, `fct_transactions`, `fct_category_month`,
-`fct_monthly_summary`), all rebuilt in full every run.
+`fct_monthly_summary`, `fct_month_plan`, `fct_pace_day`,
+`fct_subcategory_month`), all recreated in full every run.
 `monthly_summary_matches_hand_written_sql` is the acceptance check: it runs
 [SEMANTIC_LAYER.md](SEMANTIC_LAYER.md)'s reference SQL over `public` and
 compares every metric of every month with the mart, printing month and
