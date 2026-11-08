@@ -23,10 +23,8 @@ jobs:
           cache: npm
           cache-dependency-path: lambda/package-lock.json
       - run: npm ci
-      - run: npm run build
-      - run: npm run test:unit
-      - run: npm run bundle
-      - run: npm run bundle:nudge
+      # The root Makefile's targets are what a local `make check` runs.
+      - run: make -C .. test-unit
 
   integration:
     runs-on: ubuntu-latest
@@ -55,7 +53,7 @@ jobs:
           cache: npm
           cache-dependency-path: lambda/package-lock.json
       - run: npm ci
-      - run: npm run test:integration
+      - run: make -C .. test-integration
 
   # The golden cases. Always reports; runs only when the diff touches a path
   # in lambda/eval/harness.ts (RELEVANT), and then calls Gemini only for a
@@ -132,11 +130,9 @@ jobs:
           node-version: "22"
           cache: npm
           cache-dependency-path: lambda/package-lock.json
-      - run: node scripts/check-inventory.mjs
       - run: npm ci
         working-directory: lambda
-      - run: npm run test:coverage
-        working-directory: lambda
+      - run: make inventory
 
   # dbt build on a throwaway ledger loaded like `integration`'s, plus the
   # synthetic fixture (docs/TESTING.md, "The dbt build"). No secrets: it
@@ -180,9 +176,7 @@ jobs:
       - run: pip install -r requirements.txt
       - name: dbt build on the synthetic fixture
         run: |
-          env=$(python scripts/test_db.py)
-          eval "$env"
-          dbt build
+          make -C .. dbt-build DBT_VENV=
       - name: finflow_analyst logs in and reads every mart, and no staging or ledger table
         run: |
           python - <<'EOF'

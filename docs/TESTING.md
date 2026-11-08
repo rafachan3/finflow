@@ -162,6 +162,31 @@ included.
 | Marts | `budget_targets` holds one row, seeded 50/30/20; a second row, a target outside 0-100 or targets not summing to 100 are refused, and an UPDATE that keeps the sum at 100 is accepted | `seed one 50/30/20 budget_targets row and refuse a second row or targets outside 0-100 or not summing to 100` |
 | Marts | The MetricFlow metrics are exactly the contract's: a metric in the YAML but not in SEMANTIC_LAYER.md, or the reverse, fails the `dbt` job. `mf query` gives every metric of every month in `fct_monthly_summary` (money to the cent, ratios within 0.0001), including months where an input of a derived metric has no rows (the fixture's 2026-03 to 2026-05); `spend` without its self-funded filter fails, naming the metric and month and printing no value | `ci:mf query matches fct_monthly_summary for every contract metric`<br>`ci:spend without its self-funded filter fails check_metrics, naming spend and the month, with no values`<br>`ci:a metric in the YAML but not in SEMANTIC_LAYER.md fails check_metrics` |
 
+## Run the checks locally
+
+From the repo root, `make check` runs what CI's `unit`, `integration`,
+`inventory` and the first step of `dbt` run; CI calls the same targets, so
+the two cannot drift. It needs Docker running and Python 3.12 (`PYTHON=...`
+to pick another binary); `make` alone lists the targets.
+
+| Target | Runs |
+|---|---|
+| `make test-unit` | `npm run build`, `test:unit`, `bundle`, `bundle:nudge` |
+| `make test-integration` | `npm run test:integration` |
+| `make inventory` | `node scripts/check-inventory.mjs`, then `npm run test:coverage` |
+| `make dbt-build` | `scripts/test_db.py`, then `dbt build`, in `dbt/.venv` (created from `requirements.txt` on first use) |
+| `make check` | the four above |
+| `make eval` | `npm run eval`; not in `check`, since it can spend Gemini quota |
+
+Each database target wraps its command in `scripts/with-test-db.sh`: with
+`TEST_DATABASE_URL` set it uses that database (CI's service container);
+otherwise it starts a `postgres:17` container named
+`finflow-test-db-run-<pid>-<n>` on a free `127.0.0.1` port and removes it
+when the command exits, pass, fail or interrupt. It never touches a
+`npm run db:up` container. `lambda/node_modules` comes from `npm ci` when
+missing or older than the lockfile. The dbt job's later steps (the grant,
+metric and broken-ledger checks) stay CI-only.
+
 ## Running each layer
 
 Run from `lambda/`.
