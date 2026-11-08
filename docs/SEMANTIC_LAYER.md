@@ -191,6 +191,11 @@ listing mart for the Ledger dashboard, not a metric: no MetricFlow model,
 and nothing in `fct_monthly_summary` is summed from it. Its `amount` is the
 header amount. Expense line detail stays on `fct_transactions`; the ledger
 joins the two on `transaction_id`.
+`fct_month_rolling` has one row per (`month_start`, `window_months`) for
+every month of the month list and every N in the dbt var `window_months`.
+It is a planning mart, not a metric: no MetricFlow model. Money sums and
+share ratios are null unless the whole window is complete.
+`fct_month_plan.*_pct_3m` is N = 3 of this mart.
 
 ## Metrics
 
@@ -331,7 +336,7 @@ here so the dashboard and the agent compute them the same way.
   `from_account_kind`, the kind of the account left.
 - **Rolling mean of a slice:** the mean of a filtered slice's own spend
   over month M and the 2 months before it, over `fct_month_plan`'s month
-  list, so a month with no matching line counts as 0. Like the rolling
+  list, so a month with no matching line counts as 0. Like rolling N = 3
   shares, it is null unless all three months are complete: the first two
   months of the list and the current month have none.
 
@@ -354,14 +359,16 @@ here so the dashboard and the agent compute them the same way.
 
 ## Planning marts (dashboard support)
 
-Three marts turn the metrics above into plans, pace and baselines for the
-Phase 5 dashboards. Phase 6's agent reads them directly. They are **not
-metrics**: none is a `fct_monthly_summary` column or a MetricFlow metric,
-because the metric table must equal the MetricFlow YAML and MetricFlow
-cannot express "complete preceding months only". Every value is built from
-a metric above with that metric's own filter, so it traces back to this
-file. Why the current month is planned in dollars from an expected income,
-and not as a share of income so far: DECISIONS.md 2026-11-07.
+Planning marts turn the metrics above into plans, pace, baselines and
+rolling windows for the Phase 5 dashboards. Phase 6's agent reads them
+directly. They are **not metrics**: none is a `fct_monthly_summary` column
+or a MetricFlow metric, because the metric table must equal the MetricFlow
+YAML and MetricFlow cannot express "complete preceding months only". Every
+value is built from a metric above with that metric's own filter, so it
+traces back to this file. Why the current month is planned in dollars from
+an expected income, and not as a share of income so far:
+DECISIONS.md 2026-11-07. Why rolling windows are a long-format mart, not
+extra columns on `fct_month_plan`: DECISIONS.md 2026-11-08.
 
 Terms used below:
 
@@ -377,10 +384,13 @@ Terms used below:
   month with no rows counts as 0. A **baseline** (`_baseline`, `_avg_3m`) is
   the mean over the baseline months, so M is never compared with itself.
   It is null when `baseline_months = 0`.
-- **Rolling 3 months** (`_3m` on a share). M and the 2 months before it,
-  only when all three are complete and in the list. It is a ratio of sums,
-  `sum(x) / sum(spendable_income)`, not a mean of ratios, so a low-income
-  month does not get extra weight.
+- **Rolling N months.** M and the N − 1 months before it, only when all N
+  are complete and in the list. It is a ratio of sums, not a mean of
+  ratios, so a low-income month does not get extra weight. The four
+  `*_pct` shares divide by `sum(spendable_income)`; `unspent_rate` divides
+  by `sum(income)`. `fct_month_plan.*_pct_3m` is N = 3, unchanged.
+  `fct_month_rolling` holds every N in the dbt var `window_months`
+  (default 3 and 12).
 
 Rounding: money is `numeric(12,2)`, ratios and mean line counts are
 `numeric(9,4)`. A mean is rounded once, from the exact sum. A column built
@@ -402,7 +412,7 @@ One row per month of the month list.
 | `spendable_income_expected` | A complete month: `spendable_income`. Otherwise `greatest(spendable_income, spendable_income_baseline)` | **Null when `baseline_months = 0`** in an incomplete month. Postgres `greatest` ignores nulls, so the `case` is written out; otherwise the plan would fall back to income so far. It follows income upward the moment income so far passes the baseline, and never downward |
 | `income_received_share` | `round(spendable_income / nullif(spendable_income_expected, 0), 4)` | `1` in a complete month with income; null with no expected income |
 | `needs_plan`, `wants_plan`, `financial_future_plan` | `round(<bucket>_target_pct * spendable_income_expected, 2)` | In a complete month each equals `target_pct * spendable_income`, and `financial_future_plan = financial_future_target` |
-| `needs_pct_3m`, `wants_pct_3m`, `financial_future_pct_3m`, `unallocated_pct_3m` | `round(sum(<needs_spend, wants_spend, financial_future, unallocated_cash>) / nullif(sum(spendable_income), 0), 4)` over the rolling 3 months | Null unless all three months are complete and in the list; null when their `spendable_income` sums to `0` |
+| `needs_pct_3m`, `wants_pct_3m`, `financial_future_pct_3m`, `unallocated_pct_3m` | `round(sum(<needs_spend, wants_spend, financial_future, unallocated_cash>) / nullif(sum(spendable_income), 0), 4)` over the rolling 3 months | N = 3 of Rolling N months. Null unless all three months are complete and in the list; null when their `spendable_income` sums to `0` |
 
 Reference SQL for the plan, over `fct_monthly_summary` (`m` is the month
 list, `b` its baseline). The `rows` frames count months, because the month
@@ -422,6 +432,37 @@ from (
   where month_start >= date_trunc('month', '<ledger_start>'::date)
   window b as (order by month_start rows between 3 preceding and 1 preceding)
 ) m;
+```
+
+### `fct_month_rolling`
+
+One row per (`month_start`, `window_months`) for every month of the month
+list and every N in the dbt var `window_months` (default 3 and 12). Long
+format: a dashboard filters `window_months`. Built from
+`fct_monthly_summary`, independently of `fct_month_plan`, so N = 3 can be
+checked against `*_pct_3m`.
+
+| Column | Formula | Edge cases |
+|---|---|---|
+| `month_start` | from the month list | |
+| `window_months` | N, one of the var's values | |
+| `complete_months_in_window` | count of complete months among M and the N − 1 months before it that are in the list | Less than N at the start of the list, and whenever the window includes the current or a future month |
+| `spendable_income`, `needs_spend`, `wants_spend`, `financial_future`, `unallocated_cash`, `spend`, `income` | `sum` of that metric over the window | **Null unless** `complete_months_in_window = window_months`. A complete month with no rows counts as 0 |
+| `needs_pct`, `wants_pct`, `financial_future_pct`, `unallocated_pct` | `round(sum(<metric>) / nullif(sum(spendable_income), 0), 4)` | Null unless the whole window is complete; null when `sum(spendable_income)` is 0. N = 3 equals `fct_month_plan.*_pct_3m` |
+| `unspent_rate` | `round((sum(income) - sum(spend)) / nullif(sum(income), 0), 4)` | Null unless the whole window is complete; null when `sum(income)` is 0 |
+
+Reference SQL for one N (3). The mart unions each N in `window_months` the
+same way. The `rows` frame counts months, because the month list is
+zero-filled.
+
+```sql
+select month_start, 3 as window_months,
+  count(*) filter (where is_complete_month) over w as complete_months_in_window,
+  case when count(*) filter (where is_complete_month) over w = 3
+       then sum(spendable_income) over w end as spendable_income
+from marts.fct_monthly_summary
+where month_start >= date_trunc('month', '<ledger_start>'::date)
+window w as (order by month_start rows between 2 preceding and current row);
 ```
 
 ### `fct_pace_day`
