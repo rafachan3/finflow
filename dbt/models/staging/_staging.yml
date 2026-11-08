@@ -10,7 +10,8 @@ models:
       One row per transaction header, lookups named, entry_source from the
       confirmed ingestion. A null account is chequing: from_account_id and
       to_account_id on a transfer, deposit_account_id on income (where its
-      source's money lands).
+      source's money lands). recurring_series_name and recurring_cadence
+      come from the linked series; both null when unlinked.
     columns:
       - name: transaction_id
         data_tests: [unique, not_null]
@@ -49,6 +50,21 @@ models:
           - not_null:
               config:
                 where: "type = 'income'"
+      - name: recurring_series_name
+        description: Name of the linked series; null when unlinked.
+        data_tests:
+          - not_null:
+              config:
+                where: "is_recurring"
+      - name: recurring_cadence
+        description: Owner-confirmed cadence of the linked series; null when unlinked.
+        data_tests:
+          - not_null:
+              config:
+                where: "is_recurring"
+          - accepted_values:
+              arguments:
+                values: [weekly, biweekly, semimonthly, monthly, quarterly, yearly]
 
   - name: stg_transaction_items
     description: One row per expense line, with its taxonomy named.

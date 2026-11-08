@@ -161,6 +161,8 @@ included.
 | Marts | `fct_month_plan` has one row per month from the ledger start's month on, with the baseline recomputed by calendar month; in a complete month the plans are `target_pct × spendable_income` and `financial_future_plan` equals `financial_future_target`; an incomplete month expects the higher of income so far and the baseline (CI: a ledger with income above it) and no income at all without a baseline, with `as_of_day` 0 in a later month (CI: a ledger whose first month is the current one); the nightly on production too. On the fixture, by hand: no baseline in the first month, a baseline of the up-to-3 complete months before (a month with no income counts as 0), a complete month planned from its actual income even below its baseline, the current month planned from the baseline while income so far is lower (plans, `income_received_share` 0, `as_of_day` 15), and rolling 3-month shares only over three complete months | `dbt:month_plan_matches_targets`<br>`dbt:month_plan_baseline_hand_worked`<br>`ci:a current month with income above its baseline, and months with no baseline, pass month_plan_matches_targets` |
 | Marts | `fct_pace_day`: every series' month-to-date never falls (except `financial_future`, which a withdrawal lowers) and closes on the last day of a complete month at that month's metric and `month_total`; the usual share of a month done is 1 on every month's last day, because the last day matches each baseline month's last day; the nightly on production too. On the fixture, by hand: the usual month-to-date and share at the matching day (a 30-day month's last day picks up transfers dated the 31st), a baseline month totalling 0 left out of the share, no amount after today while the usual curve carries on, no baseline in the first month, and every day of every month present for five series | `dbt:pace_mtd_monotone_and_closes`<br>`dbt:pace_share_closes_at_one`<br>`dbt:pace_day_hand_worked` |
 | Marts | `fct_subcategory_month` summed over bucket equals `fct_category_month.spend` for every month and subcategory of the month list, and is 0 for a zero-filled row, the nightly on production too. On the fixture, by hand: every (bucket, subcategory) pair with an own line appears in every month, a line someone else paid for is not counted, the baseline means include the months a subcategory was absent (as 0), the delta against them, no baseline in the first month, and the few-lines flag | `dbt:subcategory_month_sums_to_category_month`<br>`dbt:subcategory_month_hand_worked` |
+| Marts | `fct_ledger_entry` has one row per `stg_transactions` row: unique, not null, and the same count; the nightly on production too | `dbt:ledger_entry_one_per_transaction` |
+| Marts | `fct_ledger_entry` reconciles to the monthly metrics: per month, income headers sum to `income`, own-expense headers to `spend`, other-expense headers to `external_spend`; each expense's `needs_amount + wants_amount` equals its header; the nightly on production too | `dbt:ledger_entry_reconciles` |
 | Marts | `budget_targets` holds one row, seeded 50/30/20; a second row, a target outside 0-100 or targets not summing to 100 are refused, and an UPDATE that keeps the sum at 100 is accepted | `seed one 50/30/20 budget_targets row and refuse a second row or targets outside 0-100 or not summing to 100` |
 | Marts | The MetricFlow metrics are exactly the contract's: a metric in the YAML but not in SEMANTIC_LAYER.md, or the reverse, fails the `dbt` job. `mf query` gives every metric of every month in `fct_monthly_summary` (money to the cent, ratios within 0.0001), including months where an input of a derived metric has no rows (the fixture's 2026-03 to 2026-05); `spend` without its self-funded filter fails, naming the metric and month and printing no value | `ci:mf query matches fct_monthly_summary for every contract metric`<br>`ci:spend without its self-funded filter fails check_metrics, naming spend and the month, with no values`<br>`ci:a metric in the YAML but not in SEMANTIC_LAYER.md fails check_metrics` |
 
@@ -253,10 +255,10 @@ eval "$(TEST_DATABASE_URL=$(npm --prefix ../lambda run -s db:url) .venv/bin/pyth
 .venv/bin/mf validate-configs && .venv/bin/python scripts/check_metrics.py
 ```
 
-Models: four staging views in schema `staging`, and seven mart views in
+Models: four staging views in schema `staging`, and eight mart views in
 `marts` (`dim_date`, `fct_transactions`, `fct_category_month`,
 `fct_monthly_summary`, `fct_month_plan`, `fct_pace_day`,
-`fct_subcategory_month`), all recreated in full every run.
+`fct_subcategory_month`, `fct_ledger_entry`), all recreated in full every run.
 `monthly_summary_matches_hand_written_sql` is the acceptance check: it runs
 [SEMANTIC_LAYER.md](SEMANTIC_LAYER.md)'s reference SQL over `public` and
 compares every metric of every month with the mart, printing month and
@@ -315,7 +317,7 @@ or amount.
 
 The CI job `dbt` runs on every PR, against a `postgres:17` service:
 `dbt build` on the fixture must pass; `finflow_analyst` (throwaway password
-from the loader, the role's name) logs in, must find exactly the four
+from the loader, the role's name) logs in, must find exactly the eight
 marts and read each, and must be refused `staging.stg_transactions` and
 `public.ingestions`; with an `anon` role created and granted `SELECT` on
 `public.transactions`, `dbt test --exclude tag:fixture` must fail

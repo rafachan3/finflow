@@ -538,3 +538,99 @@ models:
       - name: is_few_lines
         description: Fewer than 6 lines across this month and 3 baseline months' worth.
         data_tests: [not_null]
+
+  # Listing mart (docs/SEMANTIC_LAYER.md, "Listing marts"): one row per
+  # logged transaction for the Ledger dashboard. Not a metric: no MetricFlow.
+  - name: fct_ledger_entry
+    description: >
+      One row per transactions row (the header). amount is the header.
+      Nested line items stay on fct_transactions, joined on transaction_id.
+      counterparty, category_summary, subcategory_paths, bucket_summary,
+      needs_amount, wants_amount and tags are defined in SEMANTIC_LAYER.md.
+    columns:
+      - name: transaction_id
+        data_tests:
+          - unique
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_transactions')
+                field: transaction_id
+      - name: occurred_on
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_date')
+                field: date_day
+      - name: month_start
+        data_tests: [not_null]
+      - name: type
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [income, expense, transfer]
+      - name: amount
+        description: The header amount, tax and tip included.
+        data_tests: [not_null]
+      - name: counterparty
+        description: >
+          Expense merchant · venue (a missing side omitted), income source,
+          or transfer from → to with a null side shown as Chequing.
+      - name: is_self_funded
+        data_tests:
+          - not_null:
+              config:
+                where: "type = 'expense'"
+      - name: line_count
+        description: Expense lines; 0 on income and transfers.
+        data_tests: [not_null]
+      - name: category_summary
+        description: >
+          category › subcategory of the largest line, then +n other distinct
+          paths. Null on income and transfers.
+        data_tests:
+          - not_null:
+              config:
+                where: "type = 'expense'"
+      - name: subcategory_paths
+        description: Distinct category › subcategory paths, largest line first.
+        data_tests: [not_null]
+      - name: bucket_summary
+        description: needs, wants, or mixed when both amounts are > 0. Null otherwise.
+        data_tests:
+          - not_null:
+              config:
+                where: "type = 'expense'"
+          - accepted_values:
+              arguments:
+                values: [needs, wants, mixed]
+      - name: needs_amount
+        data_tests: [not_null]
+      - name: wants_amount
+        data_tests: [not_null]
+      - name: tags
+        description: Distinct union of header tags and line tags, sorted.
+        data_tests: [not_null]
+      - name: is_recurring
+        data_tests: [not_null]
+      - name: recurring_series_name
+        data_tests:
+          - not_null:
+              config:
+                where: "is_recurring"
+      - name: recurring_cadence
+        data_tests:
+          - not_null:
+              config:
+                where: "is_recurring"
+          - accepted_values:
+              arguments:
+                values: [weekly, biweekly, semimonthly, monthly, quarterly, yearly]
+      - name: entry_source
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [photo, voice, text, import]

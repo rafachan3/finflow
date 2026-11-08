@@ -2928,3 +2928,27 @@ query cost is not the constraint.
 on This month (defeats D1 mid-day); incremental marts (a backdated row
 must restate its month on the next definition refresh; full recreate is
 cheap).
+
+## 2026-11-08 — Ledger listing mart is one row per transaction
+
+Phase 5 PR A2. The Ledger dashboard lists whole entries as logged, with
+line items nested from `fct_transactions`.
+
+- **Grain is the header**, one row per `transactions` row. Line-level
+  metrics stay on `fct_transactions`. Not a MetricFlow model.
+- **Built from staging**, not by rolling up `fct_transactions`, so a
+  line-grain MetricFlow change cannot reshape the listing.
+- **`category_summary`'s `+n` counts extra distinct category › subcategory
+  paths**, not extra lines: two grocery lines still show as Groceries
+  with no `+n`.
+- **`subcategory_paths` is distinct paths** ordered by the largest line
+  in that path, so a Grafana `= any()` filter is not duplicated.
+- **`counterparty`**: an expense omits a missing merchant or venue rather
+  than rendering ` · venue`; a transfer always names both sides,
+  substituting `Chequing` for a null account.
+- **`needs_amount` and `wants_amount` are `0`** on income and transfers,
+  not null, so a sum over the table is still numeric.
+
+**Ruled out:** flattening the ledger to line grain (defeats "whole entries
+as logged"); putting series name on `fct_transactions` (unchanged per the
+spec).
