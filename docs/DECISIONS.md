@@ -2904,3 +2904,27 @@ that reads it); always recomputing a mixed
 message's headers from the lines (drops the receipt total as a check on
 every misread line); a `funded_by` per line (a schema change, and a line
 never has a funder of its own).
+
+## 2026-11-08 — Marts are live views
+
+Phase 5 PR B. Grafana's This month and Ledger need a Confirm to show up
+without waiting for the 08:45 UTC nightly rebuild. The ledger is tiny, so
+query cost is not the constraint.
+
+- **Every model in schema `marts` materializes as a view** (`dbt_project.yml`).
+  Staging was already views. dbt still runs nightly and recreates them; the
+  definitions stay the single source of truth, and Grafana reads through
+  `finflow_analyst` at query time (including `toronto_today()` / current
+  month logic).
+- **CI lists marts via `information_schema.tables`**, not `pg_tables`, so
+  views are included. `analyst_reads_every_mart` already scanned
+  `relkind in ('r','v','m','p')`. Migration 0013's default privilege
+  `GRANT SELECT ON TABLES` covers views in Postgres.
+- **First production build after merge** drops the old mart tables and
+  creates views of the same names; no migration. Dispatch `dbt-nightly`
+  after merge and confirm it is green.
+
+**Ruled out:** keeping nightly tables with a "data as of last night" note
+on This month (defeats D1 mid-day); incremental marts (a backdated row
+must restate its month on the next definition refresh; full recreate is
+cheap).

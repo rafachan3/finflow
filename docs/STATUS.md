@@ -17,7 +17,7 @@ Living state of the project. Read this first; update it whenever work lands.
 - [x] Phase 3.5 — Ingestion follow-ons — **accepted 2026-10-29 by the journey tests (no phone test): 25 of 25 passed in `line-tags`, `duplicates` and `merchants`; see Next concrete step** (2026-10-29)
 - [x] Phase 4 — dbt semantic layer + MetricFlow — **accepted 2026-10-30: `dbt build`, the hand-written-SQL reconciliation and `mf query` vs the marts green in CI on the fixture (#72-#78) and on production in `dbt-nightly` run 41157900716 (87 of 87 nodes, 14 metrics, 5 months); real-month hand verification deferred** (2026-10-30)
 - [x] Phase 4.5 — Proactive nudges (recurring series, daily digest, merchant recommendations) — **accepted 2026-11-07: the `recurring-digest`, `recurring-card` and `recurring-backfill` journeys passed 45 of 45 (3 files) against a throwaway Postgres, CI on `main` green for #115 (run 42443193526), and the production `nudge_runs` log holds 6 rows, all `sent`, 2026-11-02 to 2026-11-07; no phone test** (2026-11-07)
-- [ ] Phase 5 — Grafana dashboards — **PR A (planning marts) merged as #119, production `dbt-nightly` green after merge (run 42452426227); dashboard spec under revision; data source and dashboards to follow**
+- [ ] Phase 5 — Grafana dashboards — **PR A (planning marts) merged as #119, production `dbt-nightly` green after merge (run 42452426227); design Rev 11 (grilling 2026-11-08); PR B (marts as live views) in this PR; then A2→A3→A4→C→D/E/F→reliance→G**
 - [ ] Phase 6 — Claude analytics agent (subagents + Postgres MCP)
 - [ ] Phase 7 — Open-source polish
 
@@ -597,32 +597,26 @@ merged with migration 0020 applied. Next, in order:
    (`2f7275f`); migration 0021 is applied to production (`supabase migration
    list --linked`, 2026-11-08). The owner acknowledged the pairs and #109 is
    closed.
-3. Card redesign (#89 #92 #96 #97): #89 and #96 are data-correctness bugs and
-   go next, one at a time (they share prompts and goldens under the 20-case
-   eval cap, now 20 used). #89 merged as #125 (`2843d57`). #96 is in review
-   on branch `fix/split-mixed-funders` (no PR yet): a header that holds
-   exactly all the other funders' lines from the same message drops them,
-   in code, and the card warns; no prompt or golden change (DECISIONS.md
-   2026-11-08). #92 and #97 wait until after
-   the first dashboards.
-4. Phase 5 (Grafana). PR A, the planning marts, was built before the card
-   redesign at the owner's request (below) and merged as #119 (`a2b5dc2`);
-   the production `dbt-nightly` dispatched after merge passed (run
-   42452426227). In progress: revising the dashboard spec, which adds an
-   entries ledger mart and a trends dashboard, both pending owner
-   decisions. Then, each its own PR: live marts as views (only if the
-   owner says yes to freshness), the Grafana folder and data source, and
-   the This month, Explore and Monthly review dashboards. Owner decisions
-   answered 2026-11-07: every month-end transfer out of chequing is being
-   logged, and August is complete (the coverage note in SEMANTIC_LAYER.md
-   still marks it partial until updated). Still open (listed in the
-   untracked design spec): views or nightly tables, and the ROADMAP
-   Phase 5 scope.
+3. Card redesign (#89 #92 #96 #97): #89 merged as #125 (`2843d57`); #96
+   merged as #126 (`6fac862`). #92 and #97 wait until after the first
+   dashboards. Golden cap stays 20 (`laundromat-cycles` holds the last
+   slot); after slice B, a small PR retires `transfer` for the
+   `receipt-order-discount` golden.
+4. Phase 5 (Grafana). PR A (planning marts) merged as #119 (`a2b5dc2`);
+   production `dbt-nightly` after merge passed (run 42452426227). Owner
+   grilling 2026-11-08 locked Rev 11 (live views yes; Reliance dashboard;
+   Trends defaults). **This PR is B**: marts materialize as views so a
+   Confirm shows in Grafana without waiting for the nightly rebuild. Next
+   after B merges: A2 `fct_ledger_entry`, A3 `fct_month_rolling`, A4
+   opening-balance schema, C Grafana datasource, D This month, E Ledger,
+   F Review, reliance, G Trends. ROADMAP Phase 5 rewrite waits for F.
+   SEMANTIC_LAYER's August-partial note waits for F.
 
 Planning marts (Phase 5 PR A, merged as #119;
 SEMANTIC_LAYER.md "Planning marts", DECISIONS.md 2026-11-07, TESTING.md):
-three dbt tables in `marts` for the dashboards and the Phase 6 agent, not
-metrics (no MetricFlow change). `fct_month_plan` plans each month in
+three dbt relations in `marts` for the dashboards and the Phase 6 agent, not
+metrics (no MetricFlow change). As of PR B they are views like the other
+marts. `fct_month_plan` plans each month in
 dollars: a complete month from its actual `spendable_income`, the current
 month from the greater of income so far and the mean of the up-to-3
 complete months before it, so early-month shares of income so far never
