@@ -2686,3 +2686,42 @@ misread price); deriving every header from the parts (a total the owner
 states in an Edit would be ignored); per-tax taxable flags for lines taxed
 by GST only (rare, and a bigger schema); a second Gemini call (free-tier
 quota).
+
+## 2026-11-07 — The current month is planned in dollars from an expected income
+
+Phase 5's "This month" dashboard needs a plan for a month still in
+progress. The contract's `*_pct` shares divide by `spendable_income` so
+far, and income lands mid-month and at month end, so early in a month a
+share can pass 100% and it halves when pay arrives. They stay right for
+complete months only.
+
+- **A dollar plan from an expected income** (`fct_month_plan`): a
+  complete month expects its actual `spendable_income`; the current month
+  expects `greatest(income so far, mean spendable_income of the up-to-3
+  complete months before it)`, and nothing when there is no such month.
+  Plans are `target_pct × expected`. Month-to-month income varies little,
+  so the estimate is close; `greatest()` follows a one-off rise at once.
+  The final read of a complete month equals the share view.
+- **Pace from the owner's own timing** (`fct_pace_day`): "usual by this
+  day" is the mean of the baseline months' month-to-date at the same day
+  of month, because rent and paydays fall on fixed dates. The last day of
+  a month matches the last day of each baseline month, so a 30-day month
+  still closes at the baseline months' totals.
+- **Subcategory baselines zero-filled** (`fct_subcategory_month`): a mean
+  over the months a subcategory appeared in would run high.
+- **Planning marts, not metrics.** They are a section of SEMANTIC_LAYER.md
+  with formulas and reference SQL, like the Recipes. The metric table must
+  equal the MetricFlow YAML, and MetricFlow cannot express "complete
+  preceding months only", so `fct_monthly_summary`, the metric table and
+  MetricFlow are unchanged.
+- **A fixed `today` for the fixture.** `toronto_today()` reads the dbt var
+  `today` (environment `FINFLOW_TODAY`) when set. The fixture pins it to
+  2026-10-15 so its October is a current month with a baseline; production
+  never sets it.
+
+**Ruled out:** shares of income so far for the current month (wrong before
+payday); prorating the plan by calendar day (about half a month's spend
+lands in its first week, so it would read "over" every first week); an
+owner-set expected income in `budget_targets` (goes stale silently; kept as
+the fallback if the estimate proves wrong); the plans as MetricFlow
+metrics.
