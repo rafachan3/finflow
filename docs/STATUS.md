@@ -710,8 +710,10 @@ and `dbt docs serve` (TESTING.md, "Browse the dbt docs locally"; DECISIONS.md
 dbt marts (PR-D, 2026-10-30): four tables in schema `marts`, rebuilt in full
 every run: `dim_date`, `fct_transactions` (one row per ledger line, with
 effective tags), `fct_category_month` and `fct_monthly_summary` (one column
-per SEMANTIC_LAYER.md metric). `monthly_summary_matches_hand_written_sql`
-recomputes every month from `public` with the contract's reference SQL;
+per SEMANTIC_LAYER.md metric). PR B (#128) made every `marts` model a view,
+queried live, with definitions still replaced nightly.
+`monthly_summary_matches_hand_written_sql` recomputes every month from
+`public` with the contract's reference SQL;
 `fixture_sample_month_expected` pins the fixture's 2026-06 to hand-worked
 values; `analyst_reads_every_mart` checks the analyst's grants after each
 rebuild. The `dbt` job proves the reconciliation bites (a mart metric moved
