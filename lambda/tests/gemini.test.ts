@@ -1250,6 +1250,15 @@ describe("multi-event extraction", () => {
     }
   });
 
+  it("tells text, photo, voice and Edit that a machine cycle has no goods item type", async () => {
+    for (const system of await fourSystems()) {
+      expect(system).toContain(
+        "is for the goods themselves: a line paying for a machine cycle instead of goods keeps its subcategory and item_type is null",
+      );
+      expect(system).toContain("A laundromat washer or dryer cycle is Housing / Laundry with item_type null");
+    }
+  });
+
   it("tells text, photo, voice and Edit to prefer a 4-digit-year date and read NN/NN/NN within the last year", async () => {
     for (const system of await fourSystems()) {
       expect(system).toContain("Today is 2026-08-17");

@@ -79,6 +79,11 @@ const LINE_AMOUNTS =
 const VENUE =
   "venue is a name from the Venues list only when the place clearly is that kind of place (a pharmacy or drugstore is Pharmacy, a grocery store is Supermarket). A dollar or discount store, hardware store, department store, online shop, rideshare or warehouse store is none of them: return null. Never pick the nearest venue; when unsure, return null.";
 
+// The lighter model gave a laundromat washer cycle Laundry Supply (#89).
+// TAXONOMY.md classification rule 8.
+const ITEM_TYPE_GOODS =
+  "An item type that names goods (such as Laundry Supply or Cleaning Product) is for the goods themselves: a line paying for a machine cycle instead of goods keeps its subcategory and item_type is null. A laundromat washer or dryer cycle is Housing / Laundry with item_type null; detergent, softener or dryer sheets are Laundry Supply.";
+
 // Receipts often print YY/MM/DD, which the lighter model read as DD/MM/YY,
 // years in the past.
 const DATE_READING =
@@ -89,6 +94,7 @@ const EXTRACTOR_STATIC_PROMPT = [
   "Today is YYYY-MM-DD (America/Toronto). Currency is CAD.",
   LINE_AMOUNTS,
   "Item types must belong to the same category as the subcategory.",
+  ITEM_TYPE_GOODS,
   "category, subcategory, and item_type are separate fields. Never repeat the category inside subcategory or item_type. Example: category='Food and drink', subcategory='Takeout / Quick Service', item_type='Meals & Prepared Food'.",
   "Use Other … subcategories only when nothing more specific fits.",
   ENGLISH_DESCRIPTIONS,
@@ -109,6 +115,7 @@ const PHOTO_EXTRACTOR_STATIC_PROMPT = [
   "Today is YYYY-MM-DD (America/Toronto). Currency is CAD.",
   LINE_AMOUNTS,
   "Item types must belong to the same category as the subcategory.",
+  ITEM_TYPE_GOODS,
   "category, subcategory, and item_type are separate fields. Never repeat the category inside subcategory or item_type. Example: category='Food and drink', subcategory='Takeout / Quick Service', item_type='Meals & Prepared Food'.",
   "Use Other … subcategories only when nothing more specific fits.",
   ENGLISH_DESCRIPTIONS,
@@ -129,6 +136,7 @@ const VOICE_EXTRACTOR_STATIC_PROMPT = [
   "Today is YYYY-MM-DD (America/Toronto). Currency is CAD.",
   LINE_AMOUNTS,
   "Item types must belong to the same category as the subcategory.",
+  ITEM_TYPE_GOODS,
   "category, subcategory, and item_type are separate fields. Never repeat the category inside subcategory or item_type. Example: category='Food and drink', subcategory='Takeout / Quick Service', item_type='Meals & Prepared Food'.",
   "Use Other … subcategories only when nothing more specific fits.",
   ENGLISH_DESCRIPTIONS,
@@ -156,6 +164,7 @@ const PATCH_EXTRACTOR_STATIC_PROMPT = [
   // recomputes the total, so the model only replaces the field.
   "The current extraction lists each line's price, the discounts, the taxes and the tip. A correction to the tip, a tax or a discount replaces that value, it does not add to it, and a correction to a line's price replaces that price. Keep amount unchanged unless the correction states a new total paid: the bot recomputes the total from the prices, discounts, taxes and tip. When the correction states a new total, set amount to it and change the prices so the prices minus the discounts plus the taxes plus the tip equal it.",
   "Item types must belong to the same category as the subcategory.",
+  ITEM_TYPE_GOODS,
   "category, subcategory, and item_type are separate fields. Never repeat the category inside subcategory or item_type. Example: category='Food and drink', subcategory='Takeout / Quick Service', item_type='Meals & Prepared Food'.",
   "Use Other … subcategories only when nothing more specific fits.",
   ENGLISH_DESCRIPTIONS,
