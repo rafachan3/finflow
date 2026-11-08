@@ -2725,3 +2725,30 @@ lands in its first week, so it would read "over" every first week); an
 owner-set expected income in `budget_targets` (goes stale silently; kept as
 the fallback if the estimate proves wrong); the plans as MetricFlow
 metrics.
+
+## 2026-11-08 — An Edit recomputes its total only for a tip or price correction
+
+A review of #118 found two ways the Edit total rule (2026-11-07) could
+silently show a wrong total with a check mark:
+
+- **Cards stored before prices.** Their line amounts already hold the tax
+  and tip, and they are sent as prices with no tip. A tip correction then
+  counted the tip twice: a 50.00 card with a 5.00 tip, corrected to an
+  8.00 tip, showed 58.00. Now such a card always keeps its stored total.
+  The parts fail the line-sum check, and the owner sees an error card with
+  nothing saved.
+- **Unrelated corrections.** Any Edit that left the total alone took the
+  recomputed line sum. A date Edit that came back with one of two taxes
+  dropped therefore moved 24.52 to 23.82. Now the line sum replaces an
+  unchanged total only when the taxes and the number of lines match the
+  current card, the tip was not removed, and the tip or a line's price
+  changed. Every other difference keeps the stored total and fails the
+  line-sum check.
+
+The rule is narrower than "recompute when tip, taxes or prices differ". In
+the dropped-tax case the taxes do differ, so that rule would still have
+recomputed. A tax correction that leaves the total alone now gets an error
+card, and the owner states the total.
+
+**Ruled out:** inferring from the correction text which field it targets
+(another model judgement in the money path).

@@ -158,6 +158,34 @@ describe("editedTotal", () => {
     expect(editedTotal({ ...newTip("33.24"), items: [{ price: "16.00", taxable: false, amount: "5" }] }, before)).toBe("33.24");
   });
 
+  it("follows the recomputed lines when a correction changes a line's price and leaves the total alone", () => {
+    // The salad was 10.00, not 9.00: lineAmounts gives 21.07 and 13.17.
+    const items = [
+      { price: "16.00", taxable: false, amount: "21.07" },
+      { price: "10.00", taxable: false, amount: "13.17" },
+    ];
+    expect(editedTotal({ ...before, items }, before)).toBe("34.24");
+  });
+
+  it("keeps the stored total when the model drops or changes a tax, removes the tip, or changes nothing", () => {
+    const quebec = {
+      amount: "24.52",
+      taxes: ["0.35", "0.70"],
+      tip: null,
+      items: [
+        { price: "9.99", taxable: false, amount: "9.99" },
+        { price: "6.49", taxable: false, amount: "6.49" },
+        { price: "6.99", taxable: true, amount: "8.04" },
+      ],
+    };
+    const droppedTax = { ...quebec, taxes: ["0.35"], items: [quebec.items[0], quebec.items[1], { ...quebec.items[2], amount: "7.34" }] };
+    expect(editedTotal(droppedTax, quebec)).toBe("24.52");
+    const noTip = { ...before, tip: null, items: before.items.map((i) => ({ ...i, amount: "0.00" })) };
+    expect(editedTotal(noTip, before)).toBe("33.24");
+    expect(editedTotal({ ...before, items: [before.items[0]] }, before)).toBe("33.24");
+    expect(editedTotal(before, before)).toBe("33.24");
+  });
+
   it("keeps the stored total on a card stored before prices, whose lines already hold its tax and tip", () => {
     const old = { amount: "50.00", items: [{ amount: "50.00" }] };
     const patched = { amount: "50.00", taxes: [], tip: "8.00", items: [{ price: "50.00", taxable: false, amount: "58.00" }] };

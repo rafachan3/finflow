@@ -61,16 +61,28 @@ export type EditParts = {
 };
 
 /**
- * An Edit's header. A correction that leaves the total alone (a new tip, tax
- * or price) gets the sum of its recomputed lines, so the model does no
- * arithmetic. A total the correction changed stands, and the line-sum check
- * judges it. A card stored before prices keeps its total: its line amounts
- * already hold the tax and tip, so a recomputed sum would count a tip twice.
+ * An Edit's header. When the model left the total alone, the sum of the
+ * recomputed lines replaces it only for a correction to the tip or to a
+ * line's price: the taxes and the number of lines are unchanged, and a tip
+ * is not removed. Then the model does no arithmetic. Any other difference
+ * (a dropped tax, a lost line or tip) keeps the stored total, and the
+ * line-sum check fails it visibly. A total the model changed stands. A card
+ * stored before prices keeps its total: its line amounts already hold the
+ * tax and tip, so a recomputed sum would count a tip twice.
  */
 export function editedTotal(patched: EditParts, current: EditParts): Money {
   const cents = patched.items.map((i) => parseCents(i.amount));
   const same = parseCents(patched.amount) !== null && parseCents(patched.amount) === parseCents(current.amount);
   const priced = current.items.every((i) => i.price !== undefined);
-  if (!same || !priced || cents.length === 0 || cents.includes(null)) return patched.amount;
+  const tip = (p: EditParts) => p.tip ?? null;
+  const prices = (p: EditParts) => JSON.stringify(p.items.map((i) => [i.price, i.taxable ?? false]));
+  const sameShape =
+    JSON.stringify(patched.taxes ?? []) === JSON.stringify(current.taxes ?? []) &&
+    patched.items.length === current.items.length &&
+    (tip(patched) !== null || tip(current) === null);
+  const tipOrPrice = tip(patched) !== tip(current) || prices(patched) !== prices(current);
+  if (!same || !priced || !sameShape || !tipOrPrice || cents.length === 0 || cents.includes(null)) {
+    return patched.amount;
+  }
   return money((cents as number[]).reduce((a, b) => a + b, 0));
 }
