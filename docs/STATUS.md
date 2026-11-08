@@ -3,7 +3,7 @@
 Living state of the project. Read this first; update it whenever work lands.
 
 **Last updated:** 2026-11-07
-**Current phase:** Phase 4.5 — Proactive nudges, in progress: PRs 1-5 merged (#86, #87, #88, #94, #105) plus join/Close/naming `#110` and waiting-prompts `#112`; PR 6 (flag CHECK, migration 0020) in review; PR 7 acceptance next (see [ROADMAP.md](ROADMAP.md) and Next concrete step)
+**Current phase:** Phase 4.5 accepted 2026-11-07; Phase 5 (Grafana) is next, after the follow-ups in Next concrete step
 
 ## Phase progress
 
@@ -16,7 +16,7 @@ Living state of the project. Read this first; update it whenever work lands.
 - [x] Phase 3.6 — Regression test suite — **accepted 2026-10-29: deliberate-break PR #48 blocked (unit + inventory failed, BLOCKED), clean PRs #46/#47 green, smoke step green on deploy run 40803017809, `main` protected** (2026-10-29)
 - [x] Phase 3.5 — Ingestion follow-ons — **accepted 2026-10-29 by the journey tests (no phone test): 25 of 25 passed in `line-tags`, `duplicates` and `merchants`; see Next concrete step** (2026-10-29)
 - [x] Phase 4 — dbt semantic layer + MetricFlow — **accepted 2026-10-30: `dbt build`, the hand-written-SQL reconciliation and `mf query` vs the marts green in CI on the fixture (#72-#78) and on production in `dbt-nightly` run 41157900716 (87 of 87 nodes, 14 metrics, 5 months); real-month hand verification deferred** (2026-10-30)
-- [ ] Phase 4.5 — Proactive nudges (recurring reminders, merchant recommendations) — **PRs 1-5 of 7 merged (#86, #87, #88, #94, #105); join/Close/naming `#110` merged** (2026-11-02)
+- [x] Phase 4.5 — Proactive nudges (recurring series, daily digest, merchant recommendations) — **accepted 2026-11-07: the `recurring-digest`, `recurring-card` and `recurring-backfill` journeys passed 45 of 45 (3 files) against a throwaway Postgres, CI on `main` green for #115 (run 42443193526), and the production `nudge_runs` log holds 6 rows, all `sent`, 2026-11-02 to 2026-11-07; no phone test** (2026-11-07)
 - [ ] Phase 5 — Grafana dashboards
 - [ ] Phase 6 — Claude analytics agent (subagents + Postgres MCP)
 - [ ] Phase 7 — Open-source polish
@@ -565,16 +565,14 @@ the prompt-only rule gave inconsistent splits under Lite).
 
 ## Next concrete step
 
-The owner's backfill is done (2026-11-07). Phase 4.5 PR 6 (branch
-`feat/recurring-flag-check`) is in review: migration 0020 adds
-`CHECK (is_recurring = (recurring_series_id is not null))`; a read-only
-production precheck found no row flagged without a series and none linked
-without the flag. The legacy-flag screen on `/recurring` (empty since the
-backfill) is removed with it, and the warn-level dbt test
-`recurring_flag_has_series` becomes the error-level
-`recurring_flag_matches_series`. **Before merge:** `supabase db push`
-(dry run first) applies 0020. Next: PR 7 (acceptance). Card redesign
-(#89 #92 #96 #97) stays after PR 7.
+Phase 4.5 is accepted (2026-11-07; check and output in Phase progress).
+The backfill is done: June-October 2026 are complete months. PR 6 (#115)
+merged with migration 0020 applied. Next, in order:
+
+1. Deterministic tax/tip PR.
+2. A not-a-duplicate acknowledgement for ledger-health.
+3. Card redesign (#89 #92 #96 #97): brainstorm with the owner first.
+4. Phase 5 (Grafana).
 
 Phase 4 is accepted (2026-10-30). Optional and deferred: hand-verify real
 numbers for one complete month against the owner's records (on hold until
