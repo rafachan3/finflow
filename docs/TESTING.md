@@ -163,6 +163,7 @@ included.
 | Marts | `fct_subcategory_month` summed over bucket equals `fct_category_month.spend` for every month and subcategory of the month list, and is 0 for a zero-filled row, the nightly on production too. On the fixture, by hand: every (bucket, subcategory) pair with an own line appears in every month, a line someone else paid for is not counted, the baseline means include the months a subcategory was absent (as 0), the delta against them, no baseline in the first month, and the few-lines flag | `dbt:subcategory_month_sums_to_category_month`<br>`dbt:subcategory_month_hand_worked` |
 | Marts | `fct_ledger_entry` has one row per `stg_transactions` row: unique, not null, and the same count; the nightly on production too | `dbt:ledger_entry_one_per_transaction` |
 | Marts | `fct_ledger_entry` reconciles to the monthly metrics: per month, income headers sum to `income`, own-expense headers to `spend`, other-expense headers to `external_spend`; each expense's `needs_amount + wants_amount` equals its header; the nightly on production too | `dbt:ledger_entry_reconciles` |
+| Marts | `fct_month_rolling` has one row per (month of the month list, N) for each N in var `window_months` (default 3 and 12); sums, the four share ratios and `unspent_rate` are null unless every month of the window is complete and in the list; N = 3 share ratios equal `fct_month_plan.*_pct_3m`; the nightly on production too. On the fixture, by hand: a 3-month window over 2026-04 to 2026-06, a 12-month window null across the 8-month list, and nulls when the window is short or includes the current month | `dbt:month_rolling_matches_plan_3m`<br>`dbt:month_rolling_null_unless_complete`<br>`dbt:month_rolling_12m_null_on_short_fixture`<br>`dbt:month_rolling_hand_worked` |
 | Marts | `budget_targets` holds one row, seeded 50/30/20; a second row, a target outside 0-100 or targets not summing to 100 are refused, and an UPDATE that keeps the sum at 100 is accepted | `seed one 50/30/20 budget_targets row and refuse a second row or targets outside 0-100 or not summing to 100` |
 | Marts | The MetricFlow metrics are exactly the contract's: a metric in the YAML but not in SEMANTIC_LAYER.md, or the reverse, fails the `dbt` job. `mf query` gives every metric of every month in `fct_monthly_summary` (money to the cent, ratios within 0.0001), including months where an input of a derived metric has no rows (the fixture's 2026-03 to 2026-05); `spend` without its self-funded filter fails, naming the metric and month and printing no value | `ci:mf query matches fct_monthly_summary for every contract metric`<br>`ci:spend without its self-funded filter fails check_metrics, naming spend and the month, with no values`<br>`ci:a metric in the YAML but not in SEMANTIC_LAYER.md fails check_metrics` |
 
@@ -255,10 +256,11 @@ eval "$(TEST_DATABASE_URL=$(npm --prefix ../lambda run -s db:url) .venv/bin/pyth
 .venv/bin/mf validate-configs && .venv/bin/python scripts/check_metrics.py
 ```
 
-Models: four staging views in schema `staging`, and eight mart views in
+Models: four staging views in schema `staging`, and nine mart views in
 `marts` (`dim_date`, `fct_transactions`, `fct_category_month`,
 `fct_monthly_summary`, `fct_month_plan`, `fct_pace_day`,
-`fct_subcategory_month`, `fct_ledger_entry`), all recreated in full every run.
+`fct_subcategory_month`, `fct_ledger_entry`, `fct_month_rolling`), all
+recreated in full every run.
 `monthly_summary_matches_hand_written_sql` is the acceptance check: it runs
 [SEMANTIC_LAYER.md](SEMANTIC_LAYER.md)'s reference SQL over `public` and
 compares every metric of every month with the mart, printing month and

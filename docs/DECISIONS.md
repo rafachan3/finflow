@@ -2952,3 +2952,20 @@ line items nested from `fct_transactions`.
 **Ruled out:** flattening the ledger to line grain (defeats "whole entries
 as logged"); putting series name on `fct_transactions` (unchanged per the
 spec).
+
+## 2026-11-08 — Rolling windows are a long-format mart, not extra plan columns
+
+Phase 5 PR A3. Trends T1 needs 3-month and 12-month share ratios of sums.
+
+- **Generalize "Rolling 3 months" to "Rolling N months"** in the contract.
+  `fct_month_plan.*_pct_3m` stays N = 3, so This month and Review keep
+  working. New N do not add columns there.
+- **`fct_month_rolling`**, long format, one row per (month, N) for N in
+  the dbt var `window_months` (default 3, 12). Sums and ratios are null
+  unless every month of the window is complete and in the list, so a
+  12-month line does not start until a year of complete months exists.
+- **Not a MetricFlow model**, same reason as the other planning marts.
+
+**Ruled out:** `*_pct_12m` columns on `fct_month_plan` (wide format grows
+with every N); showing partial windows (a 5-month mean labelled 12 would
+lie).

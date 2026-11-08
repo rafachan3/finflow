@@ -398,7 +398,8 @@ models:
                 quote: false
 
   # The planning marts (docs/SEMANTIC_LAYER.md, "Planning marts"): plans,
-  # pace and baselines for the dashboards. Not metrics: no MetricFlow here.
+  # pace, baselines and rolling windows for the dashboards. Not metrics:
+  # no MetricFlow here.
   - name: fct_month_plan
     description: >
       One row per month from the ledger start's month on. Dollar plans from
@@ -538,6 +539,53 @@ models:
       - name: is_few_lines
         description: Fewer than 6 lines across this month and 3 baseline months' worth.
         data_tests: [not_null]
+
+  - name: fct_month_rolling
+    description: >
+      One row per (month_start, window_months) for every month of the month
+      list and every N in var window_months (default 3 and 12). Window sums
+      of the monthly metrics, the four share ratios, and unspent_rate; null
+      unless every month of the window is complete and in the list.
+      fct_month_plan.*_pct_3m is N = 3. Not a metric: no MetricFlow here.
+    data_tests:
+      - unique:
+          arguments:
+            column_name: "month_start || '|' || window_months"
+    columns:
+      - name: month_start
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('fct_month_plan')
+                field: month_start
+      - name: window_months
+        description: N; one of the values in var window_months.
+        data_tests: [not_null]
+      - name: complete_months_in_window
+        description: >
+          Complete months among this month and the N − 1 before it that are
+          in the list. Sums are null unless this equals window_months.
+        data_tests: [not_null]
+      - name: spendable_income
+        description: Sum over the window; null unless the whole window is complete.
+      - name: needs_spend
+      - name: wants_spend
+      - name: financial_future
+      - name: unallocated_cash
+      - name: spend
+      - name: income
+      - name: needs_pct
+        description: >
+          Ratio of sums over the window; null unless complete, or when
+          spendable_income sums to 0. N = 3 equals fct_month_plan.needs_pct_3m.
+      - name: wants_pct
+      - name: financial_future_pct
+      - name: unallocated_pct
+      - name: unspent_rate
+        description: >
+          (sum(income) − sum(spend)) / sum(income) over the window; null
+          unless complete, or when income sums to 0.
 
   # Listing mart (docs/SEMANTIC_LAYER.md, "Listing marts"): one row per
   # logged transaction for the Ledger dashboard. Not a metric: no MetricFlow.
