@@ -342,7 +342,7 @@ is read into its own `discounts` list and taken off every line by price
 before the taxes and tip are shared, so such a receipt keeps Confirm; an
 Edit treats a corrected discount like a tip correction (DECISIONS.md
 2026-11-08). No golden reads a coupon yet: unit tests and the `tax-tip`
-journey cover it. #89 (branch `fix/laundromat-machine-fees`): TAXONOMY.md
+journey cover it. #89 (merged as #125, `2843d57`): TAXONOMY.md
 rule 8 and the prompt say a machine cycle has no goods item type
 (a laundromat washer cycle is Housing / Laundry, never Laundry Supply); the
 new `laundromat-cycles` golden takes the 20th slot (20 of 20).
@@ -599,8 +599,12 @@ merged with migration 0020 applied. Next, in order:
    closed.
 3. Card redesign (#89 #92 #96 #97): #89 and #96 are data-correctness bugs and
    go next, one at a time (they share prompts and goldens under the 20-case
-   eval cap, now 20 used). #89 is in review on `fix/laundromat-machine-fees`;
-   #92 and #97 wait until after the first dashboards.
+   eval cap, now 20 used). #89 merged as #125 (`2843d57`). #96 is in review
+   on branch `fix/split-mixed-funders` (no PR yet): a header that holds
+   exactly all the other funders' lines from the same message drops them,
+   in code, and the card warns; no prompt or golden change (DECISIONS.md
+   2026-11-08). #92 and #97 wait until after
+   the first dashboards.
 4. Phase 5 (Grafana). PR A, the planning marts, was built before the card
    redesign at the owner's request (below) and merged as #119 (`a2b5dc2`);
    the production `dbt-nightly` dispatched after merge passed (run

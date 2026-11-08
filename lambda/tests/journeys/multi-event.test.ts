@@ -73,6 +73,68 @@ describe("several purchases in one message", () => {
     expect(await ledger.transactions()).toMatchObject([{ amount: "16.00", lines: 2 }]);
   });
 
+  it("a message mixing funders gives one card per funder, each header the sum of its own lines, and warns on a replaced total", async () => {
+    const [event] = (golden("no-place-lines").recorded as { events: { items: object[] }[] }).events;
+    const [meal, drink] = event.items;
+    const line = (base: object, description: string, amount: string) => ({ ...base, description, amount });
+    // The #96 answer: the message's total leaked onto the card another person paid for.
+    gemini.extract = {
+      events: [
+        {
+          ...event,
+          date: "2026-08-18",
+          funded_by: "family",
+          description: "Fees",
+          amount: "126.00",
+          items: [line(meal, "Fee A", "20.00"), line(meal, "Fee B", "100.00")],
+        },
+        {
+          ...event,
+          date: "2026-08-18",
+          funded_by: null,
+          description: "Coffee and snack",
+          amount: "6.00",
+          items: [line(drink, "Coffee", "4.00"), line(meal, "Snack", "2.00")],
+        },
+      ],
+    };
+    await chat.text("On 18 Aug: 20 Fee A and 100 Fee B funded by another person, 4 coffee, 2 snack");
+
+    const [first, second] = chat.replies();
+    expect(chat.replies()).toHaveLength(2);
+    expect(first.text.split("\n")[0]).toMatch(/CAD 120\.00 \(1 of 2\)$/);
+    expect(first.text).toContain("Funded by: family");
+    expect(second.text.split("\n")[0]).toMatch(/CAD 6\.00 \(2 of 2\)$/);
+    expect(first.text + second.text).not.toContain("✗");
+    expect(first.text).toContain("! total 126.00 included 6.00 from the other funder's card; using 120.00");
+    expect(second.text).not.toContain("! total");
+    expect(labels(first)).toEqual(REVIEW);
+    expect(labels(second)).toEqual(REVIEW);
+
+    await chat.tap(first, "Confirm");
+    await chat.tap(second, "Confirm");
+    expect(await ledger.transactions()).toMatchObject([
+      { funder: "family", amount: "120.00", lines: 2 },
+      { funder: "self", amount: "6.00", lines: 2 },
+    ]);
+  });
+
+  it("a mixed-funder header that matches no other funder's lines cannot be confirmed", async () => {
+    const [event] = (golden("no-place-lines").recorded as { events: { items: object[] }[] }).events;
+    gemini.extract = {
+      events: [
+        { ...event, funded_by: "family", amount: "17.00" },
+        { ...event, funded_by: null, description: "Snack", amount: "2.00", items: [{ ...event.items[0], description: "Snack", amount: "2.00" }] },
+      ],
+    };
+    await chat.text("12 lunch and 4 coffee funded by another person, 2 snack");
+
+    const [first] = chat.replies();
+    expect(labels(first)).not.toContain("Confirm");
+    expect(first.text).toContain("✗ lines sum 16.00 != header 17.00");
+    expect(await ledger.ingestions()).toHaveLength(1);
+  });
+
   it("a purchase and a paycheque become an expense card and an income card", async () => {
     gemini.extract = golden("expense-and-income").recorded;
     await chat.text("groceries at Fresh Market 40, and got paid 200 salary");

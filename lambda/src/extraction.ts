@@ -61,6 +61,8 @@ export type Extraction = {
   tip?: Money | null;
   /** Whole-order discounts as positive amounts (coupons, total-bill discounts); absent before 2026-11-08. */
   discounts?: Money[];
+  /** The header Gemini gave when it held another funder's lines and code replaced it (#96). */
+  stated_amount?: Money;
   items: ExtractionItem[];
   confidence: number;
   /** `bucket` only on rows from before 2026-10-28. */
@@ -337,6 +339,11 @@ export function validateExtraction(
   }
 
   const headerCents = parseCents(extraction.amount);
+  const stated = extraction.stated_amount ? parseCents(extraction.stated_amount) : null;
+  if (stated !== null && headerCents !== null) {
+    const gap = ((stated - headerCents) / 100).toFixed(2);
+    warnings.push(`total ${extraction.stated_amount} included ${gap} from the other funder's card; using ${extraction.amount}`);
+  }
   if (headerCents === null) {
     errors.push(`amount must be two-decimal, got ${extraction.amount}`);
   }
