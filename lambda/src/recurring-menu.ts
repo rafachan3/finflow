@@ -47,7 +47,6 @@ import {
 } from "./recurring.js";
 import {
   applyReview,
-  clearFlags,
   createSeries,
   deleteSeries,
   dismissGroup,
@@ -73,10 +72,9 @@ export type Screen = { text: string; keyboard: Keyboard };
 
 /**
  * Where the add screen was opened from, so ‹ Back returns there: the pick
- * list (`a`, the default), the Saved reply (`s`), the legacy flags (`f`) or
- * the suggestions (`g`).
+ * list (`a`, the default), the Saved reply (`s`) or the suggestions (`g`).
  */
-export type Origin = "a" | "s" | "f" | "g";
+export type Origin = "a" | "s" | "g";
 
 export type RecurringTap =
   | { op: "list"; offset: number }
@@ -93,9 +91,8 @@ export type RecurringTap =
   | { op: "create"; tx: string; cadence: Cadence; varies: boolean }
   | { op: "review"; sid: number | null }
   | { op: "toggle"; data: string }
-  | { op: "all" | "later" | "clear" | "suggestions" }
+  | { op: "all" | "later" | "suggestions" }
   | { op: "apply"; sid: number }
-  | { op: "flags"; offset: number }
   | { op: "dismiss"; tx: string };
 
 const SID = "(\\d{1,10})";
@@ -140,7 +137,7 @@ const TAPS: [RegExp, (m: RegExpExecArray) => RecurringTap][] = [
   [new RegExp(`^r:x:${SID}$`), (m) => ({ op: "askDelete", sid: Number(m[1]) })],
   [new RegExp(`^r:xy:${SID}$`), (m) => ({ op: "delete", sid: Number(m[1]) })],
   [/^r:a(?:r:(\d{1,4}))?$/, (m) => ({ op: "pick", offset: Number(m[1] ?? 0) })],
-  [new RegExp(`^r:a([te]):${UUID}(?::([sfg]))?$`), (m) => ({ op: "addFrom", tx: m[2], all: m[1] === "e", from: (m[3] ?? "a") as Origin })],
+  [new RegExp(`^r:a([te]):${UUID}(?::([sg]))?$`),(m) => ({ op: "addFrom", tx: m[2], all: m[1] === "e", from: (m[3] ?? "a") as Origin })],
   [new RegExp(`^r:s([vc]):${UUID}$`), (m) => ({ op: "saved", tx: m[2], buttons: m[1] === "v" })],
   [/^r:z$/, () => ({ op: "close" })],
   [new RegExp(`^r:aj:${UUID}:${SID}$`), (m) => ({ op: "join", tx: m[1], sid: Number(m[2]) })],
@@ -150,12 +147,10 @@ const TAPS: [RegExp, (m: RegExpExecArray) => RecurringTap][] = [
     (m) => ({ op: "create", tx: m[1], cadence: CODES[m[2]], varies: m[3] === "1" }),
   ],
   [new RegExp(`^r:b(?::${SID})?$`), (m) => ({ op: "review", sid: m[1] === undefined ? null : Number(m[1]) })],
-  [new RegExp(`^r:[bf]t:${UUID}$`), (m) => ({ op: "toggle", data: m[0] })],
+  [new RegExp(`^r:bt:${UUID}$`), (m) => ({ op: "toggle", data: m[0] })],
   [/^r:ba$/, () => ({ op: "all" })],
   [new RegExp(`^r:bk:${SID}$`), (m) => ({ op: "apply", sid: Number(m[1]) })],
   [/^r:bl$/, () => ({ op: "later" })],
-  [/^r:f:(\d{1,4})$/, (m) => ({ op: "flags", offset: Number(m[1]) })],
-  [/^r:fk$/, () => ({ op: "clear" })],
   [/^r:sg$/, () => ({ op: "suggestions" })],
   [new RegExp(`^r:gd:${UUID}$`), (m) => ({ op: "dismiss", tx: m[1] })],
 ];
@@ -335,17 +330,14 @@ export function listScreen(book: Book, today: string, offset = 0): Screen {
   // The leftovers (design §D.3, P3): nothing half-linked goes unnoticed.
   const review = toReview(book).size;
   const suggestions = proposeSeries(book.rows, book.dismissed, today).length;
-  const flagged = flaggedRows(book).length;
   const counts = [
     review > 0 ? `🧹 ${review} to review` : "",
     suggestions > 0 ? `🔎 ${suggestions} suggestion${suggestions === 1 ? "" : "s"}` : "",
-    flagged > 0 ? `⚑ ${flagged} flagged, no series` : "",
   ].filter(Boolean);
   if (counts.length > 0) lines.push(counts.join(" · "));
   const todo = [
     ...(review > 0 ? [{ text: `🧹 Review (${review})`, callback_data: "r:b" }] : []),
     ...(suggestions > 0 ? [{ text: `🔎 Suggestions (${suggestions})`, callback_data: "r:sg" }] : []),
-    ...(flagged > 0 ? [{ text: `⚑ Flagged (${flagged})`, callback_data: "r:f:0" }] : []),
   ];
   if (todo.length > 0) keyboard.push(todo);
   const pages = [];
@@ -616,11 +608,11 @@ const JOIN_SHOWN = 4;
 function originOf(keyboard: Keyboard): Origin {
   const back = keyboard.flat().find((b) => b.text === "‹ Back")?.callback_data ?? "";
   if (back.startsWith("r:sv:")) return "s";
-  return back === ORIGIN_SCREEN.f ? "f" : back === ORIGIN_SCREEN.g ? "g" : "a";
+  return back === ORIGIN_SCREEN.g ? "g" : "a";
 }
 
 /** The menu screen each origin's ‹ Back returns to; a Saved reply's is its own message. */
-const ORIGIN_SCREEN: Record<Exclude<Origin, "s">, string> = { a: "r:a", f: "r:f:0", g: "r:sg" };
+const ORIGIN_SCREEN: Record<Exclude<Origin, "s">, string> = { a: "r:a", g: "r:sg" };
 
 /** An add button's data ends in its origin, except the pick list's (the default, as older buttons carry). */
 function suffix(from: Origin): string {
@@ -729,16 +721,16 @@ export function flipVaries(keyboard: Keyboard): Keyboard {
   );
 }
 
-// ---- Verify past payments, legacy flags, suggestions ------------------------
+// ---- Verify past payments, suggestions --------------------------------------
 
 export const REVIEW_PAGE = 8;
-/** The toggles of the review (`r:bt`) and legacy-flag (`r:ft`) screens. */
-const REVIEW_TOGGLE = new RegExp(`^r:[bf]t:${UUID}$`);
+/** The review screen's toggles. */
+const REVIEW_TOGGLE = new RegExp(`^r:bt:${UUID}$`);
 
 /**
  * A series' unresolved candidates, newest first: payments in no series, not
- * excluded from it, that match it strongly or weakly. Strong ones and those
- * flagged recurring before are ticked; weak ones are not.
+ * excluded from it, that match it strongly or weakly. Strong ones are
+ * ticked; weak ones are not.
  */
 export function candidates(book: Book, s: BookSeries): { row: BookRow; ticked: boolean }[] {
   const history = historyOf(book, s);
@@ -746,7 +738,7 @@ export function candidates(book: Book, s: BookSeries): { row: BookRow; ticked: b
     .filter((r) => r.seriesId === null)
     .map((row) => ({ row, strength: matchStrength(history, row).strength }))
     .filter((c) => c.strength !== "none")
-    .map(({ row, strength }) => ({ row, ticked: strength === "strong" || row.flagged }))
+    .map(({ row, strength }) => ({ row, ticked: strength === "strong" }))
     .reverse();
 }
 
@@ -755,19 +747,11 @@ export function toReview(book: Book): Set<string> {
   return new Set(book.series.flatMap((s) => candidates(book, s).map((c) => c.row.id)));
 }
 
-/** Rows flagged recurring by the import or Gemini's guess but in no series, newest first. */
-function flaggedRows(book: Book): BookRow[] {
-  return book.rows.filter((r) => r.flagged && r.seriesId === null).reverse();
-}
-
 export function toggleLabel(r: BookRow, ticked: boolean): string {
-  return `${ticked ? "✅" : "☐"} ${r.flagged ? "⚑ " : ""}${rowLabel(r, 36)}`;
+  return `${ticked ? "✅" : "☐"} ${rowLabel(r, 36)}`;
 }
 
-/**
- * Rewrites the Apply and Clear labels from the ticks, so a button always
- * says what it will write: `✅ Link 5 · ignore 3`, `Clear flag on ticked (2)`.
- */
+/** Rewrites the Apply label from the ticks, so it always says what it will write: `✅ Link 5 · ignore 3`. */
 export function recount(keyboard: Keyboard): Keyboard {
   const { ids, shown } = ticked(keyboard, REVIEW_TOGGLE);
   return keyboard.map((row) =>
@@ -775,9 +759,7 @@ export function recount(keyboard: Keyboard): Keyboard {
       // r:da: is the digest's Find screen's Apply.
       b.callback_data.startsWith("r:bk:") || b.callback_data.startsWith("r:da:")
         ? { ...b, text: `✅ Link ${ids.length} · ignore ${shown - ids.length}` }
-        : b.callback_data === "r:fk"
-          ? { ...b, text: `Clear flag on ticked (${ids.length})` }
-          : b,
+        : b,
     ),
   );
 }
@@ -795,12 +777,7 @@ export function reviewScreen(book: Book, sid: number, today: string): Screen {
     const v = viewOf(book, series, today);
     const ignored = (book.excluded.get(sid) ?? []).length;
     const others = toReview(book).size;
-    const flagged = flaggedRows(book).length;
-    const next = others > 0
-      ? [{ text: `🧹 Review next (${others})`, callback_data: "r:b" }]
-      : flagged > 0
-        ? [{ text: `⚑ Flagged, no series (${flagged})`, callback_data: "r:f:0" }]
-        : [];
+    const next = others > 0 ? [{ text: `🧹 Review next (${others})`, callback_data: "r:b" }] : [];
     return {
       text: [
         `<b>🧹 ${esc(series.name)}</b>`,
@@ -826,46 +803,16 @@ export function reviewScreen(book: Book, sid: number, today: string): Screen {
     text: [
       `<b>🧹 ${esc(series.name)}: past payments that look like it</b>`,
       `${page.length < found.length ? `Showing ${page.length} of ${found.length}.` : `${payments(found.length)}.`} ✅ links it; ☐ leaves it out of this series for good.`,
-      "Ticked: same name, merchant or source. Unticked: only the same category, amount and timing. ⚑ was flagged recurring.",
+      "Ticked: same name, merchant or source. Unticked: only the same category, amount and timing.",
     ].join("\n"),
     keyboard: recount(keyboard),
   };
 }
 
-/** The first series with candidates, else the legacy flags. */
+/** The first series with candidates, else a screen saying none is left. */
 function nextReview(book: Book, today: string): Screen {
   const s = book.series.find((x) => candidates(book, x).length > 0);
-  return s ? reviewScreen(book, s.id, today) : flagsScreen(book, 0);
-}
-
-/**
- * Legacy flags: rows flagged recurring that are in no series, 8 a page. A
- * toggle per row and ➕ to make a series from it; Clear writes. When the
- * list is empty, migration 0017's CHECK can ship.
- */
-export function flagsScreen(book: Book, offset: number): Screen {
-  const rows = flaggedRows(book);
-  if (rows.length === 0) {
-    return { text: "<b>⚑ Flagged recurring, in no series</b>\nNone left: every recurring flag belongs to a series.", keyboard: [BACK_TO_LIST] };
-  }
-  const page = rows.slice(offset, offset + REVIEW_PAGE);
-  const keyboard: Keyboard = page.map((r) => [
-    { text: `☐ ${rowLabel(r, 34)}`, callback_data: `r:ft:${r.id}` },
-    { text: "➕", callback_data: `r:at:${r.id}:f` },
-  ]);
-  keyboard.push([
-    { text: "", callback_data: "r:fk" },
-    { text: "Select all", callback_data: "r:ba" },
-  ]);
-  if (rows.length > offset + REVIEW_PAGE) keyboard.push([{ text: "More ›", callback_data: `r:f:${offset + REVIEW_PAGE}` }]);
-  keyboard.push(BACK_TO_LIST);
-  return {
-    text: [
-      `<b>⚑ Flagged recurring, in no series (${rows.length})</b>`,
-      `Showing ${offset + 1}–${offset + page.length}. Tick to clear the flag, or ➕ to make a series from that payment.`,
-    ].join("\n"),
-    keyboard: recount(keyboard),
-  };
+  return s ? reviewScreen(book, s.id, today) : { text: "<b>🧹 Review</b>\nNothing left to review.", keyboard: [BACK_TO_LIST] };
 }
 
 /** Detector proposals: one line each, Track (the add flow) or Not recurring. */
@@ -1027,15 +974,6 @@ async function respond(tap: RecurringTap, ctx: TapContext): Promise<Outcome> {
         screen: reviewScreen(await loadBook(), tap.sid, ctx.today),
         ack: `Linked ${result.linked}, ignored ${result.ignored}.`,
       };
-    }
-    case "flags":
-      return { screen: flagsScreen(await loadBook(), tap.offset) };
-    case "clear": {
-      const { ids } = ticked(ctx.keyboard, REVIEW_TOGGLE);
-      if (ids.length === 0) return { ack: "Tick the ones to clear first." };
-      const cleared = await clearFlags(ids);
-      if (cleared === 0) return { ack: "Already cleared." };
-      return { screen: flagsScreen(await loadBook(), 0), ack: `Cleared ${cleared}.` };
     }
     case "suggestions":
       return { screen: suggestionsScreen(await loadBook(), ctx.today) };

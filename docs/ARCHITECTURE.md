@@ -102,8 +102,7 @@ dbt models and the agent read it, so numbers agree everywhere.
   registers the same table as the Telegram command menu.
   `/recurring` (`src/recurring-menu.ts`) sends one message whose buttons
   edit it in place: list, detail, pause/resume/rename/delete, add from a
-  saved payment, the review that links past payments, legacy flags and
-  suggestions. Each tap reads the whole recurring book
+  saved payment, the review that links past payments, and suggestions. Each tap reads the whole recurring book
   (`src/recurring-db.ts`) and derives everything in `src/recurring.ts`;
   what is ticked lives in the keyboard, and only a tap whose label states
   the effect writes (one statement, safe to repeat). A text reply to one of

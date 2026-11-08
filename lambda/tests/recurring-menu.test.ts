@@ -95,7 +95,7 @@ describe("adding a series", () => {
   const row = (over: Partial<BookRow>): BookRow => ({
     id: TX, date: "2026-10-15", type: "expense", amount: "64.99", description: "Internet bill October",
     merchantId: null, subcategoryId: null, incomeSourceId: null, fromAccountId: null, toAccountId: null,
-    seriesId: null, flagged: false, merchant: null, source: null, ...over,
+    seriesId: null, merchant: null, source: null, ...over,
   });
   const empty: Book = { series: [], rows: [], pauses: new Map(), skips: new Map(), excluded: new Map(), dismissed: [] };
 
@@ -164,7 +164,7 @@ describe("adding a payment to a series it is worded unlike", () => {
   const row = (over: Partial<BookRow>): BookRow => ({
     id: `11111111-1111-4111-8111-${String(++n).padStart(12, "0")}`, date: "2026-09-03", type: "expense",
     amount: "0.40", description: "x", merchantId: null, subcategoryId: null, incomeSourceId: null, fromAccountId: null,
-    toAccountId: null, seriesId: null, flagged: false, merchant: null, source: null, ...over,
+    toAccountId: null, seriesId: null, merchant: null, source: null, ...over,
   });
   const series = (id: number, name: string, over: Partial<BookSeries> = {}): BookSeries => ({
     id, name, kind: "expense", cadence: "monthly", amountVaries: false, merchantId: null, subcategoryId: null,
@@ -284,14 +284,13 @@ describe("replies to a /recurring prompt", () => {
 });
 
 describe("the review keyboards", () => {
-  it("label Apply and Clear with what they will write, from the ticks", () => {
+  it("label Apply with what it will write, from the ticks", () => {
     const keyboard = [
       [{ text: "✅ a", callback_data: `r:bt:${TX}` }],
       [{ text: "☐ b", callback_data: "r:bt:22222222-2222-4222-8222-222222222222" }],
       [{ text: "", callback_data: "r:bk:3" }],
-      [{ text: "", callback_data: "r:fk" }],
     ];
-    expect(recount(keyboard).slice(2).map((row) => row[0].text)).toEqual(["✅ Link 1 · ignore 1", "Clear flag on ticked (1)"]);
+    expect(recount(keyboard).slice(2).map((row) => row[0].text)).toEqual(["✅ Link 1 · ignore 1"]);
   });
 });
 
@@ -335,17 +334,15 @@ describe("recurring callback data", () => {
     expect(parseRecurringTap("r:b", "2026-10-31")).toEqual({ op: "review", sid: null });
     expect(parseRecurringTap("r:b:7", "2026-10-31")).toEqual({ op: "review", sid: 7 });
     expect(parseRecurringTap(`r:bt:${TX}`, "2026-10-31")).toEqual({ op: "toggle", data: `r:bt:${TX}` });
-    expect(parseRecurringTap(`r:ft:${TX}`, "2026-10-31")).toEqual({ op: "toggle", data: `r:ft:${TX}` });
     expect(parseRecurringTap("r:ba", "2026-10-31")).toEqual({ op: "all" });
     expect(parseRecurringTap("r:bk:7", "2026-10-31")).toEqual({ op: "apply", sid: 7 });
     expect(parseRecurringTap("r:bl", "2026-10-31")).toEqual({ op: "later" });
-    expect(parseRecurringTap("r:f:8", "2026-10-31")).toEqual({ op: "flags", offset: 8 });
-    expect(parseRecurringTap("r:fk", "2026-10-31")).toEqual({ op: "clear" });
     expect(parseRecurringTap("r:sg", "2026-10-31")).toEqual({ op: "suggestions" });
     expect(parseRecurringTap(`r:gd:${TX}`, "2026-10-31")).toEqual({ op: "dismiss", tx: TX });
     // The longest pause data, with a ten-digit series id, fits Telegram's 64 bytes.
     expect(Buffer.byteLength("r:pu:4294967295:20261023:20270131")).toBeLessThanOrEqual(64);
-    for (const data of [undefined, "", "r:v:", "r:v:x", "r:l:12345", `c:${TX}`, "mt:1", "r:zz"]) {
+    // The legacy-flag screen's buttons (removed with migration 0020) read as nothing.
+    for (const data of [undefined, "", "r:v:", "r:v:x", "r:l:12345", `c:${TX}`, "mt:1", "r:zz", "r:f:8", "r:fk", `r:ft:${TX}`, `r:at:${TX}:f`]) {
       expect(parseRecurringTap(data, "2026-10-31"), String(data)).toBeNull();
     }
   });

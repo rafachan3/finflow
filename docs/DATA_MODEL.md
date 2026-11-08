@@ -436,11 +436,10 @@ create table recurring_dismissed (
   dismissed_at timestamptz not null default now()
 );
 
--- Transitional (0016): a link or unlink sets is_recurring, and so does any
--- write of the flag; an INSERT with no link keeps the value given. Migration
--- 0017, after the owner's backfill, replaces this with
--- `new.is_recurring := new.recurring_series_id is not null` and adds
--- check (is_recurring = (recurring_series_id is not null)).
+-- 0016: a link or unlink sets is_recurring, and so does any write of the
+-- flag; a linked INSERT is marked recurring. An unlinked INSERT keeps the
+-- value given, so one flagged true with no series is refused by 0020's
+-- CHECK (on transactions, below) rather than silently cleared.
 create function transactions_sync_recurring() returns trigger
 language plpgsql as $$
 begin
@@ -456,6 +455,12 @@ end $$;
 create trigger transactions_sync_recurring
   before insert or update of recurring_series_id, is_recurring on transactions
   for each row execute function transactions_sync_recurring();
+
+-- is_recurring is exactly the link (migration 0020, after the owner's
+-- backfill emptied the legacy flags).
+alter table transactions
+  add constraint transactions_recurring_flag_is_link
+  check (is_recurring = (recurring_series_id is not null));
 
 -- The 50/30/20 targets (migration 0018): one row, percentages of spendable
 -- income that sum to 100, seeded 50/30/20 (a tracked default, nothing
@@ -655,9 +660,10 @@ bump when SSM rules change.
   type) → recurring_series (id, kind)` refuses a salary in an expense series
   (dbt test `recurring_link_matches_series_kind`).
 - Linking a transaction sets `is_recurring`, unlinking clears it, and
-  deleting a series unlinks its transactions (trigger). Until migration 0017,
-  a row inserted with no link keeps the flag it was given (legacy flags the
-  owner's backfill reviews); after 0017 a CHECK makes the flag exactly the link.
+  deleting a series unlinks its transactions (trigger). `is_recurring` is
+  true exactly when `recurring_series_id` is set (CHECK, migration 0020; dbt
+  test `recurring_flag_matches_series`): an unlinked row flagged recurring
+  is refused.
 - A transaction is never both linked to and excluded from the same series
   (application logic, dbt test `recurring_link_not_excluded`).
 - Pauses of one series never overlap (exclusion constraint, dbt test
