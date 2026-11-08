@@ -396,3 +396,57 @@ models:
               arguments:
                 values: [true, false]
                 quote: false
+
+  # The planning marts (docs/SEMANTIC_LAYER.md, "Planning marts"): plans,
+  # pace and baselines for the dashboards. Not metrics: no MetricFlow here.
+  - name: fct_month_plan
+    description: >
+      One row per month from the ledger start's month on. Dollar plans from
+      an expected income (the actual one in a complete month), the
+      baseline of the up-to-3 complete months before, and rolling 3-month
+      shares of complete months.
+    columns:
+      - name: month_start
+        data_tests:
+          - unique
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('fct_monthly_summary')
+                field: month_start
+      - name: is_complete_month
+        data_tests: [not_null]
+      - name: days_in_month
+        data_tests: [not_null]
+      - name: as_of_day
+        description: The month's last day if complete, today's day if current, 0 if later.
+        data_tests: [not_null]
+      - name: spendable_income
+        data_tests: [not_null]
+      - name: baseline_months
+        description: Complete months among the 3 before this one (0 to 3).
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [0, 1, 2, 3]
+                quote: false
+      - name: spendable_income_baseline
+        description: Mean spendable_income of the baseline months; null with none.
+      - name: spendable_income_expected
+        description: >
+          spendable_income in a complete month; otherwise the greater of
+          income so far and the baseline, null with no baseline.
+        data_tests:
+          - not_null:
+              config:
+                where: "is_complete_month or baseline_months > 0"
+      - name: income_received_share
+      - name: needs_plan
+      - name: wants_plan
+      - name: financial_future_plan
+      - name: needs_pct_3m
+        description: Ratio of sums over this month and the 2 before, all complete; null otherwise.
+      - name: wants_pct_3m
+      - name: financial_future_pct_3m
+      - name: unallocated_pct_3m
