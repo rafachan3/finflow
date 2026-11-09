@@ -21,6 +21,10 @@ Living state of the project. Read this first; update it whenever work lands.
 - [ ] Phase 6 — Claude analytics agent (subagents + Postgres MCP)
 - [ ] Phase 7 — Open-source polish
 
+**Pending production push:** migration 0023 (`finflow_analyst` `jit = off`)
+needs the CoS to run `supabase db push`, dry-run first, before the next
+`dbt-nightly` run, whose `analyst_jit_off` test fails until it lands.
+
 ## What exists right now
 
 Phase 0 complete: public GitHub repo, MIT `LICENSE`, root `README.md`, accounts

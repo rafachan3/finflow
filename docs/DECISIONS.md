@@ -3075,3 +3075,17 @@ one (Grafana is the only consumer; CI uses a throwaway on the test database).
 **Ruled out:** connecting Grafana as `finflow_readonly` (it reads raw
 tables) or as `finflow_dbt` (it writes `staging` and `marts`); either would
 drop the marts-only boundary the dashboards rely on.
+
+## 2026-11-08 — `finflow_analyst` defaults to `jit = off`
+
+Phase 5. Querying the stacked mart views as `finflow_analyst` through the
+session pooler took 7-10 s in a local test with PostgreSQL JIT on and about
+0.1 s with `jit = off`. The dashboard CI check passed `-c jit=off` by hand;
+Grafana's Postgres data source has no per-connection setting, so migration
+0023 sets it as a role default (`alter role finflow_analyst set jit = off`).
+`dbt:analyst_jit_off` guards it. The dashboard PR drops the harness flag so
+CI tests what production runs.
+
+**Ruled out:** a database-wide default (the dbt builds and the Lambda have
+not been measured); the same default on `finflow_dbt` (left unchanged: it
+runs heavy builds and nothing says JIT hurts it).

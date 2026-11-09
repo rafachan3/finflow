@@ -558,6 +558,9 @@ tracked file). Migrations 0003 and 0013 create them.
   marts materialized as views (DECISIONS 2026-11-08) stay covered. It holds
   nothing on `public` (so no raw Telegram payloads in `ingestions`) and
   nothing on `staging`.
+- `finflow_analyst` also carries `jit = off` as a role default (0023): with JIT
+  on, the stacked mart views took 7-10 s through the pooler, against about
+  0.1 s with it off, and Grafana cannot set it per connection.
 - `ALTER DEFAULT PRIVILEGES FOR ROLE` requires the migrating role to be a
   member of `finflow_dbt`. Supabase's `postgres` is not a superuser, so 0013
   grants itself the membership for that statement and revokes it right after.
