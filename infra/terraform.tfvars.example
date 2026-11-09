@@ -7,6 +7,9 @@ budget_alert_email = "you@example.com"
 # Supabase organization slug (dashboard URL: supabase.com/dashboard/org/<slug>)
 supabase_organization_id = "your-org-slug"
 
+# Supabase shared pooler host, no port (dashboard: Connect > Session pooler).
+supabase_pooler_host = "your-pooler-host.example.com"
+
 # Must match the GitHub repo that assumes the ingest OIDC deploy role (owner/name).
 github_repository = "your-github-user/finflow"
 # Public numeric ids from https://api.github.com/repos/<owner>/<name>
