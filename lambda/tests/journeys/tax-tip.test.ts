@@ -112,6 +112,18 @@ describe("tax and tip on a receipt", () => {
     expect((await lineAmounts()).map((l) => l.amount)).toEqual(["5.94", "7.31", "9.14"]);
   });
 
+  it("a member discount Gemini read off a receipt photo is taken off every line, and Confirm saves lines that sum to the total", async () => {
+    gemini.extract = golden("receipt-order-discount").recorded;
+    await chat.photo();
+    const card = chat.last();
+    expect(card.text.split("\n")[0]).toBe("Expense · 2026-10-27 · CAD 31.04");
+    expect(card.text).toContain("✓ lines 6.21 + 8.28 + 16.55 = 31.04");
+
+    await chat.tap(card, "Confirm");
+    expect(await ledger.transactions()).toMatchObject([{ amount: "31.04", lines: 3 }]);
+    expect((await lineAmounts()).map((l) => l.amount)).toEqual(["6.21", "8.28", "16.55"]);
+  });
+
   it("a receipt whose prices, taxes and tip do not add up to its total cannot be confirmed", async () => {
     gemini.extract = { events: [{ ...quebec, amount: "25.52" }] };
     await chat.photo();
