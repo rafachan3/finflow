@@ -3062,3 +3062,16 @@ Owner decision. Supersedes the "Keep `transfer`" entry above; retiring
 
 **Ruled out:** raising the cap (same reason as before); dropping the
 deposit check with `transfer` (a deposit is the most common transfer).
+
+## 2026-11-08 — Reset the `finflow_analyst` password for Grafana; no other role
+
+Phase 5 PR C. The first "Save & test" failed on the password (TLS and the
+pooler user were fine): `finflow_analyst` had its password set once in
+2026-10 and never stored, and `.env` holds the `finflow_readonly` password,
+a different role. The owner set a new `finflow_analyst` password with `alter
+role` and entered it in the Grafana UI; nothing in production used the old
+one (Grafana is the only consumer; CI uses a throwaway on the test database).
+
+**Ruled out:** connecting Grafana as `finflow_readonly` (it reads raw
+tables) or as `finflow_dbt` (it writes `staging` and `marts`); either would
+drop the marts-only boundary the dashboards rely on.
