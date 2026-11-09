@@ -9,6 +9,11 @@ variable "supabase_organization_id" {
   type        = string
 }
 
+variable "supabase_pooler_host" {
+  description = "Supabase shared pooler host name (no port) for the Grafana data source. Set in terraform.tfvars (gitignored)."
+  type        = string
+}
+
 variable "github_repository" {
   description = "GitHub repo (owner/name) allowed to assume the ingest deploy role via OIDC."
   type        = string

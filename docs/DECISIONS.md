@@ -2992,3 +2992,46 @@ Phase 5 PR A4. Trends T4/T5 need a real savings pot, not just flows.
 **Ruled out:** putting owner amounts in the gitignored seed overlay or
 any tracked file (the repo is public); treating an investment opening as
 a market value; reconstructing months that end before `as_of`.
+
+## 2026-11-08 — Grafana data source settings, checked against the plugin
+
+Phase 5 PR C. `infra/grafana.tf` follows the spec template; the "verify at
+build" items were checked against the pinned provider (4.45.1 in the lock
+file, `terraform providers schema`) and the Postgres plugin's source
+(`grafana/grafana-postgresql-datasource`).
+
+- **Type `grafana-postgresql-datasource`.** The plugin id; `postgres` is
+  only an alias.
+- **TLS keys.** `jsonData.sslmode = "verify-full"` and
+  `jsonData.tlsConfigurationMethod = "file-content"`, CA in
+  `secureJsonData.tlsCACert`. The plugin writes that content to a temp file
+  and passes it to pgx as the root cert, so pgx checks the CA and the host
+  name. No `tlsAuth` / `tlsAuthWithCACert` flag: those belong to HTTP and
+  MySQL data sources and the Postgres plugin does not read them. Whether
+  Grafana Cloud's handshake passes is still decided by "Save & test";
+  fallback `verify-ca`.
+- **Database in `jsonData.database`**, not the provider's `database_name`
+  (the plugin reads `jsonData` first).
+- **User `finflow_analyst.<project ref>`**, the pooler's `<role>.<ref>`
+  form the nightly dbt uses, built from `supabase_project.finflow.id` so
+  no ref is tracked.
+- **Connection limits.** `maxOpenConns` 3 and `connMaxLifetime` 300 are
+  applied (pgxpool `MaxConns`, `MaxConnLifetime`). The plugin now runs on
+  pgxpool, which ignores `maxIdleConns`; it is kept at 1 for older plugin
+  versions and costs nothing.
+- **No password in Terraform at all.** The spec template sent a
+  placeholder password under `ignore_changes`. Review found the provider
+  sends secure data on every update, so with that block any later in-place
+  change (URL, name, `json_data`) would overwrite the password typed in the
+  UI with the placeholder, and panels would fail on auth. Grafana keeps a
+  secure key an update leaves out, so `secure_json_data_encoded` carries only
+  the public `tlsCACert` and there is no `lifecycle` block. A recreated data
+  source has no password until the owner re-enters it (fails closed).
+- **Provider block in `grafana.tf`**, like `provider "supabase" {}` in
+  `supabase.tf`, reading `GRAFANA_URL` / `GRAFANA_AUTH` from the
+  environment. Provider pin `~> 4.44` unchanged.
+
+**Ruled out:** a Terraform variable for the password or token (state and
+plan would hold them); a placeholder password under `ignore_changes` (the
+update overwrites the real one); `tlsSkipVerify`; the `file-path` TLS method (Grafana
+Cloud has no file system to point at).
