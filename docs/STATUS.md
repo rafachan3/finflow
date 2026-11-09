@@ -3,7 +3,7 @@
 Living state of the project. Read this first; update it whenever work lands.
 
 **Last updated:** 2026-11-08
-**Current phase:** Phase 5 (Grafana) under way: the planning marts (PR A) merged as #119; Phase 4.5 accepted 2026-11-07
+**Current phase:** Phase 5 (Grafana) under way: A4 merged as #131; C (Grafana datasource) not started
 
 ## Phase progress
 
@@ -17,7 +17,7 @@ Living state of the project. Read this first; update it whenever work lands.
 - [x] Phase 3.5 — Ingestion follow-ons — **accepted 2026-10-29 by the journey tests (no phone test): 25 of 25 passed in `line-tags`, `duplicates` and `merchants`; see Next concrete step** (2026-10-29)
 - [x] Phase 4 — dbt semantic layer + MetricFlow — **accepted 2026-10-30: `dbt build`, the hand-written-SQL reconciliation and `mf query` vs the marts green in CI on the fixture (#72-#78) and on production in `dbt-nightly` run 41157900716 (87 of 87 nodes, 14 metrics, 5 months); real-month hand verification deferred** (2026-10-30)
 - [x] Phase 4.5 — Proactive nudges (recurring series, daily digest, merchant recommendations) — **accepted 2026-11-07: the `recurring-digest`, `recurring-card` and `recurring-backfill` journeys passed 45 of 45 (3 files) against a throwaway Postgres, CI on `main` green for #115 (run 42443193526), and the production `nudge_runs` log holds 6 rows, all `sent`, 2026-11-02 to 2026-11-07; no phone test** (2026-11-07)
-- [ ] Phase 5 — Grafana dashboards — **PR A merged as #119; PR B (marts as live views) merged as #128 (`563a311`); A2 `fct_ledger_entry` merged as #129 (`d9772f7`); A3 `fct_month_rolling` merged as #130 (`9d7a297`), production `dbt-nightly` green (run 42534746733); this PR is A4 opening balances + `fct_account_month`; then C→D/E/F→reliance→G**
+- [ ] Phase 5 — Grafana dashboards — **PR A merged as #119; PR B (marts as live views) merged as #128 (`563a311`); A2 `fct_ledger_entry` merged as #129 (`d9772f7`); A3 `fct_month_rolling` merged as #130 (`9d7a297`); A4 opening balances + `fct_account_month` merged as #131 (`772f6e2`); production `dbt-nightly` green after A4 (run 42544504594). Next is C (Grafana folder + `finflow-marts` datasource) — not started; then D/E/F/reliance/G**
 - [ ] Phase 6 — Claude analytics agent (subagents + Postgres MCP)
 - [ ] Phase 7 — Open-source polish
 
@@ -605,11 +605,14 @@ merged with migration 0020 applied. Next, in order:
 4. Phase 5 (Grafana). PR A (planning marts) merged as #119 (`a2b5dc2`);
    PR B (marts as live views) merged as #128 (`563a311`); A2
    (`fct_ledger_entry`) merged as #129 (`d9772f7`); A3
-   (`fct_month_rolling`) merged as #130 (`9d7a297`); production
-   `dbt-nightly` after A3 passed (run 42534746733). Owner grilling
-   2026-11-08 locked Rev 11. **This PR is A4**: opening-balance schema
-   and `fct_account_month`. Next: C Grafana datasource, D This month, E
-   Ledger, F Review, reliance, G Trends.
+   (`fct_month_rolling`) merged as #130 (`9d7a297`); A4 (opening
+   balances + `fct_account_month`) merged as #131 (`772f6e2`);
+   production `dbt-nightly` after A4 passed (run 42544504594).
+   Migration 0022 is on production. Owner grilling 2026-11-08 locked
+   Rev 11. **C is next and not started**: Grafana folder + read-only
+   `finflow_analyst` datasource uid `finflow-marts` (Terraform; password
+   entered in the UI). Then D This month, E Ledger, F Review, reliance,
+   G Trends.
    ROADMAP Phase 5 rewrite waits for F. SEMANTIC_LAYER's August-partial
    note waits for F.
 
@@ -654,8 +657,9 @@ fixture tests pin a hand-worked 3-month row and a null 12-month window.
 The analyst grant scan and the CI login list include the view. No
 migration.
 
-Account-balance mart (Phase 5 PR A4; SEMANTIC_LAYER.md "Account marts",
-DECISIONS.md 2026-11-08, TESTING.md): migration 0022 adds
+Account-balance mart (Phase 5 PR A4, merged as #131;
+SEMANTIC_LAYER.md "Account marts", DECISIONS.md 2026-11-08, TESTING.md):
+migration 0022 adds
 `account_opening_balances` (one row per account, `as_of`, amount). Owner
 values stay out of the repo; a placeholder SQL snippet in TESTING.md is
 run in the Supabase SQL editor. `fct_account_month`, one row per (month,
@@ -665,9 +669,8 @@ net flow, cumulative, and a savings `balance` (opening plus flows after
 debt has no balance. A view like the other marts. Not a MetricFlow
 model. Five invariant tests run nightly; a fixture test pins a synthetic
 savings opening. The analyst grant scan and the CI login list include
-the view. Migration 0022 must be applied before merge. Owner opening
-values stay out of git; run the TESTING.md snippet in the SQL editor
-after 0022 exists.
+the view. Migration 0022 is on production. Owner opening values stay
+out of git; the TESTING.md snippet in the SQL editor is still pending.
 
 Phase 4 is accepted (2026-10-30). Optional and deferred: hand-verify real
 numbers for one complete month against the owner's records (on hold until
