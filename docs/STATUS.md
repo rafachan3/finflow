@@ -3,7 +3,7 @@
 Living state of the project. Read this first; update it whenever work lands.
 
 **Last updated:** 2026-11-08
-**Current phase:** Phase 5 (Grafana) under way: A4 merged as #131; C (Grafana datasource) not started
+**Current phase:** Phase 5 (Grafana) under way: A4 merged as #131; C (Grafana datasource) implemented on `feat/grafana-datasource`, pending out-of-band steps
 
 ## Phase progress
 
@@ -17,7 +17,7 @@ Living state of the project. Read this first; update it whenever work lands.
 - [x] Phase 3.5 — Ingestion follow-ons — **accepted 2026-10-29 by the journey tests (no phone test): 25 of 25 passed in `line-tags`, `duplicates` and `merchants`; see Next concrete step** (2026-10-29)
 - [x] Phase 4 — dbt semantic layer + MetricFlow — **accepted 2026-10-30: `dbt build`, the hand-written-SQL reconciliation and `mf query` vs the marts green in CI on the fixture (#72-#78) and on production in `dbt-nightly` run 41157900716 (87 of 87 nodes, 14 metrics, 5 months); real-month hand verification deferred** (2026-10-30)
 - [x] Phase 4.5 — Proactive nudges (recurring series, daily digest, merchant recommendations) — **accepted 2026-11-07: the `recurring-digest`, `recurring-card` and `recurring-backfill` journeys passed 45 of 45 (3 files) against a throwaway Postgres, CI on `main` green for #115 (run 42443193526), and the production `nudge_runs` log holds 6 rows, all `sent`, 2026-11-02 to 2026-11-07; no phone test** (2026-11-07)
-- [ ] Phase 5 — Grafana dashboards — **PR A merged as #119; PR B (marts as live views) merged as #128 (`563a311`); A2 `fct_ledger_entry` merged as #129 (`d9772f7`); A3 `fct_month_rolling` merged as #130 (`9d7a297`); A4 opening balances + `fct_account_month` merged as #131 (`772f6e2`); production `dbt-nightly` green after A4 (run 42544504594). Next is C (Grafana folder + `finflow-marts` datasource) — not started; then D/E/F/reliance/G**
+- [ ] Phase 5 — Grafana dashboards — **PR A merged as #119; PR B (marts as live views) merged as #128 (`563a311`); A2 `fct_ledger_entry` merged as #129 (`d9772f7`); A3 `fct_month_rolling` merged as #130 (`9d7a297`); A4 opening balances + `fct_account_month` merged as #131 (`772f6e2`); production `dbt-nightly` green after A4 (run 42544504594). C (Grafana folder + `finflow-marts` datasource) implemented on `feat/grafana-datasource`, pending token, apply and "Save & test"; then D/E/F/reliance/G**
 - [ ] Phase 6 — Claude analytics agent (subagents + Postgres MCP)
 - [ ] Phase 7 — Open-source polish
 
@@ -609,10 +609,18 @@ merged with migration 0020 applied. Next, in order:
    balances + `fct_account_month`) merged as #131 (`772f6e2`);
    production `dbt-nightly` after A4 passed (run 42544504594).
    Migration 0022 is on production. Owner grilling 2026-11-08 locked
-   Rev 11. **C is next and not started**: Grafana folder + read-only
-   `finflow_analyst` datasource uid `finflow-marts` (Terraform; password
-   entered in the UI). Then D This month, E Ledger, F Review, reliance,
-   G Trends.
+   Rev 11. **C is implemented on `feat/grafana-datasource`** (see
+   "Grafana data source" below). Out of band, in order: the owner creates
+   a stack service-account token (Admin role: creating a data source
+   needs it) and puts `GRAFANA_URL` / `GRAFANA_AUTH` in `.env` and
+   `supabase_pooler_host` in
+   `terraform.tfvars`; the CoS runs `terraform plan` (expect 2 to add, 0
+   to change or destroy) and `apply`; the owner enters the
+   `finflow_analyst` password in Grafana (Connections > Data sources >
+   FinFlow marts) and runs "Save & test". Record whether the free stack
+   allowed the token and whether `verify-full` passed (fallback
+   `verify-ca`), not any value. Then D This month, E Ledger, F Review,
+   reliance, G Trends.
    ROADMAP Phase 5 rewrite waits for F. SEMANTIC_LAYER's August-partial
    note waits for F.
 
@@ -671,6 +679,18 @@ model. Five invariant tests run nightly; a fixture test pins a synthetic
 savings opening. The analyst grant scan and the CI login list include
 the view. Migration 0022 is on production. Owner opening values stay
 out of git; the TESTING.md snippet in the SQL editor is still pending.
+
+Grafana data source (Phase 5 PR C, on `feat/grafana-datasource`, not yet
+applied; DECISIONS.md 2026-11-08): `infra/grafana.tf` adds the `FinFlow`
+folder (uid `finflow`) and the `FinFlow marts` Postgres data source (uid
+`finflow-marts`) as `finflow_analyst` through the session pooler, port
+5432, `verify-full` against `supabase/prod-ca-2021.crt` sent as
+certificate content. The provider reads `GRAFANA_URL` / `GRAFANA_AUTH`
+from the environment. The password is a placeholder under
+`ignore_changes`; the real one is entered in the Grafana UI. New variable
+`supabase_pooler_host` (gitignored tfvars). `terraform fmt -check` and
+`terraform validate` pass locally; neither CI nor `make check` runs them
+yet (spec item 4 of the CI plan). "Save & test": not run yet.
 
 Phase 4 is accepted (2026-10-30). Optional and deferred: hand-verify real
 numbers for one complete month against the owner's records (on hold until
