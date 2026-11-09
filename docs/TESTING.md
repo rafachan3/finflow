@@ -172,7 +172,8 @@ included.
 ## Run the checks locally
 
 From the repo root, `make check` runs what CI's `unit`, `integration`,
-`inventory`, the first step of `dbt` and its dashboard check run; CI calls
+`inventory` jobs, the first step of `dbt`, its dashboard check and the
+`Terraform` workflow run; CI calls
 the same targets or scripts, so the two cannot drift. It needs Docker running and Python 3.12 (`PYTHON=...`
 to pick another binary); `make` alone lists the targets.
 
@@ -183,7 +184,8 @@ to pick another binary); `make` alone lists the targets.
 | `make inventory` | `node scripts/check-inventory.mjs`, then `npm run test:coverage` |
 | `make dbt-build` | `scripts/test_db.py`, then `dbt build`, in `dbt/.venv` (created from `requirements.txt` on first use) |
 | `make dashboards` | `scripts/test_db.py`, `dbt run`, then `grafana/scripts/check_dashboards.py`: every `grafana/dashboards/*.json` parses, uses only the `finflow-marts` data source, holds no saved query data, TestData source, Grafana Cloud or Supabase host or project-ref-shaped string, and every variable and panel query runs as `finflow_analyst` for each `month` the fixture has, returning the columns the script expects |
-| `make check` | the five above |
+| `make terraform-check` | `terraform fmt -check -recursive`, `terraform init -backend=false`, `terraform validate` in `infra/` (the `Terraform` workflow); no credentials, never a plan or apply (needs `terraform` on the PATH) |
+| `make check` | the six above |
 | `make eval` | `npm run eval`; not in `check`, since it can spend Gemini quota |
 
 Each database target wraps its command in `scripts/with-test-db.sh`: with
@@ -223,7 +225,11 @@ container.
 
 CI (`.github/workflows/ci.yml`) reports five jobs on every PR: `unit`,
 `integration`, `eval`, `inventory` and `dbt`, and all five are required on
-`main`. `inventory` runs the inventory check
+`main`. The `Terraform` workflow (`.github/workflows/terraform.yml`: format
+and validate only, on PRs touching `infra/` or the dashboards and on
+pushes to `main`) is not required, and lives outside CI so that a red run
+cannot hold back the deploy, which waits for CI to succeed.
+`inventory` runs the inventory check
 and the coverage floor (lines 90, statements 90, branches 84, functions 98;
 raise it, never lower it). The deploy workflow runs only after CI succeeds
 on `main`, then POSTs a wrong webhook secret to the deployed Function URL
