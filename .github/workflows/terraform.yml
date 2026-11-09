@@ -26,5 +26,23 @@ jobs:
         with:
           terraform_version: "1.15.8"
           terraform_wrapper: false
+      # init downloads each provider and its signature from github.com, which
+      # returns 504 now and then. Cache the downloads (keyed by the lock file)
+      # and retry a cold init, so an outage there does not turn the check red.
+      - uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/tf-plugin-cache
+          key: terraform-providers-${{ hashFiles('infra/.terraform.lock.hcl') }}
+      - name: terraform init, with retries
+        env:
+          TF_PLUGIN_CACHE_DIR: ${{ runner.temp }}/tf-plugin-cache
+        run: |
+          mkdir -p "$TF_PLUGIN_CACHE_DIR"
+          for attempt in 1 2 3 4 5; do
+            terraform -chdir=infra init -backend=false -input=false -lockfile=readonly && exit 0
+            echo "init attempt $attempt failed; retrying"
+            sleep $((attempt * 30))
+          done
+          exit 1
       - name: terraform fmt -check and validate on infra
         run: make terraform-check
