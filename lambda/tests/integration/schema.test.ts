@@ -40,6 +40,7 @@ describe("migrations", () => {
        order by table_name`,
     );
     expect(rows).toEqual([
+      { table_name: "account_opening_balances", numeric_precision: 12, numeric_scale: 2 },
       { table_name: "transaction_items", numeric_precision: 12, numeric_scale: 2 },
       { table_name: "transactions", numeric_precision: 12, numeric_scale: 2 },
     ]);

@@ -164,6 +164,7 @@ included.
 | Marts | `fct_ledger_entry` has one row per `stg_transactions` row: unique, not null, and the same count; the nightly on production too | `dbt:ledger_entry_one_per_transaction` |
 | Marts | `fct_ledger_entry` reconciles to the monthly metrics: per month, income headers sum to `income`, own-expense headers to `spend`, other-expense headers to `external_spend`; each expense's `needs_amount + wants_amount` equals its header; the nightly on production too | `dbt:ledger_entry_reconciles` |
 | Marts | `fct_month_rolling` has one row per (month of the month list, N) for each N in var `window_months` (default 3 and 12); sums, the four share ratios and `unspent_rate` are null unless every month of the window is complete and in the list; N = 3 share ratios equal `fct_month_plan.*_pct_3m`; the nightly on production too. On the fixture, by hand: a 3-month window over 2026-04 to 2026-06, a 12-month window null across the 8-month list, and nulls when the window is short or includes the current month | `dbt:month_rolling_matches_plan_3m`<br>`dbt:month_rolling_null_unless_complete`<br>`dbt:month_rolling_12m_null_on_short_fixture`<br>`dbt:month_rolling_hand_worked` |
+| Marts | `fct_account_month` has one row per (month of the month list, account), zero-filled; deposits summed across accounts equal `transfers` and withdrawals equal `withdrawals` per month; moves net to 0; `balance` is never set on investment or debt; the nightly on production too. On the fixture, by hand: a synthetic savings opening, months before `as_of` null, the as_of-day flow inside the snapshot, and investment and debt balances null | `dbt:account_month_covers_accounts`<br>`dbt:account_month_deposits_match_transfers`<br>`dbt:account_month_withdrawals_match_withdrawals`<br>`dbt:account_month_moves_net_zero`<br>`dbt:account_month_balance_savings_only`<br>`dbt:fixture_account_month_expected` |
 | Marts | `budget_targets` holds one row, seeded 50/30/20; a second row, a target outside 0-100 or targets not summing to 100 are refused, and an UPDATE that keeps the sum at 100 is accepted | `seed one 50/30/20 budget_targets row and refuse a second row or targets outside 0-100 or not summing to 100` |
 | Marts | The MetricFlow metrics are exactly the contract's: a metric in the YAML but not in SEMANTIC_LAYER.md, or the reverse, fails the `dbt` job. `mf query` gives every metric of every month in `fct_monthly_summary` (money to the cent, ratios within 0.0001), including months where an input of a derived metric has no rows (the fixture's 2026-03 to 2026-05); `spend` without its self-funded filter fails, naming the metric and month and printing no value | `ci:mf query matches fct_monthly_summary for every contract metric`<br>`ci:spend without its self-funded filter fails check_metrics, naming spend and the month, with no values`<br>`ci:a metric in the YAML but not in SEMANTIC_LAYER.md fails check_metrics` |
 
@@ -256,10 +257,11 @@ eval "$(TEST_DATABASE_URL=$(npm --prefix ../lambda run -s db:url) .venv/bin/pyth
 .venv/bin/mf validate-configs && .venv/bin/python scripts/check_metrics.py
 ```
 
-Models: four staging views in schema `staging`, and nine mart views in
+Models: four staging views in schema `staging`, and ten mart views in
 `marts` (`dim_date`, `fct_transactions`, `fct_category_month`,
 `fct_monthly_summary`, `fct_month_plan`, `fct_pace_day`,
-`fct_subcategory_month`, `fct_ledger_entry`, `fct_month_rolling`), all
+`fct_subcategory_month`, `fct_ledger_entry`, `fct_month_rolling`,
+`fct_account_month`), all
 recreated in full every run.
 `monthly_summary_matches_hand_written_sql` is the acceptance check: it runs
 [SEMANTIC_LAYER.md](SEMANTIC_LAYER.md)'s reference SQL over `public` and
@@ -391,6 +393,22 @@ on conflict do nothing;
 ```
 
 To take one back, delete its row (the smaller id is `first_id`).
+
+A savings account's opening balance is the same kind of owner-only row:
+the schema is in the repo, the amount is not. Run this in the Supabase SQL
+editor as `postgres`. Placeholders only; never commit a real name, date or
+amount. Investment and debt accounts do not get a computed balance, so
+leave them out. The amount is the end of `as_of` (flows on that day are
+already in the snapshot).
+
+```sql
+insert into account_opening_balances (account_id, as_of, amount)
+select id, '<as-of date>'::date, '<amount>'::numeric
+from accounts
+where name = '<account name>' and kind = 'savings';
+```
+
+To change one, delete its row and insert again (one row per account).
 
 To see the detail behind an issue, run the same commands from `dbt/` with
 the production `FINFLOW_DBT_*` variables in your shell (keep them in the

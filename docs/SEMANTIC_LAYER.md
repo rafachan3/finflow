@@ -196,6 +196,10 @@ every month of the month list and every N in the dbt var `window_months`.
 It is a planning mart, not a metric: no MetricFlow model. Money sums and
 share ratios are null unless the whole window is complete.
 `fct_month_plan.*_pct_3m` is N = 3 of this mart.
+`fct_account_month` has one row per (`month_start`, account) for every
+month of the month list and every `accounts` row, zero-filled. It is an
+account mart, not a metric: no MetricFlow model. `balance` is null without
+an opening, before `as_of`, and for investment and debt.
 
 ## Metrics
 
@@ -538,6 +542,70 @@ One row per `stg_transactions` row.
 | `bucket_summary` | `needs`, `wants`, or `mixed` when both `needs_amount` and `wants_amount` are `> 0` | Null on income and transfers |
 | `needs_amount`, `wants_amount` | sum of line amounts in that bucket | `0` on income and transfers. On an expense they sum to `amount` |
 | `tags` | distinct union of header tags and line tags, sorted | `'{}'` when none |
+
+## Account marts (dashboard support)
+
+`fct_account_month` turns each named account's flows into a monthly line
+for Trends T4/T5. It is **not a metric**: no `fct_monthly_summary` column
+and no MetricFlow metric. Chequing is the null side of the account FKs, so
+it is not a row here. Why a savings opening becomes a balance and an
+investment account does not: DECISIONS.md 2026-11-08.
+
+### `fct_account_month`
+
+One row per (`month_start`, account) for every month of the month list and
+every `accounts` row, **zero-filled**.
+
+| Column | Formula | Edge cases |
+|---|---|---|
+| `month_start`, `account_name`, `account_kind` | month list × `accounts` | |
+| `deposits` | `sum(amount)` of transfers **from chequing into this account** (`from_account_id` null, `to_account_id` this) | `0` with none. Summed across accounts it equals `transfers` |
+| `withdrawals` | `sum(amount)` of transfers **from this account into chequing** (`from_account_id` this, `to_account_id` null) | `0` with none. Summed across accounts it equals `withdrawals` |
+| `moves_in` | `sum(amount)` of transfers **from another named account into this one** (both FKs set, `to_account_id` this) | `0` with none. Per month, `sum(moves_in) = sum(moves_out)` |
+| `moves_out` | `sum(amount)` of transfers **from this account into another named account** (both FKs set, `from_account_id` this) | `0` with none |
+| `savings_income` | `sum(amount)` of income whose source deposits into this account | `0` with none. The same filter as `savings_income` the metric, split by account |
+| `net_flow` | `deposits + moves_in + savings_income - withdrawals - moves_out` | |
+| `net_flow_cumulative` | running sum of `net_flow` per account, from the first month of the list | Investment's contributed-since-tracking figure |
+| `balance` | `opening.amount + sum(signed flows where occurred_on > as_of and occurred_on ≤ month end)` | **Null** without an `account_opening_balances` row; **null** when the month ends before `as_of`; **never computed for investment or debt**, even if an opening row exists. Opening is end of `as_of`, so a flow on that day is already in the snapshot |
+
+Reference SQL for one account's month-end savings balance, over `public`.
+The mart zero-fills every account across the month list the same way.
+
+```sql
+select date_trunc('month', '<month>'::date)::date as month_start,
+  a.name as account_name,
+  o.amount + coalesce(sum(x.signed) filter (
+    where x.occurred_on > o.as_of
+      and x.occurred_on <= (date_trunc('month', '<month>'::date)
+                            + interval '1 month' - interval '1 day')::date
+  ), 0) as balance
+from accounts as a
+join account_opening_balances as o on o.account_id = a.id
+left join (
+  select occurred_on, to_account_id as account_id, amount as signed
+  from transactions
+  where type = 'transfer' and from_account_id is null and to_account_id is not null
+  union all
+  select occurred_on, from_account_id, -amount
+  from transactions
+  where type = 'transfer' and from_account_id is not null and to_account_id is null
+  union all
+  select occurred_on, to_account_id, amount
+  from transactions
+  where type = 'transfer' and from_account_id is not null and to_account_id is not null
+  union all
+  select occurred_on, from_account_id, -amount
+  from transactions
+  where type = 'transfer' and from_account_id is not null and to_account_id is not null
+  union all
+  select t.occurred_on, s.deposit_account_id, t.amount
+  from transactions as t
+  join income_sources as s on s.id = t.income_source_id
+  where t.type = 'income' and s.deposit_account_id is not null
+) as x on x.account_id = a.id
+where a.kind = 'savings'
+group by 1, a.name, o.amount, o.as_of;
+```
 
 ## Adding or changing a metric
 

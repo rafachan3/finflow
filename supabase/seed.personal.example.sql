@@ -25,6 +25,12 @@ insert into income_sources (name) values
   ('Salary'),
   ('Refund');
 
+-- Opening balance (migration 0022). One row per savings account. Values
+-- never go in this file; run the snippet in docs/TESTING.md instead.
+-- insert into account_opening_balances (account_id, as_of, amount)
+-- select id, '<as-of date>'::date, '<amount>'::numeric
+-- from accounts where name = '<account name>' and kind = 'savings';
+
 -- Income paid straight into a savings or investment account (interest, say)
 -- names that account; every other source lands in chequing (null).
 -- insert into income_sources (name, deposit_account_id) values
