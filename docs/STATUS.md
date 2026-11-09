@@ -686,9 +686,10 @@ folder (uid `finflow`) and the `FinFlow marts` Postgres data source (uid
 `finflow-marts`) as `finflow_analyst` through the session pooler, port
 5432, `verify-full` against `supabase/prod-ca-2021.crt` sent as
 certificate content. The provider reads `GRAFANA_URL` / `GRAFANA_AUTH`
-from the environment. The password is a placeholder under
-`ignore_changes`; the real one is entered in the Grafana UI. New variable
-`supabase_pooler_host` (gitignored tfvars). `terraform fmt -check` and
+from the environment. The password is not in Terraform; the owner enters
+it in the Grafana UI and later applies leave it alone. New variable
+`supabase_pooler_host` (gitignored tfvars). Every `terraform plan` now
+needs `GRAFANA_URL`, `GRAFANA_AUTH` and `supabase_pooler_host` set. `terraform fmt -check` and
 `terraform validate` pass locally; neither CI nor `make check` runs them
 yet (spec item 4 of the CI plan). "Save & test": not run yet.
 

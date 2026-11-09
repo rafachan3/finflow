@@ -29,15 +29,12 @@ resource "grafana_data_source" "marts" {
     connMaxLifetime        = 300
   })
 
-  # Bootstrap only: the owner enters the real finflow_analyst password in
-  # Grafana (Connections > Data sources) once; ignore_changes means Terraform
-  # never sees it, and the placeholder in local state is dead. The CA is public.
+  # The password is deliberately absent: the owner enters the real
+  # finflow_analyst password in Grafana (Connections > Data sources) once.
+  # Grafana keeps any secure key an update leaves out, so later applies do not
+  # touch it. Sending a placeholder here would overwrite it on every in-place
+  # update. The CA is public.
   secure_json_data_encoded = jsonencode({
-    password  = "set-in-grafana-ui"
     tlsCACert = file("${path.module}/../supabase/prod-ca-2021.crt")
   })
-
-  lifecycle {
-    ignore_changes = [secure_json_data_encoded]
-  }
 }
