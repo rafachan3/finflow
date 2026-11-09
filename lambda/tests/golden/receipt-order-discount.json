@@ -1,0 +1,90 @@
+{
+  "name": "a housewares receipt with a member discount on the whole order (printed -3.00) before GST and QST: each line's amount fails if the discount is read as a line, put on one line, or ignored, and code takes it off every line by price so the lines sum to the amount paid",
+  "input": {
+    "kind": "photo",
+    "caption": "",
+    "media": "receipt-order-discount.png"
+  },
+  "expect": {
+    "events": [
+      {
+        "type": "expense",
+        "lines": 3,
+        "amount": "31.04",
+        "amounts": [
+          "6.21",
+          "8.28",
+          "16.55"
+        ],
+        "merchant": true,
+        "date": true,
+        "dateIs": "2026-10-27"
+      }
+    ]
+  },
+  "recorded": {
+    "events": [
+      {
+        "type": "expense",
+        "amount": "31.04",
+        "currency": "CAD",
+        "date": "2026-10-27",
+        "description": "Copper Kettle",
+        "merchant": "COPPER KETTLE",
+        "venue": null,
+        "tags": [],
+        "is_recurring": false,
+        "income_source": null,
+        "from_account": null,
+        "to_account": null,
+        "taxes": [
+          "1.35",
+          "2.69"
+        ],
+        "discounts": [
+          "3.00"
+        ],
+        "tip": null,
+        "items": [
+          {
+            "description": "Wooden Spoon",
+            "price": "6.00",
+            "taxable": false,
+            "category": "Housing",
+            "subcategory": "Household goods",
+            "item_type": "Kitchenware",
+            "tags": [],
+            "bucket_why": "default bucket for subcategory without a hint",
+            "bucket": "wants"
+          },
+          {
+            "description": "Dish Towel",
+            "price": "8.00",
+            "taxable": false,
+            "category": "Housing",
+            "subcategory": "Household goods",
+            "item_type": "Kitchenware",
+            "tags": [],
+            "bucket_why": "default bucket for subcategory without a hint",
+            "bucket": "wants"
+          },
+          {
+            "description": "Mixing Bowl",
+            "price": "16.00",
+            "taxable": false,
+            "category": "Housing",
+            "subcategory": "Household goods",
+            "item_type": "Kitchenware",
+            "tags": [],
+            "bucket_why": "default bucket for subcategory without a hint",
+            "bucket": "wants"
+          }
+        ],
+        "confidence": 0.98,
+        "funded_by": null,
+        "notes": null
+      }
+    ]
+  },
+  "request_sha256": "414c41a5cea004a351a5f33204e7b9eb9978b5b77336c8c9f9756e5ac86c0c7b"
+}

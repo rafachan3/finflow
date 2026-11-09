@@ -58,7 +58,7 @@ describe("duplicate warning", () => {
   });
 
   it("a transfer logged twice warns", async () => {
-    gemini.extract = golden("transfer").recorded;
+    gemini.extract = { events: [event("transfer-withdrawal")] };
     await chat.text("moved 50 to my emergency fund on Oct 26");
     await chat.tap(chat.last(), "Confirm");
 
@@ -70,12 +70,11 @@ describe("duplicate warning", () => {
   });
 
   it("taking out what was just moved to savings does not warn", async () => {
-    gemini.extract = golden("transfer").recorded;
+    gemini.extract = { events: [event("transfer-withdrawal")] };
     await chat.text("moved 50 to my emergency fund on Oct 26");
     await chat.tap(chat.last(), "Confirm");
 
-    const [deposit] = (golden("transfer").recorded as { events: object[] }).events;
-    gemini.extract = { events: [{ ...deposit, from_account: "Emergency fund", to_account: null }] };
+    gemini.extract = { events: [event("transfer-withdrawal", 0, { from_account: "Emergency fund", to_account: null })] };
     await chat.text("took the 50 back out of my emergency fund on Oct 26");
     expect(chat.last().text).toContain("From account: Emergency fund");
     expect(warnings(chat.last().text)).toEqual([]);
