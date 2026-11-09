@@ -20,10 +20,6 @@ jobs:
   terraform:
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    # Every step must see the same cache dir: init links providers into it, and
-    # a later init without it cannot replace those links.
-    env:
-      TF_PLUGIN_CACHE_DIR: ${{ runner.temp }}/tf-plugin-cache
     steps:
       - uses: actions/checkout@v4
       - uses: hashicorp/setup-terraform@v3
@@ -33,6 +29,10 @@ jobs:
       # init downloads each provider and its signature from github.com, which
       # returns 504 now and then. Cache the downloads (keyed by the lock file)
       # and retry a cold init, so an outage there does not turn the check red.
+      # Every step must see the same cache dir: init links providers into it, and
+      # a later init without it cannot replace those links.
+      - name: Share one plugin cache dir
+        run: echo "TF_PLUGIN_CACHE_DIR=$RUNNER_TEMP/tf-plugin-cache" >> "$GITHUB_ENV"
       - uses: actions/cache@v4
         with:
           path: ${{ runner.temp }}/tf-plugin-cache
