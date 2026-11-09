@@ -21,9 +21,9 @@ Living state of the project. Read this first; update it whenever work lands.
 - [ ] Phase 6 — Claude analytics agent (subagents + Postgres MCP)
 - [ ] Phase 7 — Open-source polish
 
-**Pending production push:** migration 0023 (`finflow_analyst` `jit = off`)
-needs the CoS to run `supabase db push`, dry-run first, before the next
-`dbt-nightly` run, whose `analyst_jit_off` test fails until it lands.
+**Migration 0023** (`finflow_analyst` `jit = off`) was pushed to production on
+2026-11-09 (dry-run first); a dispatched `dbt-nightly` (run 42566935104)
+passed `analyst_jit_off` against production.
 
 ## What exists right now
 
