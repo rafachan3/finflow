@@ -3089,3 +3089,59 @@ CI tests what production runs.
 **Ruled out:** a database-wide default (the dbt builds and the Lambda have
 not been measured); the same default on `finflow_dbt` (left unchanged: it
 runs heavy builds and nothing says JIT hurts it).
+
+## 2026-11-08 — This month dashboard: choices the panel list left open
+
+Phase 5 PR D (`grafana/dashboards/this-month.json`). The panel list, the
+colours and the queries' shape were settled before the build; these are
+the details it left open.
+
+- **The status line is one text value** built in SQL ("Day 15 of 31 ·
+  income received 41% of expected · baseline 3 months"), not four stat
+  fields. It reads as one sentence, and the edge wording lives in the
+  query: "Complete month", "Not started" (a future month), "no expected
+  income yet", "baseline: 2 months (thin)", "no baseline yet".
+- **Wants left is two rows (label, amount) in one stat.** Grafana titles
+  each value from the row's text column, so a complete month reads "Wants
+  left at month end" and drops the per-day row (no days remain). The
+  per-day value spreads what is left over the days left, today included,
+  rounded to cents. A negative amount is red with its minus sign; there is
+  no "over by" prefix, because a Grafana value mapping replaces the value
+  instead of prefixing it.
+- **"Usual by today" reads `fct_pace_day` at the mart's `as_of_day`**, not
+  at `least(Toronto today, month end)` in the panel. In production it is
+  the same day; on the fixture it follows the pinned today, so CI runs
+  what production runs. A future month (`as_of_day` 0) has no pace row and
+  reads "no pace yet".
+- **Financial future in the bucket table:** Left is `greatest(plan − used,
+  0)`; Status is "due by month end", or "Done ✓" once used reaches the
+  plan. It is never warning-coloured.
+- **Used % gauge cells are neutral gray, not the bucket colour.** A Grafana
+  table colours a cell only from its own value, so a per-row bucket colour
+  cannot reach the gauge; the Bucket column names the row. The Status
+  column has a coloured background (warning for "▲ ahead of usual pace",
+  good for on pace, behind and done), always with the glyph and words.
+- **Ledger links wait for PR E.** The Bucket and category data links and the
+  "Entries this month →" header link need the Ledger's uid and variables,
+  which E defines; D ships the tag-based link to the other `finflow`
+  dashboards only.
+- **Grafana's home is set in Terraform**:
+  `grafana_organization_preferences.home_dashboard_uid`, with `timezone =
+  "America/Toronto"` set explicitly. The provider writes every preference
+  at once, so each apply resets the unset ones (theme, week start) to
+  Grafana's defaults; the CoS reads the live preferences before the first
+  apply.
+- **CI**: `grafana/scripts/check_dashboards.py` runs every query for each
+  `month` the fixture has (8), as `finflow_analyst`, with the role's own
+  settings: its `jit = off` default (migration 0023, the entry above)
+  applies on the fixture as on production, so CI runs the queries the way
+  Grafana does and passes no flag of its own. A separate `Terraform` workflow
+  (fmt -check, `init -backend=false`, validate; no credentials) is not
+  required. It is not a job in CI because the Lambda deploy runs only when
+  the whole CI run succeeds, so a red non-required job there would hold
+  back deploys.
+
+**Ruled out:** a Trend panel (numeric x) for the pace charts, which would
+follow the `month` variable without the time picker, since the design names
+time series; `dashboard-linter` (a new dependency for checks the script
+already makes).

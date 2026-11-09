@@ -3,7 +3,7 @@
 Living state of the project. Read this first; update it whenever work lands.
 
 **Last updated:** 2026-11-08
-**Current phase:** Phase 5 (Grafana) under way: A4 merged as #131; C (Grafana datasource) merged as #132 (`c3f8906`), applied, and Save & test green
+**Current phase:** Phase 5 (Grafana) under way: A4 merged as #131; C (Grafana datasource) merged as #132 (`c3f8906`), applied, and Save & test green; D (This month dashboard + CI harness) on `feat/grafana-this-month`, in review
 
 ## Phase progress
 
@@ -17,7 +17,7 @@ Living state of the project. Read this first; update it whenever work lands.
 - [x] Phase 3.5 — Ingestion follow-ons — **accepted 2026-10-29 by the journey tests (no phone test): 25 of 25 passed in `line-tags`, `duplicates` and `merchants`; see Next concrete step** (2026-10-29)
 - [x] Phase 4 — dbt semantic layer + MetricFlow — **accepted 2026-10-30: `dbt build`, the hand-written-SQL reconciliation and `mf query` vs the marts green in CI on the fixture (#72-#78) and on production in `dbt-nightly` run 41157900716 (87 of 87 nodes, 14 metrics, 5 months); real-month hand verification deferred** (2026-10-30)
 - [x] Phase 4.5 — Proactive nudges (recurring series, daily digest, merchant recommendations) — **accepted 2026-11-07: the `recurring-digest`, `recurring-card` and `recurring-backfill` journeys passed 45 of 45 (3 files) against a throwaway Postgres, CI on `main` green for #115 (run 42443193526), and the production `nudge_runs` log holds 6 rows, all `sent`, 2026-11-02 to 2026-11-07; no phone test** (2026-11-07)
-- [ ] Phase 5 — Grafana dashboards — **PR A merged as #119; PR B (marts as live views) merged as #128 (`563a311`); A2 `fct_ledger_entry` merged as #129 (`d9772f7`); A3 `fct_month_rolling` merged as #130 (`9d7a297`); A4 opening balances + `fct_account_month` merged as #131 (`772f6e2`); production `dbt-nightly` green after A4 (run 42544504594). C (Grafana folder + `finflow-marts` datasource) merged as #132 (`c3f8906`), applied 2026-11-08, Save & test green with `verify-full`; golden fold (#134) merged; next D This month, then E/F/reliance/G**
+- [ ] Phase 5 — Grafana dashboards — **PR A merged as #119; PR B (marts as live views) merged as #128 (`563a311`); A2 `fct_ledger_entry` merged as #129 (`d9772f7`); A3 `fct_month_rolling` merged as #130 (`9d7a297`); A4 opening balances + `fct_account_month` merged as #131 (`772f6e2`); production `dbt-nightly` green after A4 (run 42544504594). C (Grafana folder + `finflow-marts` datasource) merged as #132 (`c3f8906`), applied 2026-11-08, Save & test green with `verify-full`; golden fold (#134) merged; D This month on `feat/grafana-this-month` (not merged, not applied), then E/F/reliance/G**
 - [ ] Phase 6 — Claude analytics agent (subagents + Postgres MCP)
 - [ ] Phase 7 — Open-source polish
 
@@ -621,8 +621,13 @@ merged with migration 0020 applied. Next, in order:
    2026-11-08: 2 added, 0 changed, 0 destroyed). The stack allowed a
    service-account token (Admin role) and "Save & test" passed with
    `verify-full` (no fallback needed). The `finflow_analyst` password was
-   reset first because the 2026-10 one was never stored. Next: D This month,
-   E Ledger, F Review, reliance, G Trends.
+   reset first because the 2026-10 one was never stored. **D (This
+   month) is built on `feat/grafana-this-month`** (see "This month
+   dashboard" below); after merge the CoS runs `terraform plan` (expect 2
+   to add: the dashboard and the organization preferences; 0 to change
+   or destroy) and `apply`, then the owner opens This month once on
+   desktop. Then E Ledger (it also wires This month's Ledger links),
+   F Review, reliance, G Trends.
    ROADMAP Phase 5 rewrite waits for F. SEMANTIC_LAYER's August-partial
    note waits for F.
 
@@ -692,8 +697,31 @@ from the environment. The password is not in Terraform; the owner enters
 it in the Grafana UI and later applies leave it alone. New variable
 `supabase_pooler_host` (gitignored tfvars). Every `terraform plan` now
 needs `GRAFANA_URL`, `GRAFANA_AUTH` and `supabase_pooler_host` set. `terraform fmt -check` and
-`terraform validate` pass locally; neither CI nor `make check` runs them
-yet (spec item 4 of the CI plan). "Save & test": green, `verify-full`.
+`terraform validate` pass; since PR D the non-required `Terraform`
+workflow (`.github/workflows/terraform.yml`, outside CI so it cannot hold
+back the deploy) and `make terraform-check` run them. "Save & test": green, `verify-full`.
+
+This month dashboard (Phase 5 PR D, `feat/grafana-this-month`, not yet
+merged or applied; DECISIONS.md 2026-11-08): `grafana/dashboards/this-month.json`
+(uid `finflow-month`) in the `FinFlow` folder, shipped by
+`grafana_dashboard.this_month` and made Grafana's home by
+`grafana_organization_preferences.finflow`. Six panels on `finflow-marts`
+only: status line, wants left (+ per remaining day), bucket table, wants
+and everyday-needs pace charts, wants by category. CI step `every Grafana
+dashboard query runs as finflow_analyst on the fixture, and no dashboard
+holds data or hosts` (`grafana/scripts/check_dashboards.py`, also `make
+dashboards`) runs all 7 queries for each of the fixture's 8 months; a
+second step proves it fails on a bad column, a TestData source, saved
+query data, a Supabase or Grafana Cloud host and a project-ref-shaped
+string. `grafana_organization_preferences` sets `timezone` explicitly;
+each apply resets theme and week start to Grafana's defaults, so the CoS
+reads the live preferences before the first apply. **Not verified:** how the panels render (no local Grafana);
+the owner opens it once on desktop. Watch on that check: the status line
+and wants-left titles (a text column titling each stat value), the
+horizontal bar order (largest at the top), the gauge and status cells.
+Known limits: the pace charts follow the dashboard time range (default
+this month), so an earlier `month` needs the time picker too; the Ledger
+links wait for PR E.
 
 Phase 4 is accepted (2026-10-30). Optional and deferred: hand-verify real
 numbers for one complete month against the owner's records (on hold until
@@ -865,6 +893,13 @@ infra change.
   that pauses on inactivity — verify before building Phase 5 dashboards on it.
 
 ## Known risks
+
+- Postgres JIT on the stacked mart views: with `jit` on, a dashboard query
+  took 7-10 s on the fixture against about 0.1 s with it off, because the
+  views' cost estimates are inflated. `finflow_analyst` now defaults to
+  `jit = off` (migration 0023), and `check_dashboards.py` passes no flag,
+  so CI runs the dashboards' queries with the role's own settings, as
+  Grafana does. A new role reading the marts needs the same default.
 
 - Supabase free projects pause after ~1 week of inactivity. Hit empirically
   2026-08-27 (`INACTIVE`; bot silent). The nightly dbt workflow connects
