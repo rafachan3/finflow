@@ -1,11 +1,19 @@
 {
-  "name": "taking money out of savings, and moving it between two accounts, are transfers",
+  "name": "putting money into savings, taking it out, and moving it between two accounts are transfers: the side left out is chequing",
   "input": {
     "kind": "text",
-    "text": "took 200 out of my emergency fund on Oct 27, and moved 500 from the emergency fund to my retirement account on Oct 28"
+    "text": "moved 50 to my emergency fund on Oct 26, took 200 out of my emergency fund on Oct 27, and moved 500 from the emergency fund to my retirement account on Oct 28"
   },
   "expect": {
     "events": [
+      {
+        "type": "transfer",
+        "lines": 0,
+        "amount": "50.00",
+        "date": true,
+        "fromAccount": null,
+        "toAccount": "Emergency fund"
+      },
       {
         "type": "transfer",
         "lines": 0,
@@ -28,10 +36,31 @@
     "events": [
       {
         "type": "transfer",
+        "amount": "50.00",
+        "currency": "CAD",
+        "date": "2026-10-26",
+        "description": "Transfer to emergency fund",
+        "merchant": null,
+        "venue": null,
+        "tags": [],
+        "is_recurring": false,
+        "income_source": null,
+        "from_account": null,
+        "to_account": "Emergency fund",
+        "taxes": [],
+        "discounts": [],
+        "tip": null,
+        "items": [],
+        "confidence": 0.98,
+        "funded_by": null,
+        "notes": null
+      },
+      {
+        "type": "transfer",
         "amount": "200.00",
         "currency": "CAD",
         "date": "2026-10-27",
-        "description": "Transfer from Emergency fund",
+        "description": "Transfer from emergency fund",
         "merchant": null,
         "venue": null,
         "tags": [],
@@ -39,8 +68,11 @@
         "income_source": null,
         "from_account": "Emergency fund",
         "to_account": null,
+        "taxes": [],
+        "discounts": [],
+        "tip": null,
         "items": [],
-        "confidence": 0.95,
+        "confidence": 0.98,
         "funded_by": null,
         "notes": null
       },
@@ -49,7 +81,7 @@
         "amount": "500.00",
         "currency": "CAD",
         "date": "2026-10-28",
-        "description": "Transfer from Emergency fund to Retirement account",
+        "description": "Transfer from emergency fund to retirement account",
         "merchant": null,
         "venue": null,
         "tags": [],
@@ -57,12 +89,15 @@
         "income_source": null,
         "from_account": "Emergency fund",
         "to_account": "Retirement account",
+        "taxes": [],
+        "discounts": [],
+        "tip": null,
         "items": [],
-        "confidence": 0.95,
+        "confidence": 0.98,
         "funded_by": null,
         "notes": null
       }
     ]
   },
-  "request_sha256": "53ff5a652ccad2bc0981e4a6220c794d3d1d9da1d78b99fc762a2aef6be5d531"
+  "request_sha256": "deedf50087a37e34be83fe8f8e299707097144bbd7f2814b328d4e45d6697a18"
 }

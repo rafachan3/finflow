@@ -39,10 +39,10 @@ describe("correcting a card with Edit", () => {
   });
 
   it("an Edit that turns a deposit into a withdrawal saves the account it leaves", async () => {
-    gemini.extract = golden("transfer").recorded;
+    const [deposit] = (golden("transfer-withdrawal").recorded as { events: object[] }).events;
+    gemini.extract = { events: [deposit] };
     await chat.text("moved 50 to my emergency fund on Oct 26");
     await chat.tap(chat.last(), "Edit");
-    const [deposit] = (golden("transfer").recorded as { events: object[] }).events;
     gemini.patch = { ...deposit, from_account: "Emergency fund", to_account: null };
     await chat.text("no, I took it out of the emergency fund");
 

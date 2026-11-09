@@ -154,7 +154,8 @@ describe("the card proposes the series a payment matches", () => {
       "monthly",
       await ledger.add(...months.map((date) => ({ date, type: "transfer" as const, amount: "50.00", description: "Savings", to: "Emergency fund" }))),
     );
-    const shown = await card(golden("transfer").recorded, "moved 50 to my emergency fund on Oct 26");
+    const [deposit] = (golden("transfer-withdrawal").recorded as { events: object[] }).events;
+    const shown = await card({ events: [deposit] }, "moved 50 to my emergency fund on Oct 26");
     expect(recurringLines(shown.text)).toEqual(["Recurring: Savings"]);
     await chat.tap(shown, "Confirm");
     expect((await ledger.links())["Transfer to emergency fund 2026-10-26"]).toEqual({ series: "Savings", flagged: true });

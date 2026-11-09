@@ -91,7 +91,7 @@ describe("tags for one line or the whole message", () => {
   });
 
   it("income and transfer tags stay on the transaction, with no lines to tag", async () => {
-    const [transfer] = (golden("transfer").recorded as { events: object[] }).events;
+    const [transfer] = (golden("transfer-withdrawal").recorded as { events: object[] }).events;
     gemini.extract = { events: [{ ...transfer, tags: ["Travel"] }] };
     await chat.text("moved 50 to my emergency fund on Oct 26 for the trip");
     expect(chat.last().text).toContain("Tags: Travel");
