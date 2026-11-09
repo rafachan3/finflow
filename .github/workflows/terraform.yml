@@ -19,7 +19,11 @@ permissions:
 jobs:
   terraform:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
+    # Every step must see the same cache dir: init links providers into it, and
+    # a later init without it cannot replace those links.
+    env:
+      TF_PLUGIN_CACHE_DIR: ${{ runner.temp }}/tf-plugin-cache
     steps:
       - uses: actions/checkout@v4
       - uses: hashicorp/setup-terraform@v3
@@ -34,8 +38,6 @@ jobs:
           path: ${{ runner.temp }}/tf-plugin-cache
           key: terraform-providers-${{ hashFiles('infra/.terraform.lock.hcl') }}
       - name: terraform init, with retries
-        env:
-          TF_PLUGIN_CACHE_DIR: ${{ runner.temp }}/tf-plugin-cache
         run: |
           mkdir -p "$TF_PLUGIN_CACHE_DIR"
           for attempt in 1 2 3 4 5; do
