@@ -3145,3 +3145,15 @@ the details it left open.
 follow the `month` variable without the time picker, since the design names
 time series; `dashboard-linter` (a new dependency for checks the script
 already makes).
+
+## 2026-11-09 — Declare `pdcInjected` on the Grafana data source
+
+The first plan after the data source was created showed an in-place update:
+Grafana Cloud adds `pdcInjected = true` to every data source's `jsonData`, and
+Terraform wanted to remove it. An update resends secure data, so a spurious
+one risks the password the owner typed in the UI. `grafana.tf` now declares
+the field, so the plan shows no change on the data source.
+
+**Ruled out:** `ignore_changes` on `json_data_encoded` (it would hide real
+changes to the connection settings); a targeted apply that skips the data
+source (a workaround that leaves the drift).

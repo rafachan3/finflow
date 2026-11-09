@@ -27,6 +27,9 @@ resource "grafana_data_source" "marts" {
     maxOpenConns           = 3
     maxIdleConns           = 1
     connMaxLifetime        = 300
+    # Grafana Cloud adds this to every data source; declaring it keeps the plan
+    # free of an in-place update (which would also resend secure data).
+    pdcInjected = true
   })
 
   # The password is deliberately absent: the owner enters the real
