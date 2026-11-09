@@ -341,8 +341,9 @@ line-sum check shows an error card. A discount on the whole order (a coupon)
 is read into its own `discounts` list and taken off every line by price
 before the taxes and tip are shared, so such a receipt keeps Confirm; an
 Edit treats a corrected discount like a tip correction (DECISIONS.md
-2026-11-08). No golden reads a coupon yet: unit tests and the `tax-tip`
-journey cover it. #89 (merged as #125, `2843d57`): TAXONOMY.md
+2026-11-08). `golden:receipt-order-discount` reads a printed member
+discount off a receipt photo and pins each line's amount; the `tax-tip`
+journey replays it through Confirm. #89 (merged as #125, `2843d57`): TAXONOMY.md
 rule 8 and the prompt say a machine cycle has no goods item type
 (a laundromat washer cycle is Housing / Laundry, never Laundry Supply); the
 new `laundromat-cycles` golden takes the 20th slot (20 of 20).
@@ -599,9 +600,12 @@ merged with migration 0020 applied. Next, in order:
    closed.
 3. Card redesign (#89 #92 #96 #97): #89 merged as #125 (`2843d57`); #96
    merged as #126 (`6fac862`). #92 and #97 wait until after the first
-   dashboards. Golden cap stays 20 (`laundromat-cycles` holds the last
-   slot); after slice B, a small PR retires `transfer` for the
-   `receipt-order-discount` golden.
+   dashboards. Golden cap stays 20. Branch `test/fold-deposit-golden`
+   (not yet a PR): `transfer-withdrawal` now also sends a deposit and
+   checks it (from chequing into an account), `transfer` is retired, and
+   its slot holds `receipt-order-discount`, a receipt with a member
+   discount on the whole order (20 of 20; DECISIONS.md 2026-11-08). Both
+   were recorded live with `--record`, so their `request_sha256` is set.
 4. Phase 5 (Grafana). PR A (planning marts) merged as #119 (`a2b5dc2`);
    PR B (marts as live views) merged as #128 (`563a311`); A2
    (`fct_ledger_entry`) merged as #129 (`d9772f7`); A3

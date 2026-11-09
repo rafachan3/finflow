@@ -2992,3 +2992,30 @@ Phase 5 PR A4. Trends T4/T5 need a real savings pot, not just flows.
 **Ruled out:** putting owner amounts in the gitignored seed overlay or
 any tracked file (the repo is public); treating an investment opening as
 a market value; reconstructing months that end before `as_of`.
+
+## 2026-11-08 — Fold the deposit into `transfer-withdrawal`; retire `transfer`
+
+Owner decision. Supersedes the "Keep `transfer`" entry above; retiring
+`transfer`, ruled out there, is now done. The 20-case cap stays, and
+`laundromat-cycles` keeps its slot.
+
+- **The deposit check moved, it did not vanish.** `transfer` was the only
+  case where Gemini read a deposit (`from_account` null, `to_account`
+  set). `transfer-withdrawal` now sends a deposit, a withdrawal and a move
+  between two accounts in one message and expects all three directions,
+  the deposit first. A deposit read as coming from an account still fails
+  the eval live. Each event pins its amount and accounts, not the date or
+  the description, so the case stays robust.
+- **`transfer` goes.** The journeys that replayed it use the deposit
+  event of `transfer-withdrawal`; the TESTING.md rows that cited it cite
+  the extended case.
+- **`receipt-order-discount` takes the freed slot** (20 of 20). A
+  synthetic housewares receipt prints a member discount on the whole order
+  (`-3.00`) before GST and QST; the case pins each line's amount, so it
+  fails when Gemini reads the discount as a line, puts it on one line, or
+  ignores it. It cannot tell a whole-order discount from the same 10% taken
+  off each price, which gives the same amounts. This closes the "No
+  golden yet" gap in the whole-order discount entry above.
+
+**Ruled out:** raising the cap (same reason as before); dropping the
+deposit check with `transfer` (a deposit is the most common transfer).
