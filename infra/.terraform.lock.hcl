@@ -6,6 +6,9 @@ provider "registry.terraform.io/grafana/grafana" {
   constraints = "~> 4.44"
   hashes = [
     "h1:1icZAoZ8uOSUKJ64LK/syZan0EXNkwwLX2iabJFXeQ4=",
+    "h1:Bi6P+goPtjInO7XWe4e8LcDmeTj3Apk9LHJ8OGzMg0o=",
+    "h1:OzokYld3E8XJIn1OCv/QjiSkXOGgQe8nGsigm6kqXp4=",
+    "h1:lQTzJquYLYpGvGAjLEWskM46urd/Rdz0EHDZgIB1+tc=",
     "zh:07e75aa317cdcd9d3fe8cb3ccd9cb9d11a43d310da5ded5b4d035e82775bed7e",
     "zh:0a6514030b0951be8edae56b8f36e4687a725f603629a7f2cfc6d3cca364a149",
     "zh:11da941ccecda89016a9684a6a4001c69245fe7792a638238e1161d2367142e2",
@@ -32,6 +35,9 @@ provider "registry.terraform.io/hashicorp/archive" {
   version     = "2.8.0"
   constraints = "~> 2.7"
   hashes = [
+    "h1:WB6H5ksIZiyq1lQlD/PWeh+tn4FLsbSjVnRW3+4xe2Y=",
+    "h1:cMBtvdHEgvTmglbioVehZCaOIPocumu9+vlGw5Dsaro=",
+    "h1:jdmKm+xl6ZcQrijxapnZ94RVuz/G4vk7hsIa1N0VT5Q=",
     "h1:oRWx6ZDIdlNBF90L8TzV9X7pQ+P403hoCDiBfmUfhC0=",
     "zh:0d14713fdc259fb377d0b899ad3c650a34194bd52194c863303ef22a65a580e2",
     "zh:369b56040c7a8085d04e7e8ffac1e2b321a3170e502f788819bc34b868ec016f",
@@ -53,7 +59,10 @@ provider "registry.terraform.io/hashicorp/aws" {
   version     = "6.60.0"
   constraints = "~> 6.58"
   hashes = [
+    "h1:5UdlvWB6Ut0WSBEzjVX+ZGRikbIjDz8mm8+F2ULHQLM=",
+    "h1:BDSQlnJzI6J7VA7JmDk1gfgwVlEBWhTSVljOsxmEpOo=",
     "h1:JV0ioBmGtA0OiDun9I4C5lEF5cs5xZ8DTJEjztzrHmM=",
+    "h1:VF6oe4urgR2lRZuCAytMHvUZHtqcZU99TGw915LdCL0=",
     "zh:1a29660d9038c38e9e306194bd3e7de7017148f3491af7fdfa434d7d8c82b3d4",
     "zh:268d711a0a9c18459e09a837405244e5d459bb4ebb5d34a91c4fcbabe3e25d26",
     "zh:2d7058c285484e7cccf4f5b1973c10b404ae77532f77ea95115915dd341fbf5b",
@@ -77,6 +86,9 @@ provider "registry.terraform.io/hashicorp/random" {
   version     = "3.9.0"
   constraints = "~> 3.6"
   hashes = [
+    "h1:OO+IuvQJSPmWdN8AyyIEvPJbLvDQpgX/zbktoa9KsJE=",
+    "h1:UlBuNVuCGJ39tTv2c5gz2NRZnQbXfbIWbTzWcth5o74=",
+    "h1:lVDv+0AjDjrLfpmaJbWqUmIw/k3/AHXLc3N4m55SNdo=",
     "h1:o0s5Mk9NXMP60nlheO1r0LsDGGratFb3oL0t7bD2QnM=",
     "zh:161ad0bd9a75768c82f53fb6e7172a9d8be2d4889b012645a34795031aaf1bf1",
     "zh:19dc9a5b17729725ccfc4f45b0500af0ee5bc6b6b160c7adb8f2bf617d2c80ea",
@@ -98,6 +110,9 @@ provider "registry.terraform.io/supabase/supabase" {
   version     = "1.10.1"
   constraints = "~> 1.10"
   hashes = [
+    "h1:+jlb7Sv/vJdvZwEyWzyovUTN+BJw/2GuEmaMM93uyic=",
+    "h1:LLkVzPbeUf5Dyoa+eg3gnYOFdc02oDIrxQ+KsFfezpw=",
+    "h1:TuwJ6EqSNR36eo9dEHP8CumMXm5NybcVsrkrZ9PNP4s=",
     "h1:voyWKMwYMa0KgYOqUrMd+sUrYMjTKir5Ci3ul5pDsNg=",
     "zh:0b4bd09402a8676d4ce24ce7ba5f5644aaadf4bfad076dc72dcca48e70f34250",
     "zh:19371475d4805f1d94a16cd1a11b00ed13315886a1cc853a6167da9be0118f77",
