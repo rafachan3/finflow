@@ -38,3 +38,19 @@ resource "grafana_data_source" "marts" {
     tlsCACert = file("${path.module}/../supabase/prod-ca-2021.crt")
   })
 }
+
+# The JSON is the source of truth: CI checks it (grafana/scripts/
+# check_dashboards.py), and an apply overwrites edits made in the UI.
+resource "grafana_dashboard" "this_month" {
+  folder      = grafana_folder.finflow.uid
+  config_json = file("${path.module}/../grafana/dashboards/this-month.json")
+  overwrite   = true
+}
+
+# Grafana opens on This month. The provider writes every organization
+# preference at once, so each apply resets the ones left unset here
+# (theme, week start) to Grafana's defaults.
+resource "grafana_organization_preferences" "finflow" {
+  home_dashboard_uid = grafana_dashboard.this_month.uid
+  timezone           = "America/Toronto"
+}

@@ -168,12 +168,14 @@ included.
 | Marts | `fct_account_month` has one row per (month of the month list, account), zero-filled; deposits summed across accounts equal `transfers` and withdrawals equal `withdrawals` per month; moves net to 0; `balance` is never set on investment or debt; the nightly on production too. On the fixture, by hand: a synthetic savings opening, months before `as_of` null, the as_of-day flow inside the snapshot, and investment and debt balances null | `dbt:account_month_covers_accounts`<br>`dbt:account_month_deposits_match_transfers`<br>`dbt:account_month_withdrawals_match_withdrawals`<br>`dbt:account_month_moves_net_zero`<br>`dbt:account_month_balance_savings_only`<br>`dbt:fixture_account_month_expected` |
 | Marts | `budget_targets` holds one row, seeded 50/30/20; a second row, a target outside 0-100 or targets not summing to 100 are refused, and an UPDATE that keeps the sum at 100 is accepted | `seed one 50/30/20 budget_targets row and refuse a second row or targets outside 0-100 or not summing to 100` |
 | Marts | The MetricFlow metrics are exactly the contract's: a metric in the YAML but not in SEMANTIC_LAYER.md, or the reverse, fails the `dbt` job. `mf query` gives every metric of every month in `fct_monthly_summary` (money to the cent, ratios within 0.0001), including months where an input of a derived metric has no rows (the fixture's 2026-03 to 2026-05); `spend` without its self-funded filter fails, naming the metric and month and printing no value | `ci:mf query matches fct_monthly_summary for every contract metric`<br>`ci:spend without its self-funded filter fails check_metrics, naming spend and the month, with no values`<br>`ci:a metric in the YAML but not in SEMANTIC_LAYER.md fails check_metrics` |
+| Dashboards | Every dashboard in `grafana/dashboards/` (This month so far) has a uid, a title and the `finflow` tag, uses only the `finflow-marts` data source and no `$__` macro, and holds no saved query data, TestData data source, Grafana Cloud or Supabase host or project-ref-shaped string; every variable and panel query runs as `finflow_analyst` on the fixture for each `month` it has, returns the columns `check_dashboards.py` expects and some rows; a bad column, a TestData data source, saved query data, a Supabase or Grafana Cloud host or a project-ref-shaped string fails the `dbt` job. How the panels look is checked by the owner opening the dashboard on desktop | `ci:every Grafana dashboard query runs as finflow_analyst on the fixture, and no dashboard holds data or hosts`<br>`ci:a dashboard with a bad column, a TestData data source, saved query data, a host or a project ref fails check_dashboards` |
 
 ## Run the checks locally
 
 From the repo root, `make check` runs what CI's `unit`, `integration`,
-`inventory` and the first step of `dbt` run; CI calls the same targets, so
-the two cannot drift. It needs Docker running and Python 3.12 (`PYTHON=...`
+`inventory` jobs, the first step of `dbt`, its dashboard check and the
+`Terraform` workflow run; CI calls
+the same targets or scripts, so the two cannot drift. It needs Docker running and Python 3.12 (`PYTHON=...`
 to pick another binary); `make` alone lists the targets.
 
 | Target | Runs |
@@ -182,7 +184,9 @@ to pick another binary); `make` alone lists the targets.
 | `make test-integration` | `npm run test:integration` |
 | `make inventory` | `node scripts/check-inventory.mjs`, then `npm run test:coverage` |
 | `make dbt-build` | `scripts/test_db.py`, then `dbt build`, in `dbt/.venv` (created from `requirements.txt` on first use) |
-| `make check` | the four above |
+| `make dashboards` | `scripts/test_db.py`, `dbt run`, then `grafana/scripts/check_dashboards.py`: every `grafana/dashboards/*.json` parses, uses only the `finflow-marts` data source, holds no saved query data, TestData source, Grafana Cloud or Supabase host or project-ref-shaped string, and every variable and panel query runs as `finflow_analyst` for each `month` the fixture has, returning the columns the script expects |
+| `make terraform-check` | `terraform fmt -check -recursive`, `terraform init -backend=false`, `terraform validate` in `infra/` (the `Terraform` workflow); no credentials, never a plan or apply (needs `terraform` on the PATH) |
+| `make check` | the six above |
 | `make eval` | `npm run eval`; not in `check`, since it can spend Gemini quota |
 
 Each database target wraps its command in `scripts/with-test-db.sh`: with
@@ -192,7 +196,7 @@ otherwise it starts a `postgres:17` container named
 when the command exits, pass, fail or interrupt. It never touches a
 `npm run db:up` container. `lambda/node_modules` comes from `npm ci` when
 missing or older than the lockfile. The dbt job's later steps (the grant,
-metric and broken-ledger checks) stay CI-only.
+metric, broken-ledger and broken-dashboard checks) stay CI-only.
 
 ## Running each layer
 
@@ -222,7 +226,11 @@ container.
 
 CI (`.github/workflows/ci.yml`) reports five jobs on every PR: `unit`,
 `integration`, `eval`, `inventory` and `dbt`, and all five are required on
-`main`. `inventory` runs the inventory check
+`main`. The `Terraform` workflow (`.github/workflows/terraform.yml`: format
+and validate only, on PRs touching `infra/` or the dashboards and on
+pushes to `main`) is not required, and lives outside CI so that a red run
+cannot hold back the deploy, which waits for CI to succeed.
+`inventory` runs the inventory check
 and the coverage floor (lines 90, statements 90, branches 84, functions 98;
 raise it, never lower it). The deploy workflow runs only after CI succeeds
 on `main`, then POSTs a wrong webhook secret to the deployed Function URL

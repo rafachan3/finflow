@@ -1,0 +1,30 @@
+name: Terraform
+
+# Formatting and validation of infra/ only: no credentials, no backend,
+# never a plan or apply. Not a required check, and a workflow of its own:
+# the deploy waits for the whole CI run to succeed, so a red job there
+# would hold back Lambda deploys.
+on:
+  pull_request:
+    paths:
+      - "infra/**"
+      - "grafana/dashboards/**"
+      - ".github/workflows/terraform.yml"
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.15.8"
+          terraform_wrapper: false
+      - name: terraform fmt -check and validate on infra
+        run: make terraform-check

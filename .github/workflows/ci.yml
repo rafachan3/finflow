@@ -206,6 +206,65 @@ jobs:
               raise SystemExit(f"finflow_analyst can read {t}")
           print(f"finflow_analyst reads {len(marts)} marts and no staging or ledger table")
           EOF
+      # Runs while the base fixture is loaded; later steps rebuild the ledger.
+      - name: every Grafana dashboard query runs as finflow_analyst on the fixture, and no dashboard holds data or hosts
+        run: python ../grafana/scripts/check_dashboards.py
+      - name: a dashboard with a bad column, a TestData data source, saved query data, a host or a project ref fails check_dashboards
+        run: |
+          broken=$(mktemp -d)
+          python - "$broken" <<'EOF'
+          import json, sys
+          from pathlib import Path
+          source = Path("../grafana/dashboards/this-month.json").read_text()
+
+          def write(name, edit):
+              dash = json.loads(source)
+              panel = next(p for p in dash["panels"] if p["title"] == "Where wants went this month")
+              edit(dash, panel)
+              Path(sys.argv[1], f"{name}.json").write_text(json.dumps(dash))
+
+          def bad_column(dash, panel):
+              sql = panel["targets"][0]["rawSql"]
+              panel["targets"][0]["rawSql"] = sql.replace("category_name as category", "category_label as category")
+              assert panel["targets"][0]["rawSql"] != sql
+
+          def testdata(dash, panel):
+              panel["datasource"] = {"type": "grafana-testdata-datasource", "uid": "testdata"}
+
+          def saved_data(dash, panel):
+              panel["snapshotData"] = [{"category": "Invented", "This month": 1}]
+
+          # Invented values, shaped like the real ones.
+          def supabase_host(dash, panel):
+              panel["description"] += " aws-0-ca-central-1.pooler.supabase.com"
+
+          def grafana_host(dash, panel):
+              dash["links"][0]["url"] = "https://example.grafana.net/d/finflow-month"
+
+          def project_ref(dash, panel):
+              panel["description"] += " qwertyuiopasdfghjklz"
+
+          write("bad_column", bad_column)
+          write("testdata", testdata)
+          write("saved_data", saved_data)
+          write("supabase_host", supabase_host)
+          write("grafana_host", grafana_host)
+          write("project_ref", project_ref)
+          EOF
+          expect_failure() {
+            if python ../grafana/scripts/check_dashboards.py "$broken/$1.json" > out.txt; then
+              echo "::error::check_dashboards.py passed $1.json"
+              exit 1
+            fi
+            cat out.txt
+            grep -qF "$2" out.txt
+          }
+          expect_failure bad_column "panel 'Where wants went this month' fails as finflow_analyst"
+          expect_failure testdata "TestData data source at"
+          expect_failure saved_data "saved query data at"
+          expect_failure supabase_host "names a Grafana Cloud or Supabase host"
+          expect_failure grafana_host "names a Grafana Cloud or Supabase host"
+          expect_failure project_ref "holds a string shaped like a Supabase project ref"
       # The throwaway Postgres has no anon role, so the guard passes there by
       # finding nothing; this proves it bites as finflow_dbt, as on production.
       - name: a grant to anon fails data_api_roles_reach_nothing, and nothing else
