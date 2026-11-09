@@ -37,7 +37,16 @@ DATASOURCE_UID = "finflow-marts"
 ROLE = "finflow_analyst"
 
 # Column names each panel's query returns, by dashboard uid and panel title.
-EXPECTED = {}
+EXPECTED = {
+    "finflow-month": {
+        "Status": ["status"],
+        "Wants left": ["label", "amount"],
+        "Buckets this month": ["Bucket", "Plan", "Used", "Left", "Used %", "Usual by today %", "Status"],
+        "Wants: this month vs usual": ["time", "This month", "Usual by this day", "Plan at your usual timing"],
+        "Everyday needs: this month vs usual": ["time", "This month", "Usual by this day"],
+        "Where wants went this month": ["category", "This month", "Usual for the whole month"],
+    },
+}
 VARIABLE_COLUMNS = ["__value", "__text"]
 
 SAVED_DATA_KEYS = {"snapshotData", "rawFrameContent", "frames", "dataFrames"}
