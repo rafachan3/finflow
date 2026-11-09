@@ -665,7 +665,9 @@ net flow, cumulative, and a savings `balance` (opening plus flows after
 debt has no balance. A view like the other marts. Not a MetricFlow
 model. Five invariant tests run nightly; a fixture test pins a synthetic
 savings opening. The analyst grant scan and the CI login list include
-the view.
+the view. Migration 0022 must be applied before merge. Owner opening
+values stay out of git; run the TESTING.md snippet in the SQL editor
+after 0022 exists.
 
 Phase 4 is accepted (2026-10-30). Optional and deferred: hand-verify real
 numbers for one complete month against the owner's records (on hold until

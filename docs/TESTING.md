@@ -398,7 +398,8 @@ A savings account's opening balance is the same kind of owner-only row:
 the schema is in the repo, the amount is not. Run this in the Supabase SQL
 editor as `postgres`. Placeholders only; never commit a real name, date or
 amount. Investment and debt accounts do not get a computed balance, so
-leave them out.
+leave them out. The amount is the end of `as_of` (flows on that day are
+already in the snapshot).
 
 ```sql
 insert into account_opening_balances (account_id, as_of, amount)
