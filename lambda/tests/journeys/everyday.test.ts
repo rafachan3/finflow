@@ -22,6 +22,8 @@ vi.mock("../../src/config.js", async () => {
 useJourneys();
 
 const REVIEW = ["Confirm", "Discard", "Fix date", "Edit"];
+// Gemini's deposit, withdrawal and move between accounts, in message order.
+const [deposit, withdrawal] = (golden("transfer-withdrawal").recorded as { events: object[] }).events;
 
 describe("logging one purchase", () => {
   it("a text purchase shows a card, and Confirm saves it with its date and reason", async () => {
@@ -130,7 +132,7 @@ describe("logging one purchase", () => {
   });
 
   it("moving money to savings is saved as a transfer to that account", async () => {
-    gemini.extract = golden("transfer").recorded;
+    gemini.extract = { events: [deposit] };
     await chat.text("moved 50 to my emergency fund on Oct 26");
 
     expect(chat.last().text).toContain("To account: Emergency fund");
@@ -144,7 +146,6 @@ describe("logging one purchase", () => {
   it("an extra payment on a car loan is saved as a transfer to that debt account", async () => {
     await sql("insert into accounts (name, kind) values ('Car loan', 'debt')");
     try {
-      const [deposit] = (golden("transfer").recorded as { events: object[] }).events;
       gemini.extract = {
         events: [
           { ...deposit, amount: "200.00", date: "2026-10-28", description: "Extra car loan payment", to_account: "Car loan" },
@@ -172,24 +173,28 @@ describe("logging one purchase", () => {
   it("taking money out of savings and moving it between accounts are saved with the account each leaves", async () => {
     gemini.extract = golden("transfer-withdrawal").recorded;
     await chat.text(
-      "took 200 out of my emergency fund on Oct 27, and moved 500 from the emergency fund to my retirement account on Oct 28",
+      "moved 50 to my emergency fund on Oct 26, took 200 out of my emergency fund on Oct 27, and moved 500 from the emergency fund to my retirement account on Oct 28",
     );
 
-    const [withdrawal, move] = chat.replies().slice(-2);
-    expect(withdrawal.text.split("\n").slice(0, 5)).toEqual([
-      "Transfer · 2026-10-27 · CAD 200.00 (1 of 2)",
-      "Transfer from Emergency fund",
+    const [put, out, move] = chat.replies().slice(-3);
+    expect(put.text).toContain("To account: Emergency fund");
+    expect(put.text).not.toContain("From account");
+    expect(out.text.split("\n").slice(0, 5)).toEqual([
+      "Transfer · 2026-10-27 · CAD 200.00 (2 of 3)",
+      "Transfer from emergency fund",
       "Recurring: no",
       "From account: Emergency fund",
       "To account: chequing",
     ]);
-    expect(labels(withdrawal)).toEqual(REVIEW);
+    expect(labels(out)).toEqual(REVIEW);
     expect(move.text).toContain("From account: Emergency fund\nTo account: Retirement account");
     expect(labels(move)).toEqual(REVIEW);
 
-    await chat.tap(withdrawal, "Confirm");
+    await chat.tap(put, "Confirm");
+    await chat.tap(out, "Confirm");
     await chat.tap(move, "Confirm");
     expect(await ledger.transactions()).toMatchObject([
+      { type: "transfer", amount: "50.00", from_account: null, account: "Emergency fund", lines: 0 },
       { type: "transfer", amount: "200.00", from_account: "Emergency fund", account: null, lines: 0 },
       { type: "transfer", amount: "500.00", from_account: "Emergency fund", account: "Retirement account", lines: 0 },
     ]);
@@ -204,7 +209,6 @@ describe("logging one purchase", () => {
       "✗ transfer from and to the same account: Emergency fund",
     ],
   ])("a transfer that %s gets a card without Confirm and saves nothing", async (_name, over, error) => {
-    const [withdrawal] = (golden("transfer-withdrawal").recorded as { events: object[] }).events;
     gemini.extract = { events: [{ ...withdrawal, ...over }] };
     await chat.text("took 200 out of savings");
 
