@@ -172,8 +172,8 @@ included.
 ## Run the checks locally
 
 From the repo root, `make check` runs what CI's `unit`, `integration`,
-`inventory` and the first step of `dbt` run; CI calls the same targets, so
-the two cannot drift. It needs Docker running and Python 3.12 (`PYTHON=...`
+`inventory`, the first step of `dbt` and its dashboard check run; CI calls
+the same targets or scripts, so the two cannot drift. It needs Docker running and Python 3.12 (`PYTHON=...`
 to pick another binary); `make` alone lists the targets.
 
 | Target | Runs |
@@ -182,7 +182,8 @@ to pick another binary); `make` alone lists the targets.
 | `make test-integration` | `npm run test:integration` |
 | `make inventory` | `node scripts/check-inventory.mjs`, then `npm run test:coverage` |
 | `make dbt-build` | `scripts/test_db.py`, then `dbt build`, in `dbt/.venv` (created from `requirements.txt` on first use) |
-| `make check` | the four above |
+| `make dashboards` | `scripts/test_db.py`, `dbt run`, then `grafana/scripts/check_dashboards.py`: every `grafana/dashboards/*.json` parses, uses only the `finflow-marts` data source, holds no saved query data, TestData source, Grafana Cloud or Supabase host or project-ref-shaped string, and every variable and panel query runs as `finflow_analyst` for each `month` the fixture has, returning the columns the script expects |
+| `make check` | the five above |
 | `make eval` | `npm run eval`; not in `check`, since it can spend Gemini quota |
 
 Each database target wraps its command in `scripts/with-test-db.sh`: with

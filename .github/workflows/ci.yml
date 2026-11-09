@@ -206,6 +206,9 @@ jobs:
               raise SystemExit(f"finflow_analyst can read {t}")
           print(f"finflow_analyst reads {len(marts)} marts and no staging or ledger table")
           EOF
+      # Runs while the base fixture is loaded; later steps rebuild the ledger.
+      - name: every Grafana dashboard query runs as finflow_analyst on the fixture, and no dashboard holds data or hosts
+        run: python ../grafana/scripts/check_dashboards.py
       # The throwaway Postgres has no anon role, so the guard passes there by
       # finding nothing; this proves it bites as finflow_dbt, as on production.
       - name: a grant to anon fails data_api_roles_reach_nothing, and nothing else

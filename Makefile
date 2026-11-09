@@ -6,7 +6,7 @@
 .DEFAULT_GOAL := help
 # Database targets share finflow_test when TEST_DATABASE_URL is set.
 .NOTPARALLEL:
-.PHONY: help check test-unit test-integration inventory dbt-build eval
+.PHONY: help check test-unit test-integration inventory dbt-build dashboards eval
 
 PYTHON ?= python3.12
 # CI installs dbt into its own Python and passes DBT_VENV= (empty).
@@ -20,7 +20,7 @@ help: ## List the targets
 	@echo "make <target>"
 	@awk 'BEGIN {FS = ":.*## "} /^[a-z-]+:.*## / {printf "  %-17s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
-check: test-unit test-integration inventory dbt-build ## Every CI check except the live eval
+check: test-unit test-integration inventory dbt-build dashboards ## Every CI check except the live eval
 
 test-unit: $(NODE_DEPS) ## Typecheck, unit tests, both Lambda bundles (CI job unit)
 	cd lambda && npm run build && npm run test:unit && npm run bundle && npm run bundle:nudge
@@ -34,6 +34,9 @@ inventory: $(NODE_DEPS) ## TESTING.md cites real tests, and the coverage floor h
 
 dbt-build: $(if $(DBT_VENV),$(DBT_VENV)/bin/dbt) ## dbt build on the synthetic fixture (first step of CI job dbt)
 	cd dbt && DBT_PARTIAL_PARSE=false PATH="$(DBT_PATH)$$PATH" $(WITH_DB) sh -c 'env=$$(python scripts/test_db.py) && eval "$$env" && dbt build'
+
+dashboards: $(if $(DBT_VENV),$(DBT_VENV)/bin/dbt) ## Grafana dashboards: structure, privacy, every query as finflow_analyst (step of CI job dbt)
+	cd dbt && DBT_PARTIAL_PARSE=false PATH="$(DBT_PATH)$$PATH" $(WITH_DB) sh -c 'env=$$(python scripts/test_db.py) && eval "$$env" && dbt run --quiet && python ../grafana/scripts/check_dashboards.py'
 
 # Not in check: it calls Gemini and spends the free-tier quota.
 eval: $(NODE_DEPS) ## Golden cases, live Gemini where a request changed (needs GEMINI_EVAL_API_KEY)
