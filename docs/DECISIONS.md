@@ -3244,3 +3244,30 @@ owner wants. These override the Rev 10/11 spec where they differ.
 
 **Ruled out:** whole-purchase rows in the Ledger; a balance or net-worth
 panel; a same-month-last-year reference.
+
+## 2026-11-10: This month, round 2 of owner feedback
+
+The owner saw round 1 applied, liked "Buckets vs targets" and the day
+charts, and reported three problems: no income in money, "Buckets by
+month" does not belong on a page about one month and broke when the time
+range changed, and it was unclear whether the month dropdown or the time
+picker sets the period.
+
+- **The month dropdown is the only period control.** The time picker is
+  hidden on every dashboard and no panel reads the time range. Before
+  this the day charts were time series on real dates, so an earlier month
+  in the dropdown left them empty until the time picker was moved too.
+- **Day charts are Trend panels** with the day of the month (1 to 31) on
+  x. This reverses the 2026-11-09 ruling that kept time series because
+  the design named them; the owner's description overrides that design.
+- **"Income" panel on This month:** income received, and expected for the
+  month while it is open (a complete month shows only what was received).
+- **Trends dashboard started early** to hold "Buckets by month": a bar
+  chart with months as categories, the last 12 complete months, so its
+  shape cannot depend on a time range. Income by month is a second bar
+  chart under it, because the bar chart panel cannot draw a line over the
+  bars. The rest of Trends (G: 3, 6 and 12 month windows) is still to do.
+
+**Ruled out:** keeping a time series with a fixed panel time override
+(dragging on any chart still moves the range); a time picker synced to
+the dropdown (Grafana has no such link without a plugin).

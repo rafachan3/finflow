@@ -3,7 +3,7 @@
 Living state of the project. Read this first; update it whenever work lands.
 
 **Last updated:** 2026-11-10
-**Current phase:** Phase 5 (Grafana) under way: D (This month) merged as #137 and applied 2026-11-09; the owner's first feedback round is on `claude/wizardly-gates-14i3rj` (not merged, not applied); then E/F/reliance/G
+**Current phase:** Phase 5 (Grafana) under way: D (This month) merged as #137 and applied 2026-11-09; feedback round 1 merged as #140 and applied 2026-11-10; round 2 (income in money, Trends dashboard, no time picker) is on `feat/this-month-round-2`; then E/F/reliance/G
 
 ## Phase progress
 
@@ -719,12 +719,12 @@ reads the live preferences before the first apply. **Not verified:** how the pan
 the owner opens it once on desktop. Watch on that check: the status line
 and wants-left titles (a text column titling each stat value), the
 horizontal bar order (largest at the top), the gauge and status cells.
-Known limits: the pace charts follow the dashboard time range (default
-this month), so an earlier `month` needs the time picker too; the Ledger
-links wait for PR E.
+Known limit: the Ledger links wait for PR E. (The pace charts no longer
+follow the time range: see round 2 below.)
 
-This month, feedback round 1 (branch `claude/wizardly-gates-14i3rj`, not
-merged or applied; DECISIONS.md 2026-11-10): the owner saw the dashboard
+This month, feedback round 1 (merged as #140, `94854f1`; `dbt-nightly`
+dispatched and green; applied 2026-11-10, Grafana API showed 8 panels and
+the `income_base` variable; DECISIONS.md 2026-11-10): the owner saw the dashboard
 and asked for bucket shares of income against the 50/30/20 targets
 instead of plan and pace. Eight panels now: status line, wants left, needs left,
 "Buckets vs targets" (So far, % of income, Target, Status) with a new
@@ -745,7 +745,21 @@ waits for the Ledger (PR E).
 Next rounds (DECISIONS.md 2026-11-10, "Owner answers"): a "Needs
 attention" panel on This month (needs a mart first), then E Ledger (line
 items, six filters), F Review, G Trends (bucket shares by month over 3, 6
-and 12 months; no balances). Open in review: PR #140.
+and 12 months; no balances).
+
+This month, feedback round 2 (branch `feat/this-month-round-2`;
+DECISIONS.md 2026-11-10, "round 2"): the owner liked round 1 and asked for
+income in money, "Buckets by month" off this page, and one control for the
+period. Now: an "Income" panel (income received; expected for the month
+while the month is open); the two day charts are Trend panels with the day
+of the month on x, so every panel follows the `month` dropdown and the
+time picker is hidden; "Buckets by month" moved to a new **Trends**
+dashboard (`finflow-trends`, `grafana_dashboard.trends`) as a stacked bar
+chart with months as categories, with "Income by month" under it (bars:
+the bar chart panel draws no line). **After merge:** `terraform plan`
+should show 1 to add (Trends) and 1 to change (This month); no mart
+changed, so no `dbt-nightly` dispatch. **Not verified:** how the Trend and
+bar chart panels render.
 
 Phase 4 is accepted (2026-10-30). Optional and deferred: hand-verify real
 numbers for one complete month against the owner's records (on hold until
