@@ -3271,3 +3271,35 @@ picker sets the period.
 **Ruled out:** keeping a time series with a fixed panel time override
 (dragging on any chart still moves the range); a time picker synced to
 the dropdown (Grafana has no such link without a plugin).
+
+## 2026-11-10: Dashboards, round 3 of owner feedback
+
+- **Unallocated cash on This month is `unallocated_cash` as it stands**:
+  income received minus spend minus money moved to savings or
+  investments, from the ledger only, never from expected income. The
+  ledger holds no upcoming bills, so nothing is set aside for them; the
+  panel description says so instead of guessing a reserve.
+- **The current month is on "Buckets by month", as shares of income
+  received so far**, labelled "(so far)". That is the formula complete
+  months use, so the four shares still add up to 100% and unallocated
+  means the same thing. Shares of expected income were ruled out: the
+  unallocated share would then hold income that has not arrived.
+- **"Buckets by month" has a fixed 0 to 100% axis.** Grafana's automatic
+  range ran to 200%. A month that spent more than its income is cut off
+  at 100%; the owner allocates to zero, so this is rare, and the hover
+  still gives the figures.
+- **Zero shares are returned as null** so the chart draws no 0% label.
+- **Income stays its own chart, now a line.** One chart with shares and
+  dollars needs two unrelated y axes, and Grafana's bar chart draws no
+  line; the time series that can do both has no value labels and no
+  "(so far)" category. The line leaves out the incomplete month, which
+  would read as a drop.
+- **`window_months` is `[3, 6, 12]`**, for the "Average bucket shares"
+  table on Trends.
+- **Panel descriptions**: one or two sentences, "expected income"
+  explained once (on its own stat), "full months" as the one term for
+  complete months.
+
+**Ruled out:** a glossary page (the owner prefers the per-panel
+descriptions); labels centred in bar segments (not a Grafana bar chart
+option).

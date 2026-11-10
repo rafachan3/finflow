@@ -23,10 +23,10 @@
   ],
   "uid": "finflow-trends",
   "title": "Trends",
-  "description": "How complete months compare: each bucket as a share of income, and the income itself.",
+  "description": "How months compare: each bucket as a share of income, the income itself, and the averages over longer periods.",
   "time": {
-    "from": "now-1y",
-    "to": "now"
+    "from": "now-12M/M",
+    "to": "now/M"
   },
   "timepicker": {
     "hidden": true
@@ -39,12 +39,12 @@
       "id": 1,
       "type": "barchart",
       "title": "Buckets by month",
-      "description": "The last 12 complete months. Each bucket as a share of that month's income; unallocated is what stayed in chequing, below zero when more went out than came in.",
+      "description": "The last 12 full months and this month so far. Each bucket as a share of the income received in that month; unallocated is what stayed in chequing. A month that spent more than its income is cut off at 100%: hover for the figures.",
       "gridPos": {
         "x": 0,
         "y": 0,
         "w": 24,
-        "h": 11
+        "h": 12
       },
       "datasource": {
         "type": "grafana-postgresql-datasource",
@@ -60,7 +60,7 @@
           "format": "table",
           "editorMode": "code",
           "rawQuery": true,
-          "rawSql": "select\n  to_char(s.month_start, 'Mon YYYY') as month,\n  s.needs_pct as \"Needs\",\n  s.wants_pct as \"Wants\",\n  s.financial_future_pct as \"Financial future\",\n  s.unallocated_pct as \"Unallocated\"\nfrom (\n  select s.*\n  from marts.fct_monthly_summary s\n  join marts.fct_month_plan p using (month_start)\n  where p.is_complete_month and s.spendable_income > 0\n  order by s.month_start desc\n  limit 12\n) s\norder by s.month_start"
+          "rawSql": "select\n  to_char(s.month_start, 'Mon YYYY') || case when s.is_complete_month then '' else ' (so far)' end as month,\n  nullif(s.needs_pct, 0) as \"Needs\",\n  nullif(s.wants_pct, 0) as \"Wants\",\n  nullif(s.financial_future_pct, 0) as \"Financial future\",\n  nullif(s.unallocated_pct, 0) as \"Unallocated\"\nfrom (\n  select s.*\n  from marts.fct_monthly_summary s\n  where s.spendable_income > 0\n  order by s.month_start desc\n  limit 13\n) s\norder by s.month_start"
         }
       ],
       "fieldConfig": {
@@ -70,7 +70,9 @@
           "custom": {
             "fillOpacity": 100,
             "lineWidth": 0
-          }
+          },
+          "min": 0,
+          "max": 1
         },
         "overrides": [
           {
@@ -155,12 +157,12 @@
     },
     {
       "id": 2,
-      "type": "barchart",
+      "type": "timeseries",
       "title": "Income by month",
-      "description": "The same months: income that reached chequing.",
+      "description": "Income that reached chequing in each full month. This month is left out until it is complete.",
       "gridPos": {
         "x": 0,
-        "y": 11,
+        "y": 12,
         "w": 24,
         "h": 8
       },
@@ -178,7 +180,7 @@
           "format": "table",
           "editorMode": "code",
           "rawQuery": true,
-          "rawSql": "select\n  to_char(s.month_start, 'Mon YYYY') as month,\n  s.spendable_income as \"Income\"\nfrom (\n  select s.*\n  from marts.fct_monthly_summary s\n  join marts.fct_month_plan p using (month_start)\n  where p.is_complete_month and s.spendable_income > 0\n  order by s.month_start desc\n  limit 12\n) s\norder by s.month_start"
+          "rawSql": "select\n  ((s.month_start + 14)::timestamp at time zone 'America/Toronto') as time,\n  s.spendable_income as \"Income\"\nfrom marts.fct_monthly_summary s\njoin marts.fct_month_plan p using (month_start)\nwhere p.is_complete_month\norder by 1"
         }
       ],
       "fieldConfig": {
@@ -191,27 +193,91 @@
             "fixedColor": "#0ca30c"
           },
           "custom": {
-            "fillOpacity": 100,
-            "lineWidth": 0
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 0,
+            "showPoints": "always",
+            "pointSize": 7,
+            "axisLabel": ""
           }
         },
         "overrides": []
       },
       "options": {
-        "xField": "month",
-        "orientation": "vertical",
-        "stacking": "none",
-        "showValue": "auto",
-        "barWidth": 0.6,
-        "groupWidth": 0.7,
         "legend": {
-          "showLegend": false,
-          "displayMode": "list",
-          "placement": "bottom"
+          "showLegend": false
         },
         "tooltip": {
-          "mode": "multi",
+          "mode": "single",
           "sort": "none"
+        }
+      }
+    },
+    {
+      "id": 3,
+      "type": "table",
+      "title": "Average bucket shares",
+      "description": "Each bucket as a share of income over the last 3, 6 and 12 full months, next to its target. A period shows a dash until that many full months exist.",
+      "gridPos": {
+        "x": 0,
+        "y": 20,
+        "w": 24,
+        "h": 6
+      },
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "finflow-marts"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "finflow-marts"
+          },
+          "format": "table",
+          "editorMode": "code",
+          "rawQuery": true,
+          "rawSql": "select \"Period\", \"Needs\", \"Wants\", \"Financial future\", \"Unallocated\"\nfrom (\n  select r.window_months as ord,\n    'Last ' || r.window_months || ' full months' as \"Period\",\n    r.needs_pct as \"Needs\", r.wants_pct as \"Wants\",\n    r.financial_future_pct as \"Financial future\", r.unallocated_pct as \"Unallocated\"\n  from marts.fct_month_rolling r\n  where r.month_start = (select max(month_start) from marts.fct_month_plan where is_complete_month)\n  union all\n  select 99, 'Target', s.needs_target_pct, s.wants_target_pct, s.financial_future_target_pct, null\n  from marts.fct_monthly_summary s\n  where s.month_start = (select max(month_start) from marts.fct_month_plan)\n) t\norder by ord"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "^(Needs|Wants|Financial future|Unallocated)$"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "noValue",
+                "value": "–"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false
         }
       }
     }

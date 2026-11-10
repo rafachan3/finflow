@@ -44,7 +44,9 @@ EXPECTED = {
         "Status": ["status"],
         "Wants left": ["label", "amount"],
         "Needs left": ["label", "amount"],
-        "Income": ["label", "amount"],
+        "Income received": ["label", "amount"],
+        "Expected income": ["label", "amount"],
+        "Unallocated cash": ["label", "amount"],
         "Buckets vs targets": ["Bucket", "So far", "% of income", "Target", "Status"],
         "Wants by day": ["Day", "This month", "This month, above the mean", MEAN_TO_DATE,
                          "Wants target for the month"],
@@ -54,7 +56,8 @@ EXPECTED = {
     },
     "finflow-trends": {
         "Buckets by month": ["month", "Needs", "Wants", "Financial future", "Unallocated"],
-        "Income by month": ["month", "Income"],
+        "Income by month": ["time", "Income"],
+        "Average bucket shares": ["Period", "Needs", "Wants", "Financial future", "Unallocated"],
     },
 }
 VARIABLE_COLUMNS = ["__value", "__text"]
