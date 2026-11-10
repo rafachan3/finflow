@@ -50,6 +50,12 @@ resource "grafana_dashboard" "this_month" {
   overwrite   = true
 }
 
+resource "grafana_dashboard" "trends" {
+  folder      = grafana_folder.finflow.uid
+  config_json = file("${path.module}/../grafana/dashboards/trends.json")
+  overwrite   = true
+}
+
 # Grafana opens on This month. The provider writes every organization
 # preference at once, so each apply resets the ones left unset here
 # (theme, week start) to Grafana's defaults.

@@ -44,13 +44,17 @@ EXPECTED = {
         "Status": ["status"],
         "Wants left": ["label", "amount"],
         "Needs left": ["label", "amount"],
+        "Income": ["label", "amount"],
         "Buckets vs targets": ["Bucket", "So far", "% of income", "Target", "Status"],
-        "Wants by day": ["time", "This month", "This month, above the mean", MEAN_TO_DATE,
+        "Wants by day": ["Day", "This month", "This month, above the mean", MEAN_TO_DATE,
                          "Wants target for the month"],
-        "Everyday needs by day": ["time", "This month", "This month, above the mean", MEAN_TO_DATE],
+        "Everyday needs by day": ["Day", "This month", "This month, above the mean", MEAN_TO_DATE],
         "Where wants went this month": ["category", "This month so far", MEAN_TO_DATE,
                                         "Mean of previous 3 full months, whole month"],
-        "Buckets by month": ["time", "Needs", "Wants", "Financial future", "Unallocated", "Income"],
+    },
+    "finflow-trends": {
+        "Buckets by month": ["month", "Needs", "Wants", "Financial future", "Unallocated"],
+        "Income by month": ["month", "Income"],
     },
 }
 VARIABLE_COLUMNS = ["__value", "__text"]
