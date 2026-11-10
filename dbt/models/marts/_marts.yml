@@ -533,6 +533,11 @@ models:
         data_tests: [not_null]
       - name: spend_avg_3m
         description: Mean spend over the baseline months, zeros included; null with none.
+      - name: spend_to_date_avg_3m
+        description: >
+          Mean over the baseline months of their spend through the matching
+          day of this month's as_of_day (fct_pace_day's rule), zeros included.
+          Equals spend_avg_3m in a complete month; null with no baseline.
       - name: line_count_avg_3m
       - name: spend_delta
         description: spend - spend_avg_3m; null with no baseline.

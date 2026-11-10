@@ -3157,3 +3157,90 @@ the field, so the plan shows no change on the data source.
 **Ruled out:** `ignore_changes` on `json_data_encoded` (it would hide real
 changes to the connection settings); a targeted apply that skips the data
 source (a workaround that leaves the drift).
+
+## 2026-11-10 — This month, round 1 of owner feedback: shares of income, plain labels
+
+The owner opened This month (applied 2026-11-09) and described what to
+change. Their description overrides the Rev 10/11 panel list and the
+2026-11-08 "choices the panel list left open" entry where they disagree.
+
+- **The bucket table answers 50/30/20, not pace.** "Buckets vs targets":
+  So far, % of income, Target, Status (within / over target; financial
+  future is met, due by month end, or below target once the month is
+  complete). Plan, Left, Used % and "Usual by today %" are gone: the owner
+  reads the buckets as shares of income, and pace belongs to the charts.
+- **The denominator is a toggle** (`income_base`): expected income by
+  default (shares mean something from day 1), or income received so far.
+  A complete month uses its actual income either way, since
+  `spendable_income_expected` is `spendable_income` there. The 2026-11-07
+  ruling against shares of income so far stands as the default; the owner
+  asked to see that view on demand.
+- **"Usual" is spelled out** as "Mean of previous 3 full months". The
+  status line names how many months the mean has when it is fewer.
+- **Pace is the line's colour.** Each pace chart splits this month's line
+  in SQL into the part at or below the mean and the part above it (red).
+  A Grafana line cannot take its colour from another series, so it is two
+  series; a crossing segment belongs to the side it ends on.
+- **"Plan at your usual timing" is replaced** by a flat "Wants target for
+  the month". Nobody could read the sloped line.
+- **Categories compare like for like.** New
+  `fct_subcategory_month.spend_to_date_avg_3m`: the baseline months' spend
+  through the matching day. The whole-month mean stays as a third, fainter
+  bar. A category is listed only with spend this month or in at least 2 of
+  the previous 3 full months, so a one-off fee or trip never reads as
+  usual. That rule is in the panel query (it needs a count of months per
+  category, and the mart's grain is the subcategory).
+- **"Buckets by month" added**: complete months, stacked shares of income
+  with unallocated as the fourth part, and income as a line on the right
+  axis. Trends (G) may take it over.
+- **"Needs left" added** beside "Wants left", as a big number: the needs
+  target minus needs spent so far. No per-day figure, since fixed bills
+  land on set dates.
+- **Panel help is one or two sentences**, definitions only.
+
+**Ruled out:** income received so far as the default denominator (over
+target every month until pay arrives); a per-row gauge against each
+target (a table cell is coloured from its own value only, and the targets
+live in `budget_targets`, not in the JSON); a same-day mean as the only
+category reference (the whole-month mean is the steadier one for a
+category bought a few times a month).
+
+**Not verified:** how the changed panels render. Watch the two-series
+pace line at a crossing, the stacked bars with a negative unallocated
+share, the right-axis income line, and the 12-month panel time override.
+
+## 2026-11-10 — Owner answers for the dashboards still to build
+
+Asked after round 1 of This month so E, F and G start closer to what the
+owner wants. These override the Rev 10/11 spec where they differ.
+
+- **Ledger (E) lists line items**, not whole purchases: one receipt can
+  span categories and buckets. Filters: month, bucket, category, merchant,
+  tag and free-text search, all of them. It also wires This month's
+  category and bucket links.
+- **Review (F) shows three things:** whether needs and wants stayed within
+  their targets and financial future reached its own; the biggest changes,
+  meaning each category's spend minus the mean of the previous 3 full
+  months, sorted by size; and entries to fix.
+- **Entries to fix are wanted at once, not at month end.** Proposed and not
+  yet built: a "Needs attention" panel at the top of This month, empty
+  when clean, fed by the existing mechanical checks (likely duplicates,
+  date sanity, cards never confirmed, cards read by the lighter model,
+  recurring payments due and not logged). It needs a mart first, since
+  `finflow_analyst` reads only `marts`.
+- **Trends (G) is "Buckets by month"** and its windows. No savings balance
+  and no net worth: the owner reads those in their bank's app. T4/T5 and
+  the dashboard use of `fct_account_month` are dropped unless asked for.
+- **Comparison windows are 3 and 6 months, and 12 when there is history.**
+  No same-month-last-year: spending and income are not seasonal.
+  `window_months` is 3 and 12 today, so 6 is to be added.
+- **Unallocated is expected to be zero at month end** (the owner allocates
+  everything), so a visible unallocated share in a complete month points
+  at a transfer that was not logged.
+- **Merging:** the owner allows a merge without asking once every check is
+  green (2026-11-10), which relaxes the per-PR "merge" of 2026-11-09. A
+  red check is still fixed, never merged past. `terraform apply` stays
+  with the owner's main checkout, where the state file lives.
+
+**Ruled out:** whole-purchase rows in the Ledger; a balance or net-worth
+panel; a same-month-last-year reference.
