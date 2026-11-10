@@ -1,20 +1,27 @@
 {
   "uid": "finflow-month",
   "title": "This month",
-  "description": "Daily check: how much of each bucket is left this month, and whether spending runs ahead of the usual timing.",
-  "tags": ["finflow"],
+  "description": "Daily check: each bucket's share of income against its target, and spending so far against the previous months.",
+  "tags": [
+    "finflow"
+  ],
   "timezone": "America/Toronto",
   "editable": true,
   "graphTooltip": 1,
   "schemaVersion": 39,
-  "time": { "from": "now/M", "to": "now/M" },
+  "time": {
+    "from": "now/M",
+    "to": "now/M"
+  },
   "timepicker": {},
   "refresh": "",
   "links": [
     {
       "type": "dashboards",
       "title": "FinFlow dashboards",
-      "tags": ["finflow"],
+      "tags": [
+        "finflow"
+      ],
       "asDropdown": false,
       "includeVars": false,
       "keepTime": false,
@@ -28,8 +35,11 @@
         "type": "query",
         "name": "month",
         "label": "Month",
-        "description": "The month every panel shows. Defaults to the latest month, the current one.",
-        "datasource": { "type": "grafana-postgresql-datasource", "uid": "finflow-marts" },
+        "description": "The month every panel shows.",
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "finflow-marts"
+        },
         "query": "select to_char(month_start, 'YYYY-MM-DD') as __value, to_char(month_start, 'Mon YYYY') as __text from marts.fct_month_plan order by month_start desc",
         "definition": "select to_char(month_start, 'YYYY-MM-DD') as __value, to_char(month_start, 'Mon YYYY') as __text from marts.fct_month_plan order by month_start desc",
         "refresh": 1,
@@ -39,6 +49,33 @@
         "current": {},
         "options": [],
         "hide": 0
+      },
+      {
+        "type": "custom",
+        "name": "income_base",
+        "label": "Bucket shares of",
+        "description": "What the bucket shares divide by. A complete month uses its actual income either way.",
+        "query": "Expected income : expected,Income received so far : received",
+        "current": {
+          "text": "Expected income",
+          "value": "expected",
+          "selected": true
+        },
+        "options": [
+          {
+            "text": "Expected income",
+            "value": "expected",
+            "selected": true
+          },
+          {
+            "text": "Income received so far",
+            "value": "received",
+            "selected": false
+          }
+        ],
+        "multi": false,
+        "includeAll": false,
+        "hide": 0
       }
     ]
   },
@@ -47,44 +84,80 @@
       "id": 1,
       "type": "stat",
       "title": "Status",
-      "description": "How far to trust the rest of the dashboard today: the day of the month, how much of the expected spendable income has arrived, and how many complete months the 'usual' figures average (3 is the full baseline; fewer is thin).",
-      "gridPos": { "x": 0, "y": 0, "w": 24, "h": 3 },
-      "datasource": { "type": "grafana-postgresql-datasource", "uid": "finflow-marts" },
+      "description": "",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 3
+      },
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "finflow-marts"
+      },
       "targets": [
         {
           "refId": "A",
-          "datasource": { "type": "grafana-postgresql-datasource", "uid": "finflow-marts" },
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "finflow-marts"
+          },
           "format": "table",
           "editorMode": "code",
           "rawQuery": true,
-          "rawSql": "select\n  case\n    when p.as_of_day = 0 then 'Not started'\n    when p.is_complete_month then 'Complete month'\n    else 'Day ' || p.as_of_day || ' of ' || p.days_in_month\n  end\n  || ' · ' ||\n  case\n    when p.income_received_share is null then 'no expected income yet'\n    else 'income received ' || round(p.income_received_share * 100) || '% of expected'\n  end\n  || ' · ' ||\n  case\n    when p.baseline_months = 0 then 'no baseline yet'\n    when p.baseline_months = 1 then 'baseline: 1 month (thin)'\n    when p.baseline_months < 3 then 'baseline: ' || p.baseline_months || ' months (thin)'\n    else 'baseline ' || p.baseline_months || ' months'\n  end as status\nfrom marts.fct_month_plan p\nwhere p.month_start = '${month}'"
+          "rawSql": "select\n  case\n    when p.as_of_day = 0 then 'Not started'\n    when p.is_complete_month then 'Complete month · shares are of the income received'\n    else 'Day ' || p.as_of_day || ' of ' || p.days_in_month || ' · ' ||\n      case\n        when p.spendable_income_expected is null then 'no expected income yet (no full month before this one)'\n        when p.spendable_income >= p.spendable_income_baseline then\n          'income received is already above the ' || b.label || ', so it is the expected income'\n        else 'income received: ' || round(p.income_received_share * 100) || '% of expected (the ' || b.label || ')'\n      end\n  end as status\nfrom marts.fct_month_plan p\ncross join lateral (\n  select case p.baseline_months\n    when 1 then 'previous full month'\n    else 'mean of the previous ' || p.baseline_months || ' full months'\n  end as label\n) b\nwhere p.month_start = '${month}'"
         }
       ],
       "fieldConfig": {
-        "defaults": { "color": { "mode": "fixed", "fixedColor": "text" }, "noValue": "No data for this month" },
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          },
+          "noValue": "No data for this month"
+        },
         "overrides": []
       },
       "options": {
-        "reduceOptions": { "values": false, "calcs": ["lastNotNull"], "fields": "/^status$/" },
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/^status$/"
+        },
         "textMode": "value",
         "colorMode": "none",
         "graphMode": "none",
         "justifyMode": "center",
         "orientation": "auto",
-        "text": { "valueSize": 20 }
+        "text": {
+          "valueSize": 20
+        }
       }
     },
     {
       "id": 2,
       "type": "stat",
       "title": "Wants left",
-      "description": "Can I buy this want now? The wants plan for the month minus wants spent so far, and that amount spread over the days left (today included). A negative amount, in red, is how far over the plan wants already are. A complete month shows what was left at its end. 'No baseline yet' means there is no plan to compare with.",
-      "gridPos": { "x": 0, "y": 3, "w": 6, "h": 7 },
-      "datasource": { "type": "grafana-postgresql-datasource", "uid": "finflow-marts" },
+      "description": "Wants target (its share of expected income) minus wants spent so far. Per remaining day counts today.",
+      "gridPos": {
+        "x": 0,
+        "y": 3,
+        "w": 6,
+        "h": 7
+      },
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "finflow-marts"
+      },
       "targets": [
         {
           "refId": "A",
-          "datasource": { "type": "grafana-postgresql-datasource", "uid": "finflow-marts" },
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "finflow-marts"
+          },
           "format": "table",
           "editorMode": "code",
           "rawQuery": true,
@@ -96,19 +169,31 @@
           "unit": "prefix:$",
           "decimals": 0,
           "noValue": "No baseline yet",
-          "color": { "mode": "thresholds" },
+          "color": {
+            "mode": "thresholds"
+          },
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              { "color": "#d03b3b", "value": null },
-              { "color": "text", "value": 0 }
+              {
+                "color": "#d03b3b",
+                "value": null
+              },
+              {
+                "color": "text",
+                "value": 0
+              }
             ]
           }
         },
         "overrides": []
       },
       "options": {
-        "reduceOptions": { "values": true, "calcs": [], "fields": "/^amount$/" },
+        "reduceOptions": {
+          "values": true,
+          "calcs": [],
+          "fields": "/^amount$/"
+        },
         "textMode": "value_and_name",
         "colorMode": "value",
         "graphMode": "none",
@@ -119,73 +204,132 @@
     {
       "id": 3,
       "type": "table",
-      "title": "Buckets this month",
-      "description": "Which bucket is running hot? Plan, used so far and left for each bucket, the share of the plan used, and the share of a month usually done by today (mean of the up-to-3 complete months before). Status compares the two: more than 10 points ahead or behind the usual timing, else on pace. The financial-future row's Left is what is still to move by month end; it is due then, so it is never flagged early, and reads 'Done ✓' once moved.",
-      "gridPos": { "x": 6, "y": 3, "w": 18, "h": 7 },
-      "datasource": { "type": "grafana-postgresql-datasource", "uid": "finflow-marts" },
+      "title": "Buckets vs targets",
+      "description": "Each bucket so far as a share of income, against its target. Expected income is the larger of income received so far and the mean of the previous 3 full months; switch 'Bucket shares of' at the top to divide by income received so far. Needs and wants targets are ceilings. The financial future target is a floor, due by month end.",
+      "gridPos": {
+        "x": 6,
+        "y": 3,
+        "w": 18,
+        "h": 7
+      },
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "finflow-marts"
+      },
       "targets": [
         {
           "refId": "A",
-          "datasource": { "type": "grafana-postgresql-datasource", "uid": "finflow-marts" },
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "finflow-marts"
+          },
           "format": "table",
           "editorMode": "code",
           "rawQuery": true,
-          "rawSql": "with p as (\n  select * from marts.fct_month_plan where month_start = '${month}'\n), s as (\n  select * from marts.fct_monthly_summary where month_start = '${month}'\n), b as (\n  select 1 as ord, 'Needs' as bucket, 'needs' as series, p.needs_plan as plan, s.needs_spend as used from p, s\n  union all\n  select 2, 'Wants', 'wants', p.wants_plan, s.wants_spend from p, s\n  union all\n  select 3, 'Financial future', 'financial_future', p.financial_future_plan, s.financial_future from p, s\n)\nselect\n  b.bucket as \"Bucket\",\n  b.plan as \"Plan\",\n  b.used as \"Used\",\n  case when b.series = 'financial_future' then greatest(b.plan - b.used, 0) else b.plan - b.used end as \"Left\",\n  round(b.used / nullif(b.plan, 0), 4) as \"Used %\",\n  d.pace_share_avg_3m as \"Usual by today %\",\n  case\n    when b.series = 'financial_future' then\n      case when b.used >= b.plan then 'Done ✓' else 'due by month end' end\n    when b.plan is null or d.pace_share_avg_3m is null then 'no pace yet'\n    when b.used / nullif(b.plan, 0) - d.pace_share_avg_3m > 0.10 then '▲ ahead of usual pace'\n    when b.used / nullif(b.plan, 0) - d.pace_share_avg_3m < -0.10 then '▼ behind usual pace'\n    else '● on pace'\n  end as \"Status\"\nfrom b\ncross join p\nleft join marts.fct_pace_day d\n  on d.series = b.series\n  and p.as_of_day > 0\n  and d.date_day = p.month_start + (p.as_of_day - 1)\norder by b.ord"
+          "rawSql": "with p as (\n  select * from marts.fct_month_plan where month_start = '${month}'\n), s as (\n  select * from marts.fct_monthly_summary where month_start = '${month}'\n), i as (\n  select nullif(case when '${income_base}' = 'received' then p.spendable_income\n                     else p.spendable_income_expected end, 0) as income\n  from p\n), b as (\n  select 1 as ord, 'Needs' as bucket, s.needs_spend as used, s.needs_target_pct as target from s\n  union all\n  select 2, 'Wants', s.wants_spend, s.wants_target_pct from s\n  union all\n  select 3, 'Financial future', s.financial_future, s.financial_future_target_pct from s\n)\nselect\n  b.bucket as \"Bucket\",\n  b.used as \"So far\",\n  round(b.used / i.income, 4) as \"% of income\",\n  b.target as \"Target\",\n  case\n    when i.income is null then 'no income'\n    when b.bucket = 'Financial future' then\n      case\n        when b.used / i.income >= b.target then '✓ target met'\n        when p.is_complete_month then '▼ below target'\n        else 'due by month end'\n      end\n    when b.used / i.income > b.target then '▲ over target'\n    else '● within target'\n  end as \"Status\"\nfrom b\ncross join p\ncross join i\norder by b.ord"
         }
       ],
       "fieldConfig": {
         "defaults": {
-          "custom": { "align": "auto", "cellOptions": { "type": "auto" } },
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            }
+          },
           "unit": "prefix:$",
           "decimals": 2
         },
         "overrides": [
           {
-            "matcher": { "id": "byName", "options": "Left" },
+            "matcher": {
+              "id": "byName",
+              "options": "% of income"
+            },
             "properties": [
-              { "id": "custom.cellOptions", "value": { "type": "color-text" } },
-              { "id": "color", "value": { "mode": "thresholds" } },
               {
-                "id": "thresholds",
-                "value": { "mode": "absolute", "steps": [{ "color": "#d03b3b", "value": null }, { "color": "text", "value": 0 }] }
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "noValue",
+                "value": "–"
               }
             ]
           },
           {
-            "matcher": { "id": "byName", "options": "Used %" },
+            "matcher": {
+              "id": "byName",
+              "options": "Target"
+            },
             "properties": [
-              { "id": "unit", "value": "percentunit" },
-              { "id": "decimals", "value": 0 },
-              { "id": "min", "value": 0 },
-              { "id": "max", "value": 1 },
-              { "id": "color", "value": { "mode": "fixed", "fixedColor": "#898781" } },
-              { "id": "custom.cellOptions", "value": { "type": "gauge", "mode": "basic", "valueDisplayMode": "text" } }
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              }
             ]
           },
           {
-            "matcher": { "id": "byName", "options": "Usual by today %" },
+            "matcher": {
+              "id": "byName",
+              "options": "Status"
+            },
             "properties": [
-              { "id": "unit", "value": "percentunit" },
-              { "id": "decimals", "value": 0 },
-              { "id": "noValue", "value": "no pace yet" }
-            ]
-          },
-          {
-            "matcher": { "id": "byName", "options": "Status" },
-            "properties": [
-              { "id": "custom.cellOptions", "value": { "type": "color-background", "mode": "basic" } },
-              { "id": "color", "value": { "mode": "thresholds" } },
-              { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "transparent", "value": null }] } },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background",
+                  "mode": "basic"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "transparent",
+                      "value": null
+                    }
+                  ]
+                }
+              },
               {
                 "id": "mappings",
                 "value": [
                   {
                     "type": "value",
                     "options": {
-                      "▲ ahead of usual pace": { "color": "#fab219", "index": 0 },
-                      "● on pace": { "color": "#0ca30c", "index": 1 },
-                      "▼ behind usual pace": { "color": "#0ca30c", "index": 2 },
-                      "Done ✓": { "color": "#0ca30c", "index": 3 }
+                      "▲ over target": {
+                        "color": "#d03b3b",
+                        "index": 0
+                      },
+                      "▼ below target": {
+                        "color": "#d03b3b",
+                        "index": 1
+                      },
+                      "● within target": {
+                        "color": "#0ca30c",
+                        "index": 2
+                      },
+                      "✓ target met": {
+                        "color": "#0ca30c",
+                        "index": 3
+                      }
                     }
                   }
                 ]
@@ -194,23 +338,40 @@
           }
         ]
       },
-      "options": { "showHeader": true, "cellHeight": "sm", "footer": { "show": false } }
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false
+        }
+      }
     },
     {
       "id": 4,
       "type": "timeseries",
-      "title": "Wants: this month vs usual",
-      "description": "Am I ahead of my usual timing? Wants spent so far this month (stops at today), what the up-to-3 complete months before usually had by the same day, and the wants plan spread at that usual timing (dashed: a target). With no baseline yet, only this month's line is drawn. The chart shows the dashboard's time range, this month by default; set the time picker to match when choosing an earlier month.",
-      "gridPos": { "x": 0, "y": 10, "w": 12, "h": 9 },
-      "datasource": { "type": "grafana-postgresql-datasource", "uid": "finflow-marts" },
+      "title": "Wants by day",
+      "description": "Wants added up day by day. The line is red where it runs above the mean of the previous 3 full months on the same day of the month.",
+      "gridPos": {
+        "x": 0,
+        "y": 10,
+        "w": 12,
+        "h": 9
+      },
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "finflow-marts"
+      },
       "targets": [
         {
           "refId": "A",
-          "datasource": { "type": "grafana-postgresql-datasource", "uid": "finflow-marts" },
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "finflow-marts"
+          },
           "format": "table",
           "editorMode": "code",
           "rawQuery": true,
-          "rawSql": "select\n  (d.date_day::timestamp at time zone 'America/Toronto') as time,\n  d.amount_mtd as \"This month\",\n  d.pace_mtd_avg_3m as \"Usual by this day\",\n  round(p.wants_plan * d.pace_share_avg_3m, 2) as \"Plan at your usual timing\"\nfrom marts.fct_pace_day d\njoin marts.fct_month_plan p using (month_start)\nwhere month_start = '${month}' and d.series = 'wants'\norder by 1"
+          "rawSql": "with d as (\n  select date_day, month_start, amount_mtd, pace_mtd_avg_3m,\n    coalesce(amount_mtd > pace_mtd_avg_3m, false) as above,\n    coalesce(lead(amount_mtd > pace_mtd_avg_3m) over (order by date_day), false) as above_next\n  from marts.fct_pace_day\n  where month_start = '${month}' and series = 'wants'\n)\nselect\n  (d.date_day::timestamp at time zone 'America/Toronto') as time,\n  case when not d.above or not d.above_next then d.amount_mtd end as \"This month\",\n  case when d.above or d.above_next then d.amount_mtd end as \"This month, above the mean\",\n  d.pace_mtd_avg_3m as \"Mean of previous 3 full months, by this day\",\n  p.wants_plan as \"Wants target for the month\"\nfrom d\njoin marts.fct_month_plan p using (month_start)\norder by 1"
         }
       ],
       "fieldConfig": {
@@ -218,46 +379,126 @@
           "unit": "prefix:$",
           "decimals": 0,
           "min": 0,
-          "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 0, "showPoints": "never", "spanNulls": false, "axisLabel": "" }
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 0,
+            "showPoints": "never",
+            "spanNulls": false,
+            "axisLabel": ""
+          }
         },
         "overrides": [
           {
-            "matcher": { "id": "byName", "options": "This month" },
-            "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "#d95926" } }]
-          },
-          {
-            "matcher": { "id": "byName", "options": "Usual by this day" },
-            "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "#898781" } }]
-          },
-          {
-            "matcher": { "id": "byName", "options": "Plan at your usual timing" },
+            "matcher": {
+              "id": "byName",
+              "options": "This month"
+            },
             "properties": [
-              { "id": "color", "value": { "mode": "fixed", "fixedColor": "#898781" } },
-              { "id": "custom.lineStyle", "value": { "fill": "dash", "dash": [10, 10] } }
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#0ca30c"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "This month, above the mean"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#d03b3b"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Mean of previous 3 full months, by this day"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#898781"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Wants target for the month"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#d95926"
+                }
+              },
+              {
+                "id": "custom.lineStyle",
+                "value": {
+                  "fill": "dash",
+                  "dash": [
+                    10,
+                    10
+                  ]
+                }
+              }
             ]
           }
         ]
       },
       "options": {
-        "legend": { "showLegend": true, "displayMode": "list", "placement": "bottom" },
-        "tooltip": { "mode": "multi", "sort": "none" }
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
       }
     },
     {
       "id": 5,
       "type": "timeseries",
-      "title": "Everyday needs: this month vs usual",
-      "description": "Are groceries and transit running hot? Variable needs spent so far this month (stops at today) against what the up-to-3 complete months before usually had by the same day. No plan line: the needs plan also covers fixed needs, so a variable-only plan would be invented. The chart shows the dashboard's time range, this month by default.",
-      "gridPos": { "x": 12, "y": 10, "w": 12, "h": 9 },
-      "datasource": { "type": "grafana-postgresql-datasource", "uid": "finflow-marts" },
+      "title": "Everyday needs by day",
+      "description": "Needs that are not recurring bills, added up day by day. The line is red where it runs above the mean of the previous 3 full months on the same day of the month.",
+      "gridPos": {
+        "x": 12,
+        "y": 10,
+        "w": 12,
+        "h": 9
+      },
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "finflow-marts"
+      },
       "targets": [
         {
           "refId": "A",
-          "datasource": { "type": "grafana-postgresql-datasource", "uid": "finflow-marts" },
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "finflow-marts"
+          },
           "format": "table",
           "editorMode": "code",
           "rawQuery": true,
-          "rawSql": "select\n  (d.date_day::timestamp at time zone 'America/Toronto') as time,\n  d.amount_mtd as \"This month\",\n  d.pace_mtd_avg_3m as \"Usual by this day\"\nfrom marts.fct_pace_day d\nwhere d.month_start = '${month}' and d.series = 'variable_needs'\norder by 1"
+          "rawSql": "with d as (\n  select date_day, month_start, amount_mtd, pace_mtd_avg_3m,\n    coalesce(amount_mtd > pace_mtd_avg_3m, false) as above,\n    coalesce(lead(amount_mtd > pace_mtd_avg_3m) over (order by date_day), false) as above_next\n  from marts.fct_pace_day\n  where month_start = '${month}' and series = 'variable_needs'\n)\nselect\n  (d.date_day::timestamp at time zone 'America/Toronto') as time,\n  case when not d.above or not d.above_next then d.amount_mtd end as \"This month\",\n  case when d.above or d.above_next then d.amount_mtd end as \"This month, above the mean\",\n  d.pace_mtd_avg_3m as \"Mean of previous 3 full months, by this day\"\nfrom d\norder by 1"
         }
       ],
       "fieldConfig": {
@@ -265,39 +506,101 @@
           "unit": "prefix:$",
           "decimals": 0,
           "min": 0,
-          "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 0, "showPoints": "never", "spanNulls": false, "axisLabel": "" }
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 0,
+            "showPoints": "never",
+            "spanNulls": false,
+            "axisLabel": ""
+          }
         },
         "overrides": [
           {
-            "matcher": { "id": "byName", "options": "This month" },
-            "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "#3987e5" } }]
+            "matcher": {
+              "id": "byName",
+              "options": "This month"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#0ca30c"
+                }
+              }
+            ]
           },
           {
-            "matcher": { "id": "byName", "options": "Usual by this day" },
-            "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "#898781" } }]
+            "matcher": {
+              "id": "byName",
+              "options": "This month, above the mean"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#d03b3b"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Mean of previous 3 full months, by this day"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#898781"
+                }
+              }
+            ]
           }
         ]
       },
       "options": {
-        "legend": { "showLegend": true, "displayMode": "list", "placement": "bottom" },
-        "tooltip": { "mode": "multi", "sort": "none" }
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
       }
     },
     {
       "id": 6,
       "type": "barchart",
       "title": "Where wants went this month",
-      "description": "Which category is eating wants? Wants spent this month by category, largest first, beside the usual spend for the whole month (mean of the up-to-3 complete months before). Mid-month, a bar near its whole-month usual means that category is already close to a normal month's total.",
-      "gridPos": { "x": 0, "y": 19, "w": 24, "h": 10 },
-      "datasource": { "type": "grafana-postgresql-datasource", "uid": "finflow-marts" },
+      "description": "Wants by category. A category is listed when it has spend this month or in at least 2 of the previous 3 full months, so a one-off does not show up as usual.",
+      "gridPos": {
+        "x": 0,
+        "y": 19,
+        "w": 24,
+        "h": 10
+      },
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "finflow-marts"
+      },
       "targets": [
         {
           "refId": "A",
-          "datasource": { "type": "grafana-postgresql-datasource", "uid": "finflow-marts" },
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "finflow-marts"
+          },
           "format": "table",
           "editorMode": "code",
           "rawQuery": true,
-          "rawSql": "select\n  category_name as category,\n  sum(spend) as \"This month\",\n  sum(spend_avg_3m) as \"Usual for the whole month\"\nfrom marts.fct_subcategory_month\nwhere month_start = '${month}' and bucket = 'wants'\ngroup by category_name\nhaving sum(spend) > 0 or sum(spend_avg_3m) > 0\norder by 2 desc, 1"
+          "rawSql": "with cur as (\n  select category_name, sum(spend) as spend,\n    sum(spend_to_date_avg_3m) as to_date, sum(spend_avg_3m) as whole\n  from marts.fct_subcategory_month\n  where month_start = '${month}' and bucket = 'wants'\n  group by category_name\n), base as (\n  select s.category_name, count(distinct s.month_start) as months_with_spend\n  from marts.fct_subcategory_month s\n  join marts.fct_month_plan p using (month_start)\n  where s.bucket = 'wants' and s.spend > 0 and p.is_complete_month\n    and s.month_start >= ('${month}'::date - interval '3 months')\n    and s.month_start < '${month}'::date\n  group by s.category_name\n)\nselect\n  c.category_name as category,\n  c.spend as \"This month so far\",\n  c.to_date as \"Mean of previous 3 full months, by this day\",\n  c.whole as \"Mean of previous 3 full months, whole month\"\nfrom cur c\nleft join base b using (category_name)\nwhere c.spend > 0 or coalesce(b.months_with_spend, 0) >= 2\norder by 2 desc, 4 desc nulls last, 1"
         }
       ],
       "fieldConfig": {
@@ -305,18 +608,60 @@
           "unit": "prefix:$",
           "decimals": 0,
           "min": 0,
-          "custom": { "fillOpacity": 100, "lineWidth": 0, "axisLabel": "" }
+          "custom": {
+            "fillOpacity": 100,
+            "lineWidth": 0,
+            "axisLabel": ""
+          }
         },
         "overrides": [
           {
-            "matcher": { "id": "byName", "options": "This month" },
-            "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "#d95926" } }]
+            "matcher": {
+              "id": "byName",
+              "options": "This month so far"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#d95926"
+                }
+              }
+            ]
           },
           {
-            "matcher": { "id": "byName", "options": "Usual for the whole month" },
+            "matcher": {
+              "id": "byName",
+              "options": "Mean of previous 3 full months, by this day"
+            },
             "properties": [
-              { "id": "color", "value": { "mode": "fixed", "fixedColor": "#898781" } },
-              { "id": "custom.fillOpacity", "value": 50 }
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#898781"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Mean of previous 3 full months, whole month"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#898781"
+                }
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 35
+              }
             ]
           }
         ]
@@ -329,8 +674,187 @@
         "barWidth": 0.9,
         "barRadius": 0.1,
         "stacking": "none",
-        "legend": { "showLegend": true, "displayMode": "list", "placement": "bottom" },
-        "tooltip": { "mode": "multi", "sort": "none" }
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      }
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Buckets by month",
+      "description": "Complete months. Bars: each bucket as a share of that month's income; unallocated is what stayed in chequing, below zero when more went out than came in. Line: the month's income (right axis).",
+      "gridPos": {
+        "x": 0,
+        "y": 29,
+        "w": 24,
+        "h": 10
+      },
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "finflow-marts"
+      },
+      "timeFrom": "12M",
+      "hideTimeOverride": true,
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "finflow-marts"
+          },
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "select\n  ((s.month_start + 14)::timestamp at time zone 'America/Toronto') as time,\n  s.needs_pct as \"Needs\",\n  s.wants_pct as \"Wants\",\n  s.financial_future_pct as \"Financial future\",\n  s.unallocated_pct as \"Unallocated\",\n  s.spendable_income as \"Income\"\nfrom marts.fct_monthly_summary s\njoin marts.fct_month_plan p using (month_start)\nwhere p.is_complete_month and s.spendable_income > 0\norder by 1"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 0,
+          "custom": {
+            "drawStyle": "bars",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "lineWidth": 0,
+            "fillOpacity": 100,
+            "showPoints": "never",
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            },
+            "axisLabel": ""
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Needs"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#3987e5"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Wants"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#d95926"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Financial future"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#7a5cc7"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Unallocated"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#898781"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Income"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "text"
+                }
+              },
+              {
+                "id": "unit",
+                "value": "prefix:$"
+              },
+              {
+                "id": "custom.drawStyle",
+                "value": "line"
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 2
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 0
+              },
+              {
+                "id": "custom.showPoints",
+                "value": "always"
+              },
+              {
+                "id": "custom.stacking",
+                "value": {
+                  "mode": "none",
+                  "group": "A"
+                }
+              },
+              {
+                "id": "custom.axisPlacement",
+                "value": "right"
+              },
+              {
+                "id": "min",
+                "value": 0
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
       }
     }
   ]

@@ -3157,3 +3157,51 @@ the field, so the plan shows no change on the data source.
 **Ruled out:** `ignore_changes` on `json_data_encoded` (it would hide real
 changes to the connection settings); a targeted apply that skips the data
 source (a workaround that leaves the drift).
+
+## 2026-11-10 — This month, round 1 of owner feedback: shares of income, plain labels
+
+The owner opened This month (applied 2026-11-09) and described what to
+change. Their description overrides the Rev 10/11 panel list and the
+2026-11-08 "choices the panel list left open" entry where they disagree.
+
+- **The bucket table answers 50/30/20, not pace.** "Buckets vs targets":
+  So far, % of income, Target, Status (within / over target; financial
+  future is met, due by month end, or below target once the month is
+  complete). Plan, Left, Used % and "Usual by today %" are gone: the owner
+  reads the buckets as shares of income, and pace belongs to the charts.
+- **The denominator is a toggle** (`income_base`): expected income by
+  default (shares mean something from day 1), or income received so far.
+  A complete month uses its actual income either way, since
+  `spendable_income_expected` is `spendable_income` there. The 2026-11-07
+  ruling against shares of income so far stands as the default; the owner
+  asked to see that view on demand.
+- **"Usual" is spelled out** as "Mean of previous 3 full months". The
+  status line names how many months the mean has when it is fewer.
+- **Pace is the line's colour.** Each pace chart splits this month's line
+  in SQL into the part at or below the mean and the part above it (red).
+  A Grafana line cannot take its colour from another series, so it is two
+  series; a crossing segment belongs to the side it ends on.
+- **"Plan at your usual timing" is replaced** by a flat "Wants target for
+  the month". Nobody could read the sloped line.
+- **Categories compare like for like.** New
+  `fct_subcategory_month.spend_to_date_avg_3m`: the baseline months' spend
+  through the matching day. The whole-month mean stays as a third, fainter
+  bar. A category is listed only with spend this month or in at least 2 of
+  the previous 3 full months, so a one-off fee or trip never reads as
+  usual. That rule is in the panel query (it needs a count of months per
+  category, and the mart's grain is the subcategory).
+- **"Buckets by month" added**: complete months, stacked shares of income
+  with unallocated as the fourth part, and income as a line on the right
+  axis. Trends (G) may take it over.
+- **Panel help is one or two sentences**, definitions only.
+
+**Ruled out:** income received so far as the default denominator (over
+target every month until pay arrives); a per-row gauge against each
+target (a table cell is coloured from its own value only, and the targets
+live in `budget_targets`, not in the JSON); a same-day mean as the only
+category reference (the whole-month mean is the steadier one for a
+category bought a few times a month).
+
+**Not verified:** how the changed panels render. Watch the two-series
+pace line at a crossing, the stacked bars with a negative unallocated
+share, the right-axis income line, and the 12-month panel time override.

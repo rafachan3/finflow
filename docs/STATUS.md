@@ -2,8 +2,8 @@
 
 Living state of the project. Read this first; update it whenever work lands.
 
-**Last updated:** 2026-11-08
-**Current phase:** Phase 5 (Grafana) under way: A4 merged as #131; C (Grafana datasource) merged as #132 (`c3f8906`), applied, and Save & test green; D (This month dashboard + CI harness) on `feat/grafana-this-month`, in review
+**Last updated:** 2026-11-10
+**Current phase:** Phase 5 (Grafana) under way: D (This month) merged as #137 and applied 2026-11-09; the owner's first feedback round is on `claude/wizardly-gates-14i3rj` (not merged, not applied); then E/F/reliance/G
 
 ## Phase progress
 
@@ -701,8 +701,8 @@ needs `GRAFANA_URL`, `GRAFANA_AUTH` and `supabase_pooler_host` set. `terraform f
 workflow (`.github/workflows/terraform.yml`, outside CI so it cannot hold
 back the deploy) and `make terraform-check` run them. "Save & test": green, `verify-full`.
 
-This month dashboard (Phase 5 PR D, `feat/grafana-this-month`, not yet
-merged or applied; DECISIONS.md 2026-11-08): `grafana/dashboards/this-month.json`
+This month dashboard (Phase 5 PR D, merged as #137 and applied 2026-11-09;
+DECISIONS.md 2026-11-08; reshaped by the feedback round below): `grafana/dashboards/this-month.json`
 (uid `finflow-month`) in the `FinFlow` folder, shipped by
 `grafana_dashboard.this_month` and made Grafana's home by
 `grafana_organization_preferences.finflow`. Six panels on `finflow-marts`
@@ -722,6 +722,25 @@ horizontal bar order (largest at the top), the gauge and status cells.
 Known limits: the pace charts follow the dashboard time range (default
 this month), so an earlier `month` needs the time picker too; the Ledger
 links wait for PR E.
+
+This month, feedback round 1 (branch `claude/wizardly-gates-14i3rj`, not
+merged or applied; DECISIONS.md 2026-11-10): the owner saw the dashboard
+and asked for bucket shares of income against the 50/30/20 targets
+instead of plan and pace. Seven panels now: status line, wants left,
+"Buckets vs targets" (So far, % of income, Target, Status) with a new
+`income_base` variable (expected income, or income received so far), the
+two pace charts with the line red where it runs above the mean of the
+previous 3 full months and a flat wants target, wants by category with a
+like-for-like to-date mean (new `fct_subcategory_month.spend_to_date_avg_3m`,
+guarded by `dbt:subcategory_to_date_matches_pace`) and one-off categories
+left out, and "Buckets by month" (complete months, stacked shares plus an
+income line). Checks run locally on the fixture: `dbt build` 208 of 208,
+`check_dashboards.py` 128 queries. **Order after merge:** dispatch
+`dbt-nightly` first (the category panel reads the new column), then
+`terraform plan` (expect 1 to change, the dashboard) and `apply`. **Not
+verified:** how the panels render; the owner looks after the apply. Still
+open from the owner's feedback: clicking a category to see its entries
+waits for the Ledger (PR E).
 
 Phase 4 is accepted (2026-10-30). Optional and deferred: hand-verify real
 numbers for one complete month against the owner's records (on hold until

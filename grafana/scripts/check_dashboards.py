@@ -36,15 +36,20 @@ DASHBOARDS = Path(__file__).resolve().parents[1] / "dashboards"
 DATASOURCE_UID = "finflow-marts"
 ROLE = "finflow_analyst"
 
+MEAN_TO_DATE = "Mean of previous 3 full months, by this day"
+
 # Column names each panel's query returns, by dashboard uid and panel title.
 EXPECTED = {
     "finflow-month": {
         "Status": ["status"],
         "Wants left": ["label", "amount"],
-        "Buckets this month": ["Bucket", "Plan", "Used", "Left", "Used %", "Usual by today %", "Status"],
-        "Wants: this month vs usual": ["time", "This month", "Usual by this day", "Plan at your usual timing"],
-        "Everyday needs: this month vs usual": ["time", "This month", "Usual by this day"],
-        "Where wants went this month": ["category", "This month", "Usual for the whole month"],
+        "Buckets vs targets": ["Bucket", "So far", "% of income", "Target", "Status"],
+        "Wants by day": ["time", "This month", "This month, above the mean", MEAN_TO_DATE,
+                         "Wants target for the month"],
+        "Everyday needs by day": ["time", "This month", "This month, above the mean", MEAN_TO_DATE],
+        "Where wants went this month": ["category", "This month so far", MEAN_TO_DATE,
+                                        "Mean of previous 3 full months, whole month"],
+        "Buckets by month": ["time", "Needs", "Wants", "Financial future", "Unallocated", "Income"],
     },
 }
 VARIABLE_COLUMNS = ["__value", "__text"]
