@@ -3208,3 +3208,39 @@ category bought a few times a month).
 **Not verified:** how the changed panels render. Watch the two-series
 pace line at a crossing, the stacked bars with a negative unallocated
 share, the right-axis income line, and the 12-month panel time override.
+
+## 2026-11-10 — Owner answers for the dashboards still to build
+
+Asked after round 1 of This month so E, F and G start closer to what the
+owner wants. These override the Rev 10/11 spec where they differ.
+
+- **Ledger (E) lists line items**, not whole purchases: one receipt can
+  span categories and buckets. Filters: month, bucket, category, merchant,
+  tag and free-text search, all of them. It also wires This month's
+  category and bucket links.
+- **Review (F) shows three things:** whether needs and wants stayed within
+  their targets and financial future reached its own; the biggest changes,
+  meaning each category's spend minus the mean of the previous 3 full
+  months, sorted by size; and entries to fix.
+- **Entries to fix are wanted at once, not at month end.** Proposed and not
+  yet built: a "Needs attention" panel at the top of This month, empty
+  when clean, fed by the existing mechanical checks (likely duplicates,
+  date sanity, cards never confirmed, cards read by the lighter model,
+  recurring payments due and not logged). It needs a mart first, since
+  `finflow_analyst` reads only `marts`.
+- **Trends (G) is "Buckets by month"** and its windows. No savings balance
+  and no net worth: the owner reads those in their bank's app. T4/T5 and
+  the dashboard use of `fct_account_month` are dropped unless asked for.
+- **Comparison windows are 3 and 6 months, and 12 when there is history.**
+  No same-month-last-year: spending and income are not seasonal.
+  `window_months` is 3 and 12 today, so 6 is to be added.
+- **Unallocated is expected to be zero at month end** (the owner allocates
+  everything), so a visible unallocated share in a complete month points
+  at a transfer that was not logged.
+- **Merging:** the owner allows a merge without asking once every check is
+  green (2026-11-10), which relaxes the per-PR "merge" of 2026-11-09. A
+  red check is still fixed, never merged past. `terraform apply` stays
+  with the owner's main checkout, where the state file lives.
+
+**Ruled out:** whole-purchase rows in the Ledger; a balance or net-worth
+panel; a same-month-last-year reference.

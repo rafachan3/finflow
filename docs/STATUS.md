@@ -742,6 +742,11 @@ verified:** how the panels render; the owner looks after the apply. Still
 open from the owner's feedback: clicking a category to see its entries
 waits for the Ledger (PR E).
 
+Next rounds (DECISIONS.md 2026-11-10, "Owner answers"): a "Needs
+attention" panel on This month (needs a mart first), then E Ledger (line
+items, six filters), F Review, G Trends (bucket shares by month over 3, 6
+and 12 months; no balances). Open in review: PR #140.
+
 Phase 4 is accepted (2026-10-30). Optional and deferred: hand-verify real
 numbers for one complete month against the owner's records (on hold until
 the owner names a complete month; until then the production run proves the
