@@ -394,7 +394,7 @@ Terms used below:
   `*_pct` shares divide by `sum(spendable_income)`; `unspent_rate` divides
   by `sum(income)`. `fct_month_plan.*_pct_3m` is N = 3, unchanged.
   `fct_month_rolling` holds every N in the dbt var `window_months`
-  (default 3 and 12).
+  (default 3, 6 and 12).
 
 Rounding: money is `numeric(12,2)`, ratios and mean line counts are
 `numeric(9,4)`. A mean is rounded once, from the exact sum. A column built
@@ -441,7 +441,7 @@ from (
 ### `fct_month_rolling`
 
 One row per (`month_start`, `window_months`) for every month of the month
-list and every N in the dbt var `window_months` (default 3 and 12). Long
+list and every N in the dbt var `window_months` (default 3, 6 and 12). Long
 format: a dashboard filters `window_months`. Built from
 `fct_monthly_summary`, independently of `fct_month_plan`, so N = 3 can be
 checked against `*_pct_3m`.

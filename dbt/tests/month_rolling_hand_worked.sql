@@ -15,6 +15,12 @@
 --   financial future 730.00 -> 0.1814; unallocated 1019.11 -> 0.2532;
 --   spend 2275.89; income 4031.62;
 --   unspent_rate (4031.62 - 2275.89) / 4031.62 = 0.435489... = 0.4355.
+-- 2026-08, N = 6, rolling 03-08 (all complete), with 07 at 0.00 / 3.75 /
+-- 0.00 / 0.00 / -3.75 and 08 at 3000.00 / 1400.00 / 700.00 / 500.00 /
+-- 400.00 (spendable / needs / wants / financial future / unallocated):
+--   spendable 7025.00; needs 3241.50 -> 0.4614; financial future
+--   -80 + 80 + 650 + 500 = 1150.00;
+--   unallocated 80 - 80 + 1099.11 - 3.75 + 400 = 1495.36.
 -- 2026-03, N = 3: only one month in the list, so sums are null.
 -- 2026-10, N = 3: October is incomplete, so sums are null (2 of 3).
 {{ config(tags=['fixture']) }}
@@ -44,6 +50,12 @@ with expected (month_start, window_months, col, value) as (
         (date '2026-10-01', 3, 'spendable_income', null),
         (date '2026-10-01', 3, 'needs_pct', null),
         (date '2026-10-01', 3, 'unspent_rate', null),
+
+        (date '2026-08-01', 6, 'complete_months_in_window', 6),
+        (date '2026-08-01', 6, 'spendable_income', 7025.00),
+        (date '2026-08-01', 6, 'financial_future', 1150.00),
+        (date '2026-08-01', 6, 'unallocated_cash', 1495.36),
+        (date '2026-08-01', 6, 'needs_pct', 0.4614),
 
         (date '2026-10-01', 12, 'complete_months_in_window', 7),
         (date '2026-10-01', 12, 'spendable_income', null),
@@ -80,9 +92,9 @@ where a.month_start is null or e.value is distinct from a.value
 
 union all
 
--- The month list is 2026-03 to 2026-10, two window lengths.
-select null, null, 'rows', 16, count(*)
+-- The month list is 2026-03 to 2026-10, three window lengths.
+select null, null, 'rows', 24, count(*)
 from {{ ref('fct_month_rolling') }}
-having count(*) <> 16
+having count(*) <> 24
     or min(month_start) is distinct from date '2026-03-01'
     or max(month_start) is distinct from date '2026-10-01'
