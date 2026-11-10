@@ -43,6 +43,7 @@ EXPECTED = {
     "finflow-month": {
         "Status": ["status"],
         "Wants left": ["label", "amount"],
+        "Needs left": ["label", "amount"],
         "Buckets vs targets": ["Bucket", "So far", "% of income", "Target", "Status"],
         "Wants by day": ["time", "This month", "This month, above the mean", MEAN_TO_DATE,
                          "Wants target for the month"],

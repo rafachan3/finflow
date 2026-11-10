@@ -3193,6 +3193,9 @@ change. Their description overrides the Rev 10/11 panel list and the
 - **"Buckets by month" added**: complete months, stacked shares of income
   with unallocated as the fourth part, and income as a line on the right
   axis. Trends (G) may take it over.
+- **"Needs left" added** beside "Wants left", as a big number: the needs
+  target minus needs spent so far. No per-day figure, since fixed bills
+  land on set dates.
 - **Panel help is one or two sentences**, definitions only.
 
 **Ruled out:** income received so far as the default denominator (over

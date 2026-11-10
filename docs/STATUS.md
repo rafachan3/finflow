@@ -726,7 +726,7 @@ links wait for PR E.
 This month, feedback round 1 (branch `claude/wizardly-gates-14i3rj`, not
 merged or applied; DECISIONS.md 2026-11-10): the owner saw the dashboard
 and asked for bucket shares of income against the 50/30/20 targets
-instead of plan and pace. Seven panels now: status line, wants left,
+instead of plan and pace. Eight panels now: status line, wants left, needs left,
 "Buckets vs targets" (So far, % of income, Target, Status) with a new
 `income_base` variable (expected income, or income received so far), the
 two pace charts with the line red where it runs above the mean of the

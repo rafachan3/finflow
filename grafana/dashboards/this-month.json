@@ -144,7 +144,7 @@
       "gridPos": {
         "x": 0,
         "y": 3,
-        "w": 6,
+        "w": 5,
         "h": 7
       },
       "datasource": {
@@ -202,14 +202,79 @@
       }
     },
     {
+      "id": 8,
+      "type": "stat",
+      "title": "Needs left",
+      "description": "Needs target (its share of expected income) minus needs spent so far, fixed bills included.",
+      "gridPos": {
+        "x": 5,
+        "y": 3,
+        "w": 5,
+        "h": 7
+      },
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "finflow-marts"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "finflow-marts"
+          },
+          "format": "table",
+          "editorMode": "code",
+          "rawQuery": true,
+          "rawSql": "select\n  case when p.is_complete_month then 'Needs left at month end' else 'Needs left' end as label,\n  p.needs_plan - s.needs_spend as amount\nfrom marts.fct_month_plan p\njoin marts.fct_monthly_summary s using (month_start)\nwhere month_start = '${month}'"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "prefix:$",
+          "decimals": 0,
+          "noValue": "No baseline yet",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#d03b3b",
+                "value": null
+              },
+              {
+                "color": "text",
+                "value": 0
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "values": true,
+          "calcs": [],
+          "fields": "/^amount$/"
+        },
+        "textMode": "value_and_name",
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "horizontal"
+      }
+    },
+    {
       "id": 3,
       "type": "table",
       "title": "Buckets vs targets",
       "description": "Each bucket so far as a share of income, against its target. Expected income is the larger of income received so far and the mean of the previous 3 full months; switch 'Bucket shares of' at the top to divide by income received so far. Needs and wants targets are ceilings. The financial future target is a floor, due by month end.",
       "gridPos": {
-        "x": 6,
+        "x": 10,
         "y": 3,
-        "w": 18,
+        "w": 14,
         "h": 7
       },
       "datasource": {
