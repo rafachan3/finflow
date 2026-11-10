@@ -3,7 +3,7 @@
 Living state of the project. Read this first; update it whenever work lands.
 
 **Last updated:** 2026-11-10
-**Current phase:** Phase 5 (Grafana) under way: D (This month) merged as #137 and applied 2026-11-09; feedback round 1 merged as #140 and applied 2026-11-10; round 2 (income in money, Trends dashboard, no time picker) is on `feat/this-month-round-2`; then E/F/reliance/G
+**Current phase:** Phase 5 (Grafana) under way: D (This month) merged as #137 and applied 2026-11-09; feedback round 1 merged as #140 and applied 2026-11-10; round 2 (income in money, Trends dashboard, no time picker) merged as #141 and applied 2026-11-10, waiting for the owner's look; then E/F/reliance/G
 
 ## Phase progress
 
@@ -747,7 +747,7 @@ attention" panel on This month (needs a mart first), then E Ledger (line
 items, six filters), F Review, G Trends (bucket shares by month over 3, 6
 and 12 months; no balances).
 
-This month, feedback round 2 (branch `feat/this-month-round-2`;
+This month, feedback round 2 (merged as #141, `e95cf17`; applied 2026-11-10;
 DECISIONS.md 2026-11-10, "round 2"): the owner liked round 1 and asked for
 income in money, "Buckets by month" off this page, and one control for the
 period. Now: an "Income" panel (income received; expected for the month
@@ -756,9 +756,9 @@ of the month on x, so every panel follows the `month` dropdown and the
 time picker is hidden; "Buckets by month" moved to a new **Trends**
 dashboard (`finflow-trends`, `grafana_dashboard.trends`) as a stacked bar
 chart with months as categories, with "Income by month" under it (bars:
-the bar chart panel draws no line). **After merge:** `terraform plan`
-should show 1 to add (Trends) and 1 to change (This month); no mart
-changed, so no `dbt-nightly` dispatch. **Not verified:** how the Trend and
+the bar chart panel draws no line). The plan showed 1 to add (Trends) and 1 to change (This month); the
+Grafana API then showed This month at 8 panels with two `trend` panels
+and both dashboards with the time picker hidden. **Not verified:** how the Trend and
 bar chart panels render.
 
 Phase 4 is accepted (2026-10-30). Optional and deferred: hand-verify real
