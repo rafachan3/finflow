@@ -3303,3 +3303,42 @@ the dropdown (Grafana has no such link without a plugin).
 **Ruled out:** a glossary page (the owner prefers the per-panel
 descriptions); labels centred in bar segments (not a Grafana bar chart
 option).
+
+## 2026-11-10: Dashboards, round 4 of owner feedback
+
+- **One Income card on This month.** "received" always; "expected" only
+  while the month is open and the estimate is above what was received.
+  Two cards showed the same number twice once income caught up.
+- **Card bodies do not repeat the title.** One-value cards show the value
+  only; two-value cards name what differs ("received" / "expected",
+  "in total" / "per remaining day"). Whether the month is complete is on
+  the status line, not in each card.
+- **"Buckets by month" may pass 100% again**, with an axis that follows
+  the data. A share above 100% in total means more left chequing than
+  came in that month (spending plus net moves to savings), paid from
+  money already there; it is not always overspending. The shares are
+  sent as 0 to 100 with unit `percent`: with 0 to 1 and `percentunit`
+  Grafana's automatic range jumps from 100% to 200%.
+- **No value labels on the stacked bars.** Grafana draws each label
+  above its segment, inside the next one, so it reads as the wrong
+  bucket. "Months in numbers" carries the figures instead.
+- **Income and its split are one chart in dollars, not a dual axis.**
+  "Income by month" stacks the four buckets in dollars; they add up to
+  the month's income, so bar height is the income and no second scale is
+  needed. The income line chart is gone.
+- **Trends plan, reconciled with the 2026-11-07 design (T0 to T7):**
+  T1 smoothed shares is the "Average bucket shares" table; T2 category
+  by month is "Spending by category and month" (one matrix, not small
+  multiples); "Biggest changes last month" is new, moved here from
+  Review; T3 seasonality, T4 balances and T5 emergency fund were dropped
+  by the owner on 2026-11-10; T0 readiness is replaced by dashes where
+  history is short; T6 weekday and T7 day of month are still to do.
+- **Rendering can be checked locally**: a `grafana/grafana` container
+  with a provisioned `finflow-marts` data source pointing at the fixture
+  database that `scripts/with-test-db.sh` starts, the dashboards folder
+  mounted read-only, and headless Chrome for screenshots. Synthetic data
+  only.
+
+**Ruled out:** bars plus an income line on two y axes; hiding the
+expected income card by month state (Grafana cannot hide a panel by
+data).
