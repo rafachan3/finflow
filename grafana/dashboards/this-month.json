@@ -141,12 +141,12 @@
     {
       "id": 9,
       "type": "stat",
-      "title": "Income received",
-      "description": "Money that reached chequing this month.",
+      "title": "Income",
+      "description": "Received: money that reached chequing this month. Expected: an estimate for the whole month, the higher of income received so far and your average monthly income over the previous 3 full months; shown while it is above what you've received.",
       "gridPos": {
         "x": 0,
         "y": 3,
-        "w": 5,
+        "w": 6,
         "h": 6
       },
       "datasource": {
@@ -163,60 +163,7 @@
           "format": "table",
           "editorMode": "code",
           "rawQuery": true,
-          "rawSql": "select 'Income received' as label, p.spendable_income as amount\nfrom marts.fct_month_plan p\njoin marts.fct_monthly_summary s using (month_start)\nwhere month_start = '${month}'"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "prefix:$",
-          "decimals": 0,
-          "noValue": "No full month before this one",
-          "color": {
-            "mode": "fixed",
-            "fixedColor": "text"
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "reduceOptions": {
-          "values": true,
-          "calcs": [],
-          "fields": "/^amount$/"
-        },
-        "textMode": "value_and_name",
-        "colorMode": "value",
-        "graphMode": "none",
-        "justifyMode": "center",
-        "orientation": "horizontal"
-      }
-    },
-    {
-      "id": 10,
-      "type": "stat",
-      "title": "Expected income",
-      "description": "An estimate: the higher of your income received this month and your average monthly income over the previous 3 full months.",
-      "gridPos": {
-        "x": 5,
-        "y": 3,
-        "w": 5,
-        "h": 6
-      },
-      "datasource": {
-        "type": "grafana-postgresql-datasource",
-        "uid": "finflow-marts"
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": {
-            "type": "grafana-postgresql-datasource",
-            "uid": "finflow-marts"
-          },
-          "format": "table",
-          "editorMode": "code",
-          "rawQuery": true,
-          "rawSql": "select case when p.is_complete_month then 'Income received (month complete)' else 'Expected for the month' end as label,\n  p.spendable_income_expected as amount\nfrom marts.fct_month_plan p\njoin marts.fct_monthly_summary s using (month_start)\nwhere month_start = '${month}'"
+          "rawSql": "select label, amount\nfrom (\n  select 1 as ord, 'received' as label, p.spendable_income as amount\n  from marts.fct_month_plan p\n  where p.month_start = '${month}'\n  union all\n  select 2, 'expected', p.spendable_income_expected\n  from marts.fct_month_plan p\n  where p.month_start = '${month}' and not p.is_complete_month\n    and p.spendable_income_expected > p.spendable_income\n) t\norder by ord"
         }
       ],
       "fieldConfig": {
@@ -250,9 +197,9 @@
       "title": "Wants left",
       "description": "Your remaining wants budget: your wants target share of expected income minus what you've spent on wants this month. Per remaining day counts today.",
       "gridPos": {
-        "x": 10,
+        "x": 6,
         "y": 3,
-        "w": 5,
+        "w": 6,
         "h": 6
       },
       "datasource": {
@@ -269,7 +216,7 @@
           "format": "table",
           "editorMode": "code",
           "rawQuery": true,
-          "rawSql": "select label, amount\nfrom (\n  select 1 as ord,\n    case when p.is_complete_month then 'Wants left at month end' else 'Wants left' end as label,\n    p.wants_plan - s.wants_spend as amount\n  from marts.fct_month_plan p\n  join marts.fct_monthly_summary s using (month_start)\n  where month_start = '${month}'\n  union all\n  select 2, '≈ per remaining day',\n    round((p.wants_plan - s.wants_spend) / (p.days_in_month - greatest(p.as_of_day, 1) + 1), 2)\n  from marts.fct_month_plan p\n  join marts.fct_monthly_summary s using (month_start)\n  where month_start = '${month}' and not p.is_complete_month\n) t\norder by ord"
+          "rawSql": "select label, amount\nfrom (\n  select 1 as ord,\n    'in total' as label,\n    p.wants_plan - s.wants_spend as amount\n  from marts.fct_month_plan p\n  join marts.fct_monthly_summary s using (month_start)\n  where month_start = '${month}'\n  union all\n  select 2, 'per remaining day',\n    round((p.wants_plan - s.wants_spend) / (p.days_in_month - greatest(p.as_of_day, 1) + 1), 2)\n  from marts.fct_month_plan p\n  join marts.fct_monthly_summary s using (month_start)\n  where month_start = '${month}' and not p.is_complete_month\n) t\norder by ord"
         }
       ],
       "fieldConfig": {
@@ -315,9 +262,9 @@
       "title": "Needs left",
       "description": "Your remaining needs budget: your needs target share of expected income minus your needs spending so far, including fixed bills.",
       "gridPos": {
-        "x": 15,
+        "x": 12,
         "y": 3,
-        "w": 5,
+        "w": 6,
         "h": 6
       },
       "datasource": {
@@ -367,7 +314,7 @@
           "calcs": [],
           "fields": "/^amount$/"
         },
-        "textMode": "value_and_name",
+        "textMode": "value",
         "colorMode": "value",
         "graphMode": "none",
         "justifyMode": "center",
@@ -380,9 +327,9 @@
       "title": "Unallocated cash",
       "description": "Income received this month minus what you've spent and what you've moved to savings or investments. Bills still due this month are not deducted.",
       "gridPos": {
-        "x": 20,
+        "x": 18,
         "y": 3,
-        "w": 4,
+        "w": 6,
         "h": 6
       },
       "datasource": {
@@ -431,7 +378,7 @@
           "calcs": [],
           "fields": "/^amount$/"
         },
-        "textMode": "value_and_name",
+        "textMode": "value",
         "colorMode": "value",
         "graphMode": "none",
         "justifyMode": "center",
@@ -447,7 +394,7 @@
         "x": 0,
         "y": 9,
         "w": 24,
-        "h": 5
+        "h": 6
       },
       "datasource": {
         "type": "grafana-postgresql-datasource",
@@ -590,7 +537,7 @@
       "description": "Wants added up day by day; red where above the mean of the previous 3 full months by the same day. Dashed line: the month's wants target, which is the wants Target share in 'Buckets vs targets' times expected income.",
       "gridPos": {
         "x": 0,
-        "y": 14,
+        "y": 15,
         "w": 12,
         "h": 9
       },
@@ -718,7 +665,7 @@
       "description": "Needs that are not recurring bills, added up day by day; red where above the mean of the previous 3 full months by the same day.",
       "gridPos": {
         "x": 12,
-        "y": 14,
+        "y": 15,
         "w": 12,
         "h": 9
       },
@@ -821,7 +768,7 @@
       "description": "Wants by category. A category is listed when it has spend this month or in at least 2 of the previous 3 full months, so a one-off does not show up as usual.",
       "gridPos": {
         "x": 0,
-        "y": 23,
+        "y": 24,
         "w": 24,
         "h": 10
       },

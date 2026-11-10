@@ -3,7 +3,7 @@
 Living state of the project. Read this first; update it whenever work lands.
 
 **Last updated:** 2026-11-10
-**Current phase:** Phase 5 (Grafana) under way: D (This month) merged as #137 and applied 2026-11-09; feedback round 1 merged as #140 and applied 2026-11-10; round 2 (income in money, Trends dashboard, no time picker) merged as #141 and applied 2026-11-10; round 3 (unallocated cash, shorter tooltips, Trends grown to three panels) merged as #143 and applied 2026-11-10, waiting for the owner's look; then E/F/reliance/G
+**Current phase:** Phase 5 (Grafana) under way: D (This month) merged as #137 and applied 2026-11-09; feedback round 1 merged as #140 and applied 2026-11-10; round 2 (income in money, Trends dashboard, no time picker) merged as #141 and applied 2026-11-10; round 3 (unallocated cash, shorter tooltips, Trends grown to three panels) merged as #143 and applied 2026-11-10; round 4 (leaner cards, Trends at six panels) is on `feat/dashboards-round-4`; then E/F/reliance/G
 
 ## Phase progress
 
@@ -746,6 +746,22 @@ Next rounds (DECISIONS.md 2026-11-10, "Owner answers"): a "Needs
 attention" panel on This month (needs a mart first), then E Ledger (line
 items, six filters), F Review, G Trends (bucket shares by month over 3, 6
 and 12 months; no balances).
+
+Dashboards, feedback round 4 (branch `feat/dashboards-round-4`;
+DECISIONS.md 2026-11-10, "round 4"). This month: one "Income" card
+(received, plus expected only while it is above what was received), card
+bodies no longer repeat their titles. Trends, six panels: "Buckets by
+month" (shares, axis follows the data, may pass 100%), "Income by month"
+(the same bars in dollars, so bar height is the income), "Months in
+numbers", "Average bucket shares", "Spending by category and month"
+(matrix, `bucket` variable), "Biggest changes last month". No mart
+changed. **After merge:** `terraform plan` (expect 2 to change) and
+apply. Rendering **was checked** this round, on the fixture, in a local
+Grafana container with headless Chrome screenshots (nothing tracked;
+see DECISIONS for the recipe). Still pending from the agreed plan: the
+Reliance on others dashboard (needs the `is_support` migration), Trends
+T6 "Wants by weekday" and T7 "Wants by day of month", Ledger (E),
+Review (F), the "Needs attention" panel.
 
 Dashboards, feedback round 3 (merged as #143, `f96734a`; `dbt-nightly` dispatched and green; applied 2026-11-10;
 DECISIONS.md 2026-11-10, "round 3"). This month: income is two stats
