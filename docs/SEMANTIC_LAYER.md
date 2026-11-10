@@ -499,8 +499,7 @@ month reads its day 30. **The last day of M matches the last day of each
 baseline month**, so a 30-day M still closes at the baseline months' full
 totals and a February picks up the 29th to 31st of a longer month. Without
 that, a transfer made on the 31st, the usual day for one, would never
-reach a 30-day month's curve. "Plan at your usual timing" for D1 is
-`wants_plan * pace_share_avg_3m`.
+reach a 30-day month's curve.
 
 ### `fct_subcategory_month`
 
@@ -516,6 +515,7 @@ mean would skip the months a subcategory was absent and run high. Carries
 | `line_count` | count of those lines | `0` likewise. Lines someone else paid for are not counted, unlike `fct_category_month.line_count` |
 | `baseline_months` | count of the baseline months | |
 | `spend_avg_3m`, `line_count_avg_3m` | mean `spend` and `line_count` over the baseline months, zeros included | Null when `baseline_months = 0` |
+| `spend_to_date_avg_3m` | the sum over the baseline months of their own spend dated on or before the matching day of this month's `as_of_day` (`fct_pace_day`'s rule), divided by `baseline_months`. Read: "what the previous months had by this day", so a month in progress is compared like for like | Null when `baseline_months = 0`. Equals `spend_avg_3m` in a complete month. `0` in a future month. Summed over a bucket it is that bucket's `fct_pace_day.pace_mtd_avg_3m` on `as_of_day`, within rounding |
 | `spend_delta` | `spend - spend_avg_3m` | Null when `baseline_months = 0` |
 | `is_few_lines` | `line_count + 3 * coalesce(line_count_avg_3m, 0) < 6`: fewer than 6 lines across the 4 months compared, scaled to 3 baseline months | Computed from the exact mean. A subcategory-month this thin is mostly noise: show it, flagged, never rank by it |
 

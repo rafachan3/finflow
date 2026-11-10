@@ -20,7 +20,14 @@
 --   July 0, August 700.00 -> 233.333... = 233.33, delta -233.33; lines
 --   0.3333.
 -- 2026-10 needs Rent, current and empty: baseline July 0, August 1400.00,
---   September 0 -> 466.666... = 466.67, delta -466.67.
+--   September 0 -> 466.666... = 466.67, delta -466.67. To date (day 15):
+--   August's rent is dated the 1st, so it counts: 466.67.
+-- 2026-10 needs Car loan payments, to date: September's 250.00 is dated
+--   the 5th, within day 15 -> 83.333... = 83.33.
+-- 2026-08 needs Rent, complete: to date is the whole-month mean, 600.00.
+-- 2026-03 needs Rent: no baseline, so no to-date mean either.
+-- (No baseline line of the fixture is dated after the 15th; the cut-off is
+-- checked against fct_pace_day by subcategory_to_date_matches_pace.)
 {{ config(tags=['fixture']) }}
 
 with expected (month_start, bucket, subcategory_name, col, value) as (
@@ -28,6 +35,7 @@ with expected (month_start, bucket, subcategory_name, col, value) as (
         (date '2026-03-01', 'needs', 'Rent', 'spend', 0.00),
         (date '2026-03-01', 'needs', 'Rent', 'baseline_months', 0),
         (date '2026-03-01', 'needs', 'Rent', 'spend_avg_3m', null),
+        (date '2026-03-01', 'needs', 'Rent', 'spend_to_date_avg_3m', null),
         (date '2026-03-01', 'needs', 'Rent', 'line_count_avg_3m', null),
         (date '2026-03-01', 'needs', 'Rent', 'spend_delta', null),
         (date '2026-03-01', 'needs', 'Rent', 'is_few_lines', 1),
@@ -37,6 +45,7 @@ with expected (month_start, bucket, subcategory_name, col, value) as (
         (date '2026-08-01', 'needs', 'Rent', 'line_count', 1),
         (date '2026-08-01', 'needs', 'Rent', 'baseline_months', 3),
         (date '2026-08-01', 'needs', 'Rent', 'spend_avg_3m', 600.00),
+        (date '2026-08-01', 'needs', 'Rent', 'spend_to_date_avg_3m', 600.00),
         (date '2026-08-01', 'needs', 'Rent', 'spend_delta', 800.00),
         (date '2026-08-01', 'needs', 'Rent', 'line_count_avg_3m', 0.6667),
         (date '2026-08-01', 'needs', 'Rent', 'is_few_lines', 1),
@@ -47,7 +56,9 @@ with expected (month_start, bucket, subcategory_name, col, value) as (
         (date '2026-09-01', 'wants', 'Restaurants', 'line_count_avg_3m', 0.3333),
         (date '2026-10-01', 'needs', 'Rent', 'spend', 0.00),
         (date '2026-10-01', 'needs', 'Rent', 'spend_avg_3m', 466.67),
-        (date '2026-10-01', 'needs', 'Rent', 'spend_delta', -466.67)
+        (date '2026-10-01', 'needs', 'Rent', 'spend_to_date_avg_3m', 466.67),
+        (date '2026-10-01', 'needs', 'Rent', 'spend_delta', -466.67),
+        (date '2026-10-01', 'needs', 'Car loan payments', 'spend_to_date_avg_3m', 83.33)
 ),
 
 actual (month_start, bucket, subcategory_name, col, value) as (
@@ -58,6 +69,7 @@ actual (month_start, bucket, subcategory_name, col, value) as (
         ('line_count', s.line_count::numeric),
         ('baseline_months', s.baseline_months::numeric),
         ('spend_avg_3m', s.spend_avg_3m),
+        ('spend_to_date_avg_3m', s.spend_to_date_avg_3m),
         ('line_count_avg_3m', s.line_count_avg_3m),
         ('spend_delta', s.spend_delta),
         ('is_few_lines', s.is_few_lines::integer::numeric)
