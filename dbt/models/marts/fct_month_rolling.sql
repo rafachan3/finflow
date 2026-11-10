@@ -1,6 +1,6 @@
 -- Rolling N-month sums and share ratios (docs/SEMANTIC_LAYER.md,
 -- "Planning marts"). One row per (month of the month list, N) for each
--- N in var window_months (default 3 and 12). Money and ratios are null
+-- N in var window_months (default 3, 6 and 12). Money and ratios are null
 -- unless every month of the window is complete and in the list.
 -- fct_month_plan.*_pct_3m is N = 3, unchanged. The rows frames count
 -- months, because fct_monthly_summary is zero-filled.

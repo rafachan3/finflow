@@ -548,7 +548,7 @@ models:
   - name: fct_month_rolling
     description: >
       One row per (month_start, window_months) for every month of the month
-      list and every N in var window_months (default 3 and 12). Window sums
+      list and every N in var window_months (default 3, 6 and 12). Window sums
       of the monthly metrics, the four share ratios, and unspent_rate; null
       unless every month of the window is complete and in the list.
       fct_month_plan.*_pct_3m is N = 3. Not a metric: no MetricFlow here.

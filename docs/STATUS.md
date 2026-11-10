@@ -3,7 +3,7 @@
 Living state of the project. Read this first; update it whenever work lands.
 
 **Last updated:** 2026-11-10
-**Current phase:** Phase 5 (Grafana) under way: D (This month) merged as #137 and applied 2026-11-09; feedback round 1 merged as #140 and applied 2026-11-10; round 2 (income in money, Trends dashboard, no time picker) merged as #141 and applied 2026-11-10, waiting for the owner's look; then E/F/reliance/G
+**Current phase:** Phase 5 (Grafana) under way: D (This month) merged as #137 and applied 2026-11-09; feedback round 1 merged as #140 and applied 2026-11-10; round 2 (income in money, Trends dashboard, no time picker) merged as #141 and applied 2026-11-10; round 3 (unallocated cash, shorter tooltips, Trends grown to three panels) is on `feat/dashboards-round-3`; then E/F/reliance/G
 
 ## Phase progress
 
@@ -663,7 +663,7 @@ include the view. No migration.
 Rolling-window mart (Phase 5 PR A3, merged as #130;
 SEMANTIC_LAYER.md "Planning marts", DECISIONS.md 2026-11-08, TESTING.md):
 `fct_month_rolling`, long format, one row per (month, N) for N in var
-`window_months` (default 3 and 12). Sums of spendable income, needs,
+`window_months` (default 3, 6 and 12). Sums of spendable income, needs,
 wants, financial future, unallocated cash, spend and income, plus the
 four share ratios and `unspent_rate`; null unless the whole window is
 complete. N = 3 equals `fct_month_plan.*_pct_3m`. A view like the other
@@ -746,6 +746,20 @@ Next rounds (DECISIONS.md 2026-11-10, "Owner answers"): a "Needs
 attention" panel on This month (needs a mart first), then E Ledger (line
 items, six filters), F Review, G Trends (bucket shares by month over 3, 6
 and 12 months; no balances).
+
+Dashboards, feedback round 3 (branch `feat/dashboards-round-3`;
+DECISIONS.md 2026-11-10, "round 3"). This month: income is two stats
+("Income received", "Expected income") so each has its own description,
+a new "Unallocated cash" stat (`fct_monthly_summary.unallocated_cash`),
+"Buckets vs targets" is full width so it does not scroll, and every panel
+description is one or two short sentences. Trends: "Buckets by month"
+has a fixed 0 to 100% axis, shows no 0% labels and includes this month
+"(so far)"; "Income by month" is a line (time series, complete months);
+new "Average bucket shares" table over 3, 6 and 12 full months
+(`window_months` var now `[3, 6, 12]`). **After merge:** dispatch
+`dbt-nightly` (the 6-month rows), then `terraform plan` (expect 2 to
+change, the two dashboards) and apply. **Not verified:** rendering.
+Not possible in Grafana's bar chart: labels centred in their segments.
 
 This month, feedback round 2 (merged as #141, `e95cf17`; applied 2026-11-10;
 DECISIONS.md 2026-11-10, "round 2"): the owner liked round 1 and asked for
