@@ -3369,3 +3369,30 @@ marts dropped by the cascade, so the dashboards now stay up while the
 tests went from 101 s to over 8 minutes, and the fixture builds into an
 empty database, so it never deadlocks); retrying the build (hides the
 deadlock and still leaves the dashboards empty between the two attempts).
+
+## 2026-11-15: Dashboards, round 5 of owner feedback
+
+- **One chart for income and buckets** ("Income and where it went", a
+  time series panel): stacked bars for needs, wants and financial future
+  in dollars, and the income received as a line. Unallocated is the gap
+  between line and bar, so nothing is drawn twice and there is one scale.
+  It replaces "Buckets by month" and "Income by month"; the shares stay
+  in "Months in numbers". The bar chart panel cannot draw a line, hence
+  the time series panel, with the range ending at the current month.
+- **Category by month is one table per bucket, months as rows.** Colour
+  is scaled within each category column (`fieldMinMax`), so the largest
+  category no longer takes all the colour and a dark cell means a heavy
+  month for that category. At most 12 full months, newest first. The
+  Bucket variable is gone: Grafana only places variables at the top of a
+  dashboard, and it drove one panel.
+- **Biggest changes comes by category and by subcategory**, side by side.
+- **Ledger v1** (`finflow-ledger`): month, bucket and category at the
+  top; a total, the subcategories against their 3-month mean, and every
+  line item with column filters. Own spending only, so its total matches
+  the figure clicked. Categories on Trends and the wants bars on This
+  month link to it. A hidden `last_month` variable on Trends carries the
+  month into the links; hidden table columns did not hide in Grafana 12.
+
+**Still to do on the Ledger** (2026-11-07 design): search box, tags,
+funding filter with spending paid by others, income and transfers, the
+slice-by-month row.

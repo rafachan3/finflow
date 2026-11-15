@@ -39,6 +39,7 @@ ROLE = "finflow_analyst"
 MEAN_TO_DATE = "Mean of previous 3 full months, by this day"
 
 # Column names each panel's query returns, by dashboard uid and panel title.
+CHANGE_COLUMNS = ["Bucket", "Last full month", "Mean of previous 3", "Change"]
 EXPECTED = {
     "finflow-month": {
         "Status": ["status"],
@@ -54,13 +55,18 @@ EXPECTED = {
                                         "Mean of previous 3 full months, whole month"],
     },
     "finflow-trends": {
-        "Buckets by month": ["month", "Needs", "Wants", "Financial future", "Unallocated"],
-        "Income by month": ["month", "Needs", "Wants", "Financial future", "Unallocated"],
+        "Income and where it went": ["time", "Needs", "Wants", "Financial future", "Income"],
         "Months in numbers": ["Month", "Income", "Needs", "Wants", "Financial future", "Unallocated"],
-        "Spending by category and month": ["month", "category", "spend"],
-        "Biggest changes last month": ["Category", "Bucket", "Last full month",
-                                       "Mean of previous 3 full months", "Change"],
+        "Wants by category and month": ["month", "category", "spend"],
+        "Needs by category and month": ["month", "category", "spend"],
+        "Biggest changes last month, by category": ["Category", *CHANGE_COLUMNS],
+        "Biggest changes last month, by subcategory": ["Category", "Subcategory", *CHANGE_COLUMNS],
         "Average bucket shares": ["Period", "Needs", "Wants", "Financial future", "Unallocated"],
+    },
+    "finflow-ledger": {
+        "This selection": ["Spent", "Line items"],
+        "By subcategory": ["Category", "Subcategory", "Bucket", "This month", "Mean of previous 3", "Change"],
+        "Line items": ["Date", "Item", "Merchant", "Category", "Subcategory", "Bucket", "Amount", "Note"],
     },
 }
 VARIABLE_COLUMNS = ["__value", "__text"]
