@@ -3396,3 +3396,33 @@ deadlock and still leaves the dashboards empty between the two attempts).
 **Still to do on the Ledger** (2026-11-07 design): search box, tags,
 funding filter with spending paid by others, income and transfers, the
 slice-by-month row.
+
+## 2026-11-15: Dashboards, round 6 of owner feedback
+
+- **Half-width tables.** Tables with few columns take half the page and
+  share their row: "Buckets vs targets" with "Largest purchases this
+  month" and "Recurring and one-off spending"; "Months in numbers" with
+  "Average bucket shares" and "Recurring and one-off spending by month".
+  Stat cards use a fixed text size, so a card with one number is no
+  larger than a card with two.
+- **Added, all approved by the owner:** wants by subcategory on This
+  month; largest purchases (this month, and the last 3 full months on
+  Trends); top merchants over the last 3 full months, with entries that
+  have no merchant shown as one row; recurring against one-off spending
+  (`is_recurring`), this month and by month.
+- **The Ledger has a Period** (`span`): the month itself, or the 3, 6 or
+  12 full months before it. A link from a "mean of previous 3 full
+  months" figure opens that period, so the lines match the figure. A
+  count of months, not a date range: links cannot do date arithmetic.
+  "By subcategory" now shows spent, per month and line items for the
+  period; the comparison with the usual level lives on This month and
+  Trends. "This bucket and category by month" fills the other half.
+- **Category tables leave out categories under 1% of the bucket's
+  total**: with colour scaled per category, a lone $2 cell was drawn as
+  the darkest.
+- **"Income and where it went" starts at zero** (`axisSoftMin`); the
+  automatic axis had cut the bars at $1000.
+
+**Ruled out:** a free date range on the Ledger (the marts are monthly and
+the figures being explained are whole months); a UX research agent for
+ideas, since the four additions were already chosen.

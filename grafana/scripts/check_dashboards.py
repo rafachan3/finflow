@@ -53,10 +53,19 @@ EXPECTED = {
         "Everyday needs by day": ["Day", "This month", "This month, above the mean", MEAN_TO_DATE],
         "Where wants went this month": ["category", "This month so far", MEAN_TO_DATE,
                                         "Mean of previous 3 full months, whole month"],
+        "Recurring and one-off spending": ["label", "amount"],
+        "Largest purchases this month": ["Date", "Item", "Category", "Bucket", "Amount"],
+        "Wants by subcategory this month": [
+            "Category", "Subcategory", "This month", "Usual by this day", "Change"],
     },
     "finflow-trends": {
+        "Recurring and one-off spending by month": ["month", "Recurring", "One-off"],
+        "Top merchants, last 3 full months": ["Merchant", "Spent", "Per month", "Purchases"],
+        "Largest purchases, last 3 full months": [
+            "Date", "Item", "Category", "Bucket", "Amount"],
         "Income and where it went": ["time", "Needs", "Wants", "Financial future", "Income"],
-        "Months in numbers": ["Month", "Income", "Needs", "Wants", "Financial future", "Unallocated"],
+        "Months in numbers": [
+            "Month", "Income", "Needs", "Wants", "Financial future", "Unallocated"],
         "Wants by category and month": ["month", "category", "spend"],
         "Needs by category and month": ["month", "category", "spend"],
         "Biggest changes last month, by category": ["Category", *CHANGE_COLUMNS],
@@ -64,9 +73,11 @@ EXPECTED = {
         "Average bucket shares": ["Period", "Needs", "Wants", "Financial future", "Unallocated"],
     },
     "finflow-ledger": {
-        "This selection": ["Spent", "Line items"],
-        "By subcategory": ["Category", "Subcategory", "Bucket", "This month", "Mean of previous 3", "Change"],
-        "Line items": ["Date", "Item", "Merchant", "Category", "Subcategory", "Bucket", "Amount", "Note"],
+        "This selection": ["Spent", "Per month", "Line items"],
+        "By subcategory": ["Category", "Subcategory", "Bucket", "Spent", "Per month", "Line items"],
+        "This bucket and category by month": ["month", "Spent"],
+        "Line items": [
+            "Date", "Item", "Merchant", "Category", "Subcategory", "Bucket", "Amount", "Note"],
     },
 }
 VARIABLE_COLUMNS = ["__value", "__text"]

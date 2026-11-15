@@ -37,7 +37,7 @@
         "type": "query",
         "name": "month",
         "label": "Month",
-        "description": "The month shown.",
+        "description": "The month shown, or the month the period counts back from.",
         "datasource": {
           "type": "grafana-postgresql-datasource",
           "uid": "finflow-marts"
@@ -50,6 +50,43 @@
         "includeAll": false,
         "current": {},
         "options": [],
+        "hide": 0
+      },
+      {
+        "type": "custom",
+        "name": "span",
+        "label": "Period",
+        "description": "The month itself, or the full months before it.",
+        "query": "This month : 0,The 3 full months before it : 3,The 6 full months before it : 6,The 12 full months before it : 12",
+        "current": {
+          "text": "This month",
+          "value": "0",
+          "selected": true
+        },
+        "options": [
+          {
+            "text": "This month",
+            "value": "0",
+            "selected": true
+          },
+          {
+            "text": "The 3 full months before it",
+            "value": "3",
+            "selected": false
+          },
+          {
+            "text": "The 6 full months before it",
+            "value": "6",
+            "selected": false
+          },
+          {
+            "text": "The 12 full months before it",
+            "value": "12",
+            "selected": false
+          }
+        ],
+        "multi": false,
+        "includeAll": false,
         "hide": 0
       },
       {
@@ -116,9 +153,9 @@
         "x": 0,
         "y": 0,
         "w": 24,
-        "h": 4
+        "h": 3
       },
-      "description": "Your own spending for the month, bucket and category chosen at the top. Expenses another person paid are left out, as on the other dashboards.",
+      "description": "Your own spending for the month or period, bucket and category chosen at the top. Expenses another person paid are left out, as on the other dashboards.",
       "targets": [
         {
           "refId": "A",
@@ -128,7 +165,7 @@
           },
           "format": "table",
           "rawQuery": true,
-          "rawSql": "select coalesce(sum(amount), 0) as \"Spent\", count(*) as \"Line items\"\nfrom marts.fct_transactions\nwhere type = 'expense' and is_self_funded\n  and month_start = '${month}'\n  and ('${bucket}' = 'all' or initcap(bucket) = '${bucket}')\n  and (${category:sqlstring} = 'all' or category_name = ${category:sqlstring})"
+          "rawSql": "select coalesce(sum(amount), 0) as \"Spent\", coalesce(sum(amount), 0) / greatest(${span}, 1) as \"Per month\", count(*) as \"Line items\"\nfrom marts.fct_transactions\nwhere type = 'expense' and is_self_funded\n  and month_start >= '${month}'::date - make_interval(months => ${span})\n  and month_start < '${month}'::date + case when ${span} = 0 then interval '1 month' else interval '0' end\n  and ('${bucket}' = 'all' or initcap(bucket) = '${bucket}')\n  and (${category:sqlstring} = 'all' or category_name = ${category:sqlstring})"
         }
       ],
       "fieldConfig": {
@@ -142,8 +179,8 @@
         "overrides": [
           {
             "matcher": {
-              "id": "byName",
-              "options": "Spent"
+              "id": "byRegexp",
+              "options": "^(Spent|Per month)$"
             },
             "properties": [
               {
@@ -169,24 +206,28 @@
         "colorMode": "value",
         "graphMode": "none",
         "textMode": "value_and_name",
-        "orientation": "vertical"
+        "orientation": "vertical",
+        "text": {
+          "titleSize": 15,
+          "valueSize": 30
+        }
       }
     },
     {
       "id": 2,
       "type": "table",
       "title": "By subcategory",
+      "description": "Each subcategory in the selection, largest first. Per month divides by the number of months in the period.",
       "datasource": {
         "type": "grafana-postgresql-datasource",
         "uid": "finflow-marts"
       },
       "gridPos": {
         "x": 0,
-        "y": 4,
-        "w": 24,
+        "y": 3,
+        "w": 12,
         "h": 9
       },
-      "description": "Each subcategory in the selection: this month against the mean of the 3 full months before it. A positive change is more spending.",
       "targets": [
         {
           "refId": "A",
@@ -196,7 +237,7 @@
           },
           "format": "table",
           "rawQuery": true,
-          "rawSql": "select\n  category_name as \"Category\",\n  subcategory_name as \"Subcategory\",\n  initcap(bucket) as \"Bucket\",\n  spend as \"This month\",\n  spend_avg_3m as \"Mean of previous 3\",\n  spend - spend_avg_3m as \"Change\"\nfrom marts.fct_subcategory_month\nwhere month_start = '${month}'\n  and ('${bucket}' = 'all' or initcap(bucket) = '${bucket}')\n  and (${category:sqlstring} = 'all' or category_name = ${category:sqlstring})\n  and (spend <> 0 or coalesce(spend_avg_3m, 0) <> 0)\norder by spend desc, 1, 2"
+          "rawSql": "select\n  category_name as \"Category\",\n  subcategory_name as \"Subcategory\",\n  initcap(bucket) as \"Bucket\",\n  sum(amount) as \"Spent\",\n  sum(amount) / greatest(${span}, 1) as \"Per month\",\n  count(*) as \"Line items\"\nfrom marts.fct_transactions\nwhere type = 'expense' and is_self_funded\n  and month_start >= '${month}'::date - make_interval(months => ${span})\n  and month_start < '${month}'::date + case when ${span} = 0 then interval '1 month' else interval '0' end\n  and ('${bucket}' = 'all' or initcap(bucket) = '${bucket}')\n  and (${category:sqlstring} = 'all' or category_name = ${category:sqlstring})\ngroup by 1, 2, 3\norder by 4 desc, 1, 2"
         }
       ],
       "fieldConfig": {
@@ -206,6 +247,7 @@
           "noValue": "–",
           "custom": {
             "align": "auto",
+            "filterable": false,
             "cellOptions": {
               "type": "auto"
             }
@@ -214,49 +256,65 @@
         "overrides": [
           {
             "matcher": {
-              "id": "byName",
-              "options": "Change"
-            },
-            "properties": [
-              {
-                "id": "custom.cellOptions",
-                "value": {
-                  "type": "color-text"
-                }
-              },
-              {
-                "id": "color",
-                "value": {
-                  "mode": "thresholds"
-                }
-              },
-              {
-                "id": "thresholds",
-                "value": {
-                  "mode": "absolute",
-                  "steps": [
-                    {
-                      "color": "#0ca30c",
-                      "value": null
-                    },
-                    {
-                      "color": "#d03b3b",
-                      "value": 0
-                    }
-                  ]
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
               "id": "byRegexp",
-              "options": "^(Category|Subcategory|Bucket)$"
+              "options": "^(Date|Item|Merchant|Category|Subcategory|Bucket|Note|Month)$"
             },
             "properties": [
               {
                 "id": "unit",
                 "value": "none"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Line items"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "none"
+              },
+              {
+                "id": "custom.width",
+                "value": 95
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Bucket"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 75
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Spent"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 95
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Per month"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 100
               }
             ]
           }
@@ -271,6 +329,65 @@
       }
     },
     {
+      "id": 4,
+      "type": "barchart",
+      "title": "This bucket and category by month",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "finflow-marts"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 3,
+        "w": 12,
+        "h": 9
+      },
+      "description": "Your own spending in the chosen bucket and category for each of the last 12 full months and this month so far, whatever period is selected. It shows whether a figure is a one-off or a habit.",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "finflow-marts"
+          },
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "select\n  to_char(p.month_start, 'Mon YY') || case when p.is_complete_month then '' else ' (so far)' end as month,\n  coalesce(sum(f.amount), 0) as \"Spent\"\nfrom (select * from marts.fct_month_plan order by month_start desc limit 13) p\nleft join (\n  select month_start, amount from marts.fct_transactions\n  where type = 'expense' and is_self_funded\n    and ('${bucket}' = 'all' or initcap(bucket) = '${bucket}')\n  and (${category:sqlstring} = 'all' or category_name = ${category:sqlstring})\n) f on f.month_start = p.month_start\ngroup by p.month_start, p.is_complete_month\norder by p.month_start"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "prefix:$",
+          "decimals": 0,
+          "min": 0,
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "#3987e5"
+          },
+          "custom": {
+            "fillOpacity": 100,
+            "lineWidth": 0
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "xField": "month",
+        "orientation": "vertical",
+        "stacking": "none",
+        "showValue": "auto",
+        "barWidth": 0.6,
+        "groupWidth": 0.7,
+        "legend": {
+          "showLegend": false
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      }
+    },
+    {
       "id": 3,
       "type": "table",
       "title": "Line items",
@@ -280,9 +397,9 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 13,
+        "y": 12,
         "w": 24,
-        "h": 16
+        "h": 14
       },
       "description": "Every line in the selection, largest first. Use the funnel on a column header to narrow further, for example to one subcategory.",
       "targets": [
@@ -294,7 +411,7 @@
           },
           "format": "table",
           "rawQuery": true,
-          "rawSql": "select\n  to_char(occurred_on, 'YYYY-MM-DD') as \"Date\",\n  coalesce(item_description, description) as \"Item\",\n  coalesce(merchant_name, venue_name) as \"Merchant\",\n  category_name as \"Category\",\n  subcategory_name as \"Subcategory\",\n  initcap(bucket) as \"Bucket\",\n  amount as \"Amount\",\n  notes as \"Note\"\nfrom marts.fct_transactions\nwhere type = 'expense' and is_self_funded\n  and month_start = '${month}'\n  and ('${bucket}' = 'all' or initcap(bucket) = '${bucket}')\n  and (${category:sqlstring} = 'all' or category_name = ${category:sqlstring})\norder by amount desc, occurred_on desc, line_key"
+          "rawSql": "select\n  to_char(occurred_on, 'YYYY-MM-DD') as \"Date\",\n  coalesce(item_description, description) as \"Item\",\n  coalesce(merchant_name, venue_name) as \"Merchant\",\n  category_name as \"Category\",\n  subcategory_name as \"Subcategory\",\n  initcap(bucket) as \"Bucket\",\n  amount as \"Amount\",\n  notes as \"Note\"\nfrom marts.fct_transactions\nwhere type = 'expense' and is_self_funded\n  and month_start >= '${month}'::date - make_interval(months => ${span})\n  and month_start < '${month}'::date + case when ${span} = 0 then interval '1 month' else interval '0' end\n  and ('${bucket}' = 'all' or initcap(bucket) = '${bucket}')\n  and (${category:sqlstring} = 'all' or category_name = ${category:sqlstring})\norder by amount desc, occurred_on desc, line_key"
         }
       ],
       "fieldConfig": {
@@ -350,6 +467,54 @@
               {
                 "id": "custom.width",
                 "value": 90
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Item"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 300
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Merchant"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 150
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Category"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 170
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Subcategory"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 210
               }
             ]
           }

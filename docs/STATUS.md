@@ -3,7 +3,7 @@
 Living state of the project. Read this first; update it whenever work lands.
 
 **Last updated:** 2026-11-10
-**Current phase:** Phase 5 (Grafana) under way: D (This month) merged as #137 and applied 2026-11-09; feedback round 1 merged as #140 and applied 2026-11-10; round 2 (income in money, Trends dashboard, no time picker) merged as #141 and applied 2026-11-10; round 3 (unallocated cash, shorter tooltips, Trends grown to three panels) merged as #143 and applied 2026-11-10; round 4 (leaner cards, Trends at six panels) merged as #145 and applied 2026-11-10, waiting for the owner's look; the nightly now builds models on one thread (deadlock fix, DECISIONS 2026-11-15); round 5 (one income-and-buckets chart, per-bucket category tables, Ledger v1 with click-through) merged as #151 (`249efd3`) and applied 2026-11-15, waiting for the owner's look; then E/F/reliance/G
+**Current phase:** Phase 5 (Grafana) under way: D (This month) merged as #137 and applied 2026-11-09; feedback round 1 merged as #140 and applied 2026-11-10; round 2 (income in money, Trends dashboard, no time picker) merged as #141 and applied 2026-11-10; round 3 (unallocated cash, shorter tooltips, Trends grown to three panels) merged as #143 and applied 2026-11-10; round 4 (leaner cards, Trends at six panels) merged as #145 and applied 2026-11-10, waiting for the owner's look; the nightly now builds models on one thread (deadlock fix, DECISIONS 2026-11-15); round 5 (one income-and-buckets chart, per-bucket category tables, Ledger v1 with click-through) merged as #151 (`249efd3`) and applied 2026-11-15; round 6 (denser layouts, recurring, merchants, largest purchases, Ledger period) on `feat/grafana-round-6`, not yet applied; then E/F/reliance/G
 
 ## Phase progress
 
