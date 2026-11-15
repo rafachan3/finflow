@@ -213,7 +213,7 @@ Run from `lambda/`.
 | Needs/wants accuracy (local only) | `npm run eval:buckets` | see [below](#the-needswants-accuracy-check) |
 | Inventory | `node scripts/check-inventory.mjs` (repo root) | nothing |
 | dbt (staging, marts and their tests) | `dbt build` (from `dbt/`) | `TEST_DATABASE_URL` and the dbt virtualenv; see [below](#the-dbt-build) |
-| Nightly dbt on production | `dbt build --exclude tag:fixture`, then `mf validate-configs` and `python scripts/check_metrics.py` (from `dbt/`) | the production `FINFLOW_DBT_*` variables; see [below](#the-nightly-dbt-build) |
+| Nightly dbt on production | `dbt run --exclude tag:fixture --threads 1`, `dbt test --exclude tag:fixture`, then `mf validate-configs` and `python scripts/check_metrics.py` (from `dbt/`) | the production `FINFLOW_DBT_*` variables; see [below](#the-nightly-dbt-build) |
 
 A throwaway Postgres for the database layers: start Docker, run
 `npm run db:up` in `lambda/`. Each checkout (worktree) gets its own container,
@@ -360,10 +360,16 @@ code. Only `main` reaches production: a dispatch on another branch skips
 the build job, so a branch's edited models never run there. It connects as `finflow_dbt` through Supabase's session pooler (port
 5432) with `sslmode=verify-full` against `supabase/prod-ca-2021.crt`
 (libpq's `PGSSLROOTCERT`), and runs `dbt debug --connection`, then
-`dbt build --exclude tag:fixture` (every model, invariant and the
-reconciliation to `public`; not `fixture_sample_month_expected`), then
+`dbt run --exclude tag:fixture --threads 1` and, if every model built,
+`dbt test --exclude tag:fixture` (every invariant and the reconciliation
+to `public`; not `fixture_sample_month_expected`), then
 `mf validate-configs` and `check_metrics.py`. The `finflow_analyst` login
 check stays in the PR `dbt` job: that role's password is not a CI secret.
+Models run on one thread because replacing a view drops the old one with
+`CASCADE`: two drops at once deadlock on the views built on both, and the
+marts after the failed model stay missing until the next good run. Keep
+`--threads 1` on any `dbt run` against production; the fixture builds into
+an empty database, so CI can stay parallel.
 
 The log is public, so it shows names and statuses only. All of dbt's own
 output (`dbt debug` included: row counts, failing-test counts, database

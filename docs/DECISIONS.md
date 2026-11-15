@@ -3342,3 +3342,30 @@ option).
 **Ruled out:** bars plus an income line on two y axes; hiding the
 expected income card by month state (Grafana cannot hide a panel by
 data).
+
+## 2026-11-15: The nightly builds models on one thread
+
+The production nightly failed on 2026-11-11, 11-12 and 11-14, each time on
+one staging model, and left every mart after it missing, so the dashboards
+showed "relation does not exist" until the next good run. dbt replaces a
+view by renaming the old one to `__dbt_backup` and then dropping that with
+`CASCADE`, which takes every view built on it (dbt rebuilds them later in
+the run). With four threads, two staging models drop their backups at
+once; both cascades lock the same marts in different orders and Postgres
+kills one as a deadlock. Production's `pg_stat_database.deadlocks` went
+from 1 to 3 across the three failures, and on the fixture database two
+parallel cascading drops sharing 40 dependent views deadlocked in 15 of 20
+tries and never when run one after the other.
+
+**Chosen:** the nightly runs `dbt run --exclude tag:fixture --threads 1`,
+then `dbt test --exclude tag:fixture` on the profile's four threads.
+Models take 9 s on one thread against 8 s on four (fixture); tests create
+nothing, so they stay parallel. A side effect: a failing test no longer
+skips the models after it. Under `dbt build` that skip already left those
+marts dropped by the cascade, so the dashboards now stay up while the
+`dbt-nightly` issue still opens.
+
+**Ruled out:** `threads: 1` in `profiles.yml` (the fixture build with its
+tests went from 101 s to over 8 minutes, and the fixture builds into an
+empty database, so it never deadlocks); retrying the build (hides the
+deadlock and still leaves the dashboards empty between the two attempts).
