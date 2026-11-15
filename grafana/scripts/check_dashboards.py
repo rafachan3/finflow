@@ -14,7 +14,7 @@ all problems reported together, exit 1 if any:
    Grafana Cloud or Supabase host, nothing shaped like a Supabase project ref.
 3. Query smoke: every variable query and panel query runs as
    `finflow_analyst` against the dbt fixture database (`finflow_test`, built
-   by scripts/test_db.py and `dbt build`), once per value of each variable,
+   by scripts/test_db.py and `dbt build`), once per value of each variable (a sample of the combinations above MAX_COMBOS),
    and returns the columns EXPECTED lists, and at least one row for some
    value. The role reads only `marts`, so a query touching another schema
    fails. Values are not checked: the dbt tests pin the marts.
@@ -63,7 +63,7 @@ EXPECTED = {
         "Top merchants, last 3 full months": ["Merchant", "Spent", "Per month", "Purchases"],
         "Largest purchases, last 3 full months": [
             "Date", "Item", "Category", "Bucket", "Amount"],
-        "Income and where it went": ["time", "Needs", "Wants", "Financial future", "Income"],
+        "Income and where it went": ["time", "Needs", "Wants", "Financial future", "Income", "Income so far"],
         "Months in numbers": [
             "Month", "Income", "Needs", "Wants", "Financial future", "Unallocated"],
         "Wants by category and month": ["month", "category", "spend"],
@@ -71,16 +71,25 @@ EXPECTED = {
         "Biggest changes last month, by category": ["Category", *CHANGE_COLUMNS],
         "Biggest changes last month, by subcategory": ["Category", "Subcategory", *CHANGE_COLUMNS],
         "Average bucket shares": ["Period", "Needs", "Wants", "Financial future", "Unallocated"],
+        "Recurring commitments": ["Series", "Cadence", "Bucket", "Latest amount", "Last paid", "Months of 3"],
+        "Wants by weekday": ["weekday", "Mean wants per day"],
+        "Wants by days since pay": ["Days since pay", "Mean wants per day"],
     },
     "finflow-ledger": {
+        "Selection by merchant": ["Merchant", "Spent", "Purchases"],
+        "Income and transfers": ["Date", "Type", "From or to", "Amount"],
         "This selection": ["Spent", "Per month", "Line items"],
-        "By subcategory": ["Category", "Subcategory", "Bucket", "Spent", "Per month", "Line items"],
-        "This bucket and category by month": ["month", "Spent"],
+        "By subcategory": ["Category", "Subcategory", "Bucket", "Spent", "Per month", "Line items",
+                           "Typical"],
+        "Selection by month": ["month", "Spent"],
         "Line items": [
-            "Date", "Item", "Merchant", "Category", "Subcategory", "Bucket", "Amount", "Note"],
+            "Date", "Item", "Merchant", "Category", "Subcategory", "Bucket", "Amount", "Tags",
+            "Paid by", "Note"],
     },
 }
 VARIABLE_COLUMNS = ["__value", "__text"]
+# Above this many variable combinations a dashboard is sampled (see smoke()).
+MAX_COMBOS = 500
 
 SAVED_DATA_KEYS = {"snapshotData", "rawFrameContent", "frames", "dataFrames"}
 HOSTS = re.compile(r"grafana\.net|supabase\.com|supabase\.co\b", re.I)
@@ -241,6 +250,8 @@ def variable_values(cur, name, dash, queries):
                 values[vname] = [str(r[0]) for r in cur.fetchall()]
             except (psycopg2.Error, KeyError, ValueError):
                 values[vname] = []
+        elif var.get("type") == "textbox":
+            values[vname] = [var.get("query", "")]
         elif var.get("type") == "custom":
             values[vname] = [o["value"] for o in var.get("options", [])]
         else:
@@ -262,6 +273,12 @@ def smoke(cur, name, dash, queries):
         values = {}
     names = sorted(values)
     combos = [dict(zip(names, c)) for c in product(*(values[n] for n in names))] or [{}]
+    if len(combos) > MAX_COMBOS:
+        # Too many to run them all: an even sample of the product, plus every
+        # value of every variable once against the first combination.
+        sample = combos[:: len(combos) // MAX_COMBOS]
+        singles = [{**combos[0], n: v} for n in names for v in values[n]]
+        combos = sample + [c for c in singles if c not in sample]
     ran = 0
     for label, sql, expected in queries:
         rows = 0
