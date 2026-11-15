@@ -1,6 +1,6 @@
 name: dbt nightly
 
-# `dbt build` and the metric check against PRODUCTION, as finflow_dbt
+# `dbt run` (one thread), `dbt test` and the metric check against PRODUCTION, as finflow_dbt
 # (docs/TESTING.md, "The nightly dbt build"). Definitions are recreated
 # on the nightly run; ledger changes are visible on the next Grafana or
 # analyst query, because views read `public` at query time
@@ -111,15 +111,29 @@ jobs:
           FINFLOW_DBT_HOST: ${{ secrets.FINFLOW_DBT_HOST }}
           FINFLOW_DBT_USER: ${{ secrets.FINFLOW_DBT_USER }}
           FINFLOW_DBT_PASSWORD: ${{ secrets.FINFLOW_DBT_PASSWORD }}
+        # Models on one thread, then tests on the profile's four. Replacing
+        # a view drops the old one with CASCADE, taking the views built on
+        # it; two such drops at once lock those views in different orders
+        # and deadlock, and every mart after the failed model is left
+        # missing until the next good run (DECISIONS 2026-11-15). Tests
+        # create nothing, so they stay parallel.
         run: |
           status=0
-          dbt build --exclude tag:fixture > "$RUNNER_TEMP/dbt-build.log" 2>&1 || status=$?
-          if [ -f target/run_results.json ]; then
-            jq -r '.results[] | "\(.status)\t\(.unique_id)"' target/run_results.json
-          else
-            echo "dbt build wrote no run_results.json"
+          report() {
+            if [ -f target/run_results.json ]; then
+              jq -r '.results[] | "\(.status)\t\(.unique_id)"' target/run_results.json
+            else
+              echo "dbt $1 wrote no run_results.json"
+            fi
+          }
+          dbt run --exclude tag:fixture --threads 1 > "$RUNNER_TEMP/dbt-build.log" 2>&1 || status=$?
+          report run
+          if [ "$status" -eq 0 ]; then
+            rm -f target/run_results.json
+            dbt test --exclude tag:fixture >> "$RUNNER_TEMP/dbt-build.log" 2>&1 || status=$?
+            report test
           fi
-          echo "dbt build exited $status; its output is withheld from this public log"
+          echo "dbt exited $status; its output is withheld from this public log"
           # The warn-level tests' names, counts and ids, for the ledger-health
           # step. Written only when the report succeeds, so a missing file
           # never reads as a clean ledger.
