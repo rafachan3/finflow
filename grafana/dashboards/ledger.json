@@ -1,0 +1,373 @@
+{
+  "tags": [
+    "finflow"
+  ],
+  "timezone": "America/Toronto",
+  "editable": true,
+  "graphTooltip": 1,
+  "schemaVersion": 39,
+  "refresh": "",
+  "links": [
+    {
+      "type": "dashboards",
+      "title": "FinFlow dashboards",
+      "tags": [
+        "finflow"
+      ],
+      "asDropdown": false,
+      "includeVars": false,
+      "keepTime": false,
+      "targetBlank": false,
+      "icon": "external link"
+    }
+  ],
+  "uid": "finflow-ledger",
+  "title": "Ledger",
+  "description": "The line items behind a figure: pick a month, bucket and category, or arrive by clicking a figure on another dashboard.",
+  "timepicker": {
+    "hidden": true
+  },
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "templating": {
+    "list": [
+      {
+        "type": "query",
+        "name": "month",
+        "label": "Month",
+        "description": "The month shown.",
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "finflow-marts"
+        },
+        "query": "select to_char(month_start, 'YYYY-MM-DD') as __value, to_char(month_start, 'Mon YYYY') as __text from marts.fct_month_plan order by month_start desc",
+        "definition": "select to_char(month_start, 'YYYY-MM-DD') as __value, to_char(month_start, 'Mon YYYY') as __text from marts.fct_month_plan order by month_start desc",
+        "refresh": 1,
+        "sort": 0,
+        "multi": false,
+        "includeAll": false,
+        "current": {},
+        "options": [],
+        "hide": 0
+      },
+      {
+        "type": "custom",
+        "name": "bucket",
+        "label": "Bucket",
+        "query": "All : all,Wants : Wants,Needs : Needs",
+        "current": {
+          "text": "All",
+          "value": "all",
+          "selected": true
+        },
+        "options": [
+          {
+            "text": "All",
+            "value": "all",
+            "selected": true
+          },
+          {
+            "text": "Wants",
+            "value": "Wants",
+            "selected": false
+          },
+          {
+            "text": "Needs",
+            "value": "Needs",
+            "selected": false
+          }
+        ],
+        "multi": false,
+        "includeAll": false,
+        "hide": 0
+      },
+      {
+        "type": "query",
+        "name": "category",
+        "label": "Category",
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "finflow-marts"
+        },
+        "refresh": 1,
+        "sort": 0,
+        "multi": false,
+        "includeAll": false,
+        "current": {},
+        "options": [],
+        "hide": 0,
+        "query": "select v as __value, t as __text from (select 'all' as v, 'All' as t, 0 as o union all select distinct category_name, category_name, 1 from marts.fct_subcategory_month) x order by o, t",
+        "definition": "select v as __value, t as __text from (select 'all' as v, 'All' as t, 0 as o union all select distinct category_name, category_name, 1 from marts.fct_subcategory_month) x order by o, t"
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "This selection",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "finflow-marts"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 4
+      },
+      "description": "Your own spending for the month, bucket and category chosen at the top. Expenses another person paid are left out, as on the other dashboards.",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "finflow-marts"
+          },
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "select coalesce(sum(amount), 0) as \"Spent\", count(*) as \"Line items\"\nfrom marts.fct_transactions\nwhere type = 'expense' and is_self_funded\n  and month_start = '${month}'\n  and ('${bucket}' = 'all' or initcap(bucket) = '${bucket}')\n  and (${category:sqlstring} = 'all' or category_name = ${category:sqlstring})"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          },
+          "decimals": 0
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Spent"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "prefix:$"
+              },
+              {
+                "id": "decimals",
+                "value": 2
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value_and_name",
+        "orientation": "vertical"
+      }
+    },
+    {
+      "id": 2,
+      "type": "table",
+      "title": "By subcategory",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "finflow-marts"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 4,
+        "w": 24,
+        "h": 9
+      },
+      "description": "Each subcategory in the selection: this month against the mean of the 3 full months before it. A positive change is more spending.",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "finflow-marts"
+          },
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "select\n  category_name as \"Category\",\n  subcategory_name as \"Subcategory\",\n  initcap(bucket) as \"Bucket\",\n  spend as \"This month\",\n  spend_avg_3m as \"Mean of previous 3\",\n  spend - spend_avg_3m as \"Change\"\nfrom marts.fct_subcategory_month\nwhere month_start = '${month}'\n  and ('${bucket}' = 'all' or initcap(bucket) = '${bucket}')\n  and (${category:sqlstring} = 'all' or category_name = ${category:sqlstring})\n  and (spend <> 0 or coalesce(spend_avg_3m, 0) <> 0)\norder by spend desc, 1, 2"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "prefix:$",
+          "decimals": 0,
+          "noValue": "–",
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Change"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "#0ca30c",
+                      "value": null
+                    },
+                    {
+                      "color": "#d03b3b",
+                      "value": 0
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "^(Category|Subcategory|Bucket)$"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "none"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false
+        }
+      }
+    },
+    {
+      "id": 3,
+      "type": "table",
+      "title": "Line items",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "finflow-marts"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 13,
+        "w": 24,
+        "h": 16
+      },
+      "description": "Every line in the selection, largest first. Use the funnel on a column header to narrow further, for example to one subcategory.",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "finflow-marts"
+          },
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "select\n  to_char(occurred_on, 'YYYY-MM-DD') as \"Date\",\n  coalesce(item_description, description) as \"Item\",\n  coalesce(merchant_name, venue_name) as \"Merchant\",\n  category_name as \"Category\",\n  subcategory_name as \"Subcategory\",\n  initcap(bucket) as \"Bucket\",\n  amount as \"Amount\",\n  notes as \"Note\"\nfrom marts.fct_transactions\nwhere type = 'expense' and is_self_funded\n  and month_start = '${month}'\n  and ('${bucket}' = 'all' or initcap(bucket) = '${bucket}')\n  and (${category:sqlstring} = 'all' or category_name = ${category:sqlstring})\norder by amount desc, occurred_on desc, line_key"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "noValue": "–",
+          "custom": {
+            "align": "auto",
+            "filterable": true,
+            "cellOptions": {
+              "type": "auto"
+            }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Amount"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "prefix:$"
+              },
+              {
+                "id": "decimals",
+                "value": 2
+              },
+              {
+                "id": "custom.width",
+                "value": 110
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Date"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 110
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Bucket"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 90
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": true,
+          "reducer": [
+            "sum"
+          ],
+          "fields": [
+            "Amount"
+          ]
+        }
+      }
+    }
+  ]
+}

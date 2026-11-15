@@ -765,7 +765,7 @@
       "id": 6,
       "type": "barchart",
       "title": "Where wants went this month",
-      "description": "Wants by category. A category is listed when it has spend this month or in at least 2 of the previous 3 full months, so a one-off does not show up as usual.",
+      "description": "Wants by category. A category is listed when it has spend this month or in at least 2 of the previous 3 full months, so a one-off does not show up as usual. Click a bar for its line items.",
       "gridPos": {
         "x": 0,
         "y": 24,
@@ -798,7 +798,13 @@
             "fillOpacity": 100,
             "lineWidth": 0,
             "axisLabel": ""
-          }
+          },
+          "links": [
+            {
+              "title": "See the line items",
+              "url": "/d/finflow-ledger?var-month=${month}&var-bucket=Wants&var-category=${__data.fields.category:percentencode}"
+            }
+          ]
         },
         "overrides": [
           {
