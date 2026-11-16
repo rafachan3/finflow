@@ -551,7 +551,7 @@
                 "id": "color",
                 "value": {
                   "mode": "fixed",
-                  "fixedColor": "#3987e5"
+                  "fixedColor": "#898781"
                 }
               }
             ]
@@ -566,7 +566,7 @@
                 "id": "color",
                 "value": {
                   "mode": "fixed",
-                  "fixedColor": "#d95926"
+                  "fixedColor": "text"
                 }
               }
             ]
@@ -592,6 +592,374 @@
       }
     },
     {
+      "id": 5,
+      "type": "table",
+      "title": "Biggest changes last month, by category",
+      "description": "The last full month against the mean of the 3 full months before it, by category, largest change first. A positive change is more spending. Click a category for last month's line items or for the 3 months behind the mean.",
+      "gridPos": {
+        "x": 0,
+        "y": 24,
+        "w": 12,
+        "h": 12
+      },
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "finflow-marts"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "finflow-marts"
+          },
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "select\n  c.category_name as \"Category\",\n  initcap(c.bucket) as \"Bucket\",\n  sum(c.spend) as \"Last full month\",\n  sum(c.spend_avg_3m) as \"Mean of previous 3\",\n  case when (sum(c.spend) - sum(c.spend_avg_3m)) > 0 then '+$' when (sum(c.spend) - sum(c.spend_avg_3m)) < 0 then '−$' else '$' end || to_char(abs(round((sum(c.spend) - sum(c.spend_avg_3m)))), 'FM999999990') as \"Change\"\nfrom marts.fct_subcategory_month c\nwhere c.month_start = (select max(month_start) from marts.fct_month_plan where is_complete_month)\n  and c.baseline_months > 0\ngroup by c.bucket, c.category_name\nhaving sum(c.spend) - sum(c.spend_avg_3m) <> 0\norder by abs(sum(c.spend) - sum(c.spend_avg_3m)) desc\nlimit 10"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "prefix:$",
+          "decimals": 0,
+          "noValue": "–",
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "^(Category|Subcategory|Bucket)$"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "none"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Bucket"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 70
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Last full month"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 115
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Mean of previous 3"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 140
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Change"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "none"
+              },
+              {
+                "id": "custom.align",
+                "value": "right"
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "regex",
+                    "options": {
+                      "pattern": "^\\+.*",
+                      "result": {
+                        "color": "#d03b3b",
+                        "index": 0
+                      }
+                    }
+                  },
+                  {
+                    "type": "regex",
+                    "options": {
+                      "pattern": "^−.*",
+                      "result": {
+                        "color": "#0ca30c",
+                        "index": 1
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Change"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 75
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Category"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "See the line items",
+                    "url": "/d/finflow-ledger?var-month=${last_month}&var-span=0&var-bucket=${__data.fields.Bucket}&var-category=${__data.fields.Category:percentencode}"
+                  },
+                  {
+                    "title": "See the line items of the 3 full months before",
+                    "url": "/d/finflow-ledger?var-month=${last_month}&var-span=3&var-bucket=${__data.fields.Bucket}&var-category=${__data.fields.Category:percentencode}"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false
+        }
+      }
+    },
+    {
+      "id": 8,
+      "type": "table",
+      "title": "Biggest changes last month, by subcategory",
+      "description": "The last full month against the mean of the 3 full months before it, by subcategory, largest change first. A positive change is more spending. Click a category for last month's line items or for the 3 months behind the mean.",
+      "gridPos": {
+        "x": 12,
+        "y": 24,
+        "w": 12,
+        "h": 12
+      },
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "finflow-marts"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "finflow-marts"
+          },
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "select\n  c.category_name as \"Category\", c.subcategory_name as \"Subcategory\",\n  initcap(c.bucket) as \"Bucket\",\n  sum(c.spend) as \"Last full month\",\n  sum(c.spend_avg_3m) as \"Mean of previous 3\",\n  case when (sum(c.spend) - sum(c.spend_avg_3m)) > 0 then '+$' when (sum(c.spend) - sum(c.spend_avg_3m)) < 0 then '−$' else '$' end || to_char(abs(round((sum(c.spend) - sum(c.spend_avg_3m)))), 'FM999999990') as \"Change\"\nfrom marts.fct_subcategory_month c\nwhere c.month_start = (select max(month_start) from marts.fct_month_plan where is_complete_month)\n  and c.baseline_months > 0\ngroup by c.bucket, c.category_name, c.subcategory_name\nhaving sum(c.spend) - sum(c.spend_avg_3m) <> 0\norder by abs(sum(c.spend) - sum(c.spend_avg_3m)) desc\nlimit 10"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "prefix:$",
+          "decimals": 0,
+          "noValue": "–",
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "^(Category|Subcategory|Bucket)$"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "none"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Bucket"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 70
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Last full month"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 115
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Mean of previous 3"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 140
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Category"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 140
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Change"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "none"
+              },
+              {
+                "id": "custom.align",
+                "value": "right"
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "regex",
+                    "options": {
+                      "pattern": "^\\+.*",
+                      "result": {
+                        "color": "#d03b3b",
+                        "index": 0
+                      }
+                    }
+                  },
+                  {
+                    "type": "regex",
+                    "options": {
+                      "pattern": "^−.*",
+                      "result": {
+                        "color": "#0ca30c",
+                        "index": 1
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Change"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 75
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Category"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "See the line items",
+                    "url": "/d/finflow-ledger?var-month=${last_month}&var-span=0&var-bucket=${__data.fields.Bucket}&var-category=${__data.fields.Category:percentencode}"
+                  },
+                  {
+                    "title": "See the line items of the 3 full months before",
+                    "url": "/d/finflow-ledger?var-month=${last_month}&var-span=3&var-bucket=${__data.fields.Bucket}&var-category=${__data.fields.Category:percentencode}"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false
+        }
+      }
+    },
+    {
       "id": 4,
       "type": "table",
       "title": "Wants by category and month",
@@ -599,10 +967,10 @@
         "type": "grafana-postgresql-datasource",
         "uid": "finflow-marts"
       },
-      "description": "The last 12 full months, newest first: what each wants category cost. Colour compares a category with its own months, so a stronger colour is a heavier month for that category. Click an amount for its line items. Categories under 1% of the bucket's total are left out.",
+      "description": "The last 12 full months, newest first: what each wants category cost. Shading compares a category with its own months, so a stronger colour is a heavier month for that category. Click an amount for its line items. Categories under 1% of the bucket's total are left out.",
       "gridPos": {
         "x": 0,
-        "y": 24,
+        "y": 36,
         "w": 24,
         "h": 9
       },
@@ -649,7 +1017,7 @@
           "min": 0,
           "fieldMinMax": true,
           "color": {
-            "mode": "continuous-blues"
+            "mode": "thresholds"
           },
           "custom": {
             "align": "auto",
@@ -657,6 +1025,31 @@
               "type": "color-background",
               "mode": "basic"
             }
+          },
+          "thresholds": {
+            "mode": "percentage",
+            "steps": [
+              {
+                "color": "transparent",
+                "value": null
+              },
+              {
+                "color": "rgba(217,89,38,0.15)",
+                "value": 1
+              },
+              {
+                "color": "rgba(217,89,38,0.3)",
+                "value": 25
+              },
+              {
+                "color": "rgba(217,89,38,0.5)",
+                "value": 50
+              },
+              {
+                "color": "rgba(217,89,38,0.75)",
+                "value": 75
+              }
+            ]
           }
         },
         "overrides": [
@@ -721,10 +1114,10 @@
         "type": "grafana-postgresql-datasource",
         "uid": "finflow-marts"
       },
-      "description": "The last 12 full months, newest first: what each needs category cost. Colour compares a category with its own months, so a stronger colour is a heavier month for that category. Click an amount for its line items. Categories under 1% of the bucket's total are left out.",
+      "description": "The last 12 full months, newest first: what each needs category cost. Shading compares a category with its own months, so a stronger colour is a heavier month for that category. Click an amount for its line items. Categories under 1% of the bucket's total are left out.",
       "gridPos": {
         "x": 0,
-        "y": 33,
+        "y": 45,
         "w": 24,
         "h": 9
       },
@@ -771,7 +1164,7 @@
           "min": 0,
           "fieldMinMax": true,
           "color": {
-            "mode": "continuous-blues"
+            "mode": "thresholds"
           },
           "custom": {
             "align": "auto",
@@ -779,6 +1172,31 @@
               "type": "color-background",
               "mode": "basic"
             }
+          },
+          "thresholds": {
+            "mode": "percentage",
+            "steps": [
+              {
+                "color": "transparent",
+                "value": null
+              },
+              {
+                "color": "rgba(57,135,229,0.15)",
+                "value": 1
+              },
+              {
+                "color": "rgba(57,135,229,0.3)",
+                "value": 25
+              },
+              {
+                "color": "rgba(57,135,229,0.5)",
+                "value": 50
+              },
+              {
+                "color": "rgba(57,135,229,0.75)",
+                "value": 75
+              }
+            ]
           }
         },
         "overrides": [
@@ -822,378 +1240,6 @@
               {
                 "id": "custom.width",
                 "value": 110
-              }
-            ]
-          }
-        ]
-      },
-      "options": {
-        "showHeader": true,
-        "cellHeight": "sm",
-        "footer": {
-          "show": false
-        }
-      }
-    },
-    {
-      "id": 5,
-      "type": "table",
-      "title": "Biggest changes last month, by category",
-      "description": "The last full month against the mean of the 3 full months before it, by category, largest change first. A positive change is more spending. Click a category for last month's line items, or a mean for the 3 months behind it.",
-      "gridPos": {
-        "x": 0,
-        "y": 42,
-        "w": 12,
-        "h": 12
-      },
-      "datasource": {
-        "type": "grafana-postgresql-datasource",
-        "uid": "finflow-marts"
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": {
-            "type": "grafana-postgresql-datasource",
-            "uid": "finflow-marts"
-          },
-          "format": "table",
-          "rawQuery": true,
-          "rawSql": "select\n  c.category_name as \"Category\",\n  initcap(c.bucket) as \"Bucket\",\n  sum(c.spend) as \"Last full month\",\n  sum(c.spend_avg_3m) as \"Mean of previous 3\",\n  sum(c.spend) - sum(c.spend_avg_3m) as \"Change\"\nfrom marts.fct_subcategory_month c\nwhere c.month_start = (select max(month_start) from marts.fct_month_plan where is_complete_month)\n  and c.baseline_months > 0\ngroup by c.bucket, c.category_name\nhaving sum(c.spend) - sum(c.spend_avg_3m) <> 0\norder by abs(sum(c.spend) - sum(c.spend_avg_3m)) desc\nlimit 10"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "prefix:$",
-          "decimals": 0,
-          "noValue": "–",
-          "custom": {
-            "align": "auto",
-            "cellOptions": {
-              "type": "auto"
-            }
-          }
-        },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Change"
-            },
-            "properties": [
-              {
-                "id": "custom.cellOptions",
-                "value": {
-                  "type": "color-text"
-                }
-              },
-              {
-                "id": "color",
-                "value": {
-                  "mode": "thresholds"
-                }
-              },
-              {
-                "id": "thresholds",
-                "value": {
-                  "mode": "absolute",
-                  "steps": [
-                    {
-                      "color": "#0ca30c",
-                      "value": null
-                    },
-                    {
-                      "color": "#d03b3b",
-                      "value": 0
-                    }
-                  ]
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byRegexp",
-              "options": "^(Category|Subcategory|Bucket)$"
-            },
-            "properties": [
-              {
-                "id": "unit",
-                "value": "none"
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Bucket"
-            },
-            "properties": [
-              {
-                "id": "custom.width",
-                "value": 70
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Last full month"
-            },
-            "properties": [
-              {
-                "id": "custom.width",
-                "value": 115
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Mean of previous 3"
-            },
-            "properties": [
-              {
-                "id": "custom.width",
-                "value": 140
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Change"
-            },
-            "properties": [
-              {
-                "id": "custom.width",
-                "value": 75
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Category"
-            },
-            "properties": [
-              {
-                "id": "links",
-                "value": [
-                  {
-                    "title": "See the line items",
-                    "url": "/d/finflow-ledger?var-month=${last_month}&var-span=0&var-bucket=${__data.fields.Bucket}&var-category=${__data.fields.Category:percentencode}"
-                  }
-                ]
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Mean of previous 3"
-            },
-            "properties": [
-              {
-                "id": "links",
-                "value": [
-                  {
-                    "title": "See the line items of the 3 full months before",
-                    "url": "/d/finflow-ledger?var-month=${last_month}&var-span=3&var-bucket=${__data.fields.Bucket}&var-category=${__data.fields.Category:percentencode}"
-                  }
-                ]
-              }
-            ]
-          }
-        ]
-      },
-      "options": {
-        "showHeader": true,
-        "cellHeight": "sm",
-        "footer": {
-          "show": false
-        }
-      }
-    },
-    {
-      "id": 8,
-      "type": "table",
-      "title": "Biggest changes last month, by subcategory",
-      "description": "The last full month against the mean of the 3 full months before it, by subcategory, largest change first. A positive change is more spending. Click a category for last month's line items, or a mean for the 3 months behind it.",
-      "gridPos": {
-        "x": 12,
-        "y": 42,
-        "w": 12,
-        "h": 12
-      },
-      "datasource": {
-        "type": "grafana-postgresql-datasource",
-        "uid": "finflow-marts"
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": {
-            "type": "grafana-postgresql-datasource",
-            "uid": "finflow-marts"
-          },
-          "format": "table",
-          "rawQuery": true,
-          "rawSql": "select\n  c.category_name as \"Category\", c.subcategory_name as \"Subcategory\",\n  initcap(c.bucket) as \"Bucket\",\n  sum(c.spend) as \"Last full month\",\n  sum(c.spend_avg_3m) as \"Mean of previous 3\",\n  sum(c.spend) - sum(c.spend_avg_3m) as \"Change\"\nfrom marts.fct_subcategory_month c\nwhere c.month_start = (select max(month_start) from marts.fct_month_plan where is_complete_month)\n  and c.baseline_months > 0\ngroup by c.bucket, c.category_name, c.subcategory_name\nhaving sum(c.spend) - sum(c.spend_avg_3m) <> 0\norder by abs(sum(c.spend) - sum(c.spend_avg_3m)) desc\nlimit 10"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "prefix:$",
-          "decimals": 0,
-          "noValue": "–",
-          "custom": {
-            "align": "auto",
-            "cellOptions": {
-              "type": "auto"
-            }
-          }
-        },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Change"
-            },
-            "properties": [
-              {
-                "id": "custom.cellOptions",
-                "value": {
-                  "type": "color-text"
-                }
-              },
-              {
-                "id": "color",
-                "value": {
-                  "mode": "thresholds"
-                }
-              },
-              {
-                "id": "thresholds",
-                "value": {
-                  "mode": "absolute",
-                  "steps": [
-                    {
-                      "color": "#0ca30c",
-                      "value": null
-                    },
-                    {
-                      "color": "#d03b3b",
-                      "value": 0
-                    }
-                  ]
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byRegexp",
-              "options": "^(Category|Subcategory|Bucket)$"
-            },
-            "properties": [
-              {
-                "id": "unit",
-                "value": "none"
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Bucket"
-            },
-            "properties": [
-              {
-                "id": "custom.width",
-                "value": 70
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Last full month"
-            },
-            "properties": [
-              {
-                "id": "custom.width",
-                "value": 115
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Mean of previous 3"
-            },
-            "properties": [
-              {
-                "id": "custom.width",
-                "value": 140
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Change"
-            },
-            "properties": [
-              {
-                "id": "custom.width",
-                "value": 75
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Category"
-            },
-            "properties": [
-              {
-                "id": "custom.width",
-                "value": 140
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Category"
-            },
-            "properties": [
-              {
-                "id": "links",
-                "value": [
-                  {
-                    "title": "See the line items",
-                    "url": "/d/finflow-ledger?var-month=${last_month}&var-span=0&var-bucket=${__data.fields.Bucket}&var-category=${__data.fields.Category:percentencode}"
-                  }
-                ]
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Mean of previous 3"
-            },
-            "properties": [
-              {
-                "id": "links",
-                "value": [
-                  {
-                    "title": "See the line items of the 3 full months before",
-                    "url": "/d/finflow-ledger?var-month=${last_month}&var-span=3&var-bucket=${__data.fields.Bucket}&var-category=${__data.fields.Category:percentencode}"
-                  }
-                ]
               }
             ]
           }

@@ -456,7 +456,7 @@
           "min": 0,
           "color": {
             "mode": "fixed",
-            "fixedColor": "#3987e5"
+            "fixedColor": "#898781"
           },
           "custom": {
             "fillOpacity": 100,

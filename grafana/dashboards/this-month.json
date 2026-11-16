@@ -486,8 +486,7 @@
               {
                 "id": "custom.cellOptions",
                 "value": {
-                  "type": "color-background",
-                  "mode": "basic"
+                  "type": "color-text"
                 }
               },
               {
@@ -502,7 +501,7 @@
                   "mode": "absolute",
                   "steps": [
                     {
-                      "color": "transparent",
+                      "color": "text",
                       "value": null
                     }
                   ]
@@ -533,6 +532,18 @@
                     }
                   }
                 ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "So far"
+            },
+            "properties": [
+              {
+                "id": "decimals",
+                "value": 0
               }
             ]
           }
@@ -1141,7 +1152,7 @@
           },
           "format": "table",
           "rawQuery": true,
-          "rawSql": "select\n  category_name as \"Category\",\n  subcategory_name as \"Subcategory\",\n  spend as \"This month\",\n  spend_to_date_avg_3m as \"Usual by this day\",\n  spend - spend_to_date_avg_3m as \"Change\"\nfrom marts.fct_subcategory_month\nwhere month_start = '${month}' and bucket = 'wants'\n  and (spend <> 0 or coalesce(spend_to_date_avg_3m, 0) <> 0)\norder by spend desc, 4 desc nulls last, 1, 2\nlimit 8"
+          "rawSql": "select\n  category_name as \"Category\",\n  subcategory_name as \"Subcategory\",\n  spend as \"This month\",\n  spend_to_date_avg_3m as \"Usual by this day\",\n  case when (spend - spend_to_date_avg_3m) > 0 then '+$' when (spend - spend_to_date_avg_3m) < 0 then '−$' else '$' end || to_char(abs(round((spend - spend_to_date_avg_3m))), 'FM999999990') as \"Change\"\nfrom marts.fct_subcategory_month\nwhere month_start = '${month}' and bucket = 'wants'\n  and (spend <> 0 or coalesce(spend_to_date_avg_3m, 0) <> 0)\norder by spend desc, 4 desc nulls last, 1, 2\nlimit 8"
         }
       ],
       "fieldConfig": {
@@ -1167,42 +1178,6 @@
               {
                 "id": "unit",
                 "value": "none"
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Change"
-            },
-            "properties": [
-              {
-                "id": "custom.cellOptions",
-                "value": {
-                  "type": "color-text"
-                }
-              },
-              {
-                "id": "color",
-                "value": {
-                  "mode": "thresholds"
-                }
-              },
-              {
-                "id": "thresholds",
-                "value": {
-                  "mode": "absolute",
-                  "steps": [
-                    {
-                      "color": "#0ca30c",
-                      "value": null
-                    },
-                    {
-                      "color": "#d03b3b",
-                      "value": 0
-                    }
-                  ]
-                }
               }
             ]
           },
@@ -1258,8 +1233,55 @@
             },
             "properties": [
               {
+                "id": "unit",
+                "value": "none"
+              },
+              {
+                "id": "custom.align",
+                "value": "right"
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "regex",
+                    "options": {
+                      "pattern": "^\\+.*",
+                      "result": {
+                        "color": "#d03b3b",
+                        "index": 0
+                      }
+                    }
+                  },
+                  {
+                    "type": "regex",
+                    "options": {
+                      "pattern": "^−.*",
+                      "result": {
+                        "color": "#0ca30c",
+                        "index": 1
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Change"
+            },
+            "properties": [
+              {
                 "id": "custom.width",
-                "value": 80
+                "value": 85
               }
             ]
           }
