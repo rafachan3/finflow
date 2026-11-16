@@ -3426,3 +3426,43 @@ slice-by-month row.
 **Ruled out:** a free date range on the Ledger (the marts are monthly and
 the figures being explained are whole months); a UX research agent for
 ideas, since the four additions were already chosen.
+
+## 2026-11-16: Dashboards, round 7: a design review, and no Review dashboard
+
+A data-visualization review of the three dashboards (read-only agent,
+2026-11-15) and the owner's answers to its proposals.
+
+- **No Monthly review dashboard** (owner agreed). Its tiles are covered:
+  shares by month and their averages on Trends, This month on a past
+  month, the two "Biggest changes" tables, the Unallocated column. Only
+  the recurring commitments table was missing; it is now on Trends. The
+  how-often-by-how-much scatter became the "Line items" and "Typical"
+  columns of the Ledger's "By subcategory".
+- **"Wants by days since pay" replaces "Wants by day of month".** Month
+  end moves between the 28th and the 31st, so calendar days blur the pay
+  cycle; counting from the last pay day lines both cycles up and doubles
+  the samples per bar. A pay day is found from the data (a day bringing
+  at least 25% of its month's income), never written into the JSON.
+  "Wants by weekday" ships with it; both use own, non-recurring wants,
+  zero-filled over full months.
+- **Change columns are signed text** ("+$567", "−$867") coloured by regex
+  value mappings, so the direction does not rest on colour alone. The
+  rows are ordered in SQL, so the columns need not sort.
+- **Category tables are shaded in the bucket's colour** (percentage
+  thresholds, per column). Bar-gauge cells were tried and rejected: they
+  drop the data links and leave the amounts ragged.
+- **Bucket colours mean buckets only.** The recurring chart and the
+  Ledger's month chart use neutral colours. "Buckets vs targets" shows
+  its status as coloured text, not filled cells.
+- **The pace lines stay green and red** (owner's choice): green at or
+  below the mean reads at a glance, and the red part is a separate named
+  series, so colour is not the only cue.
+- **The income line ends at the last full month**; the current month is
+  a separate point, so an unfinished month does not read as a drop.
+- **Ledger filters**: search (item, merchant, note), tag, and who paid
+  (the owner by default, as elsewhere). Income and transfers are their
+  own table that follows only month and period, so the spending total
+  stays a spending total.
+- **`check_dashboards.py` samples variable combinations above 500**: an
+  even sample of the product plus every value of each variable once. The
+  Ledger's seven variables had taken the check from one minute to ten.
