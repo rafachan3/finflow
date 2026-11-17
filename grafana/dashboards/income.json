@@ -878,8 +878,8 @@
     {
       "id": 7,
       "type": "timeseries",
-      "title": "Savings balance",
-      "description": "The balance of each savings account at the end of each month, where an opening balance is recorded.",
+      "title": "Set aside since tracking began",
+      "description": "What has gone into each savings, investment and debt account since the ledger began, less what came back out. It is not a balance: it leaves out what was there before and any growth.",
       "datasource": {
         "type": "grafana-postgresql-datasource",
         "uid": "finflow-marts"
@@ -899,7 +899,7 @@
           },
           "format": "time_series",
           "rawQuery": true,
-          "rawSql": "select p.month_start::timestamp at time zone 'America/Toronto' as time, a.account_name as metric, a.balance as value\nfrom (select * from marts.fct_month_plan order by month_start desc limit 13) p\njoin marts.fct_account_month a on a.month_start = p.month_start\nwhere a.balance is not null\norder by p.month_start, a.account_name"
+          "rawSql": "select p.month_start::timestamp at time zone 'America/Toronto' as time, a.account_name as metric, a.net_flow_cumulative as value\nfrom (select * from marts.fct_month_plan order by month_start desc limit 13) p\njoin marts.fct_account_month a on a.month_start = p.month_start\nwhere a.net_flow_cumulative is not null\norder by p.month_start, a.account_name"
         }
       ],
       "fieldConfig": {
