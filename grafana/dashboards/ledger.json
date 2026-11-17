@@ -37,7 +37,7 @@
         "type": "query",
         "name": "month",
         "label": "Month",
-        "description": "The month shown, or the month the period counts back from.",
+        "description": "The month shown, or the month the period is counted from.",
         "datasource": {
           "type": "grafana-postgresql-datasource",
           "uid": "finflow-marts"
@@ -56,8 +56,8 @@
         "type": "custom",
         "name": "span",
         "label": "Period",
-        "description": "The month itself, or the full months before it.",
-        "query": "This month : 0,The 3 full months before it : 3,The 6 full months before it : 6,The 12 full months before it : 12",
+        "description": "Which months to show, counted from the month on the left. Custom dates uses the From and To boxes.",
+        "query": "This month : 0,The 3 full months before it : 3,The 6 full months before it : 6,The 12 full months before it : 12,The 12 months ending with it : r12,Its calendar year : year,Everything : all,Custom dates : custom",
         "current": {
           "text": "This month",
           "value": "0",
@@ -83,10 +83,68 @@
             "text": "The 12 full months before it",
             "value": "12",
             "selected": false
+          },
+          {
+            "text": "The 12 months ending with it",
+            "value": "r12",
+            "selected": false
+          },
+          {
+            "text": "Its calendar year",
+            "value": "year",
+            "selected": false
+          },
+          {
+            "text": "Everything",
+            "value": "all",
+            "selected": false
+          },
+          {
+            "text": "Custom dates",
+            "value": "custom",
+            "selected": false
           }
         ],
         "multi": false,
         "includeAll": false,
+        "hide": 0
+      },
+      {
+        "type": "textbox",
+        "name": "from",
+        "label": "From",
+        "description": "First day, as YYYY-MM-DD. Used only when Period is Custom dates.",
+        "query": "",
+        "current": {
+          "text": "",
+          "value": ""
+        },
+        "options": [
+          {
+            "text": "",
+            "value": "",
+            "selected": true
+          }
+        ],
+        "hide": 0
+      },
+      {
+        "type": "textbox",
+        "name": "to",
+        "label": "To",
+        "description": "Last day, as YYYY-MM-DD. Used only when Period is Custom dates.",
+        "query": "",
+        "current": {
+          "text": "",
+          "value": ""
+        },
+        "options": [
+          {
+            "text": "",
+            "value": "",
+            "selected": true
+          }
+        ],
         "hide": 0
       },
       {
@@ -189,10 +247,28 @@
         "definition": "select v as __value, t as __text from (select 'all' as v, 'All' as t, 0 as o union all select distinct u.tag, u.tag, 1 from marts.fct_transactions f cross join lateral unnest(f.tags) as u (tag)) x order by o, t"
       },
       {
+        "type": "query",
+        "name": "merchant",
+        "label": "Merchant",
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "finflow-marts"
+        },
+        "refresh": 1,
+        "sort": 0,
+        "multi": false,
+        "includeAll": false,
+        "current": {},
+        "options": [],
+        "hide": 0,
+        "query": "select v as __value, t as __text from (select 'all' as v, 'All' as t, 0 as o union all select distinct merchant_name, merchant_name, 1 from marts.fct_transactions where merchant_name is not null) x order by o, t",
+        "definition": "select v as __value, t as __text from (select 'all' as v, 'All' as t, 0 as o union all select distinct merchant_name, merchant_name, 1 from marts.fct_transactions where merchant_name is not null) x order by o, t"
+      },
+      {
         "type": "textbox",
         "name": "q",
         "label": "Search",
-        "description": "Text to find in the item, merchant or note.",
+        "description": "Text to find in the item, merchant, venue or note.",
         "query": "",
         "current": {
           "text": "",
@@ -224,7 +300,7 @@
         "w": 24,
         "h": 3
       },
-      "description": "Spending for the month or period and the filters chosen at the top. 'Paid by' starts on you, which is what the other dashboards count.",
+      "description": "Totals for the selection. Per month divides by the calendar months the period touches, counting only months the ledger covers.",
       "targets": [
         {
           "refId": "A",
@@ -234,7 +310,7 @@
           },
           "format": "table",
           "rawQuery": true,
-          "rawSql": "select coalesce(sum(amount), 0) as \"Spent\", coalesce(sum(amount), 0) / greatest(${span}, 1) as \"Per month\", count(*) as \"Line items\"\nfrom marts.fct_transactions\nwhere type = 'expense'\n  and month_start >= '${month}'::date - make_interval(months => ${span})\n  and month_start < '${month}'::date + case when ${span} = 0 then interval '1 month' else interval '0' end\n  and ('${bucket}' = 'all' or initcap(bucket) = '${bucket}')\n  and (${category:sqlstring} = 'all' or category_name = ${category:sqlstring})\n  and ('${paid}' = 'all' or is_self_funded = ('${paid}' = 'own'))\n  and (${tag:sqlstring} = 'all' or ${tag:sqlstring} = any(tags))\n  and (${q:sqlstring} = '' or concat_ws(' ', item_description, description, merchant_name, venue_name, notes) ilike '%' || ${q:sqlstring} || '%')"
+          "rawSql": "select coalesce(sum(f.amount), 0) as \"Spent\", coalesce(sum(f.amount), 0) / max(r.n) as \"Per month\", count(f.line_key) as \"Line items\"\nfrom (\n  select d0, d1, lo, cur,\n    (extract(year from age(date_trunc('month', d1 - 1), date_trunc('month', d0))) * 12\n      + extract(month from age(date_trunc('month', d1 - 1), date_trunc('month', d0))) + 1)::int as n\n  from (\n    select greatest(a, lo) as d0, greatest(least(b, hi), greatest(a, lo) + 1) as d1, lo, cur\n    from (\n      select m.lo, m.hi, m.cur,\n        case '${span}'\n          when '0' then s.m\n          when '3' then (s.m - interval '3 months')::date\n          when '6' then (s.m - interval '6 months')::date\n          when '12' then (s.m - interval '12 months')::date\n          when 'r12' then (s.m - interval '11 months')::date\n          when 'year' then date_trunc('year', s.m)::date\n          when 'custom' then case when ${from:sqlstring} ~ '^\\d{4}-\\d{2}-\\d{2}$' then to_date(${from:sqlstring}, 'YYYY-MM-DD') else m.lo end\n          else m.lo\n        end as a,\n        case '${span}'\n          when '0' then (s.m + interval '1 month')::date\n          when '3' then s.m\n          when '6' then s.m\n          when '12' then s.m\n          when 'r12' then (s.m + interval '1 month')::date\n          when 'year' then (date_trunc('year', s.m) + interval '1 year')::date\n          when 'custom' then case when ${to:sqlstring} ~ '^\\d{4}-\\d{2}-\\d{2}$' then to_date(${to:sqlstring}, 'YYYY-MM-DD') + 1 else m.hi end\n          else m.hi\n        end as b\n      from (select to_date('${month}', 'YYYY-MM-DD') as m) s\n      cross join (\n        select min(month_start) as lo, (max(month_start) + interval '1 month')::date as hi,\n               max(month_start) filter (where not is_complete_month) as cur\n        from marts.fct_month_plan\n      ) m\n    ) x\n  ) y\n) r\nleft join marts.fct_transactions f\n  on f.type = 'expense'\n  and f.occurred_on >= r.d0 and f.occurred_on < r.d1\n  and ('${bucket}' = 'all' or initcap(f.bucket) = '${bucket}')\n  and (${category:sqlstring} = 'all' or f.category_name = ${category:sqlstring})\n  and ('${paid}' = 'all' or f.is_self_funded = ('${paid}' = 'own'))\n  and (${tag:sqlstring} = 'all' or ${tag:sqlstring} = any(f.tags))\n  and (${merchant:sqlstring} = 'all' or f.merchant_name = ${merchant:sqlstring})\n  and (${q:sqlstring} = '' or concat_ws(' ', f.item_description, f.description, f.merchant_name, f.venue_name, f.notes) ilike '%' || ${q:sqlstring} || '%')"
         }
       ],
       "fieldConfig": {
@@ -284,10 +360,10 @@
       }
     },
     {
-      "id": 2,
+      "id": 7,
       "type": "table",
-      "title": "By subcategory",
-      "description": "Each subcategory in the selection, largest first. Per month divides by the number of months in the period; typical is the median line item.",
+      "title": "By category",
+      "description": "Each category in the selection, largest first. Share is its part of the selection. Change compares Per month with the mean of the 3 full months before the period; it stays empty when the period includes the unfinished month, is not whole months, or the ledger does not reach 3 months further back.",
       "datasource": {
         "type": "grafana-postgresql-datasource",
         "uid": "finflow-marts"
@@ -295,7 +371,7 @@
       "gridPos": {
         "x": 0,
         "y": 3,
-        "w": 12,
+        "w": 10,
         "h": 9
       },
       "targets": [
@@ -307,7 +383,7 @@
           },
           "format": "table",
           "rawQuery": true,
-          "rawSql": "select\n  category_name as \"Category\",\n  subcategory_name as \"Subcategory\",\n  initcap(bucket) as \"Bucket\",\n  sum(amount) as \"Spent\",\n  sum(amount) / greatest(${span}, 1) as \"Per month\",\n  count(*) as \"Line items\",\n  percentile_cont(0.5) within group (order by amount) as \"Typical\"\nfrom marts.fct_transactions\nwhere type = 'expense'\n  and month_start >= '${month}'::date - make_interval(months => ${span})\n  and month_start < '${month}'::date + case when ${span} = 0 then interval '1 month' else interval '0' end\n  and ('${bucket}' = 'all' or initcap(bucket) = '${bucket}')\n  and (${category:sqlstring} = 'all' or category_name = ${category:sqlstring})\n  and ('${paid}' = 'all' or is_self_funded = ('${paid}' = 'own'))\n  and (${tag:sqlstring} = 'all' or ${tag:sqlstring} = any(tags))\n  and (${q:sqlstring} = '' or concat_ws(' ', item_description, description, merchant_name, venue_name, notes) ilike '%' || ${q:sqlstring} || '%')\ngroup by 1, 2, 3\norder by 4 desc, 1, 2"
+          "rawSql": "with r as (select * from (\n  select d0, d1, lo, cur,\n    (extract(year from age(date_trunc('month', d1 - 1), date_trunc('month', d0))) * 12\n      + extract(month from age(date_trunc('month', d1 - 1), date_trunc('month', d0))) + 1)::int as n\n  from (\n    select greatest(a, lo) as d0, greatest(least(b, hi), greatest(a, lo) + 1) as d1, lo, cur\n    from (\n      select m.lo, m.hi, m.cur,\n        case '${span}'\n          when '0' then s.m\n          when '3' then (s.m - interval '3 months')::date\n          when '6' then (s.m - interval '6 months')::date\n          when '12' then (s.m - interval '12 months')::date\n          when 'r12' then (s.m - interval '11 months')::date\n          when 'year' then date_trunc('year', s.m)::date\n          when 'custom' then case when ${from:sqlstring} ~ '^\\d{4}-\\d{2}-\\d{2}$' then to_date(${from:sqlstring}, 'YYYY-MM-DD') else m.lo end\n          else m.lo\n        end as a,\n        case '${span}'\n          when '0' then (s.m + interval '1 month')::date\n          when '3' then s.m\n          when '6' then s.m\n          when '12' then s.m\n          when 'r12' then (s.m + interval '1 month')::date\n          when 'year' then (date_trunc('year', s.m) + interval '1 year')::date\n          when 'custom' then case when ${to:sqlstring} ~ '^\\d{4}-\\d{2}-\\d{2}$' then to_date(${to:sqlstring}, 'YYYY-MM-DD') + 1 else m.hi end\n          else m.hi\n        end as b\n      from (select to_date('${month}', 'YYYY-MM-DD') as m) s\n      cross join (\n        select min(month_start) as lo, (max(month_start) + interval '1 month')::date as hi,\n               max(month_start) filter (where not is_complete_month) as cur\n        from marts.fct_month_plan\n      ) m\n    ) x\n  ) y\n) r0),\ns as (\n  select f.category_name, sum(f.amount) as spent, count(*) as line_items\n  from marts.fct_transactions f cross join r\n  where f.type = 'expense'\n    and f.occurred_on >= r.d0 and f.occurred_on < r.d1\n  and ('${bucket}' = 'all' or initcap(f.bucket) = '${bucket}')\n  and (${category:sqlstring} = 'all' or f.category_name = ${category:sqlstring})\n  and ('${paid}' = 'all' or f.is_self_funded = ('${paid}' = 'own'))\n  and (${tag:sqlstring} = 'all' or ${tag:sqlstring} = any(f.tags))\n  and (${merchant:sqlstring} = 'all' or f.merchant_name = ${merchant:sqlstring})\n  and (${q:sqlstring} = '' or concat_ws(' ', f.item_description, f.description, f.merchant_name, f.venue_name, f.notes) ilike '%' || ${q:sqlstring} || '%')\n  group by f.category_name\n),\nb as (\n  select f.category_name, sum(f.amount) / 3 as per_month\n  from marts.fct_transactions f cross join r\n  where f.type = 'expense'\n    and f.occurred_on >= r.d0 - interval '3 months' and f.occurred_on < r.d0\n  and ('${bucket}' = 'all' or initcap(f.bucket) = '${bucket}')\n  and (${category:sqlstring} = 'all' or f.category_name = ${category:sqlstring})\n  and ('${paid}' = 'all' or f.is_self_funded = ('${paid}' = 'own'))\n  and (${tag:sqlstring} = 'all' or ${tag:sqlstring} = any(f.tags))\n  and (${merchant:sqlstring} = 'all' or f.merchant_name = ${merchant:sqlstring})\n  and (${q:sqlstring} = '' or concat_ws(' ', f.item_description, f.description, f.merchant_name, f.venue_name, f.notes) ilike '%' || ${q:sqlstring} || '%')\n  group by f.category_name\n)\nselect\n  s.category_name as \"Category\",\n  s.spent as \"Spent\",\n  s.spent / r.n as \"Per month\",\n  s.line_items as \"Line items\",\n  s.spent / sum(s.spent) over () as \"Share\",\n  case when r.d0 = date_trunc('month', r.d0) and r.d1 = date_trunc('month', r.d1)\n        and r.d1 <= coalesce(r.cur, r.d1) and r.d0 - interval '3 months' >= r.lo\n       then case when (s.spent / r.n - coalesce(b.per_month, 0)) > 0 then '+$' when (s.spent / r.n - coalesce(b.per_month, 0)) < 0 then '−$' else '$' end || to_char(abs(round((s.spent / r.n - coalesce(b.per_month, 0)))), 'FM999999990') end as \"Change\"\nfrom s cross join r\nleft join b on b.category_name = s.category_name\norder by s.spent desc, 1"
         }
       ],
       "fieldConfig": {
@@ -333,30 +409,6 @@
               {
                 "id": "unit",
                 "value": "none"
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Category"
-            },
-            "properties": [
-              {
-                "id": "custom.width",
-                "value": 130
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Bucket"
-            },
-            "properties": [
-              {
-                "id": "custom.width",
-                "value": 65
               }
             ]
           },
@@ -403,12 +455,83 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "Typical"
+              "options": "Share"
             },
             "properties": [
               {
                 "id": "custom.width",
-                "value": 75
+                "value": 65
+              },
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Change"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 80
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Change"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "none"
+              },
+              {
+                "id": "custom.align",
+                "value": "right"
+              },
+              {
+                "id": "custom.width",
+                "value": 80
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "regex",
+                    "options": {
+                      "pattern": "^\\+.*",
+                      "result": {
+                        "color": "#d03b3b",
+                        "index": 0
+                      }
+                    }
+                  },
+                  {
+                    "type": "regex",
+                    "options": {
+                      "pattern": "^−.*",
+                      "result": {
+                        "color": "#0ca30c",
+                        "index": 1
+                      }
+                    }
+                  }
+                ]
               }
             ]
           }
@@ -423,20 +546,20 @@
       }
     },
     {
-      "id": 4,
-      "type": "barchart",
-      "title": "Selection by month",
+      "id": 2,
+      "type": "table",
+      "title": "By subcategory",
+      "description": "Each subcategory in the selection, largest first, with its category beside it. Share is its part of the selection. Change compares Per month with the mean of the 3 full months before the period; it stays empty when the period includes the unfinished month, is not whole months, or the ledger does not reach 3 months further back.",
       "datasource": {
         "type": "grafana-postgresql-datasource",
         "uid": "finflow-marts"
       },
       "gridPos": {
-        "x": 12,
+        "x": 10,
         "y": 3,
-        "w": 12,
+        "w": 14,
         "h": 9
       },
-      "description": "Spending that matches the filters at the top for each of the last 12 full months and this month, whatever period is selected. It shows whether a figure is a one-off or a habit. * marks this month so far.",
       "targets": [
         {
           "refId": "A",
@@ -446,41 +569,177 @@
           },
           "format": "table",
           "rawQuery": true,
-          "rawSql": "select\n  to_char(p.month_start, 'Mon YY') || case when p.is_complete_month then '' else '*' end as month,\n  coalesce(sum(f.amount), 0) as \"Spent\"\nfrom (select * from marts.fct_month_plan order by month_start desc limit 13) p\nleft join (\n  select month_start, amount from marts.fct_transactions\n  where type = 'expense'\n    and ('${bucket}' = 'all' or initcap(bucket) = '${bucket}')\n  and (${category:sqlstring} = 'all' or category_name = ${category:sqlstring})\n  and ('${paid}' = 'all' or is_self_funded = ('${paid}' = 'own'))\n  and (${tag:sqlstring} = 'all' or ${tag:sqlstring} = any(tags))\n  and (${q:sqlstring} = '' or concat_ws(' ', item_description, description, merchant_name, venue_name, notes) ilike '%' || ${q:sqlstring} || '%')\n) f on f.month_start = p.month_start\ngroup by p.month_start, p.is_complete_month\norder by p.month_start"
+          "rawSql": "with r as (select * from (\n  select d0, d1, lo, cur,\n    (extract(year from age(date_trunc('month', d1 - 1), date_trunc('month', d0))) * 12\n      + extract(month from age(date_trunc('month', d1 - 1), date_trunc('month', d0))) + 1)::int as n\n  from (\n    select greatest(a, lo) as d0, greatest(least(b, hi), greatest(a, lo) + 1) as d1, lo, cur\n    from (\n      select m.lo, m.hi, m.cur,\n        case '${span}'\n          when '0' then s.m\n          when '3' then (s.m - interval '3 months')::date\n          when '6' then (s.m - interval '6 months')::date\n          when '12' then (s.m - interval '12 months')::date\n          when 'r12' then (s.m - interval '11 months')::date\n          when 'year' then date_trunc('year', s.m)::date\n          when 'custom' then case when ${from:sqlstring} ~ '^\\d{4}-\\d{2}-\\d{2}$' then to_date(${from:sqlstring}, 'YYYY-MM-DD') else m.lo end\n          else m.lo\n        end as a,\n        case '${span}'\n          when '0' then (s.m + interval '1 month')::date\n          when '3' then s.m\n          when '6' then s.m\n          when '12' then s.m\n          when 'r12' then (s.m + interval '1 month')::date\n          when 'year' then (date_trunc('year', s.m) + interval '1 year')::date\n          when 'custom' then case when ${to:sqlstring} ~ '^\\d{4}-\\d{2}-\\d{2}$' then to_date(${to:sqlstring}, 'YYYY-MM-DD') + 1 else m.hi end\n          else m.hi\n        end as b\n      from (select to_date('${month}', 'YYYY-MM-DD') as m) s\n      cross join (\n        select min(month_start) as lo, (max(month_start) + interval '1 month')::date as hi,\n               max(month_start) filter (where not is_complete_month) as cur\n        from marts.fct_month_plan\n      ) m\n    ) x\n  ) y\n) r0),\ns as (\n  select f.category_name, f.subcategory_name, sum(f.amount) as spent, count(*) as line_items\n  from marts.fct_transactions f cross join r\n  where f.type = 'expense'\n    and f.occurred_on >= r.d0 and f.occurred_on < r.d1\n  and ('${bucket}' = 'all' or initcap(f.bucket) = '${bucket}')\n  and (${category:sqlstring} = 'all' or f.category_name = ${category:sqlstring})\n  and ('${paid}' = 'all' or f.is_self_funded = ('${paid}' = 'own'))\n  and (${tag:sqlstring} = 'all' or ${tag:sqlstring} = any(f.tags))\n  and (${merchant:sqlstring} = 'all' or f.merchant_name = ${merchant:sqlstring})\n  and (${q:sqlstring} = '' or concat_ws(' ', f.item_description, f.description, f.merchant_name, f.venue_name, f.notes) ilike '%' || ${q:sqlstring} || '%')\n  group by f.category_name, f.subcategory_name\n),\nb as (\n  select f.category_name, f.subcategory_name, sum(f.amount) / 3 as per_month\n  from marts.fct_transactions f cross join r\n  where f.type = 'expense'\n    and f.occurred_on >= r.d0 - interval '3 months' and f.occurred_on < r.d0\n  and ('${bucket}' = 'all' or initcap(f.bucket) = '${bucket}')\n  and (${category:sqlstring} = 'all' or f.category_name = ${category:sqlstring})\n  and ('${paid}' = 'all' or f.is_self_funded = ('${paid}' = 'own'))\n  and (${tag:sqlstring} = 'all' or ${tag:sqlstring} = any(f.tags))\n  and (${merchant:sqlstring} = 'all' or f.merchant_name = ${merchant:sqlstring})\n  and (${q:sqlstring} = '' or concat_ws(' ', f.item_description, f.description, f.merchant_name, f.venue_name, f.notes) ilike '%' || ${q:sqlstring} || '%')\n  group by f.category_name, f.subcategory_name\n)\nselect\n  s.subcategory_name as \"Subcategory\", s.category_name as \"Category\",\n  s.spent as \"Spent\",\n  s.spent / r.n as \"Per month\",\n  s.line_items as \"Line items\",\n  s.spent / sum(s.spent) over () as \"Share\",\n  case when r.d0 = date_trunc('month', r.d0) and r.d1 = date_trunc('month', r.d1)\n        and r.d1 <= coalesce(r.cur, r.d1) and r.d0 - interval '3 months' >= r.lo\n       then case when (s.spent / r.n - coalesce(b.per_month, 0)) > 0 then '+$' when (s.spent / r.n - coalesce(b.per_month, 0)) < 0 then '−$' else '$' end || to_char(abs(round((s.spent / r.n - coalesce(b.per_month, 0)))), 'FM999999990') end as \"Change\"\nfrom s cross join r\nleft join b on b.category_name = s.category_name and b.subcategory_name = s.subcategory_name\norder by s.spent desc, 2, 1"
         }
       ],
       "fieldConfig": {
         "defaults": {
           "unit": "prefix:$",
           "decimals": 0,
-          "min": 0,
-          "color": {
-            "mode": "fixed",
-            "fixedColor": "#898781"
-          },
+          "noValue": "–",
           "custom": {
-            "fillOpacity": 100,
-            "lineWidth": 0
+            "align": "auto",
+            "filterable": false,
+            "cellOptions": {
+              "type": "auto"
+            }
           }
         },
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "^(Date|Item|Merchant|Category|Subcategory|Bucket|Note|Month|Series|Cadence|Last paid|Type|From or to|Tags|Paid by)$"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "none"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Category"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 160
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Spent"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 80
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Per month"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 90
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Line items"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 85
+              },
+              {
+                "id": "unit",
+                "value": "none"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Share"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 65
+              },
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Change"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 80
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Change"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "none"
+              },
+              {
+                "id": "custom.align",
+                "value": "right"
+              },
+              {
+                "id": "custom.width",
+                "value": 80
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "regex",
+                    "options": {
+                      "pattern": "^\\+.*",
+                      "result": {
+                        "color": "#d03b3b",
+                        "index": 0
+                      }
+                    }
+                  },
+                  {
+                    "type": "regex",
+                    "options": {
+                      "pattern": "^−.*",
+                      "result": {
+                        "color": "#0ca30c",
+                        "index": 1
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
       },
       "options": {
-        "xField": "month",
-        "orientation": "vertical",
-        "stacking": "none",
-        "showValue": "auto",
-        "barWidth": 0.6,
-        "groupWidth": 0.7,
-        "legend": {
-          "showLegend": false
-        },
-        "tooltip": {
-          "mode": "single",
-          "sort": "none"
-        },
-        "text": {
-          "valueSize": 12
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false
         }
       }
     },
@@ -498,7 +757,7 @@
         "w": 24,
         "h": 14
       },
-      "description": "Every line in the selection, largest first. Use the funnel on a column header to narrow further, for example to one subcategory.",
+      "description": "Every line item in the selection, largest first; click a header to sort or filter. Merchant is a specific shop you track; Venue is the kind of place. Either can be empty.",
       "targets": [
         {
           "refId": "A",
@@ -508,7 +767,7 @@
           },
           "format": "table",
           "rawQuery": true,
-          "rawSql": "select\n  to_char(occurred_on, 'YYYY-MM-DD') as \"Date\",\n  coalesce(item_description, description) as \"Item\",\n  coalesce(merchant_name, venue_name) as \"Merchant\",\n  category_name as \"Category\",\n  subcategory_name as \"Subcategory\",\n  initcap(bucket) as \"Bucket\",\n  amount as \"Amount\",\n  array_to_string(tags, ', ') as \"Tags\",\n  funding_source_name as \"Paid by\",\n  notes as \"Note\"\nfrom marts.fct_transactions\nwhere type = 'expense'\n  and month_start >= '${month}'::date - make_interval(months => ${span})\n  and month_start < '${month}'::date + case when ${span} = 0 then interval '1 month' else interval '0' end\n  and ('${bucket}' = 'all' or initcap(bucket) = '${bucket}')\n  and (${category:sqlstring} = 'all' or category_name = ${category:sqlstring})\n  and ('${paid}' = 'all' or is_self_funded = ('${paid}' = 'own'))\n  and (${tag:sqlstring} = 'all' or ${tag:sqlstring} = any(tags))\n  and (${q:sqlstring} = '' or concat_ws(' ', item_description, description, merchant_name, venue_name, notes) ilike '%' || ${q:sqlstring} || '%')\norder by amount desc, occurred_on desc, line_key"
+          "rawSql": "select\n  to_char(f.occurred_on, 'YYYY-MM-DD') as \"Date\",\n  coalesce(f.item_description, f.description) as \"Item\",\n  f.merchant_name as \"Merchant\",\n  f.venue_name as \"Venue\",\n  f.category_name as \"Category\",\n  f.subcategory_name as \"Subcategory\",\n  initcap(f.bucket) as \"Bucket\",\n  f.amount as \"Amount\",\n  array_to_string(f.tags, ', ') as \"Tags\",\n  f.funding_source_name as \"Paid by\",\n  f.notes as \"Note\"\nfrom marts.fct_transactions f\ncross join (\n  select d0, d1, lo, cur,\n    (extract(year from age(date_trunc('month', d1 - 1), date_trunc('month', d0))) * 12\n      + extract(month from age(date_trunc('month', d1 - 1), date_trunc('month', d0))) + 1)::int as n\n  from (\n    select greatest(a, lo) as d0, greatest(least(b, hi), greatest(a, lo) + 1) as d1, lo, cur\n    from (\n      select m.lo, m.hi, m.cur,\n        case '${span}'\n          when '0' then s.m\n          when '3' then (s.m - interval '3 months')::date\n          when '6' then (s.m - interval '6 months')::date\n          when '12' then (s.m - interval '12 months')::date\n          when 'r12' then (s.m - interval '11 months')::date\n          when 'year' then date_trunc('year', s.m)::date\n          when 'custom' then case when ${from:sqlstring} ~ '^\\d{4}-\\d{2}-\\d{2}$' then to_date(${from:sqlstring}, 'YYYY-MM-DD') else m.lo end\n          else m.lo\n        end as a,\n        case '${span}'\n          when '0' then (s.m + interval '1 month')::date\n          when '3' then s.m\n          when '6' then s.m\n          when '12' then s.m\n          when 'r12' then (s.m + interval '1 month')::date\n          when 'year' then (date_trunc('year', s.m) + interval '1 year')::date\n          when 'custom' then case when ${to:sqlstring} ~ '^\\d{4}-\\d{2}-\\d{2}$' then to_date(${to:sqlstring}, 'YYYY-MM-DD') + 1 else m.hi end\n          else m.hi\n        end as b\n      from (select to_date('${month}', 'YYYY-MM-DD') as m) s\n      cross join (\n        select min(month_start) as lo, (max(month_start) + interval '1 month')::date as hi,\n               max(month_start) filter (where not is_complete_month) as cur\n        from marts.fct_month_plan\n      ) m\n    ) x\n  ) y\n) r\nwhere f.type = 'expense'\n  and f.occurred_on >= r.d0 and f.occurred_on < r.d1\n  and ('${bucket}' = 'all' or initcap(f.bucket) = '${bucket}')\n  and (${category:sqlstring} = 'all' or f.category_name = ${category:sqlstring})\n  and ('${paid}' = 'all' or f.is_self_funded = ('${paid}' = 'own'))\n  and (${tag:sqlstring} = 'all' or ${tag:sqlstring} = any(f.tags))\n  and (${merchant:sqlstring} = 'all' or f.merchant_name = ${merchant:sqlstring})\n  and (${q:sqlstring} = '' or concat_ws(' ', f.item_description, f.description, f.merchant_name, f.venue_name, f.notes) ilike '%' || ${q:sqlstring} || '%')\norder by f.amount desc, f.occurred_on desc, f.line_key"
         }
       ],
       "fieldConfig": {
@@ -575,7 +834,7 @@
             "properties": [
               {
                 "id": "custom.width",
-                "value": 150
+                "value": 130
               }
             ]
           },
@@ -611,7 +870,7 @@
             "properties": [
               {
                 "id": "custom.width",
-                "value": 260
+                "value": 240
               }
             ]
           },
@@ -638,6 +897,18 @@
                 "value": 90
               }
             ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Venue"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 120
+              }
+            ]
           }
         ]
       },
@@ -656,10 +927,9 @@
       }
     },
     {
-      "id": 5,
-      "type": "table",
-      "title": "Selection by merchant",
-      "description": "The selection grouped by merchant, largest first.",
+      "id": 4,
+      "type": "barchart",
+      "title": "Selection by month",
       "datasource": {
         "type": "grafana-postgresql-datasource",
         "uid": "finflow-marts"
@@ -667,8 +937,71 @@
       "gridPos": {
         "x": 0,
         "y": 26,
-        "w": 12,
-        "h": 9
+        "w": 8,
+        "h": 10
+      },
+      "description": "Spending that matches the filters at the top for each of the last 12 full months and this month, whatever period is selected. It shows whether a figure is a one-off or a habit. * marks this month so far.",
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "finflow-marts"
+          },
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "select\n  to_char(p.month_start, 'Mon YY') || case when p.is_complete_month then '' else '*' end as month,\n  coalesce(sum(f.amount), 0) as \"Spent\"\nfrom (select * from marts.fct_month_plan order by month_start desc limit 13) p\nleft join marts.fct_transactions f\n  on f.month_start = p.month_start\n  and f.type = 'expense'\n  and ('${bucket}' = 'all' or initcap(f.bucket) = '${bucket}')\n  and (${category:sqlstring} = 'all' or f.category_name = ${category:sqlstring})\n  and ('${paid}' = 'all' or f.is_self_funded = ('${paid}' = 'own'))\n  and (${tag:sqlstring} = 'all' or ${tag:sqlstring} = any(f.tags))\n  and (${merchant:sqlstring} = 'all' or f.merchant_name = ${merchant:sqlstring})\n  and (${q:sqlstring} = '' or concat_ws(' ', f.item_description, f.description, f.merchant_name, f.venue_name, f.notes) ilike '%' || ${q:sqlstring} || '%')\ngroup by p.month_start, p.is_complete_month\norder by p.month_start"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "prefix:$",
+          "decimals": 0,
+          "min": 0,
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "#898781"
+          },
+          "custom": {
+            "fillOpacity": 100,
+            "lineWidth": 0
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "xField": "month",
+        "orientation": "vertical",
+        "stacking": "none",
+        "showValue": "auto",
+        "barWidth": 0.6,
+        "groupWidth": 0.7,
+        "legend": {
+          "showLegend": false
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        },
+        "text": {
+          "valueSize": 12
+        }
+      }
+    },
+    {
+      "id": 5,
+      "type": "table",
+      "title": "Selection by merchant",
+      "description": "The selection by the specific shops you track, largest first. The last row gathers everything logged without a merchant.",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "finflow-marts"
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 26,
+        "w": 8,
+        "h": 10
       },
       "targets": [
         {
@@ -679,7 +1012,7 @@
           },
           "format": "table",
           "rawQuery": true,
-          "rawSql": "select\n  coalesce(merchant_name, venue_name, 'No merchant recorded') as \"Merchant\",\n  sum(amount) as \"Spent\",\n  count(distinct transaction_id) as \"Purchases\"\nfrom marts.fct_transactions\nwhere type = 'expense'\n  and month_start >= '${month}'::date - make_interval(months => ${span})\n  and month_start < '${month}'::date + case when ${span} = 0 then interval '1 month' else interval '0' end\n  and ('${bucket}' = 'all' or initcap(bucket) = '${bucket}')\n  and (${category:sqlstring} = 'all' or category_name = ${category:sqlstring})\n  and ('${paid}' = 'all' or is_self_funded = ('${paid}' = 'own'))\n  and (${tag:sqlstring} = 'all' or ${tag:sqlstring} = any(tags))\n  and (${q:sqlstring} = '' or concat_ws(' ', item_description, description, merchant_name, venue_name, notes) ilike '%' || ${q:sqlstring} || '%')\ngroup by 1\norder by 2 desc, 1\nlimit 8"
+          "rawSql": "select \"Merchant\", \"Spent\", \"Purchases\" from (\n  select coalesce(f.merchant_name, 'No merchant recorded') as \"Merchant\", sum(f.amount) as \"Spent\", count(distinct f.transaction_id) as \"Purchases\"\n  from marts.fct_transactions f\n  cross join (\n    select d0, d1, lo, cur,\n      (extract(year from age(date_trunc('month', d1 - 1), date_trunc('month', d0))) * 12\n        + extract(month from age(date_trunc('month', d1 - 1), date_trunc('month', d0))) + 1)::int as n\n    from (\n      select greatest(a, lo) as d0, greatest(least(b, hi), greatest(a, lo) + 1) as d1, lo, cur\n      from (\n        select m.lo, m.hi, m.cur,\n          case '${span}'\n            when '0' then s.m\n            when '3' then (s.m - interval '3 months')::date\n            when '6' then (s.m - interval '6 months')::date\n            when '12' then (s.m - interval '12 months')::date\n            when 'r12' then (s.m - interval '11 months')::date\n            when 'year' then date_trunc('year', s.m)::date\n            when 'custom' then case when ${from:sqlstring} ~ '^\\d{4}-\\d{2}-\\d{2}$' then to_date(${from:sqlstring}, 'YYYY-MM-DD') else m.lo end\n            else m.lo\n          end as a,\n          case '${span}'\n            when '0' then (s.m + interval '1 month')::date\n            when '3' then s.m\n            when '6' then s.m\n            when '12' then s.m\n            when 'r12' then (s.m + interval '1 month')::date\n            when 'year' then (date_trunc('year', s.m) + interval '1 year')::date\n            when 'custom' then case when ${to:sqlstring} ~ '^\\d{4}-\\d{2}-\\d{2}$' then to_date(${to:sqlstring}, 'YYYY-MM-DD') + 1 else m.hi end\n            else m.hi\n          end as b\n        from (select to_date('${month}', 'YYYY-MM-DD') as m) s\n        cross join (\n          select min(month_start) as lo, (max(month_start) + interval '1 month')::date as hi,\n                 max(month_start) filter (where not is_complete_month) as cur\n          from marts.fct_month_plan\n        ) m\n      ) x\n    ) y\n  ) r\n  where f.type = 'expense'\n    and f.occurred_on >= r.d0 and f.occurred_on < r.d1\n    and ('${bucket}' = 'all' or initcap(f.bucket) = '${bucket}')\n    and (${category:sqlstring} = 'all' or f.category_name = ${category:sqlstring})\n    and ('${paid}' = 'all' or f.is_self_funded = ('${paid}' = 'own'))\n    and (${tag:sqlstring} = 'all' or ${tag:sqlstring} = any(f.tags))\n    and (${merchant:sqlstring} = 'all' or f.merchant_name = ${merchant:sqlstring})\n    and (${q:sqlstring} = '' or concat_ws(' ', f.item_description, f.description, f.merchant_name, f.venue_name, f.notes) ilike '%' || ${q:sqlstring} || '%')\n  group by 1\n) x\norder by (\"Merchant\" = 'No merchant recorded'), \"Spent\" desc, 1\nlimit 9"
         }
       ],
       "fieldConfig": {
@@ -711,16 +1044,91 @@
           {
             "matcher": {
               "id": "byName",
+              "options": "Spent"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 90
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
               "options": "Purchases"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 95
+              },
+              {
+                "id": "unit",
+                "value": "none"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false
+        }
+      }
+    },
+    {
+      "id": 8,
+      "type": "table",
+      "title": "Selection by venue",
+      "description": "The selection by kind of place, largest first. The last row gathers everything logged without a venue.",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "finflow-marts"
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 26,
+        "w": 8,
+        "h": 10
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "finflow-marts"
+          },
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "select \"Venue\", \"Spent\", \"Purchases\" from (\n  select coalesce(f.venue_name, 'No venue recorded') as \"Venue\", sum(f.amount) as \"Spent\", count(distinct f.transaction_id) as \"Purchases\"\n  from marts.fct_transactions f\n  cross join (\n    select d0, d1, lo, cur,\n      (extract(year from age(date_trunc('month', d1 - 1), date_trunc('month', d0))) * 12\n        + extract(month from age(date_trunc('month', d1 - 1), date_trunc('month', d0))) + 1)::int as n\n    from (\n      select greatest(a, lo) as d0, greatest(least(b, hi), greatest(a, lo) + 1) as d1, lo, cur\n      from (\n        select m.lo, m.hi, m.cur,\n          case '${span}'\n            when '0' then s.m\n            when '3' then (s.m - interval '3 months')::date\n            when '6' then (s.m - interval '6 months')::date\n            when '12' then (s.m - interval '12 months')::date\n            when 'r12' then (s.m - interval '11 months')::date\n            when 'year' then date_trunc('year', s.m)::date\n            when 'custom' then case when ${from:sqlstring} ~ '^\\d{4}-\\d{2}-\\d{2}$' then to_date(${from:sqlstring}, 'YYYY-MM-DD') else m.lo end\n            else m.lo\n          end as a,\n          case '${span}'\n            when '0' then (s.m + interval '1 month')::date\n            when '3' then s.m\n            when '6' then s.m\n            when '12' then s.m\n            when 'r12' then (s.m + interval '1 month')::date\n            when 'year' then (date_trunc('year', s.m) + interval '1 year')::date\n            when 'custom' then case when ${to:sqlstring} ~ '^\\d{4}-\\d{2}-\\d{2}$' then to_date(${to:sqlstring}, 'YYYY-MM-DD') + 1 else m.hi end\n            else m.hi\n          end as b\n        from (select to_date('${month}', 'YYYY-MM-DD') as m) s\n        cross join (\n          select min(month_start) as lo, (max(month_start) + interval '1 month')::date as hi,\n                 max(month_start) filter (where not is_complete_month) as cur\n          from marts.fct_month_plan\n        ) m\n      ) x\n    ) y\n  ) r\n  where f.type = 'expense'\n    and f.occurred_on >= r.d0 and f.occurred_on < r.d1\n    and ('${bucket}' = 'all' or initcap(f.bucket) = '${bucket}')\n    and (${category:sqlstring} = 'all' or f.category_name = ${category:sqlstring})\n    and ('${paid}' = 'all' or f.is_self_funded = ('${paid}' = 'own'))\n    and (${tag:sqlstring} = 'all' or ${tag:sqlstring} = any(f.tags))\n    and (${merchant:sqlstring} = 'all' or f.merchant_name = ${merchant:sqlstring})\n    and (${q:sqlstring} = '' or concat_ws(' ', f.item_description, f.description, f.merchant_name, f.venue_name, f.notes) ilike '%' || ${q:sqlstring} || '%')\n  group by 1\n) x\norder by (\"Venue\" = 'No venue recorded'), \"Spent\" desc, 1\nlimit 9"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "prefix:$",
+          "decimals": 0,
+          "noValue": "–",
+          "custom": {
+            "align": "auto",
+            "filterable": false,
+            "cellOptions": {
+              "type": "auto"
+            }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "^(Date|Item|Merchant|Category|Subcategory|Bucket|Note|Month|Series|Cadence|Last paid|Type|From or to|Tags|Paid by)$"
             },
             "properties": [
               {
                 "id": "unit",
                 "value": "none"
-              },
-              {
-                "id": "custom.width",
-                "value": 95
               }
             ]
           },
@@ -732,7 +1140,23 @@
             "properties": [
               {
                 "id": "custom.width",
-                "value": 100
+                "value": 90
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Purchases"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 95
+              },
+              {
+                "id": "unit",
+                "value": "none"
               }
             ]
           }
@@ -756,9 +1180,9 @@
         "uid": "finflow-marts"
       },
       "gridPos": {
-        "x": 12,
-        "y": 26,
-        "w": 12,
+        "x": 0,
+        "y": 36,
+        "w": 24,
         "h": 9
       },
       "targets": [
@@ -770,7 +1194,7 @@
           },
           "format": "table",
           "rawQuery": true,
-          "rawSql": "select\n  to_char(occurred_on, 'YYYY-MM-DD') as \"Date\",\n  initcap(type) as \"Type\",\n  counterparty as \"From or to\",\n  amount as \"Amount\"\nfrom marts.fct_ledger_entry\nwhere type in ('income', 'transfer')\n  and month_start >= '${month}'::date - make_interval(months => ${span})\n  and month_start < '${month}'::date + case when ${span} = 0 then interval '1 month' else interval '0' end\norder by occurred_on desc, transaction_id"
+          "rawSql": "select\n  to_char(f.occurred_on, 'YYYY-MM-DD') as \"Date\",\n  initcap(f.type) as \"Type\",\n  f.counterparty as \"From or to\",\n  f.amount as \"Amount\"\nfrom marts.fct_ledger_entry f\ncross join (\n  select d0, d1, lo, cur,\n    (extract(year from age(date_trunc('month', d1 - 1), date_trunc('month', d0))) * 12\n      + extract(month from age(date_trunc('month', d1 - 1), date_trunc('month', d0))) + 1)::int as n\n  from (\n    select greatest(a, lo) as d0, greatest(least(b, hi), greatest(a, lo) + 1) as d1, lo, cur\n    from (\n      select m.lo, m.hi, m.cur,\n        case '${span}'\n          when '0' then s.m\n          when '3' then (s.m - interval '3 months')::date\n          when '6' then (s.m - interval '6 months')::date\n          when '12' then (s.m - interval '12 months')::date\n          when 'r12' then (s.m - interval '11 months')::date\n          when 'year' then date_trunc('year', s.m)::date\n          when 'custom' then case when ${from:sqlstring} ~ '^\\d{4}-\\d{2}-\\d{2}$' then to_date(${from:sqlstring}, 'YYYY-MM-DD') else m.lo end\n          else m.lo\n        end as a,\n        case '${span}'\n          when '0' then (s.m + interval '1 month')::date\n          when '3' then s.m\n          when '6' then s.m\n          when '12' then s.m\n          when 'r12' then (s.m + interval '1 month')::date\n          when 'year' then (date_trunc('year', s.m) + interval '1 year')::date\n          when 'custom' then case when ${to:sqlstring} ~ '^\\d{4}-\\d{2}-\\d{2}$' then to_date(${to:sqlstring}, 'YYYY-MM-DD') + 1 else m.hi end\n          else m.hi\n        end as b\n      from (select to_date('${month}', 'YYYY-MM-DD') as m) s\n      cross join (\n        select min(month_start) as lo, (max(month_start) + interval '1 month')::date as hi,\n               max(month_start) filter (where not is_complete_month) as cur\n        from marts.fct_month_plan\n      ) m\n    ) x\n  ) y\n) r\nwhere f.type in ('income', 'transfer')\n  and f.occurred_on >= r.d0 and f.occurred_on < r.d1\norder by f.occurred_on desc, f.transaction_id"
         }
       ],
       "fieldConfig": {

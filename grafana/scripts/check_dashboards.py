@@ -77,14 +77,16 @@ EXPECTED = {
     },
     "finflow-ledger": {
         "Selection by merchant": ["Merchant", "Spent", "Purchases"],
+        "Selection by venue": ["Venue", "Spent", "Purchases"],
         "Income and transfers": ["Date", "Type", "From or to", "Amount"],
         "This selection": ["Spent", "Per month", "Line items"],
-        "By subcategory": ["Category", "Subcategory", "Bucket", "Spent", "Per month", "Line items",
-                           "Typical"],
+        "By category": ["Category", "Spent", "Per month", "Line items", "Share", "Change"],
+        "By subcategory": ["Subcategory", "Category", "Spent", "Per month", "Line items", "Share",
+                           "Change"],
         "Selection by month": ["month", "Spent"],
         "Line items": [
-            "Date", "Item", "Merchant", "Category", "Subcategory", "Bucket", "Amount", "Tags",
-            "Paid by", "Note"],
+            "Date", "Item", "Merchant", "Venue", "Category", "Subcategory", "Bucket", "Amount",
+            "Tags", "Paid by", "Note"],
     },
 }
 VARIABLE_COLUMNS = ["__value", "__text"]
@@ -251,7 +253,8 @@ def variable_values(cur, name, dash, queries):
             except (psycopg2.Error, KeyError, ValueError):
                 values[vname] = []
         elif var.get("type") == "textbox":
-            values[vname] = [var.get("query", "")]
+            # Its default, and a date: a text box may be a search or a day.
+            values[vname] = [var.get("query", ""), "2000-01-01"]
         elif var.get("type") == "custom":
             values[vname] = [o["value"] for o in var.get("options", [])]
         else:

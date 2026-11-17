@@ -63,7 +63,7 @@
         "type": "grafana-postgresql-datasource",
         "uid": "finflow-marts"
       },
-      "description": "The last 12 full months and this month so far. Bars: what left chequing as needs, wants and financial future. Line: the income received in each full month; the separate point is this month's income so far. Where the line sits above the bar, the gap is unallocated cash; a bar above the line means more left chequing than came in, paid from money already there.",
+      "description": "The last 12 full months and this month so far. Bars: what left chequing as needs, wants and financial future. Solid line: the income received in each full month. Dashed line: this month's income so far, which is not final. Where the line sits above the bar, the gap is unallocated cash; a bar above the line means more left chequing than came in, paid from money already there.",
       "gridPos": {
         "x": 0,
         "y": 0,
@@ -79,7 +79,7 @@
           },
           "format": "time_series",
           "rawQuery": true,
-          "rawSql": "select\n  s.month_start::timestamp at time zone 'America/Toronto' as time,\n  s.needs_spend as \"Needs\",\n  s.wants_spend as \"Wants\",\n  s.financial_future as \"Financial future\",\n  case when s.is_complete_month then s.spendable_income end as \"Income\",\n  case when not s.is_complete_month then s.spendable_income end as \"Income so far\"\nfrom (\n  select s.*\n  from marts.fct_monthly_summary s\n  order by s.month_start desc\n  limit 13\n) s\norder by s.month_start"
+          "rawSql": "select\n  s.month_start::timestamp at time zone 'America/Toronto' as time,\n  s.needs_spend as \"Needs\",\n  s.wants_spend as \"Wants\",\n  s.financial_future as \"Financial future\",\n  case when s.is_complete_month then s.spendable_income end as \"Income\",\n  case when not s.is_complete_month or not lead(s.is_complete_month) over (order by s.month_start)\n    then s.spendable_income end as \"Income so far\"\nfrom (\n  select s.*\n  from marts.fct_monthly_summary s\n  order by s.month_start desc\n  limit 13\n) s\norder by s.month_start"
         }
       ],
       "fieldConfig": {
@@ -202,7 +202,7 @@
               },
               {
                 "id": "custom.drawStyle",
-                "value": "points"
+                "value": "line"
               },
               {
                 "id": "custom.stacking",
@@ -212,7 +212,7 @@
               },
               {
                 "id": "custom.lineWidth",
-                "value": 3
+                "value": 2
               },
               {
                 "id": "custom.fillOpacity",
@@ -225,6 +225,16 @@
               {
                 "id": "custom.pointSize",
                 "value": 8
+              },
+              {
+                "id": "custom.lineStyle",
+                "value": {
+                  "fill": "dash",
+                  "dash": [
+                    6,
+                    6
+                  ]
+                }
               }
             ]
           }
@@ -1388,7 +1398,7 @@
       "id": 10,
       "type": "table",
       "title": "Top merchants, last 3 full months",
-      "description": "Where your own spending went by merchant over the last 3 full months. Entries logged without a merchant are grouped in one row.",
+      "description": "Your own spending at the merchants you track, over the last 3 full months. Purchases logged without a merchant are left out.",
       "datasource": {
         "type": "grafana-postgresql-datasource",
         "uid": "finflow-marts"
@@ -1408,7 +1418,7 @@
           },
           "format": "table",
           "rawQuery": true,
-          "rawSql": "select \"Merchant\", \"Spent\", \"Per month\", \"Purchases\" from (\nselect\n  coalesce(merchant_name, venue_name, 'No merchant recorded') as \"Merchant\",\n  sum(amount) as \"Spent\",\n  sum(amount) / 3 as \"Per month\",\n  count(distinct transaction_id) as \"Purchases\"\nfrom marts.fct_transactions\nwhere type = 'expense' and is_self_funded and month_start >= (select max(month_start) from marts.fct_month_plan where is_complete_month) - interval '2 months' and month_start <= (select max(month_start) from marts.fct_month_plan where is_complete_month)\ngroup by 1\n) m\norder by (\"Merchant\" = 'No merchant recorded'), \"Spent\" desc\nlimit 10"
+          "rawSql": "select \"Merchant\", \"Spent\", \"Per month\", \"Purchases\" from (\nselect\n  merchant_name as \"Merchant\",\n  sum(amount) as \"Spent\",\n  sum(amount) / 3 as \"Per month\",\n  count(distinct transaction_id) as \"Purchases\"\nfrom marts.fct_transactions\nwhere type = 'expense' and is_self_funded and merchant_name is not null and month_start >= (select max(month_start) from marts.fct_month_plan where is_complete_month) - interval '2 months' and month_start <= (select max(month_start) from marts.fct_month_plan where is_complete_month)\ngroup by 1\n) m\norder by \"Spent\" desc\nlimit 10"
         }
       ],
       "fieldConfig": {
