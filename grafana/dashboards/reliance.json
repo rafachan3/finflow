@@ -1,0 +1,889 @@
+{
+  "tags": [
+    "finflow"
+  ],
+  "timezone": "America/Toronto",
+  "editable": true,
+  "graphTooltip": 1,
+  "schemaVersion": 39,
+  "refresh": "",
+  "links": [
+    {
+      "type": "dashboards",
+      "title": "FinFlow dashboards",
+      "tags": [
+        "finflow"
+      ],
+      "asDropdown": false,
+      "includeVars": false,
+      "keepTime": false,
+      "targetBlank": false,
+      "icon": "external link"
+    }
+  ],
+  "uid": "finflow-reliance",
+  "title": "Reliance on others",
+  "description": "How much of your month other people carry: what they paid for, the support income you received, and what the months would look like without it.",
+  "time": {
+    "from": "now-12M/M-15d",
+    "to": "now/M"
+  },
+  "timepicker": {
+    "hidden": true
+  },
+  "templating": {
+    "list": [
+      {
+        "type": "query",
+        "name": "cur_month",
+        "label": "This month",
+        "description": "Feeds the links to the Ledger; not shown.",
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "finflow-marts"
+        },
+        "query": "select to_char(max(month_start), 'YYYY-MM-DD') as __value, to_char(max(month_start), 'Mon YYYY') as __text from marts.fct_month_plan",
+        "definition": "select to_char(max(month_start), 'YYYY-MM-DD') as __value, to_char(max(month_start), 'Mon YYYY') as __text from marts.fct_month_plan",
+        "refresh": 1,
+        "sort": 0,
+        "multi": false,
+        "includeAll": false,
+        "current": {},
+        "options": [],
+        "hide": 2
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Last full month",
+      "description": "What others paid for, as a share of everything bought for you, and the support income that reached chequing, as a share of that income. The other dashboards count only what you paid.",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "finflow-marts"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 3
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "finflow-marts"
+          },
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "select\n  s.external_spend as \"Paid by others\",\n  s.external_spend / nullif(s.spend + s.external_spend, 0) as \"Share of what was bought\",\n  coalesce(x.support, 0) as \"Support income\",\n  coalesce(x.support, 0) / nullif(s.spendable_income, 0) as \"Share of income\"\nfrom marts.fct_monthly_summary s\nleft join (\n  select f.month_start, sum(f.amount) as support from marts.fct_transactions f where f.type = 'income' and f.is_support and f.deposit_account_name is null group by 1\n) x on x.month_start = s.month_start\nwhere s.month_start = (select max(month_start) from marts.fct_month_plan where is_complete_month)"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          },
+          "decimals": 0,
+          "unit": "prefix:$",
+          "noValue": "–"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "^(Share of what was bought|Share of income)$"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value_and_name",
+        "orientation": "vertical",
+        "text": {
+          "titleSize": 15,
+          "valueSize": 30
+        },
+        "justifyMode": "center"
+      }
+    },
+    {
+      "id": 2,
+      "type": "barchart",
+      "title": "Who paid, by month",
+      "description": "Everything bought for you each month, split by whose money paid. * marks the month in progress.",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "finflow-marts"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 3,
+        "w": 12,
+        "h": 9
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "finflow-marts"
+          },
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "select to_char(p.month_start, 'Mon YY') || case when p.is_complete_month then '' else '*' end as month, s.spend as \"You\", s.external_spend as \"Others\"\nfrom (select * from marts.fct_month_plan order by month_start desc limit 13) p\njoin marts.fct_monthly_summary s on s.month_start = p.month_start\norder by p.month_start"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "prefix:$",
+          "decimals": 0,
+          "min": 0,
+          "custom": {
+            "fillOpacity": 100,
+            "lineWidth": 0
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "You"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#898781"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Others"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "text"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "xField": "month",
+        "orientation": "vertical",
+        "stacking": "normal",
+        "showValue": "never",
+        "barWidth": 0.6,
+        "groupWidth": 0.7,
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      }
+    },
+    {
+      "id": 3,
+      "type": "table",
+      "title": "What others paid for, last 6 full months",
+      "description": "The categories others paid toward, as a monthly mean. Share of the category is their part of everything bought in it. Click a category for the line items.",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "finflow-marts"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 3,
+        "w": 12,
+        "h": 9
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "finflow-marts"
+          },
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "select \"Category\", \"Paid by others a month\", \"Share of the category\" from (\n  select f.category_name as \"Category\",\n    sum(f.amount) filter (where not f.is_self_funded) / 6 as \"Paid by others a month\",\n    sum(f.amount) filter (where not f.is_self_funded) / sum(f.amount) as \"Share of the category\"\n  from marts.fct_transactions f\n  where f.type = 'expense'\n    and f.month_start > (select max(month_start) from marts.fct_month_plan where is_complete_month) - interval '6 months' and f.month_start <= (select max(month_start) from marts.fct_month_plan where is_complete_month)\n  group by f.category_name\n) x\nwhere \"Paid by others a month\" > 0\norder by 2 desc, 1\nlimit 9"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "prefix:$",
+          "decimals": 0,
+          "noValue": "–",
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "^(Category)$"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "none"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Paid by others a month"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 175
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Share of the category"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "custom.width",
+                "value": 165
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Category"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "See the line items",
+                    "url": "/d/finflow-ledger?var-month=${cur_month}&var-span=6&var-paid=others&var-category=${__data.fields.Category:percentencode}"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false
+        }
+      }
+    },
+    {
+      "id": 4,
+      "type": "barchart",
+      "title": "Income by month, support and the rest",
+      "description": "The income that reached chequing each month, split into support income and everything else. * marks the month in progress.",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "finflow-marts"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 12,
+        "w": 10,
+        "h": 9
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "finflow-marts"
+          },
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "select to_char(p.month_start, 'Mon YY') || case when p.is_complete_month then '' else '*' end as month,\n  s.spendable_income - coalesce(x.support, 0) as \"Other income\",\n  coalesce(x.support, 0) as \"Support income\"\nfrom (select * from marts.fct_month_plan order by month_start desc limit 13) p\njoin marts.fct_monthly_summary s on s.month_start = p.month_start\nleft join (\n  select f.month_start, sum(f.amount) as support from marts.fct_transactions f where f.type = 'income' and f.is_support and f.deposit_account_name is null group by 1\n) x on x.month_start = p.month_start\norder by p.month_start"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "prefix:$",
+          "decimals": 0,
+          "min": 0,
+          "custom": {
+            "fillOpacity": 100,
+            "lineWidth": 0
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Other income"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#898781"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Support income"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "text"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "xField": "month",
+        "orientation": "vertical",
+        "stacking": "normal",
+        "showValue": "never",
+        "barWidth": 0.6,
+        "groupWidth": 0.7,
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      }
+    },
+    {
+      "id": 5,
+      "type": "table",
+      "title": "Support income by period",
+      "description": "Monthly means over each period. Unallocated is what stayed in chequing after spending and financial future; Without support is the same figure with support income taken out, so a minus means the month would not have closed. Same spending and transfers; support income removed.",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "finflow-marts"
+      },
+      "gridPos": {
+        "x": 10,
+        "y": 12,
+        "w": 14,
+        "h": 9
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "finflow-marts"
+          },
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "with w as (\n  select r.window_months as n, r.spendable_income, r.needs_spend, r.wants_spend, r.financial_future, r.unallocated_cash,\n    coalesce(sum(f.amount) filter (where f.type = 'income' and f.is_support and f.deposit_account_name is null), 0) as support,\n    coalesce(sum(f.amount) filter (where f.type = 'expense' and not f.is_self_funded and f.bucket = 'needs'), 0) as others_needs,\n    coalesce(sum(f.amount) filter (where f.type = 'expense' and not f.is_self_funded and f.bucket = 'wants'), 0) as others_wants\n  from marts.fct_month_rolling r\n  left join marts.fct_transactions f\n    on f.month_start > r.month_start - make_interval(months => r.window_months) and f.month_start <= r.month_start\n  where r.month_start = (select max(month_start) from marts.fct_month_plan where is_complete_month)\n  group by r.window_months, r.spendable_income, r.needs_spend, r.wants_spend, r.financial_future, r.unallocated_cash\n),\nt as (\n  select needs_target_pct, wants_target_pct, financial_future_target_pct\n  from marts.fct_monthly_summary order by month_start desc limit 1\n)\nselect\n  'Last ' || w.n || ' full months' as \"Period\",\n  w.spendable_income / w.n as \"Income a month\",\n  case when w.spendable_income is not null then w.support / w.n end as \"Support a month\",\n  w.support / nullif(w.spendable_income, 0) as \"Share of income\",\n  w.unallocated_cash / w.n as \"Unallocated\",\n  case when ((w.unallocated_cash - w.support) / w.n) > 0 then '+$' when ((w.unallocated_cash - w.support) / w.n) < 0 then '−$' else '$' end || to_char(abs(round(((w.unallocated_cash - w.support) / w.n))), 'FM999999990') as \"Without support\"\nfrom w\norder by w.n"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "prefix:$",
+          "decimals": 0,
+          "noValue": "–",
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "^(Period)$"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "none"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Income a month"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 125
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Support a month"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 130
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Share of income"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "custom.width",
+                "value": 125
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Unallocated"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 100
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Without support"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "none"
+              },
+              {
+                "id": "custom.align",
+                "value": "right"
+              },
+              {
+                "id": "custom.width",
+                "value": 125
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "regex",
+                    "options": {
+                      "pattern": "^\\+.*",
+                      "result": {
+                        "color": "#0ca30c",
+                        "index": 0
+                      }
+                    }
+                  },
+                  {
+                    "type": "regex",
+                    "options": {
+                      "pattern": "^−.*",
+                      "result": {
+                        "color": "#d03b3b",
+                        "index": 1
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false
+        }
+      }
+    },
+    {
+      "id": 6,
+      "type": "table",
+      "title": "Bucket shares with and without support income",
+      "description": "The last 3 full months: each bucket as a share of the income that reached chequing, as logged and with support income taken out of that income. Same spending and transfers; support income removed.",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "finflow-marts"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 21,
+        "w": 10,
+        "h": 7
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "finflow-marts"
+          },
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "with w as (\n  select r.window_months as n, r.spendable_income, r.needs_spend, r.wants_spend, r.financial_future, r.unallocated_cash,\n    coalesce(sum(f.amount) filter (where f.type = 'income' and f.is_support and f.deposit_account_name is null), 0) as support,\n    coalesce(sum(f.amount) filter (where f.type = 'expense' and not f.is_self_funded and f.bucket = 'needs'), 0) as others_needs,\n    coalesce(sum(f.amount) filter (where f.type = 'expense' and not f.is_self_funded and f.bucket = 'wants'), 0) as others_wants\n  from marts.fct_month_rolling r\n  left join marts.fct_transactions f\n    on f.month_start > r.month_start - make_interval(months => r.window_months) and f.month_start <= r.month_start\n  where r.month_start = (select max(month_start) from marts.fct_month_plan where is_complete_month)\n  group by r.window_months, r.spendable_income, r.needs_spend, r.wants_spend, r.financial_future, r.unallocated_cash\n),\nt as (\n  select needs_target_pct, wants_target_pct, financial_future_target_pct\n  from marts.fct_monthly_summary order by month_start desc limit 1\n)\nselect b.name as \"Bucket\", b.amount / w.n as \"A month\",\n  b.amount / nullif(w.spendable_income, 0) as \"As logged\",\n  b.amount_without / nullif(w.spendable_income - w.support, 0) as \"Without support\",\n  b.target as \"Target\"\nfrom w cross join t\ncross join lateral (values\n  (1, 'Needs', w.needs_spend, w.needs_spend, t.needs_target_pct),\n  (2, 'Wants', w.wants_spend, w.wants_spend, t.wants_target_pct),\n  (3, 'Financial future', w.financial_future, w.financial_future, t.financial_future_target_pct),\n  (4, 'Unallocated', w.unallocated_cash, w.unallocated_cash - w.support, null)\n) as b (ord, name, amount, amount_without, target)\nwhere w.n = 3\norder by b.ord"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "prefix:$",
+          "decimals": 0,
+          "noValue": "–",
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "^(Bucket)$"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "none"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "A month"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 95
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "^(As logged|Without support|Target)$"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "As logged"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 100
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Without support"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 135
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Target"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 75
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false
+        }
+      }
+    },
+    {
+      "id": 7,
+      "type": "table",
+      "title": "Income this lifestyle needs, counting what others paid",
+      "description": "The monthly income at which everything bought for you, by you or by others, would fit your targets: needs and wants each at most their target share. Spare is your income without support less that figure. Same spending and transfers; support income removed.",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "finflow-marts"
+      },
+      "gridPos": {
+        "x": 10,
+        "y": 21,
+        "w": 14,
+        "h": 7
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "finflow-marts"
+          },
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "with w as (\n  select r.window_months as n, r.spendable_income, r.needs_spend, r.wants_spend, r.financial_future, r.unallocated_cash,\n    coalesce(sum(f.amount) filter (where f.type = 'income' and f.is_support and f.deposit_account_name is null), 0) as support,\n    coalesce(sum(f.amount) filter (where f.type = 'expense' and not f.is_self_funded and f.bucket = 'needs'), 0) as others_needs,\n    coalesce(sum(f.amount) filter (where f.type = 'expense' and not f.is_self_funded and f.bucket = 'wants'), 0) as others_wants\n  from marts.fct_month_rolling r\n  left join marts.fct_transactions f\n    on f.month_start > r.month_start - make_interval(months => r.window_months) and f.month_start <= r.month_start\n  where r.month_start = (select max(month_start) from marts.fct_month_plan where is_complete_month)\n  group by r.window_months, r.spendable_income, r.needs_spend, r.wants_spend, r.financial_future, r.unallocated_cash\n),\nt as (\n  select needs_target_pct, wants_target_pct, financial_future_target_pct\n  from marts.fct_monthly_summary order by month_start desc limit 1\n)\nselect\n  'Last ' || w.n || ' full months' as \"Period\",\n  (w.needs_spend + w.others_needs) / w.n as \"Needs a month\",\n  (w.wants_spend + w.others_wants) / w.n as \"Wants a month\",\n  greatest((w.needs_spend + w.others_needs) / nullif(t.needs_target_pct, 0), (w.wants_spend + w.others_wants) / nullif(t.wants_target_pct, 0)) / w.n as \"Income needed\",\n  (w.spendable_income - w.support) / w.n as \"Income without support\",\n  case when ((w.spendable_income - w.support - greatest((w.needs_spend + w.others_needs) / nullif(t.needs_target_pct, 0), (w.wants_spend + w.others_wants) / nullif(t.wants_target_pct, 0))) / w.n) > 0 then '+$' when ((w.spendable_income - w.support - greatest((w.needs_spend + w.others_needs) / nullif(t.needs_target_pct, 0), (w.wants_spend + w.others_wants) / nullif(t.wants_target_pct, 0))) / w.n) < 0 then '−$' else '$' end || to_char(abs(round(((w.spendable_income - w.support - greatest((w.needs_spend + w.others_needs) / nullif(t.needs_target_pct, 0), (w.wants_spend + w.others_wants) / nullif(t.wants_target_pct, 0))) / w.n))), 'FM999999990') as \"Spare\",\n  case when w.needs_spend is null then null\n       when (w.needs_spend + w.others_needs) / nullif(t.needs_target_pct, 0) >= (w.wants_spend + w.others_wants) / nullif(t.wants_target_pct, 0) then 'Needs' else 'Wants' end as \"Set by\"\nfrom w cross join t\norder by w.n"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "prefix:$",
+          "decimals": 0,
+          "noValue": "–",
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "^(Period|Set by)$"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "none"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Needs a month"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 115
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Wants a month"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 115
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Income needed"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 120
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Income without support"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 180
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Spare"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "none"
+              },
+              {
+                "id": "custom.align",
+                "value": "right"
+              },
+              {
+                "id": "custom.width",
+                "value": 80
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "regex",
+                    "options": {
+                      "pattern": "^\\+.*",
+                      "result": {
+                        "color": "#0ca30c",
+                        "index": 0
+                      }
+                    }
+                  },
+                  {
+                    "type": "regex",
+                    "options": {
+                      "pattern": "^−.*",
+                      "result": {
+                        "color": "#d03b3b",
+                        "index": 1
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Set by"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 70
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false
+        }
+      }
+    }
+  ]
+}

@@ -74,6 +74,12 @@ resource "grafana_dashboard" "income" {
   overwrite   = true
 }
 
+resource "grafana_dashboard" "reliance" {
+  folder      = grafana_folder.finflow.uid
+  config_json = file("${path.module}/../grafana/dashboards/reliance.json")
+  overwrite   = true
+}
+
 # Grafana opens on This month. The provider writes every organization
 # preference at once, so each apply resets the ones left unset here
 # (theme, week start) to Grafana's defaults.
