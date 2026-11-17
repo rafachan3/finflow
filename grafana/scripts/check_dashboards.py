@@ -113,6 +113,22 @@ EXPECTED = {
             "Spare", "Set by"],
         "Set aside since tracking began": ["time", "metric", "value"],
     },
+    "finflow-reliance": {
+        "Last full month": ["Paid by others", "Share of what was bought", "Support income",
+                            "Share of income"],
+        "Who paid, by month": ["month", "You", "Others"],
+        "What others paid for, last 6 full months": [
+            "Category", "Paid by others a month", "Share of the category"],
+        "Income by month, support and the rest": ["month", "Other income", "Support income"],
+        "Support income by period": [
+            "Period", "Income a month", "Support a month", "Share of income", "Unallocated",
+            "Without support"],
+        "Bucket shares with and without support income": [
+            "Bucket", "A month", "As logged", "Without support", "Target"],
+        "Income this lifestyle needs, counting what others paid": [
+            "Period", "Needs a month", "Wants a month", "Income needed",
+            "Income without support", "Spare", "Set by"],
+    },
 }
 VARIABLE_COLUMNS = ["__value", "__text"]
 # Above this many variable combinations a dashboard is sampled (see smoke()).
