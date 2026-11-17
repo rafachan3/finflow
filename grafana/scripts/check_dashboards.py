@@ -97,6 +97,22 @@ EXPECTED = {
         "What you bought at each merchant": ["Merchant", "Subcategory", "Per month", "Share"],
         "${merchant_r}": ["month", "Spent"],
     },
+    "finflow-income": {
+        "Last full month": ["Income", "Mean, last 3 full months", "Financial future", "Set aside",
+                            "Target"],
+        "Income by source": ["time", "metric", "value"],
+        "Income sources, last 6 full months": [
+            "Source", "Last full month", "Monthly mean", "Share", "Months received",
+            "Last received"],
+        "Financial future by kind of account": [
+            "time", "Savings", "Investments", "Debt paid down", "Target"],
+        "Financial future in numbers": [
+            "Month", "Moved in", "Taken out", "Net", "Target", "Set aside"],
+        "Income this lifestyle needs": [
+            "Period", "Needs a month", "Wants a month", "Income needed", "Income you had",
+            "Spare", "Set by"],
+        "Savings balance": ["time", "metric", "value"],
+    },
 }
 VARIABLE_COLUMNS = ["__value", "__text"]
 # Above this many variable combinations a dashboard is sampled (see smoke()).

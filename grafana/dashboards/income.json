@@ -1,0 +1,938 @@
+{
+  "tags": [
+    "finflow"
+  ],
+  "timezone": "America/Toronto",
+  "editable": true,
+  "graphTooltip": 1,
+  "schemaVersion": 39,
+  "refresh": "",
+  "links": [
+    {
+      "type": "dashboards",
+      "title": "FinFlow dashboards",
+      "tags": [
+        "finflow"
+      ],
+      "asDropdown": false,
+      "includeVars": false,
+      "keepTime": false,
+      "targetBlank": false,
+      "icon": "external link"
+    }
+  ],
+  "uid": "finflow-income",
+  "title": "Income and financial future",
+  "description": "Where your income comes from, what you set aside, and the income your spending would need to fit your targets.",
+  "time": {
+    "from": "now-12M/M-15d",
+    "to": "now/M"
+  },
+  "timepicker": {
+    "hidden": true
+  },
+  "templating": {
+    "list": [
+      {
+        "type": "query",
+        "name": "last_month",
+        "label": "Last full month",
+        "description": "Feeds the links to the Ledger; not shown.",
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "finflow-marts"
+        },
+        "query": "select to_char(max(month_start), 'YYYY-MM-DD') as __value, to_char(max(month_start), 'Mon YYYY') as __text from marts.fct_month_plan where is_complete_month",
+        "definition": "select to_char(max(month_start), 'YYYY-MM-DD') as __value, to_char(max(month_start), 'Mon YYYY') as __text from marts.fct_month_plan where is_complete_month",
+        "refresh": 1,
+        "sort": 0,
+        "multi": false,
+        "includeAll": false,
+        "current": {},
+        "options": [],
+        "hide": 2
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Last full month",
+      "description": "Income counts every source, including interest paid inside a savings account. Set aside is financial future as a share of the income that reached chequing, beside your target.",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "finflow-marts"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 3
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "finflow-marts"
+          },
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "select s.income as \"Income\", r.income / 3 as \"Mean, last 3 full months\",\n  s.financial_future as \"Financial future\", s.financial_future_pct as \"Set aside\", s.financial_future_target_pct as \"Target\"\nfrom marts.fct_monthly_summary s\nleft join marts.fct_month_rolling r on r.month_start = s.month_start and r.window_months = 3\nwhere s.month_start = (select max(month_start) from marts.fct_month_plan where is_complete_month)"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "text"
+          },
+          "decimals": 0,
+          "unit": "prefix:$",
+          "noValue": "–"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "^(Set aside|Target)$"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value_and_name",
+        "orientation": "vertical",
+        "text": {
+          "titleSize": 15,
+          "valueSize": 30
+        },
+        "justifyMode": "center"
+      }
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Income by source",
+      "description": "Each month's income split by where it came from: your three largest sources over the months shown, and the rest together. The last bar is the month in progress.",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "finflow-marts"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 3,
+        "w": 12,
+        "h": 10
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "finflow-marts"
+          },
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "with rk as (\n  select income_source_name as src, row_number() over (order by sum(amount) desc, income_source_name) as rk\n  from marts.fct_transactions\n  where type = 'income' and month_start in (select month_start from (select * from marts.fct_month_plan order by month_start desc limit 13) w)\n  group by income_source_name\n)\nselect p.month_start::timestamp at time zone 'America/Toronto' as time, rk.src as metric, coalesce(sum(f.amount), 0) as value\nfrom (select * from marts.fct_month_plan order by month_start desc limit 13) p\ncross join rk\nleft join marts.fct_transactions f on f.type = 'income' and f.month_start = p.month_start and f.income_source_name = rk.src\nwhere rk.rk = 1\ngroup by p.month_start, rk.src\norder by p.month_start"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "finflow-marts"
+          },
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "with rk as (\n  select income_source_name as src, row_number() over (order by sum(amount) desc, income_source_name) as rk\n  from marts.fct_transactions\n  where type = 'income' and month_start in (select month_start from (select * from marts.fct_month_plan order by month_start desc limit 13) w)\n  group by income_source_name\n)\nselect p.month_start::timestamp at time zone 'America/Toronto' as time, rk.src as metric, coalesce(sum(f.amount), 0) as value\nfrom (select * from marts.fct_month_plan order by month_start desc limit 13) p\ncross join rk\nleft join marts.fct_transactions f on f.type = 'income' and f.month_start = p.month_start and f.income_source_name = rk.src\nwhere rk.rk = 2\ngroup by p.month_start, rk.src\norder by p.month_start"
+        },
+        {
+          "refId": "C",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "finflow-marts"
+          },
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "with rk as (\n  select income_source_name as src, row_number() over (order by sum(amount) desc, income_source_name) as rk\n  from marts.fct_transactions\n  where type = 'income' and month_start in (select month_start from (select * from marts.fct_month_plan order by month_start desc limit 13) w)\n  group by income_source_name\n)\nselect p.month_start::timestamp at time zone 'America/Toronto' as time, rk.src as metric, coalesce(sum(f.amount), 0) as value\nfrom (select * from marts.fct_month_plan order by month_start desc limit 13) p\ncross join rk\nleft join marts.fct_transactions f on f.type = 'income' and f.month_start = p.month_start and f.income_source_name = rk.src\nwhere rk.rk = 3\ngroup by p.month_start, rk.src\norder by p.month_start"
+        },
+        {
+          "refId": "D",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "finflow-marts"
+          },
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "with rk as (\n  select income_source_name as src, row_number() over (order by sum(amount) desc, income_source_name) as rk\n  from marts.fct_transactions\n  where type = 'income' and month_start in (select month_start from (select * from marts.fct_month_plan order by month_start desc limit 13) w)\n  group by income_source_name\n)\nselect p.month_start::timestamp at time zone 'America/Toronto' as time, 'Other sources' as metric, coalesce(sum(f.amount) filter (where rk.rk > 3), 0) as value\nfrom (select * from marts.fct_month_plan order by month_start desc limit 13) p\nleft join marts.fct_transactions f on f.type = 'income' and f.month_start = p.month_start\nleft join rk on rk.src = f.income_source_name\ngroup by p.month_start\norder by p.month_start"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "prefix:$",
+          "decimals": 0,
+          "custom": {
+            "drawStyle": "bars",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "fillOpacity": 100,
+            "lineWidth": 0,
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            },
+            "axisLabel": "",
+            "axisSoftMin": 0
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "A"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#1f9e89"
+                }
+              },
+              {
+                "id": "displayName",
+                "value": "${__field.labels.metric}"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "B"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#e0b23c"
+                }
+              },
+              {
+                "id": "displayName",
+                "value": "${__field.labels.metric}"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "C"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#cf5f9b"
+                }
+              },
+              {
+                "id": "displayName",
+                "value": "${__field.labels.metric}"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "D"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#898781"
+                }
+              },
+              {
+                "id": "displayName",
+                "value": "${__field.labels.metric}"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      }
+    },
+    {
+      "id": 3,
+      "type": "table",
+      "title": "Income sources, last 6 full months",
+      "description": "Every source over the last 6 full months, or as many as the ledger holds. Months received shows how regular a source is.",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "finflow-marts"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 3,
+        "w": 12,
+        "h": 10
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "finflow-marts"
+          },
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "with m as (\n  select max(month_start) filter (where is_complete_month) as last,\n         max(month_start) filter (where not is_complete_month) as cur\n  from marts.fct_month_plan\n),\nw as (select p.month_start from marts.fct_month_plan p cross join m where p.month_start > m.last - interval '6 months' and p.month_start <= m.last)\nselect\n  f.income_source_name as \"Source\",\n  coalesce(sum(f.amount) filter (where f.month_start = m.last), 0) as \"Last full month\",\n  sum(f.amount) / (select count(*) from w) as \"Monthly mean\",\n  sum(f.amount) / sum(sum(f.amount)) over () as \"Share\",\n  count(distinct f.month_start) || ' of ' || (select count(*) from w) as \"Months received\",\n  to_char(max(f.occurred_on), 'YYYY-MM-DD') as \"Last received\"\nfrom marts.fct_transactions f cross join m\nwhere f.type = 'income' and f.month_start in (select month_start from w)\ngroup by f.income_source_name, m.last\norder by 3 desc, 1"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "prefix:$",
+          "decimals": 0,
+          "noValue": "–",
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "^(Source|Months received|Last received)$"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "none"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Last full month"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 115
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Monthly mean"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 110
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Share"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "custom.width",
+                "value": 65
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Months received"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 125
+              },
+              {
+                "id": "custom.align",
+                "value": "right"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Last received"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 110
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false
+        }
+      }
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Financial future by kind of account",
+      "description": "Money moved out of chequing into savings, investments and debt each month, less what came back. A bar below zero means more came out than went in. The line is your target for that month's income.",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "finflow-marts"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 13,
+        "w": 12,
+        "h": 10
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "finflow-marts"
+          },
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "select p.month_start::timestamp at time zone 'America/Toronto' as time,\n  coalesce(sum(a.deposits - a.withdrawals) filter (where a.account_kind = 'savings'), 0) as \"Savings\",\n  coalesce(sum(a.deposits - a.withdrawals) filter (where a.account_kind = 'investment'), 0) as \"Investments\",\n  coalesce(sum(a.deposits - a.withdrawals) filter (where a.account_kind = 'debt'), 0) as \"Debt paid down\",\n  max(case when p.is_complete_month then s.financial_future_target end) as \"Target\"\nfrom (select * from marts.fct_month_plan order by month_start desc limit 13) p\nleft join marts.fct_account_month a on a.month_start = p.month_start\nleft join marts.fct_monthly_summary s on s.month_start = p.month_start\ngroup by p.month_start\norder by p.month_start"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "prefix:$",
+          "decimals": 0,
+          "custom": {
+            "drawStyle": "bars",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "fillOpacity": 100,
+            "lineWidth": 0,
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            },
+            "axisLabel": "",
+            "axisSoftMin": 0
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Savings"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#b3a2ea"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Investments"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#7a5cc7"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Debt paid down"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#4b3a86"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Target"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "text"
+                }
+              },
+              {
+                "id": "custom.drawStyle",
+                "value": "line"
+              },
+              {
+                "id": "custom.stacking",
+                "value": {
+                  "mode": "none"
+                }
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 2
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 0
+              },
+              {
+                "id": "custom.showPoints",
+                "value": "always"
+              },
+              {
+                "id": "custom.pointSize",
+                "value": 6
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      }
+    },
+    {
+      "id": 5,
+      "type": "table",
+      "title": "Financial future in numbers",
+      "description": "Moved in and taken out of your savings, investment and debt accounts, month by month. Set aside is the net as a share of the income that reached chequing.",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "finflow-marts"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 13,
+        "w": 12,
+        "h": 10
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "finflow-marts"
+          },
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "select\n  to_char(s.month_start, 'Mon YYYY') || case when s.is_complete_month then '' else ' (so far)' end as \"Month\",\n  s.transfers as \"Moved in\", s.withdrawals as \"Taken out\", s.financial_future as \"Net\",\n  s.financial_future_target as \"Target\", s.financial_future_pct as \"Set aside\"\nfrom marts.fct_monthly_summary s\norder by s.month_start desc\nlimit 7"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "prefix:$",
+          "decimals": 0,
+          "noValue": "–",
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "^(Month)$"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "none"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Moved in"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 90
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Taken out"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 90
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Net"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 80
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Target"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 80
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Set aside"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "custom.width",
+                "value": 85
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false
+        }
+      }
+    },
+    {
+      "id": 6,
+      "type": "table",
+      "title": "Income this lifestyle needs",
+      "description": "The monthly income at which what you spent would fit your targets: needs and wants each at most their target share, with the rest left for financial future. Set by names the bucket that decides it. Spare is the income you had less the income needed. Only your own spending counts.",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "finflow-marts"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 23,
+        "w": 14,
+        "h": 6
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "finflow-marts"
+          },
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "select\n  'Last ' || r.window_months || ' full months' as \"Period\",\n  r.needs_spend / r.window_months as \"Needs a month\",\n  r.wants_spend / r.window_months as \"Wants a month\",\n  greatest(r.needs_spend / nullif(t.needs_target_pct, 0), r.wants_spend / nullif(t.wants_target_pct, 0)) / r.window_months as \"Income needed\",\n  r.spendable_income / r.window_months as \"Income you had\",\n  case when ((r.spendable_income - greatest(r.needs_spend / nullif(t.needs_target_pct, 0), r.wants_spend / nullif(t.wants_target_pct, 0))) / r.window_months) > 0 then '+$' when ((r.spendable_income - greatest(r.needs_spend / nullif(t.needs_target_pct, 0), r.wants_spend / nullif(t.wants_target_pct, 0))) / r.window_months) < 0 then '−$' else '$' end || to_char(abs(round(((r.spendable_income - greatest(r.needs_spend / nullif(t.needs_target_pct, 0), r.wants_spend / nullif(t.wants_target_pct, 0))) / r.window_months))), 'FM999999990') as \"Spare\",\n  case when r.needs_spend is null then null\n       when r.needs_spend / nullif(t.needs_target_pct, 0) >= r.wants_spend / nullif(t.wants_target_pct, 0) then 'Needs' else 'Wants' end as \"Set by\"\nfrom marts.fct_month_rolling r\ncross join (\n  select needs_target_pct, wants_target_pct from marts.fct_monthly_summary order by month_start desc limit 1\n) t\nwhere r.month_start = (select max(month_start) from marts.fct_month_plan where is_complete_month)\norder by r.window_months"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "prefix:$",
+          "decimals": 0,
+          "noValue": "–",
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "^(Period|Set by)$"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "none"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Needs a month"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 120
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Wants a month"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 120
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Income needed"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 125
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Income you had"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 125
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Spare"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "none"
+              },
+              {
+                "id": "custom.align",
+                "value": "right"
+              },
+              {
+                "id": "custom.width",
+                "value": 85
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "regex",
+                    "options": {
+                      "pattern": "^\\+.*",
+                      "result": {
+                        "color": "#0ca30c",
+                        "index": 0
+                      }
+                    }
+                  },
+                  {
+                    "type": "regex",
+                    "options": {
+                      "pattern": "^−.*",
+                      "result": {
+                        "color": "#d03b3b",
+                        "index": 1
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Set by"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 80
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false
+        }
+      }
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Savings balance",
+      "description": "The balance of each savings account at the end of each month, where an opening balance is recorded.",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "finflow-marts"
+      },
+      "gridPos": {
+        "x": 14,
+        "y": 23,
+        "w": 10,
+        "h": 6
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "finflow-marts"
+          },
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "select p.month_start::timestamp at time zone 'America/Toronto' as time, a.account_name as metric, a.balance as value\nfrom (select * from marts.fct_month_plan order by month_start desc limit 13) p\njoin marts.fct_account_month a on a.month_start = p.month_start\nwhere a.balance is not null\norder by p.month_start, a.account_name"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "prefix:$",
+          "decimals": 0,
+          "color": {
+            "mode": "shades",
+            "fixedColor": "#7a5cc7"
+          },
+          "displayName": "${__field.labels.metric}",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 0,
+            "showPoints": "always",
+            "pointSize": 6,
+            "axisLabel": ""
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      }
+    }
+  ]
+}
