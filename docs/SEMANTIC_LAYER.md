@@ -342,12 +342,13 @@ here so the dashboard and the agent compute them the same way.
   income source (regular support from another person; the owner sets it in
   the database). It is income like any other in every metric. Support that
   reached chequing is `is_support and deposit_account_name is null`.
-- **Without support income:** keep `spend`, the bucket spends and
-  `financial_future` as logged, subtract the support that reached chequing
-  from `spendable_income`, and recompute the shares and
-  `unallocated_cash` from that. Same spending and transfers; support
-  income removed. One-off gifts stay in: they belong to a source that is
-  not marked.
+- **Without support income:** keep the bucket spends as logged, subtract
+  the support that reached chequing from `spendable_income`, and take the
+  same amount out of `financial_future`; `unallocated_cash` stays as
+  logged. Same spending; support income removed, and financial future
+  takes the loss. A negative result means spending alone was more than
+  the income without support. One-off gifts stay in: they belong to a
+  source that is not marked.
 - **Rolling mean of a slice:** the mean of a filtered slice's own spend
   over month M and the 2 months before it, over `fct_month_plan`'s month
   list, so a month with no matching line counts as 0. Like rolling N = 3

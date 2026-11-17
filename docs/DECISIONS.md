@@ -3524,3 +3524,19 @@ reliance dashboard.
   rate is not worth it while the nightly ledger-health issue exists.
 - **`check_dashboards.py` tries a date in every text box**, so the
   Ledger's custom range runs in CI.
+
+## 2026-11-16: Without support, financial future takes the loss
+
+The first reliance tables kept financial future as logged and let
+unallocated cash go negative (the design spec's rule). On real figures
+that read as setting aside most of an income that was not there, with a
+large negative unallocated share beside it. The owner read it as wrong.
+
+- **Support income now comes out of financial future**, not out of
+  unallocated cash: needs and wants stay as logged, and financial future
+  is what remains. It answers the question the page is for: with the same
+  spending and no support, how much could still be set aside. A negative
+  figure means spending alone was more than the income without support.
+- **Unallocated has a target of 0%** in that table: the three targets
+  sum to 100%, and the owner aims to leave nothing unallocated.
+

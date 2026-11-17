@@ -421,7 +421,7 @@
       "id": 5,
       "type": "table",
       "title": "Support income by period",
-      "description": "Monthly means over each period. Unallocated is what stayed in chequing after spending and financial future; Without support is the same figure with support income taken out, so a minus means the month would not have closed. Same spending and transfers; support income removed.",
+      "description": "Monthly means over each period. Financial future is what you set aside; Without support is what would have been left to set aside had the support income not come, so a minus means your spending alone was more than your own income. Same spending; support income removed, and financial future takes the loss.",
       "datasource": {
         "type": "grafana-postgresql-datasource",
         "uid": "finflow-marts"
@@ -441,7 +441,7 @@
           },
           "format": "table",
           "rawQuery": true,
-          "rawSql": "with w as (\n  select r.window_months as n, r.spendable_income, r.needs_spend, r.wants_spend, r.financial_future, r.unallocated_cash,\n    coalesce(sum(f.amount) filter (where f.type = 'income' and f.is_support and f.deposit_account_name is null), 0) as support,\n    coalesce(sum(f.amount) filter (where f.type = 'expense' and not f.is_self_funded and f.bucket = 'needs'), 0) as others_needs,\n    coalesce(sum(f.amount) filter (where f.type = 'expense' and not f.is_self_funded and f.bucket = 'wants'), 0) as others_wants\n  from marts.fct_month_rolling r\n  left join marts.fct_transactions f\n    on f.month_start > r.month_start - make_interval(months => r.window_months) and f.month_start <= r.month_start\n  where r.month_start = (select max(month_start) from marts.fct_month_plan where is_complete_month)\n  group by r.window_months, r.spendable_income, r.needs_spend, r.wants_spend, r.financial_future, r.unallocated_cash\n),\nt as (\n  select needs_target_pct, wants_target_pct, financial_future_target_pct\n  from marts.fct_monthly_summary order by month_start desc limit 1\n)\nselect\n  'Last ' || w.n || ' full months' as \"Period\",\n  w.spendable_income / w.n as \"Income a month\",\n  case when w.spendable_income is not null then w.support / w.n end as \"Support a month\",\n  w.support / nullif(w.spendable_income, 0) as \"Share of income\",\n  w.unallocated_cash / w.n as \"Unallocated\",\n  case when ((w.unallocated_cash - w.support) / w.n) > 0 then '+$' when ((w.unallocated_cash - w.support) / w.n) < 0 then '−$' else '$' end || to_char(abs(round(((w.unallocated_cash - w.support) / w.n))), 'FM999999990') as \"Without support\"\nfrom w\norder by w.n"
+          "rawSql": "with w as (\n  select r.window_months as n, r.spendable_income, r.needs_spend, r.wants_spend, r.financial_future, r.unallocated_cash,\n    coalesce(sum(f.amount) filter (where f.type = 'income' and f.is_support and f.deposit_account_name is null), 0) as support,\n    coalesce(sum(f.amount) filter (where f.type = 'expense' and not f.is_self_funded and f.bucket = 'needs'), 0) as others_needs,\n    coalesce(sum(f.amount) filter (where f.type = 'expense' and not f.is_self_funded and f.bucket = 'wants'), 0) as others_wants\n  from marts.fct_month_rolling r\n  left join marts.fct_transactions f\n    on f.month_start > r.month_start - make_interval(months => r.window_months) and f.month_start <= r.month_start\n  where r.month_start = (select max(month_start) from marts.fct_month_plan where is_complete_month)\n  group by r.window_months, r.spendable_income, r.needs_spend, r.wants_spend, r.financial_future, r.unallocated_cash\n),\nt as (\n  select needs_target_pct, wants_target_pct, financial_future_target_pct\n  from marts.fct_monthly_summary order by month_start desc limit 1\n)\nselect\n  'Last ' || w.n || ' full months' as \"Period\",\n  w.spendable_income / w.n as \"Income a month\",\n  case when w.spendable_income is not null then w.support / w.n end as \"Support a month\",\n  w.support / nullif(w.spendable_income, 0) as \"Share of income\",\n  w.financial_future / w.n as \"Financial future\",\n  case when ((w.financial_future - w.support) / w.n) > 0 then '+$' when ((w.financial_future - w.support) / w.n) < 0 then '−$' else '$' end || to_char(abs(round(((w.financial_future - w.support) / w.n))), 'FM999999990') as \"Without support\"\nfrom w\norder by w.n"
         }
       ],
       "fieldConfig": {
@@ -516,12 +516,12 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "Unallocated"
+              "options": "Financial future"
             },
             "properties": [
               {
                 "id": "custom.width",
-                "value": 100
+                "value": 130
               }
             ]
           },
@@ -590,7 +590,7 @@
       "id": 6,
       "type": "table",
       "title": "Bucket shares with and without support income",
-      "description": "The last 3 full months: each bucket as a share of the income that reached chequing, as logged and with support income taken out of that income. Same spending and transfers; support income removed.",
+      "description": "The last 3 full months: each bucket as a share of the income that reached chequing. Without support keeps your needs and wants, takes support income out of the income, and leaves financial future with what remains; a minus there means spending alone was more than your own income. Same spending; support income removed, and financial future takes the loss.",
       "datasource": {
         "type": "grafana-postgresql-datasource",
         "uid": "finflow-marts"
@@ -610,7 +610,7 @@
           },
           "format": "table",
           "rawQuery": true,
-          "rawSql": "with w as (\n  select r.window_months as n, r.spendable_income, r.needs_spend, r.wants_spend, r.financial_future, r.unallocated_cash,\n    coalesce(sum(f.amount) filter (where f.type = 'income' and f.is_support and f.deposit_account_name is null), 0) as support,\n    coalesce(sum(f.amount) filter (where f.type = 'expense' and not f.is_self_funded and f.bucket = 'needs'), 0) as others_needs,\n    coalesce(sum(f.amount) filter (where f.type = 'expense' and not f.is_self_funded and f.bucket = 'wants'), 0) as others_wants\n  from marts.fct_month_rolling r\n  left join marts.fct_transactions f\n    on f.month_start > r.month_start - make_interval(months => r.window_months) and f.month_start <= r.month_start\n  where r.month_start = (select max(month_start) from marts.fct_month_plan where is_complete_month)\n  group by r.window_months, r.spendable_income, r.needs_spend, r.wants_spend, r.financial_future, r.unallocated_cash\n),\nt as (\n  select needs_target_pct, wants_target_pct, financial_future_target_pct\n  from marts.fct_monthly_summary order by month_start desc limit 1\n)\nselect b.name as \"Bucket\", b.amount / w.n as \"A month\",\n  b.amount / nullif(w.spendable_income, 0) as \"As logged\",\n  b.amount_without / nullif(w.spendable_income - w.support, 0) as \"Without support\",\n  b.target as \"Target\"\nfrom w cross join t\ncross join lateral (values\n  (1, 'Needs', w.needs_spend, w.needs_spend, t.needs_target_pct),\n  (2, 'Wants', w.wants_spend, w.wants_spend, t.wants_target_pct),\n  (3, 'Financial future', w.financial_future, w.financial_future, t.financial_future_target_pct),\n  (4, 'Unallocated', w.unallocated_cash, w.unallocated_cash - w.support, null)\n) as b (ord, name, amount, amount_without, target)\nwhere w.n = 3\norder by b.ord"
+          "rawSql": "with w as (\n  select r.window_months as n, r.spendable_income, r.needs_spend, r.wants_spend, r.financial_future, r.unallocated_cash,\n    coalesce(sum(f.amount) filter (where f.type = 'income' and f.is_support and f.deposit_account_name is null), 0) as support,\n    coalesce(sum(f.amount) filter (where f.type = 'expense' and not f.is_self_funded and f.bucket = 'needs'), 0) as others_needs,\n    coalesce(sum(f.amount) filter (where f.type = 'expense' and not f.is_self_funded and f.bucket = 'wants'), 0) as others_wants\n  from marts.fct_month_rolling r\n  left join marts.fct_transactions f\n    on f.month_start > r.month_start - make_interval(months => r.window_months) and f.month_start <= r.month_start\n  where r.month_start = (select max(month_start) from marts.fct_month_plan where is_complete_month)\n  group by r.window_months, r.spendable_income, r.needs_spend, r.wants_spend, r.financial_future, r.unallocated_cash\n),\nt as (\n  select needs_target_pct, wants_target_pct, financial_future_target_pct\n  from marts.fct_monthly_summary order by month_start desc limit 1\n)\nselect b.name as \"Bucket\", b.amount / w.n as \"A month\",\n  b.amount / nullif(w.spendable_income, 0) as \"As logged\",\n  b.amount_without / nullif(w.spendable_income - w.support, 0) as \"Without support\",\n  b.target as \"Target\"\nfrom w cross join t\ncross join lateral (values\n  (1, 'Needs', w.needs_spend, w.needs_spend, t.needs_target_pct),\n  (2, 'Wants', w.wants_spend, w.wants_spend, t.wants_target_pct),\n  (3, 'Financial future', w.financial_future, w.financial_future - w.support, t.financial_future_target_pct),\n  (4, 'Unallocated', w.unallocated_cash, w.unallocated_cash, 0)\n) as b (ord, name, amount, amount_without, target)\nwhere w.n = 3\norder by b.ord"
         }
       ],
       "fieldConfig": {
@@ -716,7 +716,7 @@
       "id": 7,
       "type": "table",
       "title": "Income this lifestyle needs, counting what others paid",
-      "description": "The monthly income at which everything bought for you, by you or by others, would fit your targets: needs and wants each at most their target share. Spare is your income without support less that figure. Same spending and transfers; support income removed.",
+      "description": "The monthly income at which everything bought for you, by you or by others, would fit your targets: needs and wants each at most their target share. Spare is your income without support less that figure. Same spending; support income removed, and financial future takes the loss.",
       "datasource": {
         "type": "grafana-postgresql-datasource",
         "uid": "finflow-marts"
