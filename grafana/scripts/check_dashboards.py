@@ -111,7 +111,7 @@ EXPECTED = {
         "Income this lifestyle needs": [
             "Period", "Needs a month", "Wants a month", "Income needed", "Income you had",
             "Spare", "Set by"],
-        "Savings balance": ["time", "metric", "value"],
+        "Set aside since tracking began": ["time", "metric", "value"],
     },
 }
 VARIABLE_COLUMNS = ["__value", "__text"]
