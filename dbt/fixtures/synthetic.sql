@@ -187,3 +187,8 @@ where id = 'a0000000-0000-0000-0000-000000000017';
 
 insert into transaction_tags (transaction_id, tag_id)
 select 'a0000000-0000-0000-0000-000000000017', id from tags where name = 'Social';
+
+-- One source marked as support, so the panels that remove support income
+-- have something to remove. It stands in for a support source without
+-- adding income that would move the hand-worked months.
+update income_sources set is_support = true where name = 'Refund';

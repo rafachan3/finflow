@@ -68,6 +68,7 @@ select
     t.merchant_name,
     t.venue_name,
     t.income_source_name,
+    t.is_support,
     t.deposit_account_name,
     t.from_account_name,
     t.from_account_kind,

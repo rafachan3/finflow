@@ -190,6 +190,7 @@ erDiagram
     smallint id PK
     text name UK
     smallint deposit_account_id FK "nullable; null = chequing"
+    boolean is_support "regular support from another person"
   }
 
   accounts {
@@ -279,10 +280,13 @@ create table account_opening_balances (
 -- deposit_account_id is where income from this source lands (interest paid
 -- into a savings account); null means chequing. Set in the seed overlay, not
 -- per transaction: the source already says where its money goes.
+-- is_support marks regular support from another person (migration 0024).
+-- It changes no metric; the owner sets it in the database, never here.
 create table income_sources (
   id                 smallint generated always as identity primary key,
   name               text not null unique,        -- values seeded locally
-  deposit_account_id smallint references accounts(id)
+  deposit_account_id smallint references accounts(id),
+  is_support         boolean not null default false
 );
 
 -- Who paid for an expense. Null on income and transfer. The tracked seed

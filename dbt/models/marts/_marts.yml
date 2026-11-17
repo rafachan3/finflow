@@ -85,6 +85,11 @@ models:
           - not_null:
               config:
                 where: "type = 'expense'"
+      - name: is_support
+        description: >-
+          On income, whether its source is marked as regular support from
+          another person (income_sources.is_support). Null on expenses and
+          transfers. No metric reads it.
       - name: deposit_account_name
         dimension: categorical
       - name: from_account_name
