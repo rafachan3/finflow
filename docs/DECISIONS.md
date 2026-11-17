@@ -3466,3 +3466,61 @@ A data-visualization review of the three dashboards (read-only agent,
 - **`check_dashboards.py` samples variable combinations above 500**: an
   even sample of the product plus every value of each variable once. The
   Ledger's seven variables had taken the check from one minute to ten.
+
+## 2026-11-16: Dashboards, round 8: labels, income, reliance, and wider Ledger periods
+
+The owner's review of round 7 found a venue listed as a merchant, asked
+for pages on tags, merchants, income and financial future, and for the
+reliance dashboard.
+
+- **Merchant never falls back to venue.** A merchant is a shop the owner
+  tracks; a venue is a kind of place. Both are sparse (about 4 in 10
+  expense lines have a merchant, about 4 in 10 a venue), so the Ledger
+  shows them as two columns and two tables, each ending in a "not
+  recorded" row, and Trends lists tracked merchants only.
+- **The income line reaches the current month again, dashed.** Round 7
+  cut it at the last full month; the owner wanted it joined. The dashed
+  segment keeps the unfinished month from reading as final.
+- **Ledger periods are a longer list plus two date boxes**, not the
+  Grafana time picker. The picker would mean `$__timeFilter` macros the
+  checker cannot run, a time zone on date columns, and every link into
+  the Ledger rewritten. Period adds the 12 months ending with the month,
+  its calendar year, everything, and custom dates. Per month divides by
+  the calendar months the period touches that the ledger covers.
+- **By category beside By subcategory, no toggle.** Grafana has no
+  control inside a panel, and a variable at the top that changes one
+  panel was ruled out in round 5. The median column ("Typical") is gone:
+  nothing on the page said what to compare it with. Share and a signed
+  Change (per month against the 3 full months before the period) replace
+  it; Change is empty when the period includes the unfinished month, is
+  not whole months, or the ledger does not reach 3 months further back.
+- **Tags and merchants (`finflow-labels`).** Tags overlap, so they are
+  never stacked: a summary table, a breakdown table and one small chart
+  per tag and per merchant (a repeated panel on a hidden variable), each
+  with its own scale. Names come from the data, so no colour is tied to a
+  name.
+- **Income and financial future (`finflow-income`).** Income by source
+  ranks the sources in SQL and draws the top three and the rest as four
+  queries, so colours attach to rank, not to a private name. Financial
+  future is split by account kind, whose names are fixed. Savings
+  balance was replaced by cumulative net flow per account: production
+  has no opening balance, so the balance was empty.
+- **"Income this lifestyle needs"** is `max(needs / needs target, wants
+  / wants target)` over the rolling windows: the income at which both
+  buckets fit their share, the rest left for financial future. It uses
+  the stored targets, not a hard-coded 50/30/20.
+- **Reliance on others (`finflow-reliance`)** ships sections A and B of
+  the design spec and the with/without-support comparison. Support is
+  `income_sources.is_support` (migration 0024), carried to
+  `fct_transactions`; no metric reads it and the owner sets it in the
+  database. The spec's wants-cut and illustrative-split rows are left
+  out: advice-shaped arithmetic on figures the page already shows.
+- **"Needs attention" is on hold until the owner rules; the
+  recommendation is not to build it.** Sized on production: the nightly
+  ledger health reported no warnings and no entry is future-dated, so
+  the panel would be empty; unconfirmed cards are not readable by the
+  analyst role. Of the 35 pairs the duplicate test first raised, one was
+  a duplicate. A mart, an intermediate model and a panel for that hit
+  rate is not worth it while the nightly ledger-health issue exists.
+- **`check_dashboards.py` tries a date in every text box**, so the
+  Ledger's custom range runs in CI.
