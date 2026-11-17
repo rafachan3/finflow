@@ -121,8 +121,8 @@ EXPECTED = {
             "Category", "Paid by others a month", "Share of the category"],
         "Income by month, support and the rest": ["month", "Other income", "Support income"],
         "Support income by period": [
-            "Period", "Income a month", "Support a month", "Share of income", "Unallocated",
-            "Without support"],
+            "Period", "Income a month", "Support a month", "Share of income",
+            "Financial future", "Without support"],
         "Bucket shares with and without support income": [
             "Bucket", "A month", "As logged", "Without support", "Target"],
         "Income this lifestyle needs, counting what others paid": [
