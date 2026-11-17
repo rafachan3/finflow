@@ -62,6 +62,12 @@ resource "grafana_dashboard" "ledger" {
   overwrite   = true
 }
 
+resource "grafana_dashboard" "tags_merchants" {
+  folder      = grafana_folder.finflow.uid
+  config_json = file("${path.module}/../grafana/dashboards/tags-merchants.json")
+  overwrite   = true
+}
+
 # Grafana opens on This month. The provider writes every organization
 # preference at once, so each apply resets the ones left unset here
 # (theme, week start) to Grafana's defaults.
