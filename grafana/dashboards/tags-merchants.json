@@ -1,0 +1,783 @@
+{
+  "tags": [
+    "finflow"
+  ],
+  "timezone": "America/Toronto",
+  "editable": true,
+  "graphTooltip": 1,
+  "schemaVersion": 39,
+  "refresh": "",
+  "links": [
+    {
+      "type": "dashboards",
+      "title": "FinFlow dashboards",
+      "tags": [
+        "finflow"
+      ],
+      "asDropdown": false,
+      "includeVars": false,
+      "keepTime": false,
+      "targetBlank": false,
+      "icon": "external link"
+    }
+  ],
+  "uid": "finflow-labels",
+  "title": "Tags and merchants",
+  "description": "What the labels you add yourself cost: each tag and each tracked merchant by month, and what sits behind them.",
+  "time": {
+    "from": "now-12M/M-15d",
+    "to": "now/M"
+  },
+  "timepicker": {
+    "hidden": true
+  },
+  "templating": {
+    "list": [
+      {
+        "type": "query",
+        "name": "last_month",
+        "label": "Last full month",
+        "description": "Feeds the links to the Ledger; not shown.",
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "finflow-marts"
+        },
+        "query": "select to_char(max(month_start), 'YYYY-MM-DD') as __value, to_char(max(month_start), 'Mon YYYY') as __text from marts.fct_month_plan where is_complete_month",
+        "definition": "select to_char(max(month_start), 'YYYY-MM-DD') as __value, to_char(max(month_start), 'Mon YYYY') as __text from marts.fct_month_plan where is_complete_month",
+        "refresh": 1,
+        "sort": 0,
+        "multi": false,
+        "includeAll": false,
+        "current": {},
+        "options": [],
+        "hide": 2
+      },
+      {
+        "type": "query",
+        "name": "tag_r",
+        "label": "Tag",
+        "description": "Repeats the tag charts; not shown.",
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "finflow-marts"
+        },
+        "query": "select u.tag as __value, u.tag as __text from marts.fct_transactions f cross join lateral unnest(f.tags) as u (tag) where f.type = 'expense' and f.is_self_funded group by u.tag order by sum(f.amount) desc, u.tag",
+        "definition": "select u.tag as __value, u.tag as __text from marts.fct_transactions f cross join lateral unnest(f.tags) as u (tag) where f.type = 'expense' and f.is_self_funded group by u.tag order by sum(f.amount) desc, u.tag",
+        "refresh": 1,
+        "sort": 0,
+        "multi": true,
+        "includeAll": true,
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "options": [],
+        "hide": 2
+      },
+      {
+        "type": "query",
+        "name": "merchant_r",
+        "label": "Merchant",
+        "description": "Repeats the merchant charts; not shown.",
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "finflow-marts"
+        },
+        "query": "select merchant_name as __value, merchant_name as __text from marts.fct_transactions where type = 'expense' and is_self_funded and merchant_name is not null group by merchant_name order by sum(amount) desc, merchant_name",
+        "definition": "select merchant_name as __value, merchant_name as __text from marts.fct_transactions where type = 'expense' and is_self_funded and merchant_name is not null group by merchant_name order by sum(amount) desc, merchant_name",
+        "refresh": 1,
+        "sort": 0,
+        "multi": true,
+        "includeAll": true,
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "options": [],
+        "hide": 2
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "table",
+      "title": "Tags",
+      "description": "Your own spending under each tag: this month so far, the last full month, and the mean of the up to 3 full months before it. An entry with two tags counts under both, so the rows do not add up to your total. Click a tag for its line items.",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "finflow-marts"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "finflow-marts"
+          },
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "with m as (\n  select max(month_start) filter (where is_complete_month) as last,\n         max(month_start) filter (where not is_complete_month) as cur\n  from marts.fct_month_plan\n),\nnb as (\n  select count(*) as n from marts.fct_month_plan p cross join m\n  where p.month_start >= m.last - interval '3 months' and p.month_start < m.last\n),\nx as (\n  select u.tag as label, f.month_start, f.amount\n  from marts.fct_transactions f cross join lateral unnest(f.tags) as u (tag)\n  where f.type = 'expense' and f.is_self_funded\n)\nselect\n  x.label as \"Tag\",\n  coalesce(sum(x.amount) filter (where x.month_start = m.cur), 0) as \"This month so far\",\n  coalesce(sum(x.amount) filter (where x.month_start = m.last), 0) as \"Last full month\",\n  coalesce(sum(x.amount) filter (where x.month_start < m.last), 0) / nullif(nb.n, 0) as \"Mean of previous 3\",\n  case when (coalesce(sum(x.amount) filter (where x.month_start = m.last), 0) - coalesce(sum(x.amount) filter (where x.month_start < m.last), 0) / nullif(nb.n, 0)) > 0 then '+$' when (coalesce(sum(x.amount) filter (where x.month_start = m.last), 0) - coalesce(sum(x.amount) filter (where x.month_start < m.last), 0) / nullif(nb.n, 0)) < 0 then '−$' else '$' end || to_char(abs(round((coalesce(sum(x.amount) filter (where x.month_start = m.last), 0) - coalesce(sum(x.amount) filter (where x.month_start < m.last), 0) / nullif(nb.n, 0)))), 'FM999999990') as \"Change\"\nfrom x cross join m cross join nb\nwhere x.month_start >= m.last - interval '3 months'\ngroup by x.label, nb.n\norder by 3 desc, 4 desc, 1"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "prefix:$",
+          "decimals": 0,
+          "noValue": "–",
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "^(Tag)$"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "none"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "This month so far"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 135
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Last full month"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 120
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Mean of previous 3"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 145
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Change"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "none"
+              },
+              {
+                "id": "custom.align",
+                "value": "right"
+              },
+              {
+                "id": "custom.width",
+                "value": 80
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "regex",
+                    "options": {
+                      "pattern": "^\\+.*",
+                      "result": {
+                        "color": "#d03b3b",
+                        "index": 0
+                      }
+                    }
+                  },
+                  {
+                    "type": "regex",
+                    "options": {
+                      "pattern": "^−.*",
+                      "result": {
+                        "color": "#0ca30c",
+                        "index": 1
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Tag"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "See last month's line items",
+                    "url": "/d/finflow-ledger?var-month=${last_month}&var-span=0&var-tag=${__data.fields[0]:percentencode}"
+                  },
+                  {
+                    "title": "See the line items of the 3 full months before",
+                    "url": "/d/finflow-ledger?var-month=${last_month}&var-span=3&var-tag=${__data.fields[0]:percentencode}"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false
+        }
+      }
+    },
+    {
+      "id": 2,
+      "type": "table",
+      "title": "What each tag was spent on",
+      "description": "The categories behind each tag over the last 3 full months, as a monthly mean. Share is the category's part of that tag.",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "finflow-marts"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "finflow-marts"
+          },
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "with m as (\n  select max(month_start) filter (where is_complete_month) as last,\n         max(month_start) filter (where not is_complete_month) as cur\n  from marts.fct_month_plan\n)\nselect \"Tag\", \"Category\", \"Per month\", \"Share\" from (\n  select\n    x.label as \"Tag\", x.by_name as \"Category\",\n    sum(x.amount) / 3 as \"Per month\",\n    sum(x.amount) / sum(sum(x.amount)) over (partition by x.label) as \"Share\",\n    sum(sum(x.amount)) over (partition by x.label) as label_total\n  from (\n    select u.tag as label, f.category_name as by_name, f.month_start, f.amount\n    from marts.fct_transactions f cross join lateral unnest(f.tags) as u (tag)\n    where f.type = 'expense' and f.is_self_funded\n  ) x cross join m\n  where x.month_start > m.last - interval '3 months' and x.month_start <= m.last\n  group by x.label, x.by_name\n) t\norder by label_total desc, 1, \"Per month\" desc\nlimit 12"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "prefix:$",
+          "decimals": 0,
+          "noValue": "–",
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "^(Tag|Category)$"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "none"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Per month"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 100
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Share"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "custom.width",
+                "value": 70
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false
+        }
+      }
+    },
+    {
+      "id": 3,
+      "type": "barchart",
+      "title": "${tag_r}",
+      "description": "Your spending tagged ${tag_r} by month, up to the last 13. Each chart has its own scale; * marks the month in progress.",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "finflow-marts"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 8,
+        "w": 4,
+        "h": 6
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "finflow-marts"
+          },
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "select\n  to_char(p.month_start, 'Mon') || case when p.is_complete_month then '' else '*' end as month,\n  coalesce(sum(f.amount), 0) as \"Spent\"\nfrom (select * from marts.fct_month_plan order by month_start desc limit 13) p\nleft join marts.fct_transactions f\n  on f.month_start = p.month_start and f.type = 'expense' and f.is_self_funded\n  and ${tag_r:sqlstring} = any(f.tags)\ngroup by p.month_start, p.is_complete_month\norder by p.month_start"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "prefix:$",
+          "decimals": 0,
+          "min": 0,
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "#898781"
+          },
+          "custom": {
+            "fillOpacity": 100,
+            "lineWidth": 0
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "xField": "month",
+        "orientation": "vertical",
+        "stacking": "none",
+        "showValue": "never",
+        "barWidth": 0.7,
+        "groupWidth": 0.8,
+        "xTickLabelSpacing": 50,
+        "legend": {
+          "showLegend": false,
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "repeat": "tag_r",
+      "repeatDirection": "h",
+      "maxPerRow": 6,
+      "links": [
+        {
+          "title": "See every line item",
+          "url": "/d/finflow-ledger?var-span=all&var-tag=${tag_r:percentencode}"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "table",
+      "title": "Merchants",
+      "description": "Your own spending at each merchant you track: this month so far, the last full month, and the mean of the up to 3 full months before it. Purchases logged without a merchant are left out. Click a merchant for its line items.",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "finflow-marts"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 14,
+        "w": 12,
+        "h": 12
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "finflow-marts"
+          },
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "with m as (\n  select max(month_start) filter (where is_complete_month) as last,\n         max(month_start) filter (where not is_complete_month) as cur\n  from marts.fct_month_plan\n),\nnb as (\n  select count(*) as n from marts.fct_month_plan p cross join m\n  where p.month_start >= m.last - interval '3 months' and p.month_start < m.last\n),\nx as (\n  select f.merchant_name as label, f.month_start, f.amount\n  from marts.fct_transactions f\n  where f.type = 'expense' and f.is_self_funded and f.merchant_name is not null\n)\nselect\n  x.label as \"Merchant\",\n  coalesce(sum(x.amount) filter (where x.month_start = m.cur), 0) as \"This month so far\",\n  coalesce(sum(x.amount) filter (where x.month_start = m.last), 0) as \"Last full month\",\n  coalesce(sum(x.amount) filter (where x.month_start < m.last), 0) / nullif(nb.n, 0) as \"Mean of previous 3\",\n  case when (coalesce(sum(x.amount) filter (where x.month_start = m.last), 0) - coalesce(sum(x.amount) filter (where x.month_start < m.last), 0) / nullif(nb.n, 0)) > 0 then '+$' when (coalesce(sum(x.amount) filter (where x.month_start = m.last), 0) - coalesce(sum(x.amount) filter (where x.month_start < m.last), 0) / nullif(nb.n, 0)) < 0 then '−$' else '$' end || to_char(abs(round((coalesce(sum(x.amount) filter (where x.month_start = m.last), 0) - coalesce(sum(x.amount) filter (where x.month_start < m.last), 0) / nullif(nb.n, 0)))), 'FM999999990') as \"Change\"\nfrom x cross join m cross join nb\nwhere x.month_start >= m.last - interval '3 months'\ngroup by x.label, nb.n\norder by 3 desc, 4 desc, 1"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "prefix:$",
+          "decimals": 0,
+          "noValue": "–",
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "^(Merchant)$"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "none"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "This month so far"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 135
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Last full month"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 120
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Mean of previous 3"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 145
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Change"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "none"
+              },
+              {
+                "id": "custom.align",
+                "value": "right"
+              },
+              {
+                "id": "custom.width",
+                "value": 80
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "regex",
+                    "options": {
+                      "pattern": "^\\+.*",
+                      "result": {
+                        "color": "#d03b3b",
+                        "index": 0
+                      }
+                    }
+                  },
+                  {
+                    "type": "regex",
+                    "options": {
+                      "pattern": "^−.*",
+                      "result": {
+                        "color": "#0ca30c",
+                        "index": 1
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Merchant"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "See last month's line items",
+                    "url": "/d/finflow-ledger?var-month=${last_month}&var-span=0&var-merchant=${__data.fields[0]:percentencode}"
+                  },
+                  {
+                    "title": "See the line items of the 3 full months before",
+                    "url": "/d/finflow-ledger?var-month=${last_month}&var-span=3&var-merchant=${__data.fields[0]:percentencode}"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false
+        }
+      }
+    },
+    {
+      "id": 5,
+      "type": "table",
+      "title": "What you bought at each merchant",
+      "description": "The subcategories behind each merchant over the last 3 full months, as a monthly mean. Share is the subcategory's part of that merchant.",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "finflow-marts"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 14,
+        "w": 12,
+        "h": 12
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "finflow-marts"
+          },
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "with m as (\n  select max(month_start) filter (where is_complete_month) as last,\n         max(month_start) filter (where not is_complete_month) as cur\n  from marts.fct_month_plan\n)\nselect \"Merchant\", \"Subcategory\", \"Per month\", \"Share\" from (\n  select\n    x.label as \"Merchant\", x.by_name as \"Subcategory\",\n    sum(x.amount) / 3 as \"Per month\",\n    sum(x.amount) / sum(sum(x.amount)) over (partition by x.label) as \"Share\",\n    sum(sum(x.amount)) over (partition by x.label) as label_total\n  from (\n    select f.merchant_name as label, f.subcategory_name as by_name, f.month_start, f.amount\n    from marts.fct_transactions f\n    where f.type = 'expense' and f.is_self_funded and f.merchant_name is not null\n  ) x cross join m\n  where x.month_start > m.last - interval '3 months' and x.month_start <= m.last\n  group by x.label, x.by_name\n) t\norder by label_total desc, 1, \"Per month\" desc\nlimit 12"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "prefix:$",
+          "decimals": 0,
+          "noValue": "–",
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "^(Merchant|Subcategory)$"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "none"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Per month"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 100
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Share"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "custom.width",
+                "value": 70
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false
+        }
+      }
+    },
+    {
+      "id": 6,
+      "type": "barchart",
+      "title": "${merchant_r}",
+      "description": "Your spending at ${merchant_r} by month, up to the last 13. Each chart has its own scale; * marks the month in progress.",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "finflow-marts"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 26,
+        "w": 4,
+        "h": 6
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "finflow-marts"
+          },
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "select\n  to_char(p.month_start, 'Mon') || case when p.is_complete_month then '' else '*' end as month,\n  coalesce(sum(f.amount), 0) as \"Spent\"\nfrom (select * from marts.fct_month_plan order by month_start desc limit 13) p\nleft join marts.fct_transactions f\n  on f.month_start = p.month_start and f.type = 'expense' and f.is_self_funded\n  and f.merchant_name = ${merchant_r:sqlstring}\ngroup by p.month_start, p.is_complete_month\norder by p.month_start"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "prefix:$",
+          "decimals": 0,
+          "min": 0,
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "#898781"
+          },
+          "custom": {
+            "fillOpacity": 100,
+            "lineWidth": 0
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "xField": "month",
+        "orientation": "vertical",
+        "stacking": "none",
+        "showValue": "never",
+        "barWidth": 0.7,
+        "groupWidth": 0.8,
+        "xTickLabelSpacing": 50,
+        "legend": {
+          "showLegend": false,
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "repeat": "merchant_r",
+      "repeatDirection": "h",
+      "maxPerRow": 6,
+      "links": [
+        {
+          "title": "See every line item",
+          "url": "/d/finflow-ledger?var-span=all&var-merchant=${merchant_r:percentencode}"
+        }
+      ]
+    }
+  ]
+}

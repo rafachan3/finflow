@@ -40,6 +40,7 @@ MEAN_TO_DATE = "Mean of previous 3 full months, by this day"
 
 # Column names each panel's query returns, by dashboard uid and panel title.
 CHANGE_COLUMNS = ["Bucket", "Last full month", "Mean of previous 3", "Change"]
+LABEL_COLUMNS = ["This month so far", "Last full month", "Mean of previous 3", "Change"]
 EXPECTED = {
     "finflow-month": {
         "Status": ["status"],
@@ -87,6 +88,14 @@ EXPECTED = {
         "Line items": [
             "Date", "Item", "Merchant", "Venue", "Category", "Subcategory", "Bucket", "Amount",
             "Tags", "Paid by", "Note"],
+    },
+    "finflow-labels": {
+        "Tags": ["Tag", *LABEL_COLUMNS],
+        "What each tag was spent on": ["Tag", "Category", "Per month", "Share"],
+        "${tag_r}": ["month", "Spent"],
+        "Merchants": ["Merchant", *LABEL_COLUMNS],
+        "What you bought at each merchant": ["Merchant", "Subcategory", "Per month", "Share"],
+        "${merchant_r}": ["month", "Spent"],
     },
 }
 VARIABLE_COLUMNS = ["__value", "__text"]
