@@ -29,6 +29,7 @@ select
     m.name as merchant_name,
     v.name as venue_name,
     s.name as income_source_name,
+    s.is_support,
     s.deposit_account_id,
     d.name as deposit_account_name,
     t.from_account_id,

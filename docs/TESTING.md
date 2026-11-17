@@ -115,6 +115,7 @@ included.
 | Ledger | Every expense has at least one line, and income and transfers have none | `dbt:expense_has_lines`<br>`dbt:no_lines_on_income_or_transfer` |
 | Ledger | A line's item type belongs to the same category as its subcategory | `dbt:item_type_matches_subcategory_category` |
 | Ledger | An expense has a funder, and income and transfers have none; a transfer names the account it leaves, the one it enters or both (null is chequing), never the same one twice, so a withdrawal passes; only a transfer has a from account | `dbt:expense_funding_rules`<br>`dbt:transfer_has_account` |
+| Ledger | An income row carries its source's support flag, and expenses and transfers carry none | `dbt:support_flag_only_on_income` |
 | Ledger | A debt account only receives transfers: a transfer from one, or an income source depositing into one, fails the `dbt` job | `dbt:debt_account_only_receives_transfers` |
 | Ledger | Every transaction is dated from the ledger start (dbt var `ledger_start`, 2026-06-01; the fixture exports its own) to Toronto's tomorrow; a row dated years back or ahead fails the `dbt` job, as does the production start on the fixture's earlier months | `dbt:occurred_on_within_ledger`<br>`ci:misdated rows fail occurred_on_within_ledger, and a likely duplicate warns with its ids` |
 | Ledger | Warnings, not failures: a line tag that repeats its header tag, a transaction with two confirmed ingestions | `dbt:line_tag_not_on_header`<br>`dbt:one_confirmed_ingestion_per_transaction` |
