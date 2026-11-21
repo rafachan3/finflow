@@ -168,12 +168,36 @@ describe("several purchases in one message", () => {
     expect(rows[1].media_path).toBe(rows[0].media_path);
   });
 
-  it("a caption purchase the reader gave no items still gets a confirmable card, and one Edit fixes its category", async () => {
+  const caption = () => {
     const [receipt, pharmacy] = (golden("receipt-with-caption").recorded as { events: Record<string, unknown>[] }).events;
-    const noItems = { ...pharmacy, date: "2026-10-25", items: [] };
+    return { receipt, pharmacy, noItems: { ...pharmacy, date: "2026-10-25", items: [] } };
+  };
+  const kinds = () => gemini.calls.map((c) => c.kind);
+
+  it("a caption purchase the reader gave no items is read again, and its card has the real category and no warning", async () => {
+    const { receipt, pharmacy, noItems } = caption();
     gemini.extract = { events: [receipt, noItems] };
+    gemini.reask = { events: [{ ...pharmacy, date: "2026-10-25" }] };
     await chat.photo("also 5 at Corner Pharmacy");
 
+    expect(kinds()).toEqual(["extract", "reask"]);
+    const [, card] = chat.replies();
+    expect(labels(card)).toEqual(REVIEW);
+    expect(card.text).toContain("• Pharmacy items — 5.00\n  Health and wellness / Medical / ");
+    expect(card.text).not.toContain("the reader gave no items");
+    expect(card.text).not.toContain("✗");
+
+    await chat.tap(card, "Confirm");
+    expect(await ledger.transactions()).toMatchObject([{ type: "expense", amount: "5.00", lines: 1 }]);
+  });
+
+  it("a caption purchase still has no items after the re-ask fails: a confirmable card with the one warning, and one Edit fixes its category", async () => {
+    const { receipt, pharmacy, noItems } = caption();
+    gemini.extract = { events: [receipt, noItems] };
+    gemini.reaskFails = true;
+    await chat.photo("also 5 at Corner Pharmacy");
+
+    expect(kinds()).toEqual(["extract", "reask", "reask", "reask"]);
     const [, card] = chat.replies();
     expect(labels(card)).toEqual(REVIEW);
     const warnings = card.text.split("\n").filter((l) => l.startsWith("! the reader gave no items"));
@@ -191,10 +215,18 @@ describe("several purchases in one message", () => {
     await chat.text("it was medicine");
     const fixed = chat.last();
     expect(fixed.text).toContain("  Health and wellness / Medical");
-    expect(fixed.text).not.toContain("! the reader gave no items");
+    expect(fixed.text).not.toContain("the reader gave no items");
 
     await chat.tap(fixed, "Confirm");
     expect(await ledger.transactions()).toMatchObject([{ type: "expense", amount: "5.00", lines: 1 }]);
+  });
+
+  it("an ordinary answer makes one Gemini call, so a receipt with a caption purchase is not read again", async () => {
+    gemini.extract = golden("receipt-with-caption").recorded;
+    await chat.photo("also 5 at Corner Pharmacy");
+
+    expect(kinds()).toEqual(["extract"]);
+    expect(chat.replies()).toHaveLength(2);
   });
 
   it("an event that fails checks is shown without buttons and is not saved", async () => {

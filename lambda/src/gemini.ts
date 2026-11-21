@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import {
   lineFromTotal,
   normalizeTaxonomyNames,
+  validateExtraction,
   type Extraction,
   type ExtractionItem,
   type ExtractionMeta,
@@ -463,6 +464,85 @@ function asExtraction(raw: unknown): Extraction {
   };
 }
 
+// Sent only when an expense came back with no items, with the same message or
+// media as the first call, so the answer is read from the same source.
+const REASK_STATIC_PROMPT = [
+  "You complete Canadian personal-finance expenses that were extracted without any items.",
+  "Today is YYYY-MM-DD (America/Toronto). Currency is CAD.",
+  "The last text part is JSON listing those expenses, each with its description and its total paid, amount. The earlier parts are the message, caption or media they came from.",
+  "Return one event per listed expense, in the same order, type expense, with that description and amount. Each event must have at least one item with its own category, subcategory, item_type and bucket, read from the message, caption or media. When nothing says what was bought, use one item with the event's description and the Other … subcategory that fits best.",
+  LINE_AMOUNTS,
+  "Item types must belong to the same category as the subcategory.",
+  ITEM_TYPE_GOODS,
+  "category, subcategory, and item_type are separate fields. Never repeat the category inside subcategory or item_type. Example: category='Food and drink', subcategory='Takeout / Quick Service', item_type='Meals & Prepared Food'.",
+  ENGLISH_DESCRIPTIONS,
+  TAGS,
+  BUCKETS,
+].join("\n");
+
+/** An expense with a two-decimal total and no items: the case the re-ask and `lineFromTotal` repair. */
+function hasNoItems(event: unknown): boolean {
+  const o = event as Record<string, unknown>;
+  const none = !Array.isArray(o.items) || o.items.length === 0;
+  return none && lineFromTotal({ type: o.type, amount: String(o.amount ?? ""), description: "" }) !== null;
+}
+
+/** The status of a failed Gemini call, never its message. */
+function statusOf(err: unknown): string {
+  const status = /^Gemini HTTP (\d{3})/.exec(err instanceof Error ? err.message : "")?.[1];
+  return status ? `HTTP ${status}` : "no usable answer";
+}
+
+/**
+ * One more call, for every expense the first answer gave no items, through the
+ * same fallback chain. An event is replaced by its own raw answer with the new
+ * items only when they add no check error the event did not already have (the
+ * categories exist, the lines sum to the header). Anything else, or a failed
+ * call, leaves the event as it was for the deterministic repair in asExtraction.
+ * Nothing is saved here.
+ */
+async function reaskEmpty(args: {
+  apiKey: string;
+  taxonomy: TaxonomySnapshot;
+  bucketRules: string;
+  today: string;
+  userParts: GeminiUserPart[];
+  raw: Record<string, unknown>[];
+  empty: number[];
+}): Promise<{ filled: Map<number, Record<string, unknown>>; usage?: TokenUsage }> {
+  const asked = args.empty.map((i) => ({
+    description: String(args.raw[i].description ?? ""),
+    amount: String(args.raw[i].amount),
+  }));
+  const checked = (event: Record<string, unknown>) =>
+    validateExtraction(normalizeTaxonomyNames(asExtraction(event), args.taxonomy), args.taxonomy).errors;
+  const filled = new Map<number, Record<string, unknown>>();
+  let usage: TokenUsage | undefined;
+  try {
+    const answer = await generateJson({
+      apiKey: args.apiKey,
+      schema: EVENTS_SCHEMA,
+      system: extractorSystem(args.today, args.taxonomy, REASK_STATIC_PROMPT, args.bucketRules),
+      userParts: [...args.userParts, { text: JSON.stringify({ expenses_without_items: asked }) }],
+    });
+    usage = answer.usage;
+    const events = ((answer.data as { events?: unknown[] }).events ?? []) as Record<string, unknown>[];
+    if (events.length === asked.length) {
+      args.empty.forEach((i, k) => {
+        const { items, taxes, discounts, tip } = events[k] ?? {};
+        const event = { ...args.raw[i], items, taxes, discounts, tip };
+        if (!Array.isArray(items) || items.length === 0) return;
+        const before = checked(args.raw[i]);
+        if (checked(event).every((e) => before.includes(e))) filled.set(i, event);
+      });
+    }
+  } catch (err) {
+    console.warn(`Gemini re-ask failed: ${statusOf(err)}`);
+  }
+  console.log(`Gemini re-ask: ${asked.length} expense(s) without items, ${filled.size} filled`);
+  return { filled, usage };
+}
+
 async function extractEvents(args: {
   apiKey: string;
   taxonomy: TaxonomySnapshot;
@@ -477,12 +557,29 @@ async function extractEvents(args: {
     system: extractorSystem(args.today, args.taxonomy, args.extractorStatic, args.bucketRules),
     userParts: args.userParts,
   });
-  const raw = (extractor.data as { events?: unknown[] }).events ?? [];
-  if (raw.length === 0) throw new Error("Gemini returned no events");
+  const first = (extractor.data as { events?: unknown[] }).events ?? [];
+  if (first.length === 0) throw new Error("Gemini returned no events");
+  let raw = first as Record<string, unknown>[];
+  const empty = raw.flatMap((e, i) => (hasNoItems(e) ? [i] : []));
+  let reasked = new Set<number>();
+  let extra: TokenUsage | undefined;
+  if (empty.length > 0) {
+    const { filled, usage } = await reaskEmpty({ ...args, raw, empty });
+    raw = raw.map((e, i) => filled.get(i) ?? e);
+    reasked = new Set(filled.keys());
+    extra = usage;
+  }
   // One call serves every event: meta on each, usage on event 0 only.
   const meta = promptMeta(extractor.model, args.taxonomy, args.extractorStatic, args.bucketRules);
+  const usage = extra
+    ? { input: extractor.usage.input + extra.input, output: extractor.usage.output + extra.output }
+    : extractor.usage;
   return withoutLeakedTotals(raw.map((e) => normalizeTaxonomyNames(asExtraction(e), args.taxonomy))).map(
-    (e, i) => ({ ...e, meta, usage: i === 0 ? { extractor: extractor.usage } : undefined }),
+    (e, i) => ({
+      ...e,
+      meta: reasked.has(i) ? { ...meta, reasked: true } : meta,
+      usage: i === 0 ? { extractor: usage } : undefined,
+    }),
   );
 }
 

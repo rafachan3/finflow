@@ -35,6 +35,8 @@ export type ExtractionMeta = {
   bucket_sha256?: string;
   bucket_model?: string;
   rules_sha256?: string;
+  /** This event had no items in the first answer; a second call read them. */
+  reasked?: true;
 };
 
 export type DateSource = "stated" | "today_default" | "missing" | "fix";
