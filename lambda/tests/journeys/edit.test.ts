@@ -104,6 +104,24 @@ describe("correcting a card with Edit", () => {
     expect((await ledger.ingestions())[0].status).toBe("awaiting_edit");
   });
 
+  it("a correction whose answer lost every line fails visibly and keeps the stored card, not a made-up line", async () => {
+    const card = await lunchCard();
+    const line = card.text.split("\n").find((l) => l.startsWith("• "))!;
+    await chat.tap(card, "Edit");
+    const patched = golden("edit-amount").recorded as { items: unknown[] };
+    gemini.patch = { ...patched, items: [] };
+    await chat.text("it was 14.50");
+
+    expect(labels(chat.last())).toEqual(["Keep as is", "Discard"]);
+    expect(chat.last().text).toContain("✗ expense needs at least one line");
+    expect(chat.last().text).not.toContain("Other shopping");
+    expect((await ledger.ingestions())[0].status).toBe("awaiting_edit");
+
+    await chat.tap(chat.last(), "Keep as is");
+    expect(chat.last().text).toContain(line);
+    expect(chat.last().text).not.toContain("Other shopping");
+  });
+
   it("Keep as is on an edit wait resends the Confirm card without Gemini", async () => {
     const card = await lunchCard();
     const header = card.text.split("\n")[0];

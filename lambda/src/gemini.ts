@@ -33,6 +33,13 @@ const ATTEMPTS = [
   { model: GEMINI_LITE_MODEL, delayMs: 2000 },
 ];
 
+/** The clock the re-ask's time budget reads; tests replace `now`. */
+export const clock = { now: () => Date.now() };
+
+// The ingest Lambda times out at 60 s and a fetch has no timeout of its own, so
+// a first call that already took this long leaves no room for a second one.
+export const REASK_BUDGET_MS = 20_000;
+
 /** The wait before each fallback attempt; tests replace `sleep` so a retry does not wait. */
 export const retryWait = {
   sleep: (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)),
@@ -315,6 +322,8 @@ export async function generateJson(args: {
   system: string;
   userParts: GeminiUserPart[];
   schema: object;
+  /** The model to start on, so a second call does not retry a model the first one found overloaded. */
+  from?: string;
 }): Promise<{ data: unknown; usage: TokenUsage; model: string }> {
   const request = {
     method: "POST",
@@ -333,8 +342,9 @@ export async function generateJson(args: {
   };
   let res: Response;
   let body: GeminiResponse;
-  let model = ATTEMPTS[0].model;
-  for (let attempt = 0; ; attempt++) {
+  const start = Math.max(0, ATTEMPTS.findIndex((a) => a.model === args.from));
+  let model = ATTEMPTS[start].model;
+  for (let attempt = start; ; attempt++) {
     res = await fetch(endpoint(model), request);
     // Overload responses are not always JSON.
     body = (await res.json().catch(() => ({}))) as GeminiResponse;
@@ -417,7 +427,12 @@ function asItem(raw: unknown): ExtractionItem & PricedLine {
   };
 }
 
-function asExtraction(raw: unknown): Extraction {
+/**
+ * `repair` makes the one line at the header total for an expense with no
+ * lines; an Edit passes false for a card that has real lines, so a patch
+ * answer that lost them fails visibly instead of replacing the card.
+ */
+function asExtraction(raw: unknown, repair = true): Extraction {
   const o = raw as Record<string, unknown>;
   const type = o.type as TxType;
   let priced = Array.isArray(o.items) ? o.items.map(asItem) : [];
@@ -427,7 +442,7 @@ function asExtraction(raw: unknown): Extraction {
   // No lines: one line at the header, which already holds any tax and tip, so
   // none is split again (an Edit would add it twice).
   const fromTotal =
-    priced.length === 0
+    repair && priced.length === 0
       ? lineFromTotal({ type, amount: String(o.amount ?? ""), description: String(o.description ?? "") })
       : null;
   if (fromTotal) {
@@ -507,6 +522,8 @@ async function reaskEmpty(args: {
   bucketRules: string;
   today: string;
   userParts: GeminiUserPart[];
+  /** The model that answered the first call. */
+  from: string;
   raw: Record<string, unknown>[];
   empty: number[];
 }): Promise<{ filled: Map<number, Record<string, unknown>>; usage?: TokenUsage }> {
@@ -516,7 +533,8 @@ async function reaskEmpty(args: {
   }));
   const checked = (event: Record<string, unknown>) =>
     validateExtraction(normalizeTaxonomyNames(asExtraction(event), args.taxonomy), args.taxonomy).errors;
-  const filled = new Map<number, Record<string, unknown>>();
+  // All or nothing: events are replaced only if every one of them could be checked.
+  let filled = new Map<number, Record<string, unknown>>();
   let usage: TokenUsage | undefined;
   try {
     const answer = await generateJson({
@@ -524,19 +542,23 @@ async function reaskEmpty(args: {
       schema: EVENTS_SCHEMA,
       system: extractorSystem(args.today, args.taxonomy, REASK_STATIC_PROMPT, args.bucketRules),
       userParts: [...args.userParts, { text: JSON.stringify({ expenses_without_items: asked }) }],
+      from: args.from,
     });
     usage = answer.usage;
     const events = ((answer.data as { events?: unknown[] }).events ?? []) as Record<string, unknown>[];
     if (events.length === asked.length) {
+      const next = new Map<number, Record<string, unknown>>();
       args.empty.forEach((i, k) => {
         const { items, taxes, discounts, tip } = events[k] ?? {};
         const event = { ...args.raw[i], items, taxes, discounts, tip };
         if (!Array.isArray(items) || items.length === 0) return;
         const before = checked(args.raw[i]);
-        if (checked(event).every((e) => before.includes(e))) filled.set(i, event);
+        if (checked(event).every((e) => before.includes(e))) next.set(i, event);
       });
+      filled = next;
     }
   } catch (err) {
+    filled = new Map();
     console.warn(`Gemini re-ask failed: ${statusOf(err)}`);
   }
   console.log(`Gemini re-ask: ${asked.length} expense(s) without items, ${filled.size} filled`);
@@ -551,20 +573,24 @@ async function extractEvents(args: {
   extractorStatic: string;
   userParts: GeminiUserPart[];
 }): Promise<Extraction[]> {
+  const startedAt = clock.now();
   const extractor = await generateJson({
     apiKey: args.apiKey,
     schema: EVENTS_SCHEMA,
     system: extractorSystem(args.today, args.taxonomy, args.extractorStatic, args.bucketRules),
     userParts: args.userParts,
   });
+  const tookMs = clock.now() - startedAt;
   const first = (extractor.data as { events?: unknown[] }).events ?? [];
   if (first.length === 0) throw new Error("Gemini returned no events");
   let raw = first as Record<string, unknown>[];
   const empty = raw.flatMap((e, i) => (hasNoItems(e) ? [i] : []));
   let reasked = new Set<number>();
   let extra: TokenUsage | undefined;
-  if (empty.length > 0) {
-    const { filled, usage } = await reaskEmpty({ ...args, raw, empty });
+  if (empty.length > 0 && tookMs > REASK_BUDGET_MS) {
+    console.warn(`Gemini re-ask skipped: the first call took ${Math.round(tookMs / 1000)}s`);
+  } else if (empty.length > 0) {
+    const { filled, usage } = await reaskEmpty({ ...args, from: extractor.model, raw, empty });
     raw = raw.map((e, i) => filled.get(i) ?? e);
     reasked = new Set(filled.keys());
     extra = usage;
@@ -688,9 +714,14 @@ export async function patchExtraction(args: {
       { text: args.correction },
     ],
   });
-  const reread = normalizeTaxonomyNames(asExtraction(extractor.data), args.taxonomy);
+  // The one-line repair is only for a card that is already made from its total:
+  // a patch answer that lost the lines of a real card must fail visibly (the
+  // stored card is kept), not replace it with a made-up line.
+  const repair = args.current.items.length > 0 && args.current.items.every((i) => i.from_total);
+  const reread = normalizeTaxonomyNames(asExtraction(extractor.data, repair), args.taxonomy);
   // A line made from the total keeps its warning until the correction changes
-  // its category: the model's answer does not carry the flag.
+  // its category: the model's answer does not carry the flag. Lines are matched
+  // by position, so a reordered or inserted line can move or drop the flag.
   const patched = {
     ...reread,
     items: reread.items.map((item, i) => {
