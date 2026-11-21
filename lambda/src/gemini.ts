@@ -64,6 +64,11 @@ const TAGS =
 const SPLIT_EVENTS =
   "Return events: one event per separate transaction, in the order the owner mentioned them. Split by place: one event per merchant or place. Amounts at the same place, or with no place given, are one expense with several items. Income and transfers are always their own event. A receipt photo is one event; the caption may add others. A date or funder stated once applies to every event unless an event states its own. notes and tags belong to the event they describe.";
 
+// A lighter model returned a purchase named only in a photo caption as an
+// expense with an empty items list.
+const EXPENSE_HAS_ITEMS =
+  "Every expense event must have at least one item with its own category, subcategory and bucket, including a purchase described only in a photo caption or in the message text next to a receipt: that purchase is its own event with one item at its stated amount, never an expense with an empty items list.";
+
 const BUCKETS =
   "For each expense line set bucket_why (one short clause naming the rule applied), then bucket (needs or wants). Apply the owner's needs/wants rules at the end of this prompt. They override the (hint …) on subcategories. If no rule fits or context is missing, choose wants. Income and transfer events have no lines: return an empty items list.";
 
@@ -106,6 +111,7 @@ const EXTRACTOR_STATIC_PROMPT = [
   NOTES,
   TAGS,
   SPLIT_EVENTS,
+  EXPENSE_HAS_ITEMS,
   BUCKETS,
   DATE_READING,
   "date is YYYY-MM-DD only when the user stated a calendar date (including today, yesterday, or a month and day). If they did not, return an empty string. Never guess today's date.",
@@ -127,6 +133,7 @@ const PHOTO_EXTRACTOR_STATIC_PROMPT = [
   NOTES,
   TAGS,
   SPLIT_EVENTS,
+  EXPENSE_HAS_ITEMS,
   BUCKETS,
   DATE_READING,
   "date is YYYY-MM-DD only when printed on the receipt or stated in the caption (including today, yesterday, or a month and day). If neither, return an empty string. Never guess today's date or the photo send time.",
@@ -148,6 +155,7 @@ const VOICE_EXTRACTOR_STATIC_PROMPT = [
   NOTES,
   TAGS,
   SPLIT_EVENTS,
+  EXPENSE_HAS_ITEMS,
   BUCKETS,
   DATE_READING,
   "date is YYYY-MM-DD only when the user stated a calendar date in the recording or caption (including today, yesterday, or a month and day). If they did not, return an empty string. Never guess today's date or the voice send time.",

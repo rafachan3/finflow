@@ -1239,6 +1239,16 @@ describe("multi-event extraction", () => {
     );
   }
 
+  it("tells text, photo and voice that every expense, even one named only in a caption, has an item with its own category", async () => {
+    const systems = await fourSystems();
+    for (const system of systems.slice(0, 3)) {
+      expect(system).toContain("Every expense event must have at least one item with its own category, subcategory and bucket");
+      expect(system).toContain("a purchase described only in a photo caption or in the message text next to a receipt");
+      expect(system).toContain("never an expense with an empty items list");
+    }
+    expect(systems[3]).not.toContain("Every expense event must have at least one item");
+  });
+
   it("tells text, photo, voice and Edit to leave the venue null unless the place clearly is a listed one", async () => {
     for (const system of await fourSystems()) {
       expect(system).toContain("venue is a name from the Venues list only when the place clearly is that kind of place");
