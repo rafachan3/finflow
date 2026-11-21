@@ -3540,3 +3540,33 @@ large negative unallocated share beside it. The owner read it as wrong.
 - **Unallocated has a target of 0%** in that table: the three targets
   sum to 100%, and the owner aims to leave nothing unallocated.
 
+## 2026-11-21: A second Gemini request, only when an expense comes back with no items
+
+A lighter fallback model sometimes returned a purchase named only in a
+photo caption as an expense with no items. The card then failed its
+checks and the owner retyped the purchase; the nightly `receipt-with-caption`
+golden failed twice (2026-10-29, 2026-11-19).
+
+- **Scoped exception to 2026-10-28, "One Gemini request per message".**
+  When the first answer has an expense with a two-decimal total and no
+  items, ONE more request is made for every such event in the message,
+  with the same message or media, taxonomy, rules and model chain,
+  starting on the model that answered the first call. It is skipped when
+  the first call took more than 20 s (the ingest Lambda times out at 60 s).
+  Ordinary answers, income, transfers and malformed totals cost nothing
+  extra. Quota cost: one extra request on that rare answer, none on others.
+- **Layers, in order:** the extraction prompt says every expense has an
+  item; the re-ask; then, as a last resort, one line at the header total
+  in `Shopping / Other shopping`, `wants`, with a `!` warning on the card
+  to check its category (Confirm works; changing the category clears it).
+  An Edit applies that last layer only to a card that is itself made from
+  its total, so a patch answer that loses the lines of a real card fails
+  visibly instead of replacing it.
+- **The eval judges what the bot makes of the answer**, and a case passes
+  on a read category only: a fallback-only pass does not count. The summary
+  shows per case whether a re-ask or the fallback was used.
+- **Ruled out:** re-asking per event (one request per empty event: more
+  quota and time for the same answer); relying on the prompt alone (it
+  cannot guarantee the items, and the lighter model answers whenever
+  Flash is out of quota or overloaded); guessing a category silently (the fallback line is always
+  flagged on the card).

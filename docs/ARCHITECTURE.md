@@ -34,7 +34,7 @@ flowchart TD
     end
 
     SRC --> TG --> LM
-    LM -->|"1 · extract (one request)"| EX
+    LM -->|"1 · extract (one request; a second only if an expense has no items)"| EX
     EX -->|"lines with buckets"| LM
     LM -->|"2 · validate + persist pending"| RAW
     LM -->|"archive media on persist"| S3
@@ -59,7 +59,9 @@ headers (split by place; income and transfers always separate) becomes
 one `ingestions` row and one Confirm card per event, labelled "(i of n)".
 A grocery trip alone is one transaction with lines on every channel.
 One Telegram update is one Gemini request, however many events, and an
-Edit is one more (DECISIONS.md 2026-10-28).
+Edit is one more (DECISIONS.md 2026-10-28). A second request happens only
+when an expense comes back with no items: one re-ask for the message
+(DECISIONS.md 2026-11-21).
 
 `docs/SEMANTIC_LAYER.md` is the metric contract for the marts layer: both the
 dbt models and the agent read it, so numbers agree everywhere.
