@@ -559,7 +559,7 @@ describe("repairOf", () => {
 describe("productionProblems", () => {
   const caption = golden("receipt-with-caption");
 
-  it("judges the extractions the bot made, so a one-line fallback fails the caption purchase's category", () => {
+  it("judges the extractions the bot made, so a one-line fallback fails a case without realCategory false", () => {
     const made = { type: "expense", amount: "5.00", merchant: "Corner Pharmacy", items: [{ amount: "5.00", from_total: true }] };
     const read = { ...made, items: [{ amount: "5.00" }] };
     const receipt = recordedEvents(caption)[0];

@@ -49,10 +49,21 @@ describe("golden cases through the production call", () => {
     }
 
     // The same first answer, then a re-ask that gives no items again.
-    const stuck = await replay(noItems, productionCall(g, run()));
-    expect(repairOf(stuck)).toBe("fallback");
-    expect(productionProblems(g, stuck)).toEqual([
-      "event 1: no items were read; its one line has the generic category made from the total",
-    ]);
+    let n = 0;
+    globalThis.fetch = (async () => {
+      const answer = n++ === 0 ? noItems : { events: [{ ...caption, items: [] }] };
+      const text = JSON.stringify(answer);
+      return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text }] } }] }));
+    }) as typeof fetch;
+    try {
+      const stuck = await productionCall(g, run())();
+      expect(n).toBe(2);
+      expect(repairOf(stuck)).toBe("fallback");
+      expect(productionProblems(g, stuck)).toEqual([
+        "event 1: no items were read; its one line has the generic category made from the total",
+      ]);
+    } finally {
+      globalThis.fetch = before;
+    }
   });
 });

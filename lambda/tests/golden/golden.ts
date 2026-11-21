@@ -1,5 +1,5 @@
 import { readdirSync, readFileSync } from "node:fs";
-import { canonicalTags, lineFromTotal, stripCategoryPrefix } from "../../src/extraction.js";
+import { canonicalTags, stripCategoryPrefix } from "../../src/extraction.js";
 import { discountsOf, editedTotal, lineAmounts, type EditParts } from "../../src/tax-tip.js";
 
 /**
@@ -40,7 +40,10 @@ export type ExpectedEvent = {
   buckets?: ("needs" | "wants")[];
   /** Each line's "category / subcategory[ / item type]", in order, as the card prints it. */
   classes?: string[];
-  /** Every line's category was read, not the generic one made from the total when an answer has no items. */
+  /**
+   * A line made from the total (the generic category the bot falls back to when
+   * an answer has no items) fails the case. Only `false` accepts one.
+   */
   realCategory?: boolean;
   /** The whole-transaction tags, as a set. */
   tags?: string[];
@@ -64,7 +67,6 @@ export type RawEvent = {
   type?: unknown;
   amount?: unknown;
   date?: unknown;
-  description?: unknown;
   merchant?: unknown;
   venue?: unknown;
   notes?: unknown;
@@ -115,12 +117,6 @@ export function bucketRules(g: Pick<Golden, "rules">): string {
  */
 function shared(e: RawEvent): RawEvent {
   const items = Array.isArray(e.items) ? e.items : [];
-  // A purchase read with no lines gets one at its total, as asExtraction does.
-  const made =
-    items.length === 0
-      ? lineFromTotal({ type: e.type, amount: String(e.amount ?? ""), description: String(e.description ?? "") })
-      : null;
-  if (made) return { ...e, items: [made] };
   if (!items.some((i) => i.price !== undefined)) return e;
   const amounts = lineAmounts(
     items.map((i) => ({ price: String(i.price ?? i.amount ?? ""), taxable: i.taxable === true })),
@@ -251,7 +247,7 @@ export function mismatches(events: RawEvent[], expected: ExpectedEvent[]): strin
         }
       });
     }
-    if (want.realCategory && items.some((item) => item.from_total === true)) {
+    if (want.realCategory !== false && items.some((item) => item.from_total === true)) {
       out.push(`${at}: no items were read; its one line has the generic category made from the total`);
     }
     // Judged as stored: after a tag on every line has moved to the header.

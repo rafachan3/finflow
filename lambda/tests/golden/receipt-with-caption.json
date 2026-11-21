@@ -16,8 +16,7 @@
       {
         "type": "expense",
         "lines": 1,
-        "merchant": true,
-        "realCategory": true
+        "merchant": true
       }
     ]
   },

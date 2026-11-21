@@ -35,16 +35,25 @@ describe("a purchase the reader gave no lines", () => {
   const g = golden("receipt-with-caption");
   const [receipt, caption] = (g.recorded as { events: object[] }).events;
 
-  it("is judged as the bot reads it: one line at the header total, which fails the real-category check", () => {
+  it("fails the raw check: a recording with no items for the caption purchase is refused", () => {
     // The nightly answer of 2026-11-19: the caption purchase came back with no items.
     const answer = { events: [receipt, { ...caption, items: [] }] };
     expect(mismatches(recordedEvents({ ...g, recorded: answer }), g.expect.events)).toEqual([
-      "event 1: no items were read; its one line has the generic category made from the total",
+      "event 1: 0 lines != 1",
     ]);
   });
 
   it("passes the check when the caption purchase has a line of its own", () => {
     expect(mismatches(recordedEvents(g), g.expect.events)).toEqual([]);
+  });
+
+  it("refuses a line made from the total unless the case says realCategory is false", () => {
+    const made = { type: "expense", amount: "5.00", merchant: "Corner Pharmacy", items: [{ amount: "5.00", from_total: true }] };
+    const [, want] = g.expect.events;
+    const refused = ["event 0: no items were read; its one line has the generic category made from the total"];
+    expect(mismatches([made], [want])).toEqual(refused);
+    expect(mismatches([made], [{ ...want, realCategory: true }])).toEqual(refused);
+    expect(mismatches([made], [{ ...want, realCategory: false }])).toEqual([]);
   });
 });
 

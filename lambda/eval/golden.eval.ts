@@ -132,7 +132,8 @@ describe.skipIf(inject("evalSkip"))("live Gemini", () => {
     const repair = answer ? repairOf(answer.result) : undefined;
     console.log(`${g.file}: ${attempts} attempt(s), answered by ${answer?.model ?? "no model"}, repair ${repair ?? "none"}`);
     rows.push({ name: g.file, attempts, model: answer?.model, repair, passed: found.length === 0 });
-    // recordedFile refuses an answer that misses `expect` as read, with no re-ask or repair.
+    // recordedFile judges the raw answer itself, with no re-ask or repair: a case
+    // that passed only through one of them records no answer and no hash.
     if (RECORD && found.length === 0 && hash) {
       const file = new URL(`${g.file}.json`, GOLDEN_DIR);
       // --hashes keeps the recording the journeys assert on; the old one
