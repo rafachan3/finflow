@@ -675,3 +675,39 @@ describe("dateWarnings", () => {
     expect(dateWarnings("last friday", today)).toEqual([]);
   });
 });
+
+describe("a purchase read with no lines", () => {
+  const withShopping: TaxonomySnapshot = {
+    ...taxonomy,
+    subcategories: [...taxonomy.subcategories, { category: "Shopping", name: "Other shopping", default_bucket: null }],
+  };
+  const made = expense({
+    amount: "5.00",
+    items: [
+      {
+        description: "McDonald's lunch",
+        amount: "5.00",
+        category: "Shopping",
+        subcategory: "Other shopping",
+        item_type: null,
+        bucket: "wants",
+        bucket_why: "no items were read; defaulted to wants",
+        from_total: true,
+      },
+    ],
+  });
+  const WARNING =
+    "the reader gave no items for this purchase; one item was made from its total: check its category";
+
+  it("warns with one plain line under Checks and still offers Confirm", () => {
+    const checks = validateExtraction(made, withShopping);
+    expect(checks.ok).toBe(true);
+    const preview = formatPreview(made, checks).split("\n");
+    expect(preview.filter((l) => l.startsWith("! "))).toEqual([`! ${WARNING}`]);
+    expect(preview).toContain("Confirm to save · Discard to drop");
+  });
+
+  it("does not warn for a line the reader gave", () => {
+    expect(validateExtraction(expense(), taxonomy).warnings).not.toContain(WARNING);
+  });
+});

@@ -1,5 +1,5 @@
 import { readdirSync, readFileSync } from "node:fs";
-import { canonicalTags, stripCategoryPrefix } from "../../src/extraction.js";
+import { canonicalTags, lineFromTotal, stripCategoryPrefix } from "../../src/extraction.js";
 import { discountsOf, editedTotal, lineAmounts, type EditParts } from "../../src/tax-tip.js";
 
 /**
@@ -62,6 +62,7 @@ export type RawEvent = {
   type?: unknown;
   amount?: unknown;
   date?: unknown;
+  description?: unknown;
   merchant?: unknown;
   venue?: unknown;
   notes?: unknown;
@@ -111,6 +112,12 @@ export function bucketRules(g: Pick<Golden, "rules">): string {
  */
 function shared(e: RawEvent): RawEvent {
   const items = Array.isArray(e.items) ? e.items : [];
+  // A purchase read with no lines gets one at its total, as asExtraction does.
+  const made =
+    items.length === 0
+      ? lineFromTotal({ type: e.type, amount: String(e.amount ?? ""), description: String(e.description ?? "") })
+      : null;
+  if (made) return { ...e, items: [made] };
   if (!items.some((i) => i.price !== undefined)) return e;
   const amounts = lineAmounts(
     items.map((i) => ({ price: String(i.price ?? i.amount ?? ""), taxable: i.taxable === true })),

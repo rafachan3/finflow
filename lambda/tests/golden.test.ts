@@ -31,6 +31,16 @@ describe("golden files", () => {
   });
 });
 
+describe("a purchase the reader gave no lines", () => {
+  it("is judged as the bot reads it: one line at the header total", () => {
+    // The nightly answer of 2026-11-19: the caption purchase came back with no items.
+    const g = golden("receipt-with-caption");
+    const [receipt, caption] = (g.recorded as { events: object[] }).events;
+    const answer = { events: [receipt, { ...caption, items: [] }] };
+    expect(mismatches(recordedEvents({ ...g, recorded: answer }), g.expect.events)).toEqual([]);
+  });
+});
+
 describe("mismatches", () => {
   const two = golden("two-stores");
 

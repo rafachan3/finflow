@@ -5,7 +5,7 @@ import {
   extractFromVoice,
   patchExtraction,
 } from "../src/gemini.js";
-import type { Extraction, TaxonomySnapshot } from "../src/extraction.js";
+import { validateExtraction, type Extraction, type TaxonomySnapshot } from "../src/extraction.js";
 
 const taxonomy: TaxonomySnapshot = {
   subcategories: [
@@ -1369,4 +1369,66 @@ describe("multi-event extraction", () => {
     ).rejects.toThrow("Gemini returned no events");
   });
 
+});
+
+describe("an expense the reader gave no lines", () => {
+  const noLines = { ...extracted, amount: "5.00", description: "pharmacy purchase", items: [] };
+  const read = async (event: unknown) => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => geminiJson(events(event)) }));
+    const [result] = await extractFromText({ apiKey: "k", text: "5 at the pharmacy", taxonomy, bucketRules: "", today: "2026-08-17" });
+    return result;
+  };
+
+  it("gets one line at the header total, in the generic fallback category, flagged for the card", async () => {
+    const result = await read({ ...noLines, taxes: ["0.25"], tip: "1.00" });
+    expect(result.items).toEqual([
+      {
+        description: "pharmacy purchase",
+        amount: "5.00",
+        price: "5.00",
+        taxable: false,
+        category: "Shopping",
+        subcategory: "Other shopping",
+        item_type: null,
+        tags: [],
+        bucket: "wants",
+        bucket_why: "no items were read; defaulted to wants",
+        from_total: true,
+      },
+    ]);
+    // The header already holds any tax and tip: none is split again.
+    expect(result).toMatchObject({ amount: "5.00", taxes: [], tip: null, discounts: [] });
+  });
+
+  it("leaves an expense that has lines as it is", async () => {
+    const result = await read(extracted);
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0]).toMatchObject({ description: "burrito", subcategory: "Takeout / Quick Service" });
+    expect(result.items[0].from_total).toBeUndefined();
+  });
+
+  it("makes no line for income or a transfer", async () => {
+    expect((await read({ ...noLines, type: "income", income_source: "Salary" })).items).toEqual([]);
+    expect((await read({ ...noLines, type: "transfer", to_account: "Rainy-day fund" })).items).toEqual([]);
+  });
+
+  it("makes no line when the header is not a two-decimal amount, so the card still fails its checks", async () => {
+    const result = await read({ ...noLines, amount: "5" });
+    expect(result.items).toEqual([]);
+    expect(validateExtraction(result, taxonomy).errors).toContain("expense needs at least one line");
+  });
+
+  it("also repairs an Edit's answer", async () => {
+    const current = await read(extracted);
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => geminiJson(noLines) }));
+    const patched = await patchExtraction({
+      apiKey: "k",
+      current,
+      correction: "5 at the pharmacy",
+      taxonomy,
+      bucketRules: "",
+      today: "2026-08-17",
+    });
+    expect(patched.items).toMatchObject([{ amount: "5.00", from_total: true }]);
+  });
 });

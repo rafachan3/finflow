@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import {
+  lineFromTotal,
   normalizeTaxonomyNames,
   type Extraction,
   type ExtractionItem,
@@ -409,14 +410,26 @@ function asItem(raw: unknown): ExtractionItem & PricedLine {
 
 function asExtraction(raw: unknown): Extraction {
   const o = raw as Record<string, unknown>;
-  const priced = Array.isArray(o.items) ? o.items.map(asItem) : [];
-  const taxes = Array.isArray(o.taxes) ? o.taxes.map(String) : [];
-  const discounts = discountsOf(o.discounts);
-  const tip = asString(o.tip);
+  const type = o.type as TxType;
+  let priced = Array.isArray(o.items) ? o.items.map(asItem) : [];
+  let taxes = Array.isArray(o.taxes) ? o.taxes.map(String) : [];
+  let discounts = discountsOf(o.discounts);
+  let tip = asString(o.tip);
+  // No lines: one line at the header, which already holds any tax and tip, so
+  // none is split again (an Edit would add it twice).
+  const fromTotal =
+    priced.length === 0
+      ? lineFromTotal({ type, amount: String(o.amount ?? ""), description: String(o.description ?? "") })
+      : null;
+  if (fromTotal) {
+    priced = [fromTotal];
+    taxes = [];
+    discounts = [];
+    tip = null;
+  }
   // Malformed parts keep the prices; validateExtraction names the bad amount.
   const amounts = lineAmounts(priced, taxes, tip, discounts);
   const items = amounts ? priced.map((item, i) => ({ ...item, amount: amounts[i] })) : priced;
-  const type = o.type as TxType;
   const fundedBy = asString(o.funded_by);
   return {
     type,
