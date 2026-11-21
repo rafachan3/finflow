@@ -221,6 +221,37 @@ describe("several purchases in one message", () => {
     expect(await ledger.transactions()).toMatchObject([{ type: "expense", amount: "5.00", lines: 1 }]);
   });
 
+  it("the warning stays through an Edit that leaves the made-up category alone, and goes when the category changes", async () => {
+    const { receipt, pharmacy, noItems } = caption();
+    gemini.extract = { events: [receipt, noItems] };
+    gemini.reaskFails = true;
+    await chat.photo("also 5 at Corner Pharmacy");
+
+    const made = {
+      description: "Corner Pharmacy purchase",
+      price: "5.00",
+      taxable: false,
+      category: "Shopping",
+      subcategory: "Other shopping",
+      item_type: null,
+      tags: [],
+      bucket_why: "no items were read; defaulted to wants",
+      bucket: "wants",
+    };
+    await chat.tap(chat.replies()[1], "Edit");
+    gemini.patch = { ...noItems, notes: "needed it today", items: [made] };
+    await chat.text("add a note: needed it today");
+    const edited = chat.last();
+    expect(edited.text).toContain("Note: needed it today");
+    expect(edited.text).toContain("! the reader gave no items for this purchase; one item was made from its total: check its category");
+
+    await chat.tap(edited, "Edit");
+    gemini.patch = { ...noItems, items: [{ ...made, category: "Health and wellness", subcategory: "Medical" }] };
+    await chat.text("it was medicine");
+    expect(chat.last().text).toContain("  Health and wellness / Medical");
+    expect(chat.last().text).not.toContain("the reader gave no items");
+  });
+
   it("an ordinary answer makes one Gemini call, so a receipt with a caption purchase is not read again", async () => {
     gemini.extract = golden("receipt-with-caption").recorded;
     await chat.photo("also 5 at Corner Pharmacy");

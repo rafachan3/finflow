@@ -1544,3 +1544,39 @@ describe("the re-ask for an expense with no items", () => {
     expect(logged.join("\n")).not.toMatch(/pharmacy|5\.00|high demand/);
   });
 });
+
+describe("an Edit of a line that was made from the total", () => {
+  const made = {
+    description: "pharmacy purchase",
+    amount: "5.00",
+    price: "5.00",
+    taxable: false,
+    category: "Shopping",
+    subcategory: "Other shopping",
+    item_type: null,
+    tags: [],
+    bucket: "wants" as const,
+    bucket_why: "no items were read; defaulted to wants",
+    from_total: true,
+  };
+  const current = { ...(extracted as unknown as Extraction), amount: "5.00", items: [made] };
+  const patch = (line: object) => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => geminiJson({ ...extracted, amount: "5.00", items: [{ ...made, from_total: undefined, ...line }] }),
+    }));
+    return patchExtraction({ apiKey: "k", current, correction: "x", taxonomy: { ...taxonomy, subcategories: [...taxonomy.subcategories, { category: "Shopping", name: "Other shopping", default_bucket: null }] }, bucketRules: "", today: "2026-08-17" });
+  };
+
+  it("keeps the flag while the line's category is unchanged", async () => {
+    expect((await patch({ description: "pharmacy" })).items[0].from_total).toBe(true);
+  });
+
+  it("drops the flag once the category is changed", async () => {
+    expect((await patch({ category: "Food and drink", subcategory: "Takeout / Quick Service" })).items[0].from_total).toBeUndefined();
+  });
+
+  it("drops the flag once only the subcategory is changed within the category", async () => {
+    expect((await patch({ subcategory: "Gifts" })).items[0].from_total).toBeUndefined();
+  });
+});

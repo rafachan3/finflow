@@ -688,7 +688,21 @@ export async function patchExtraction(args: {
       { text: args.correction },
     ],
   });
-  const patched = normalizeTaxonomyNames(asExtraction(extractor.data), args.taxonomy);
+  const reread = normalizeTaxonomyNames(asExtraction(extractor.data), args.taxonomy);
+  // A line made from the total keeps its warning until the correction changes
+  // its category: the model's answer does not carry the flag.
+  const patched = {
+    ...reread,
+    items: reread.items.map((item, i) => {
+      const was = args.current.items[i];
+      const same =
+        was?.from_total &&
+        was.category === item.category &&
+        was.subcategory === item.subcategory &&
+        (was.item_type ?? null) === (item.item_type ?? null);
+      return same ? { ...item, from_total: true } : item;
+    }),
+  };
   const amount = patched.type === "expense" ? editedTotal(patched, args.current) : patched.amount;
   return {
     ...patched,
