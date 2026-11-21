@@ -40,6 +40,8 @@ export type ExpectedEvent = {
   buckets?: ("needs" | "wants")[];
   /** Each line's "category / subcategory[ / item type]", in order, as the card prints it. */
   classes?: string[];
+  /** Every line's category was read, not the generic one made from the total when an answer has no items. */
+  realCategory?: boolean;
   /** The whole-transaction tags, as a set. */
   tags?: string[];
   /** Each line's own tags, in line order, as sets. */
@@ -83,6 +85,7 @@ export type RawEvent = {
     category?: unknown;
     subcategory?: unknown;
     item_type?: unknown;
+    from_total?: unknown;
   }[];
 };
 
@@ -247,6 +250,9 @@ export function mismatches(events: RawEvent[], expected: ExpectedEvent[]): strin
           out.push(`${at}: line ${j} (${String(line.description)}) ${printed} != ${wanted}`);
         }
       });
+    }
+    if (want.realCategory && items.some((item) => item.from_total === true)) {
+      out.push(`${at}: no items were read; its one line has the generic category made from the total`);
     }
     // Judged as stored: after a tag on every line has moved to the header.
     const tags = canonicalTags(names(got.tags), items.map((item) => names(item.tags)));

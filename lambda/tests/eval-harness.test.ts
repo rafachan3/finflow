@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { golden, recordedEvents } from "./golden/golden.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   captureAnswer,
@@ -11,6 +12,8 @@ import {
   retryOnce,
   rotate,
   shouldRun,
+  productionProblems,
+  repairOf,
   summary,
 } from "../eval/harness.js";
 
@@ -498,16 +501,31 @@ describe("summary", () => {
 
     expect(md).toBe(
       [
-        "| case | attempts | answering model | result |",
-        "| --- | --- | --- | --- |",
-        "| edit-amount | 1 | gemini-3.6-flash | pass |",
-        "| expense-and-income | 2 | gemini-3.5-flash-lite | pass |",
-        "| two-stores | 2 | none | fail |",
+        "| case | attempts | answering model | repair | result |",
+        "| --- | --- | --- | --- | --- |",
+        "| edit-amount | 1 | gemini-3.6-flash | none | pass |",
+        "| expense-and-income | 2 | gemini-3.5-flash-lite | none | pass |",
+        "| two-stores | 2 | none | none | fail |",
         "",
-        "Answered by the primary gemini-3.6-flash: 1 of 3. By a fallback: 1. By no model: 1. Replayed without a call: 0.",
+        "Answered by the primary gemini-3.6-flash: 1 of 3. By a fallback: 1. By no model: 1. Replayed without a call: 0. Items made by a re-ask: 0. From the total alone: 0.",
         "",
       ].join("\n"),
     );
+  });
+
+  it("marks, per case, whether a re-ask or the one-line fallback gave an event its items, and counts each", () => {
+    const md = summary(
+      [
+        { name: "receipt-with-caption", attempts: 1, model: "gemini-3.5-flash-lite", repair: "re-ask", passed: true },
+        { name: "voice-note", attempts: 1, model: "gemini-3.5-flash-lite", repair: "fallback", passed: false },
+        { name: "two-stores", attempts: 1, model: "gemini-3.6-flash", repair: "none", passed: true },
+      ],
+      "gemini-3.6-flash",
+    );
+    expect(md).toContain("| receipt-with-caption | 1 | gemini-3.5-flash-lite | re-ask | pass |");
+    expect(md).toContain("| voice-note | 1 | gemini-3.5-flash-lite | fallback | fail |");
+    expect(md).toContain("| two-stores | 1 | gemini-3.6-flash | none | pass |");
+    expect(md).toContain("Items made by a re-ask: 1. From the total alone: 1.");
   });
 
   it("marks a replayed case and counts it apart from live answers", () => {
@@ -515,7 +533,7 @@ describe("summary", () => {
       [{ name: "transfer", attempts: 0, model: undefined, replayed: true, passed: true }],
       "gemini-3.6-flash",
     );
-    expect(md).toContain("| transfer | 0 | replayed, no call | pass |");
+    expect(md).toContain("| transfer | 0 | replayed, no call | none | pass |");
     expect(md).toContain("By no model: 0. Replayed without a call: 1.");
   });
 
@@ -525,5 +543,35 @@ describe("summary", () => {
       "Quota limits in 429s (quotaValue): gemini-3.5-flash-lite GenerateRequestsPerDayPerProjectPerModel-FreeTier = 1000.",
     );
     expect(summary([], "gemini-3.6-flash", new Map())).not.toContain("Quota limits");
+  });
+});
+
+describe("repairOf", () => {
+  const line = { amount: "5.00" };
+  it("is none for items as read, re-ask for an event read again, fallback for a line made from the total", () => {
+    expect(repairOf([{ items: [line], meta: {} }])).toBe("none");
+    expect(repairOf([{ items: [line] }, { items: [line], meta: { reasked: true } }])).toBe("re-ask");
+    expect(repairOf([{ items: [{ ...line, from_total: true }], meta: { reasked: true } }])).toBe("fallback");
+    expect(repairOf({ items: [line] })).toBe("none");
+  });
+});
+
+describe("productionProblems", () => {
+  const caption = golden("receipt-with-caption");
+
+  it("judges the extractions the bot made, so a one-line fallback fails the caption purchase's category", () => {
+    const made = { type: "expense", amount: "5.00", merchant: "Corner Pharmacy", items: [{ amount: "5.00", from_total: true }] };
+    const read = { ...made, items: [{ amount: "5.00" }] };
+    const receipt = recordedEvents(caption)[0];
+    expect(productionProblems(caption, [receipt, read])).toEqual([]);
+    expect(productionProblems(caption, [receipt, made])).toEqual([
+      "event 1: no items were read; its one line has the generic category made from the total",
+    ]);
+  });
+
+  it("takes a single extraction, as an Edit returns one", () => {
+    const edit = golden("edit-amount");
+    const [event] = recordedEvents(edit);
+    expect(productionProblems(edit, event)).toEqual([]);
   });
 });

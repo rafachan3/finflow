@@ -32,12 +32,19 @@ describe("golden files", () => {
 });
 
 describe("a purchase the reader gave no lines", () => {
-  it("is judged as the bot reads it: one line at the header total", () => {
+  const g = golden("receipt-with-caption");
+  const [receipt, caption] = (g.recorded as { events: object[] }).events;
+
+  it("is judged as the bot reads it: one line at the header total, which fails the real-category check", () => {
     // The nightly answer of 2026-11-19: the caption purchase came back with no items.
-    const g = golden("receipt-with-caption");
-    const [receipt, caption] = (g.recorded as { events: object[] }).events;
     const answer = { events: [receipt, { ...caption, items: [] }] };
-    expect(mismatches(recordedEvents({ ...g, recorded: answer }), g.expect.events)).toEqual([]);
+    expect(mismatches(recordedEvents({ ...g, recorded: answer }), g.expect.events)).toEqual([
+      "event 1: no items were read; its one line has the generic category made from the total",
+    ]);
+  });
+
+  it("passes the check when the caption purchase has a line of its own", () => {
+    expect(mismatches(recordedEvents(g), g.expect.events)).toEqual([]);
   });
 });
 

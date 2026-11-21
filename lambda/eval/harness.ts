@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
-import { mismatches, recordedEvents, type Golden } from "../tests/golden/golden.js";
+import type { Extraction } from "../src/extraction.js";
+import { mismatches, recordedEvents, type Golden, type RawEvent } from "../tests/golden/golden.js";
 
 /**
  * Paths that change what Gemini is asked (code, prompts, taxonomy seed and
@@ -186,6 +187,25 @@ export function problems(g: Pick<Golden, "input" | "expect">, raw: unknown): str
 }
 
 /**
+ * Problems with what the bot makes of an answer, as a card would show it:
+ * `result` is what the production call returned (the extractions, with the
+ * re-ask and the one-line repair applied), judged against `expect`.
+ */
+export function productionProblems(g: Pick<Golden, "expect">, result: unknown): string[] {
+  const events = (Array.isArray(result) ? result : [result]) as RawEvent[];
+  return mismatches(events, g.expect.events);
+}
+
+/** How a case's events got their items: as read, by a second call, or from the total alone. */
+export type Repair = "none" | "re-ask" | "fallback";
+
+export function repairOf(result: unknown): Repair {
+  const events = (Array.isArray(result) ? result : [result]) as Extraction[];
+  if (events.some((e) => e?.items?.some((i) => i.from_total))) return "fallback";
+  return events.some((e) => e?.meta?.reasked) ? "re-ask" : "none";
+}
+
+/**
  * The golden file with `recorded` and the hash of the request that produced
  * it replaced, or null when `raw` misses `expect`.
  */
@@ -226,11 +246,12 @@ export async function replay<T>(
   }
 }
 
-export type Answer = { raw: unknown; model: string | undefined };
+export type Answer = { raw: unknown; model: string | undefined; result: unknown };
 
 /**
- * Runs `call` and returns the JSON of the first successful Gemini answer
- * and the model that gave it. That is what goldens record. `route` sends
+ * Runs `call` and returns the JSON of the first successful Gemini answer and
+ * the model that gave it (that is what goldens record), and what `call` made
+ * of it, the re-ask included. `route` sends
  * each request to another model (the nightly rotation).
  */
 export async function captureAnswer(
@@ -254,12 +275,13 @@ export async function captureAnswer(
     }
     return res;
   };
+  let result: unknown;
   try {
-    await call();
+    result = await call();
   } finally {
     globalThis.fetch = realFetch;
   }
-  return { raw: await first, model };
+  return { raw: await first, model, result };
 }
 
 export type CaseRow = {
@@ -269,23 +291,27 @@ export type CaseRow = {
   passed: boolean;
   /** Its request matched a recorded pass, so the recording was checked instead of calling Gemini. */
   replayed?: boolean;
+  /** How its events got their items; none when the first answer had them. */
+  repair?: Repair;
 };
 
 /** Markdown for the job summary: one row per case, then primary vs fallback counts. */
 export function summary(rows: CaseRow[], primary: string, limits = new Map<string, string>()): string {
   const count = (keep: (r: CaseRow) => boolean) => rows.filter(keep).length;
   return [
-    "| case | attempts | answering model | result |",
-    "| --- | --- | --- | --- |",
+    "| case | attempts | answering model | repair | result |",
+    "| --- | --- | --- | --- | --- |",
     ...rows.map(
       (r) =>
-        `| ${r.name} | ${r.attempts} | ${r.replayed ? "replayed, no call" : (r.model ?? "none")} | ${r.passed ? "pass" : "fail"} |`,
+        `| ${r.name} | ${r.attempts} | ${r.replayed ? "replayed, no call" : (r.model ?? "none")} | ${r.repair ?? "none"} | ${r.passed ? "pass" : "fail"} |`,
     ),
     "",
     `Answered by the primary ${primary}: ${count((r) => r.model === primary)} of ${rows.length}. ` +
       `By a fallback: ${count((r) => !!r.model && r.model !== primary)}. ` +
       `By no model: ${count((r) => !r.model && !r.replayed)}. ` +
-      `Replayed without a call: ${count((r) => !!r.replayed)}.`,
+      `Replayed without a call: ${count((r) => !!r.replayed)}. ` +
+      `Items made by a re-ask: ${count((r) => r.repair === "re-ask")}. ` +
+      `From the total alone: ${count((r) => r.repair === "fallback")}.`,
     "",
     ...(limits.size
       ? [`Quota limits in 429s (quotaValue): ${[...limits].map(([k, v]) => `${k} = ${v}`).join(", ")}.`, ""]
