@@ -143,7 +143,7 @@ export function takeTelegramRejections(): string[] {
   return telegram.rejected.splice(0);
 }
 
-type GeminiCall = { model: string; kind: "extract" | "patch" };
+type GeminiCall = { model: string; kind: "extract" | "reask" | "patch" };
 
 /** Scripted Gemini: set `extract` / `patch` per journey. */
 export const gemini = {
@@ -152,6 +152,10 @@ export const gemini = {
   delays: [] as number[],
   extract: undefined as unknown,
   patch: undefined as unknown,
+  /** The answer to the second call for an expense that came back with no items; the extract answer again when unset. */
+  reask: undefined as unknown,
+  /** Every re-ask is refused with a 503, so the first answer is the only one. */
+  reaskFails: false,
   overloaded: new Set<string>(),
   /** The system instruction of the latest request, e.g. to read its Merchants: line. */
   lastSystem: "",
@@ -246,14 +250,18 @@ const server = setupServer(
       const model = String(params.call).split(":")[0];
       const body = (await request.json()) as GeminiRequest;
       const props = body.generationConfig.responseSchema.properties;
-      const kind = props.events ? "extract" : "patch";
+      const system = body.systemInstruction.parts[0].text;
+      const kind = !props.events ? "patch" : system.startsWith("You complete Canadian") ? "reask" : "extract";
       gemini.calls.push({ model, kind });
-      gemini.lastSystem = body.systemInstruction.parts[0].text;
+      if (kind === "reask" && gemini.reaskFails) {
+        return HttpResponse.json({ error: { message: "overloaded" } }, { status: 503 });
+      }
+      gemini.lastSystem = system;
       gemini.lastUserText = body.contents[0].parts.flatMap((p) => (p.text === undefined ? [] : [p.text]));
       if (gemini.overloaded.has(model)) {
         return HttpResponse.json({ error: { message: "overloaded" } }, { status: 503 });
       }
-      const data = kind === "extract" ? gemini.extract : gemini.patch;
+      const data = kind === "patch" ? gemini.patch : kind === "reask" ? (gemini.reask ?? gemini.extract) : gemini.extract;
       if (data === undefined) {
         return HttpResponse.json(
           { error: { message: `no scripted ${kind} reply` } },
@@ -309,6 +317,8 @@ export function useJourneys(): void {
     };
     gemini.extract = undefined;
     gemini.patch = undefined;
+    gemini.reask = undefined;
+    gemini.reaskFails = false;
     gemini.overloaded = new Set();
     s3.reset();
     s3.on(PutObjectCommand).resolves({});

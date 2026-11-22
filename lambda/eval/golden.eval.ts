@@ -3,36 +3,21 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
 import { loadTaxonomy } from "../src/db.js";
+import type { TaxonomySnapshot } from "../src/extraction.js";
 import {
-  normalizeTaxonomyNames,
-  type Extraction,
-  type TaxonomySnapshot,
-} from "../src/extraction.js";
-import {
-  extractFromPhoto,
-  extractFromText,
-  extractFromVoice,
   GEMINI_FALLBACK_MODEL,
   GEMINI_LITE_MODEL,
   GEMINI_MODEL,
-  patchExtraction,
 } from "../src/gemini.js";
-import { withDatePolicy } from "../src/handler.js";
-import { mimeTypeForPath } from "../src/telegram.js";
 import { testDbUrl } from "../tests/integration/env.js";
-import {
-  allGoldens,
-  bucketRules,
-  golden,
-  type Golden,
-  type GoldenInput,
-} from "../tests/golden/golden.js";
+import { allGoldens, type Golden } from "../tests/golden/golden.js";
 import {
   captureAnswer,
   geminiFetch,
   outageWaiter,
-  problems,
+  productionProblems,
   recordedFile,
+  repairOf,
   replay,
   requestHash,
   retryOnce,
@@ -41,6 +26,7 @@ import {
   type Answer,
   type CaseRow,
 } from "./harness.js";
+import { productionCall } from "./production.js";
 
 const GOLDEN_DIR = new URL("../tests/golden/", import.meta.url);
 // "1": write each live pass's answer and request hash; "hash": the hash only.
@@ -71,52 +57,9 @@ const MIN_GAP_MS = 13_000;
 let db: Client;
 let taxonomy: TaxonomySnapshot;
 
-/**
- * Personal rules never leave SSM. A case runs with the bot's no-rules
- * fallback, or opts into a synthetic ruleset, which goes where production
- * sends `config.bucketRules`.
- */
-function args(g: Golden) {
-  return {
-    apiKey: process.env.GEMINI_EVAL_API_KEY!,
-    taxonomy,
-    bucketRules: bucketRules(g),
-    today: TODAY,
-  };
-}
-
-/** The production call for a message the owner sends (edits excluded). */
-function extract(g: Golden, input: Exclude<GoldenInput, { kind: "edit" }>): Promise<Extraction[]> {
-  if (input.kind === "text") return extractFromText({ ...args(g), text: input.text });
-  const media = {
-    ...args(g),
-    caption: input.caption,
-    mimeType: mimeTypeForPath(input.media),
-  };
-  const bytes = readFileSync(new URL(`media/${input.media}`, GOLDEN_DIR));
-  return input.kind === "photo"
-    ? extractFromPhoto({ ...media, image: bytes })
-    : extractFromVoice({ ...media, audio: bytes });
-}
-
-/** The production call for a case. */
+/** The production call for a case (eval/production.ts, shared with the replay test). */
 function call(g: Golden): () => Promise<unknown> {
-  const { input } = g;
-  if (input.kind !== "edit") return () => extract(g, input);
-  // An edit corrects the base case's recorded answer, after the date policy
-  // the bot applies before it stores the extraction an Edit patches. The
-  // base's own case checks Gemini on the base message. Production sends one
-  // ruleset to both calls; golden.test.ts checks an edit names the same
-  // rules as its base. Read at run time: a --record run re-records bases
-  // before edits (see the case order below).
-  return async () => {
-    const base = golden(input.base);
-    const message = base.input as Exclude<GoldenInput, { kind: "edit" }>;
-    const [current] = (await replay(base.recorded, () => extract(g, message))).map((e) =>
-      withDatePolicy(normalizeTaxonomyNames(e, taxonomy), TODAY, message.kind),
-    );
-    return patchExtraction({ ...args(g), current, correction: input.correction });
-  };
+  return productionCall(g, { apiKey: process.env.GEMINI_EVAL_API_KEY!, taxonomy, today: TODAY });
 }
 
 // Bases first, so an edit built on a base re-recorded in this run hashes
@@ -156,12 +99,23 @@ describe.skipIf(inject("evalSkip"))("live Gemini", () => {
     // the recording goes through today's code instead.
     const bodies: string[] = [];
     let replayError: string | undefined;
-    await replay(g.recorded, call(g), bodies).catch((err: Error) => (replayError = err.message));
+    let replayed: unknown;
+    await replay(g.recorded, call(g), bodies).then(
+      (result) => (replayed = result),
+      (err: Error) => (replayError = err.message),
+    );
     const hash = bodies[0] === undefined ? undefined : requestHash(CHAIN, bodies[0]);
     if (!NIGHTLY && hash && hash === g.request_sha256) {
-      const found = replayError ? [replayError] : problems(g, g.recorded);
+      const found = replayError ? [replayError] : productionProblems(g, replayed);
       console.log(`${g.file}: request unchanged since it passed, replayed without a call`);
-      rows.push({ name: g.file, attempts: 0, model: undefined, replayed: true, passed: found.length === 0 });
+      rows.push({
+        name: g.file,
+        attempts: 0,
+        model: undefined,
+        replayed: true,
+        repair: replayError ? undefined : repairOf(replayed),
+        passed: found.length === 0,
+      });
       expect(found).toEqual([]);
       return;
     }
@@ -172,10 +126,14 @@ describe.skipIf(inject("evalSkip"))("live Gemini", () => {
       answer = undefined;
       const route = NIGHTLY ? rotate(CHAIN, i + DAY) : undefined;
       answer = await waitForGemini(() => captureAnswer(call(g), route));
-      return problems(g, answer.raw);
+      // What the bot makes of the answer, the re-ask and the repair included.
+      return productionProblems(g, answer.result);
     });
-    console.log(`${g.file}: ${attempts} attempt(s), answered by ${answer?.model ?? "no model"}`);
-    rows.push({ name: g.file, attempts, model: answer?.model, passed: found.length === 0 });
+    const repair = answer ? repairOf(answer.result) : undefined;
+    console.log(`${g.file}: ${attempts} attempt(s), answered by ${answer?.model ?? "no model"}, repair ${repair ?? "none"}`);
+    rows.push({ name: g.file, attempts, model: answer?.model, repair, passed: found.length === 0 });
+    // recordedFile judges the raw answer itself, with no re-ask or repair: a case
+    // that passed only through one of them records no answer and no hash.
     if (RECORD && found.length === 0 && hash) {
       const file = new URL(`${g.file}.json`, GOLDEN_DIR);
       // --hashes keeps the recording the journeys assert on; the old one

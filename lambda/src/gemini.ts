@@ -1,6 +1,8 @@
 import { createHash } from "node:crypto";
 import {
+  lineFromTotal,
   normalizeTaxonomyNames,
+  validateExtraction,
   type Extraction,
   type ExtractionItem,
   type ExtractionMeta,
@@ -30,6 +32,13 @@ const ATTEMPTS = [
   { model: GEMINI_FALLBACK_MODEL, delayMs: 2000 },
   { model: GEMINI_LITE_MODEL, delayMs: 2000 },
 ];
+
+/** The clock the re-ask's time budget reads; tests replace `now`. */
+export const clock = { now: () => Date.now() };
+
+// The ingest Lambda times out at 60 s and a fetch has no timeout of its own, so
+// a first call that already took this long leaves no room for a second one.
+export const REASK_BUDGET_MS = 20_000;
 
 /** The wait before each fallback attempt; tests replace `sleep` so a retry does not wait. */
 export const retryWait = {
@@ -62,6 +71,11 @@ const TAGS =
 
 const SPLIT_EVENTS =
   "Return events: one event per separate transaction, in the order the owner mentioned them. Split by place: one event per merchant or place. Amounts at the same place, or with no place given, are one expense with several items. Income and transfers are always their own event. A receipt photo is one event; the caption may add others. A date or funder stated once applies to every event unless an event states its own. notes and tags belong to the event they describe.";
+
+// A lighter model returned a purchase named only in a photo caption as an
+// expense with an empty items list.
+const EXPENSE_HAS_ITEMS =
+  "Every expense event must have at least one item with its own category, subcategory and bucket, including a purchase described only in a photo caption or in the message text next to a receipt: that purchase is its own event with one item at its stated amount, never an expense with an empty items list.";
 
 const BUCKETS =
   "For each expense line set bucket_why (one short clause naming the rule applied), then bucket (needs or wants). Apply the owner's needs/wants rules at the end of this prompt. They override the (hint …) on subcategories. If no rule fits or context is missing, choose wants. Income and transfer events have no lines: return an empty items list.";
@@ -105,6 +119,7 @@ const EXTRACTOR_STATIC_PROMPT = [
   NOTES,
   TAGS,
   SPLIT_EVENTS,
+  EXPENSE_HAS_ITEMS,
   BUCKETS,
   DATE_READING,
   "date is YYYY-MM-DD only when the user stated a calendar date (including today, yesterday, or a month and day). If they did not, return an empty string. Never guess today's date.",
@@ -126,6 +141,7 @@ const PHOTO_EXTRACTOR_STATIC_PROMPT = [
   NOTES,
   TAGS,
   SPLIT_EVENTS,
+  EXPENSE_HAS_ITEMS,
   BUCKETS,
   DATE_READING,
   "date is YYYY-MM-DD only when printed on the receipt or stated in the caption (including today, yesterday, or a month and day). If neither, return an empty string. Never guess today's date or the photo send time.",
@@ -147,6 +163,7 @@ const VOICE_EXTRACTOR_STATIC_PROMPT = [
   NOTES,
   TAGS,
   SPLIT_EVENTS,
+  EXPENSE_HAS_ITEMS,
   BUCKETS,
   DATE_READING,
   "date is YYYY-MM-DD only when the user stated a calendar date in the recording or caption (including today, yesterday, or a month and day). If they did not, return an empty string. Never guess today's date or the voice send time.",
@@ -305,6 +322,8 @@ export async function generateJson(args: {
   system: string;
   userParts: GeminiUserPart[];
   schema: object;
+  /** The model to start on, so a second call does not retry a model the first one found overloaded. */
+  from?: string;
 }): Promise<{ data: unknown; usage: TokenUsage; model: string }> {
   const request = {
     method: "POST",
@@ -323,8 +342,9 @@ export async function generateJson(args: {
   };
   let res: Response;
   let body: GeminiResponse;
-  let model = ATTEMPTS[0].model;
-  for (let attempt = 0; ; attempt++) {
+  const start = Math.max(0, ATTEMPTS.findIndex((a) => a.model === args.from));
+  let model = ATTEMPTS[start].model;
+  for (let attempt = start; ; attempt++) {
     res = await fetch(endpoint(model), request);
     // Overload responses are not always JSON.
     body = (await res.json().catch(() => ({}))) as GeminiResponse;
@@ -407,16 +427,33 @@ function asItem(raw: unknown): ExtractionItem & PricedLine {
   };
 }
 
-function asExtraction(raw: unknown): Extraction {
+/**
+ * `repair` makes the one line at the header total for an expense with no
+ * lines; an Edit passes false for a card that has real lines, so a patch
+ * answer that lost them fails visibly instead of replacing the card.
+ */
+function asExtraction(raw: unknown, repair = true): Extraction {
   const o = raw as Record<string, unknown>;
-  const priced = Array.isArray(o.items) ? o.items.map(asItem) : [];
-  const taxes = Array.isArray(o.taxes) ? o.taxes.map(String) : [];
-  const discounts = discountsOf(o.discounts);
-  const tip = asString(o.tip);
+  const type = o.type as TxType;
+  let priced = Array.isArray(o.items) ? o.items.map(asItem) : [];
+  let taxes = Array.isArray(o.taxes) ? o.taxes.map(String) : [];
+  let discounts = discountsOf(o.discounts);
+  let tip = asString(o.tip);
+  // No lines: one line at the header, which already holds any tax and tip, so
+  // none is split again (an Edit would add it twice).
+  const fromTotal =
+    repair && priced.length === 0
+      ? lineFromTotal({ type, amount: String(o.amount ?? ""), description: String(o.description ?? "") })
+      : null;
+  if (fromTotal) {
+    priced = [fromTotal];
+    taxes = [];
+    discounts = [];
+    tip = null;
+  }
   // Malformed parts keep the prices; validateExtraction names the bad amount.
   const amounts = lineAmounts(priced, taxes, tip, discounts);
   const items = amounts ? priced.map((item, i) => ({ ...item, amount: amounts[i] })) : priced;
-  const type = o.type as TxType;
   const fundedBy = asString(o.funded_by);
   return {
     type,
@@ -442,6 +479,92 @@ function asExtraction(raw: unknown): Extraction {
   };
 }
 
+// Sent only when an expense came back with no items, with the same message or
+// media as the first call, so the answer is read from the same source.
+const REASK_STATIC_PROMPT = [
+  "You complete Canadian personal-finance expenses that were extracted without any items.",
+  "Today is YYYY-MM-DD (America/Toronto). Currency is CAD.",
+  "The last text part is JSON listing those expenses, each with its description and its total paid, amount. The earlier parts are the message, caption or media they came from.",
+  "Return one event per listed expense, in the same order, type expense, with that description and amount. Each event must have at least one item with its own category, subcategory, item_type and bucket, read from the message, caption or media. When nothing says what was bought, use one item with the event's description and the Other … subcategory that fits best.",
+  LINE_AMOUNTS,
+  "Item types must belong to the same category as the subcategory.",
+  ITEM_TYPE_GOODS,
+  "category, subcategory, and item_type are separate fields. Never repeat the category inside subcategory or item_type. Example: category='Food and drink', subcategory='Takeout / Quick Service', item_type='Meals & Prepared Food'.",
+  ENGLISH_DESCRIPTIONS,
+  TAGS,
+  BUCKETS,
+].join("\n");
+
+/** An expense with a two-decimal total and no items: the case the re-ask and `lineFromTotal` repair. */
+function hasNoItems(event: unknown): boolean {
+  const o = event as Record<string, unknown>;
+  const none = !Array.isArray(o.items) || o.items.length === 0;
+  return none && lineFromTotal({ type: o.type, amount: String(o.amount ?? ""), description: "" }) !== null;
+}
+
+/** The status of a failed Gemini call, never its message. */
+function statusOf(err: unknown): string {
+  const status = /^Gemini HTTP (\d{3})/.exec(err instanceof Error ? err.message : "")?.[1];
+  return status ? `HTTP ${status}` : "no usable answer";
+}
+
+/**
+ * One more call, for every expense the first answer gave no items, through the
+ * same fallback chain. An event is replaced by its own raw answer with the new
+ * items only when they add no check error the event did not already have (the
+ * categories exist, the lines sum to the header). Anything else, or a failed
+ * call, leaves the event as it was for the deterministic repair in asExtraction.
+ * Nothing is saved here.
+ */
+async function reaskEmpty(args: {
+  apiKey: string;
+  taxonomy: TaxonomySnapshot;
+  bucketRules: string;
+  today: string;
+  userParts: GeminiUserPart[];
+  /** The model that answered the first call. */
+  from: string;
+  raw: Record<string, unknown>[];
+  empty: number[];
+}): Promise<{ filled: Map<number, Record<string, unknown>>; usage?: TokenUsage }> {
+  const asked = args.empty.map((i) => ({
+    description: String(args.raw[i].description ?? ""),
+    amount: String(args.raw[i].amount),
+  }));
+  const checked = (event: Record<string, unknown>) =>
+    validateExtraction(normalizeTaxonomyNames(asExtraction(event), args.taxonomy), args.taxonomy).errors;
+  // All or nothing: events are replaced only if every one of them could be checked.
+  let filled = new Map<number, Record<string, unknown>>();
+  let usage: TokenUsage | undefined;
+  try {
+    const answer = await generateJson({
+      apiKey: args.apiKey,
+      schema: EVENTS_SCHEMA,
+      system: extractorSystem(args.today, args.taxonomy, REASK_STATIC_PROMPT, args.bucketRules),
+      userParts: [...args.userParts, { text: JSON.stringify({ expenses_without_items: asked }) }],
+      from: args.from,
+    });
+    usage = answer.usage;
+    const events = ((answer.data as { events?: unknown[] }).events ?? []) as Record<string, unknown>[];
+    if (events.length === asked.length) {
+      const next = new Map<number, Record<string, unknown>>();
+      args.empty.forEach((i, k) => {
+        const { items, taxes, discounts, tip } = events[k] ?? {};
+        const event = { ...args.raw[i], items, taxes, discounts, tip };
+        if (!Array.isArray(items) || items.length === 0) return;
+        const before = checked(args.raw[i]);
+        if (checked(event).every((e) => before.includes(e))) next.set(i, event);
+      });
+      filled = next;
+    }
+  } catch (err) {
+    filled = new Map();
+    console.warn(`Gemini re-ask failed: ${statusOf(err)}`);
+  }
+  console.log(`Gemini re-ask: ${asked.length} expense(s) without items, ${filled.size} filled`);
+  return { filled, usage };
+}
+
 async function extractEvents(args: {
   apiKey: string;
   taxonomy: TaxonomySnapshot;
@@ -450,18 +573,39 @@ async function extractEvents(args: {
   extractorStatic: string;
   userParts: GeminiUserPart[];
 }): Promise<Extraction[]> {
+  const startedAt = clock.now();
   const extractor = await generateJson({
     apiKey: args.apiKey,
     schema: EVENTS_SCHEMA,
     system: extractorSystem(args.today, args.taxonomy, args.extractorStatic, args.bucketRules),
     userParts: args.userParts,
   });
-  const raw = (extractor.data as { events?: unknown[] }).events ?? [];
-  if (raw.length === 0) throw new Error("Gemini returned no events");
+  const tookMs = clock.now() - startedAt;
+  const first = (extractor.data as { events?: unknown[] }).events ?? [];
+  if (first.length === 0) throw new Error("Gemini returned no events");
+  let raw = first as Record<string, unknown>[];
+  const empty = raw.flatMap((e, i) => (hasNoItems(e) ? [i] : []));
+  let reasked = new Set<number>();
+  let extra: TokenUsage | undefined;
+  if (empty.length > 0 && tookMs > REASK_BUDGET_MS) {
+    console.warn(`Gemini re-ask skipped: the first call took ${Math.round(tookMs / 1000)}s`);
+  } else if (empty.length > 0) {
+    const { filled, usage } = await reaskEmpty({ ...args, from: extractor.model, raw, empty });
+    raw = raw.map((e, i) => filled.get(i) ?? e);
+    reasked = new Set(filled.keys());
+    extra = usage;
+  }
   // One call serves every event: meta on each, usage on event 0 only.
   const meta = promptMeta(extractor.model, args.taxonomy, args.extractorStatic, args.bucketRules);
+  const usage = extra
+    ? { input: extractor.usage.input + extra.input, output: extractor.usage.output + extra.output }
+    : extractor.usage;
   return withoutLeakedTotals(raw.map((e) => normalizeTaxonomyNames(asExtraction(e), args.taxonomy))).map(
-    (e, i) => ({ ...e, meta, usage: i === 0 ? { extractor: extractor.usage } : undefined }),
+    (e, i) => ({
+      ...e,
+      meta: reasked.has(i) ? { ...meta, reasked: true } : meta,
+      usage: i === 0 ? { extractor: usage } : undefined,
+    }),
   );
 }
 
@@ -570,7 +714,26 @@ export async function patchExtraction(args: {
       { text: args.correction },
     ],
   });
-  const patched = normalizeTaxonomyNames(asExtraction(extractor.data), args.taxonomy);
+  // The one-line repair is only for a card that is already made from its total:
+  // a patch answer that lost the lines of a real card must fail visibly (the
+  // stored card is kept), not replace it with a made-up line.
+  const repair = args.current.items.length > 0 && args.current.items.every((i) => i.from_total);
+  const reread = normalizeTaxonomyNames(asExtraction(extractor.data, repair), args.taxonomy);
+  // A line made from the total keeps its warning until the correction changes
+  // its category: the model's answer does not carry the flag. Lines are matched
+  // by position, so a reordered or inserted line can move or drop the flag.
+  const patched = {
+    ...reread,
+    items: reread.items.map((item, i) => {
+      const was = args.current.items[i];
+      const same =
+        was?.from_total &&
+        was.category === item.category &&
+        was.subcategory === item.subcategory &&
+        (was.item_type ?? null) === (item.item_type ?? null);
+      return same ? { ...item, from_total: true } : item;
+    }),
+  };
   const amount = patched.type === "expense" ? editedTotal(patched, args.current) : patched.amount;
   return {
     ...patched,

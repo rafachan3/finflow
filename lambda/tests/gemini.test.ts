@@ -4,8 +4,11 @@ import {
   extractFromText,
   extractFromVoice,
   patchExtraction,
+  clock,
+  REASK_BUDGET_MS,
+  retryWait,
 } from "../src/gemini.js";
-import type { Extraction, TaxonomySnapshot } from "../src/extraction.js";
+import { validateExtraction, type Extraction, type TaxonomySnapshot } from "../src/extraction.js";
 
 const taxonomy: TaxonomySnapshot = {
   subcategories: [
@@ -1239,6 +1242,16 @@ describe("multi-event extraction", () => {
     );
   }
 
+  it("tells text, photo and voice that every expense, even one named only in a caption, has an item with its own category", async () => {
+    const systems = await fourSystems();
+    for (const system of systems.slice(0, 3)) {
+      expect(system).toContain("Every expense event must have at least one item with its own category, subcategory and bucket");
+      expect(system).toContain("a purchase described only in a photo caption or in the message text next to a receipt");
+      expect(system).toContain("never an expense with an empty items list");
+    }
+    expect(systems[3]).not.toContain("Every expense event must have at least one item");
+  });
+
   it("tells text, photo, voice and Edit to leave the venue null unless the place clearly is a listed one", async () => {
     for (const system of await fourSystems()) {
       expect(system).toContain("venue is a name from the Venues list only when the place clearly is that kind of place");
@@ -1369,4 +1382,292 @@ describe("multi-event extraction", () => {
     ).rejects.toThrow("Gemini returned no events");
   });
 
+});
+
+describe("an expense the reader gave no lines", () => {
+  const noLines = { ...extracted, amount: "5.00", description: "pharmacy purchase", items: [] };
+  const read = async (event: unknown) => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => geminiJson(events(event)) }));
+    const [result] = await extractFromText({ apiKey: "k", text: "5 at the pharmacy", taxonomy, bucketRules: "", today: "2026-08-17" });
+    return result;
+  };
+
+  it("gets one line at the header total, in the generic fallback category, flagged for the card", async () => {
+    const result = await read({ ...noLines, taxes: ["0.25"], tip: "1.00" });
+    expect(result.items).toEqual([
+      {
+        description: "pharmacy purchase",
+        amount: "5.00",
+        price: "5.00",
+        taxable: false,
+        category: "Shopping",
+        subcategory: "Other shopping",
+        item_type: null,
+        tags: [],
+        bucket: "wants",
+        bucket_why: "no items were read; defaulted to wants",
+        from_total: true,
+      },
+    ]);
+    // The header already holds any tax and tip: none is split again.
+    expect(result).toMatchObject({ amount: "5.00", taxes: [], tip: null, discounts: [] });
+  });
+
+  it("leaves an expense that has lines as it is", async () => {
+    const result = await read(extracted);
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0]).toMatchObject({ description: "burrito", subcategory: "Takeout / Quick Service" });
+    expect(result.items[0].from_total).toBeUndefined();
+  });
+
+  it("makes no line for income or a transfer", async () => {
+    expect((await read({ ...noLines, type: "income", income_source: "Salary" })).items).toEqual([]);
+    expect((await read({ ...noLines, type: "transfer", to_account: "Rainy-day fund" })).items).toEqual([]);
+  });
+
+  it("makes no line when the header is not a two-decimal amount, so the card still fails its checks", async () => {
+    const result = await read({ ...noLines, amount: "5" });
+    expect(result.items).toEqual([]);
+    expect(validateExtraction(result, taxonomy).errors).toContain("expense needs at least one line");
+  });
+
+  it("does not replace a card that has lines when an Edit's answer comes back with none", async () => {
+    const current = await read(extracted);
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => geminiJson(noLines) }));
+    const patched = await patchExtraction({
+      apiKey: "k",
+      current,
+      correction: "it was on the 5th",
+      taxonomy,
+      bucketRules: "",
+      today: "2026-08-17",
+    });
+    // The lines stay lost, so the card fails its checks and the stored card is kept.
+    expect(patched.items).toEqual([]);
+    expect(validateExtraction(patched, taxonomy).errors).toContain("expense needs at least one line");
+  });
+});
+
+describe("the re-ask for an expense with no items", () => {
+  const noItems = { ...extracted, amount: "5.00", description: "pharmacy purchase", items: [] };
+  const burrito = { ...extracted.items[0], description: "cold medicine", amount: "5.00" };
+  const answerOf = (...e: unknown[]) => ({ ok: true, json: async () => geminiJson(events(...e)) });
+  const overloaded = { ok: false, status: 503, json: async () => ({ error: { message: "high demand" } }) };
+  const ask = (fetchMock: ReturnType<typeof vi.fn>) => {
+    vi.stubGlobal("fetch", fetchMock);
+    return extractFromPhoto({
+      apiKey: "k",
+      image: Buffer.from([0xff]),
+      mimeType: "image/jpeg",
+      caption: "also 5 at the pharmacy",
+      taxonomy,
+      bucketRules: "",
+      today: "2026-08-17",
+    });
+  };
+  const body = (fetchMock: ReturnType<typeof vi.fn>, call: number) => JSON.parse(fetchMock.mock.calls[call][1].body as string);
+
+  beforeEach(() => {
+    vi.spyOn(retryWait, "sleep").mockResolvedValue();
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.spyOn(console, "log").mockImplementation(() => {});
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  it("asks once for the items of an event that came back with none, and keeps what it answers", async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(answerOf(extracted, noItems)).mockResolvedValueOnce(answerOf({ ...noItems, items: [burrito] }));
+    const [receipt, pharmacy] = await ask(fetchMock);
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(receipt.items[0].description).toBe("burrito");
+    expect(pharmacy.items).toMatchObject([{ description: "cold medicine", amount: "5.00", subcategory: "Takeout / Quick Service" }]);
+    expect(pharmacy.items[0].from_total).toBeUndefined();
+    expect(pharmacy.meta?.reasked).toBe(true);
+    expect(receipt.meta?.reasked).toBeUndefined();
+    // The usage of both calls is counted on the first event.
+    expect(receipt.usage).toEqual({ extractor: { input: 20, output: 10 } });
+  });
+
+  it("sends the same photo and caption, then only the event that has no items, with the same schema", async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(answerOf(extracted, noItems)).mockResolvedValueOnce(answerOf({ ...noItems, items: [burrito] }));
+    await ask(fetchMock);
+
+    const [first, second] = [body(fetchMock, 0), body(fetchMock, 1)];
+    expect(second.contents[0].parts.slice(0, 2)).toEqual(first.contents[0].parts);
+    expect(JSON.parse(second.contents[0].parts[2].text)).toEqual({
+      expenses_without_items: [{ description: "pharmacy purchase", amount: "5.00" }],
+    });
+    expect(second.generationConfig.responseSchema).toEqual(first.generationConfig.responseSchema);
+    expect(second.systemInstruction.parts[0].text).toContain("You complete Canadian personal-finance expenses that were extracted without any items.");
+    expect(second.systemInstruction.parts[0].text).toContain("Classify using ONLY these names.");
+  });
+
+  it("makes one extra call for every event that has no items, not one each", async () => {
+    const other = { ...noItems, description: "kiosk purchase", amount: "3.00" };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(answerOf(noItems, extracted, other))
+      .mockResolvedValueOnce(answerOf({ ...noItems, items: [burrito] }, { ...other, items: [{ ...burrito, amount: "3.00" }] }));
+    const result = await ask(fetchMock);
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(result.map((e) => e.items.map((i) => i.amount))).toEqual([["5.00"], ["12.50"], ["3.00"]]);
+    expect(result.map((e) => e.items.some((i) => i.from_total))).toEqual([false, false, false]);
+  });
+
+  it.each([
+    ["every model overloaded", () => vi.fn().mockResolvedValueOnce(answerOf(noItems)).mockResolvedValue(overloaded)],
+    ["its items do not add up to the total", () => vi.fn().mockResolvedValueOnce(answerOf(noItems)).mockResolvedValue(answerOf({ ...noItems, items: [{ ...burrito, amount: "4.00" }] }))],
+    ["a category that is not in the taxonomy", () => vi.fn().mockResolvedValueOnce(answerOf(noItems)).mockResolvedValue(answerOf({ ...noItems, items: [{ ...burrito, subcategory: "Made up" }] }))],
+    ["no items again", () => vi.fn().mockResolvedValueOnce(answerOf(noItems)).mockResolvedValue(answerOf(noItems))],
+    ["the wrong number of events", () => vi.fn().mockResolvedValueOnce(answerOf(noItems)).mockResolvedValue(answerOf({ ...noItems, items: [burrito] }, extracted))],
+  ])("falls back to one line at the total when the re-ask fails: %s", async (_why, make) => {
+    const [event] = await ask(make());
+    expect(event.items).toMatchObject([
+      { description: "pharmacy purchase", amount: "5.00", subcategory: "Other shopping", from_total: true },
+    ]);
+    expect(event.meta?.reasked).toBeUndefined();
+  });
+
+  it("makes no extra call for an ordinary answer, income, a transfer or a header that is not two-decimal", async () => {
+    const income = { ...extracted, type: "income", items: [], income_source: "Salary" };
+    const transfer = { ...extracted, type: "transfer", items: [], to_account: "Rainy-day fund" };
+    const badHeader = { ...noItems, amount: "5" };
+    for (const answer of [extracted, income, transfer, badHeader]) {
+      const fetchMock = vi.fn().mockResolvedValue(answerOf(answer));
+      await ask(fetchMock);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    }
+  });
+
+  it("takes the taxes and tip of the re-ask's own answer, which sum with its prices to the total", async () => {
+    const taxed = { ...noItems, taxes: ["0.25"], tip: "1.00" };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(answerOf(taxed))
+      .mockResolvedValueOnce(answerOf({ ...noItems, taxes: ["0.25"], tip: "1.00", items: [{ ...burrito, price: "3.75", amount: undefined }] }));
+    const [event] = await ask(fetchMock);
+    expect(event).toMatchObject({ amount: "5.00", taxes: ["0.25"], tip: "1.00" });
+    expect(event.items).toMatchObject([{ price: "3.75", amount: "5.00" }]);
+    expect(event.items[0].from_total).toBeUndefined();
+  });
+
+  it("falls back, with the tax and tip cleared, when the re-ask's lines do not include them", async () => {
+    const taxed = { ...noItems, taxes: ["0.25"], tip: "1.00" };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(answerOf(taxed))
+      .mockResolvedValue(answerOf({ ...taxed, items: [{ ...burrito, price: "5.00", amount: undefined }] }));
+    const [event] = await ask(fetchMock);
+    expect(event).toMatchObject({ amount: "5.00", taxes: [], tip: null, discounts: [] });
+    expect(event.items).toMatchObject([{ amount: "5.00", from_total: true }]);
+  });
+
+  it("does not ask again when the first call already took longer than the budget", async () => {
+    vi.spyOn(clock, "now").mockReturnValueOnce(1_000).mockReturnValueOnce(1_000 + REASK_BUDGET_MS + 1);
+    const fetchMock = vi.fn().mockResolvedValue(answerOf(noItems));
+    const [event] = await ask(fetchMock);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(event.items).toMatchObject([{ from_total: true }]);
+    expect(vi.mocked(console.warn).mock.calls.map((c) => c.join(" "))).toContain("Gemini re-ask skipped: the first call took 20s");
+  });
+
+  it("asks when the first call took exactly the budget", async () => {
+    vi.spyOn(clock, "now").mockReturnValueOnce(1_000).mockReturnValueOnce(1_000 + REASK_BUDGET_MS);
+    const fetchMock = vi.fn().mockResolvedValueOnce(answerOf(noItems)).mockResolvedValueOnce(answerOf({ ...noItems, items: [burrito] }));
+    await ask(fetchMock);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("starts on the model that answered the first call, not the primary again", async () => {
+    const modelOf = (fetchMock: ReturnType<typeof vi.fn>, call: number) =>
+      String(fetchMock.mock.calls[call][0]).match(/models\/([^:]+):/)?.[1];
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(overloaded)
+      .mockResolvedValueOnce(answerOf(noItems))
+      .mockResolvedValueOnce(answerOf({ ...noItems, items: [burrito] }));
+    const [event] = await ask(fetchMock);
+    expect([0, 1, 2].map((i) => modelOf(fetchMock, i))).toEqual(["gemini-3.6-flash", "gemini-3.5-flash", "gemini-3.5-flash"]);
+    expect(event.meta?.reasked).toBe(true);
+  });
+
+  it("starts on the last model when that one answered, and still stops there when it fails", async () => {
+    const modelOf = (fetchMock: ReturnType<typeof vi.fn>, call: number) =>
+      String(fetchMock.mock.calls[call][0]).match(/models\/([^:]+):/)?.[1];
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(overloaded)
+      .mockResolvedValueOnce(overloaded)
+      .mockResolvedValueOnce(answerOf(noItems))
+      .mockResolvedValue(overloaded);
+    const [event] = await ask(fetchMock);
+    expect(fetchMock.mock.calls.slice(3).map((c) => String(c[0]).match(/models\/([^:]+):/)?.[1])).toEqual(["gemini-3.5-flash-lite"]);
+    expect(modelOf(fetchMock, 2)).toBe("gemini-3.5-flash-lite");
+    expect(event.items).toMatchObject([{ from_total: true }]);
+  });
+
+  it("replaces none of the events when one of the answers cannot be read", async () => {
+    const other = { ...noItems, description: "kiosk purchase", amount: "3.00" };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(answerOf(noItems, other))
+      .mockResolvedValue(answerOf({ ...noItems, items: [burrito] }, { ...other, items: [null] }));
+    const result = await ask(fetchMock);
+    expect(result.map((e) => e.items.map((i) => i.from_total))).toEqual([[true], [true]]);
+    expect(result.map((e) => e.meta?.reasked)).toEqual([undefined, undefined]);
+  });
+
+  it("logs only the status and counts, never a description or an amount", async () => {
+    await ask(vi.fn().mockResolvedValueOnce(answerOf(noItems)).mockResolvedValue(overloaded));
+    const logged = [...vi.mocked(console.warn).mock.calls, ...vi.mocked(console.log).mock.calls].map((c) => c.join(" "));
+    expect(logged).toContain("Gemini re-ask failed: HTTP 503");
+    expect(logged).toContain("Gemini re-ask: 1 expense(s) without items, 0 filled");
+    expect(logged.join("\n")).not.toMatch(/pharmacy|5\.00|high demand/);
+  });
+});
+
+describe("an Edit of a line that was made from the total", () => {
+  const made = {
+    description: "pharmacy purchase",
+    amount: "5.00",
+    price: "5.00",
+    taxable: false,
+    category: "Shopping",
+    subcategory: "Other shopping",
+    item_type: null,
+    tags: [],
+    bucket: "wants" as const,
+    bucket_why: "no items were read; defaulted to wants",
+    from_total: true,
+  };
+  const current = { ...(extracted as unknown as Extraction), amount: "5.00", items: [made] };
+  const patch = (line: object) => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => geminiJson({ ...extracted, amount: "5.00", items: [{ ...made, from_total: undefined, ...line }] }),
+    }));
+    return patchExtraction({ apiKey: "k", current, correction: "x", taxonomy: { ...taxonomy, subcategories: [...taxonomy.subcategories, { category: "Shopping", name: "Other shopping", default_bucket: null }] }, bucketRules: "", today: "2026-08-17" });
+  };
+
+  it("still makes the one line when the card itself is made from the total and the answer has none", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => geminiJson({ ...extracted, amount: "5.00", items: [] }),
+    }));
+    const patched = await patchExtraction({ apiKey: "k", current, correction: "x", taxonomy, bucketRules: "", today: "2026-08-17" });
+    expect(patched.items).toMatchObject([{ amount: "5.00", from_total: true }]);
+  });
+
+  it("keeps the flag while the line's category is unchanged", async () => {
+    expect((await patch({ description: "pharmacy" })).items[0].from_total).toBe(true);
+  });
+
+  it("drops the flag once the category is changed", async () => {
+    expect((await patch({ category: "Food and drink", subcategory: "Takeout / Quick Service" })).items[0].from_total).toBeUndefined();
+  });
+
+  it("drops the flag once only the subcategory is changed within the category", async () => {
+    expect((await patch({ subcategory: "Gifts" })).items[0].from_total).toBeUndefined();
+  });
 });

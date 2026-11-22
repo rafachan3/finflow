@@ -21,6 +21,8 @@ export type ExtractionItem = {
   dropped_tags?: string[];
   bucket: Bucket;
   bucket_why?: string;
+  /** Made from the header total because the reader gave the purchase no lines; the card warns. */
+  from_total?: boolean;
 };
 
 export type TokenUsage = { input: number; output: number };
@@ -33,6 +35,8 @@ export type ExtractionMeta = {
   bucket_sha256?: string;
   bucket_model?: string;
   rules_sha256?: string;
+  /** This event had no items in the first answer; a second call read them. */
+  reasked?: true;
 };
 
 export type DateSource = "stated" | "today_default" | "missing" | "fix";
@@ -251,6 +255,35 @@ export function parseCents(amount: string): number | null {
   return Number(m[1]) * 100 + Number(m[2]);
 }
 
+/**
+ * The one line for an expense the reader gave no lines (a lighter model
+ * sometimes does): its description at the whole header amount, so the lines
+ * sum to the header. Null for anything else, or a header that is not
+ * two-decimal. The event carries no category, so the line gets the taxonomy's
+ * generic "Other shopping" fallback, and wants, the default when context is
+ * missing; the card warns (`from_total`) and one Edit fixes it.
+ */
+export function lineFromTotal(event: {
+  type: unknown;
+  amount: string;
+  description: string;
+}): (ExtractionItem & { price: Money; taxable: boolean }) | null {
+  if (event.type !== "expense" || parseCents(event.amount) === null) return null;
+  return {
+    description: event.description,
+    amount: event.amount,
+    price: event.amount,
+    taxable: false,
+    category: "Shopping",
+    subcategory: "Other shopping",
+    item_type: null,
+    tags: [],
+    bucket: "wants",
+    bucket_why: "no items were read; defaulted to wants",
+    from_total: true,
+  };
+}
+
 function hasName(list: string[], name: string | null): boolean {
   return name !== null && list.includes(name);
 }
@@ -383,6 +416,11 @@ export function validateExtraction(
       extraction.tip ?? "0.00",
     ]) {
       if (parseCents(extra) === null) errors.push(`tax, tip and discount must be two-decimal: ${extra}`);
+    }
+    if (extraction.items.some((i) => i.from_total)) {
+      warnings.push(
+        "the reader gave no items for this purchase; one item was made from its total: check its category",
+      );
     }
     let lineSum = 0;
     let linesOk = headerCents !== null;
