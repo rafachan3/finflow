@@ -180,10 +180,11 @@ insert into account_opening_balances (account_id, as_of, amount)
 select id, date '2026-05-31', 1000.00
 from accounts where name = 'Emergency fund';
 
--- A tracked merchant and a tag inside the last three full months, so the
--- dashboard panels that cover that window have rows to return.
+-- A tracked merchant, a channel and a tag inside the last three full
+-- months, so the dashboard panels that cover that window have rows to return.
 update transactions
-set merchant_id = (select id from merchants where name = 'Acme Mart')
+set merchant_id = (select id from merchants where name = 'Acme Mart'),
+    channel_id = (select id from channels where name = 'Uber Eats')
 where id = 'a0000000-0000-0000-0000-000000000017';
 
 insert into transaction_tags (transaction_id, tag_id)
