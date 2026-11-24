@@ -5,6 +5,7 @@ select
     i.id as item_id,
     i.transaction_id,
     i.description as item_description,
+    i.note as item_note,
     i.amount,
     i.bucket::text as bucket,
     i.subcategory_id,
