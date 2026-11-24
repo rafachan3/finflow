@@ -3570,3 +3570,31 @@ golden failed twice (2026-10-29, 2026-11-19).
   cannot guarantee the items, and the lighter model answers whenever
   Flash is out of quota or overloaded); guessing a category silently (the fallback line is always
   flagged on the card).
+
+## 2026-11-23: A service or delivery fee is its own list, shared like the tip (#164)
+
+A service fee, delivery fee or service charge is not a tax, tip or
+discount, so the prompt let the model keep it as a line with a pre-tax
+price, and the taxes and tip were then shared onto it.
+
+- **A `fees` list, not one fee field.** Each fee is read as printed or
+  stated, like `taxes`. A delivery order often prints a delivery fee and
+  a service fee; a single field would make the model add them, which is
+  the arithmetic tax-tip.ts exists to take away from it.
+- **Shared by discounted price over every line, as the tip is**, never
+  only over the taxed lines: a printed tax already covers any taxed fee,
+  so the fee itself has no taxable flag.
+- **Kept apart from the tip.** A tip Edit must not move the fee, so the
+  fee is never folded into `tip`. An Edit treats a corrected fee like a
+  corrected tip (the total follows the recomputed lines) and a dropped fee
+  like a dropped tip (the stored total stays and the line-sum check fails).
+- **No column.** The fee lives in `ingestions.extraction` (jsonb) with the
+  tip and taxes; saved lines already hold their share. No migration.
+- **The golden cap was already 20 of 20**, so no file was added:
+  `same-place-lines` (two items at one place) became a two-dish order
+  with a service fee and a tip, and checks the line amounts and a new
+  `fees` expectation. The line amounts alone cannot tell a fee read into
+  the tip from one in `fees`, because both are shared by price.
+- **Ruled out:** a fee subcategory (the taxonomy has none for the tip
+  either, #31); adding the fee to the tip field (the issue rules it out);
+  a new golden file (the cap).

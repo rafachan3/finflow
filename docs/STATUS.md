@@ -2,7 +2,7 @@
 
 Living state of the project. Read this first; update it whenever work lands.
 
-**Last updated:** 2026-11-10
+**Last updated:** 2026-11-23
 **Current phase:** Phase 5 (Grafana) under way: D (This month) merged as #137 and applied 2026-11-09; feedback round 1 merged as #140 and applied 2026-11-10; round 2 (income in money, Trends dashboard, no time picker) merged as #141 and applied 2026-11-10; round 3 (unallocated cash, shorter tooltips, Trends grown to three panels) merged as #143 and applied 2026-11-10; round 4 (leaner cards, Trends at six panels) merged as #145 and applied 2026-11-10, waiting for the owner's look; the nightly now builds models on one thread (deadlock fix, DECISIONS 2026-11-15); round 5 (one income-and-buckets chart, per-bucket category tables, Ledger v1 with click-through) merged as #151 (`249efd3`) and applied 2026-11-15; round 6 (denser layouts, recurring, merchants, largest purchases, Ledger period) merged as #157 (`69d41fa`) and applied 2026-11-15; round 7 (design review fixes, weekday and pay-cycle views, recurring commitments, fuller Ledger; the Review dashboard is dropped) merged as #159 (`f6d49a6`) and applied 2026-11-16; round 8 (income line joined again, merchant and venue kept apart, Ledger periods and category table, plus three new dashboards: Tags and merchants, Income and financial future, Reliance on others) merged as #161, #162, #165, #166 (migration 0024, pushed, `dbt-nightly` dispatched and green), #167 and #168 (`6728598`) and applied 2026-11-16, waiting for the owner's look. **Owner step:** mark the support source in the database (`update income_sources set is_support = true where name = ...`); until then Reliance on others shows support as zero. **Next:** the owner's feedback on round 8. "Needs attention" is on hold until the owner rules (the recommendation is not to build it): on 2026-11-16 it would have listed nothing (nightly ledger health: no warnings, no future-dated entries), and of the 35 pairs the duplicate test first raised one was a real duplicate; the nightly ledger-health issue already covers it
 
 ## Phase progress
@@ -350,7 +350,14 @@ discount off a receipt photo and pins each line's amount; the `tax-tip`
 journey replays it through Confirm. #89 (merged as #125, `2843d57`): TAXONOMY.md
 rule 8 and the prompt say a machine cycle has no goods item type
 (a laundromat washer cycle is Housing / Laundry, never Laundry Supply); the
-new `laundromat-cycles` golden takes the 20th slot (20 of 20).
+new `laundromat-cycles` golden takes the 20th slot (20 of 20). #164
+(`fix/service-fee-shared-across-items`, DECISIONS.md 2026-11-23): a service
+fee, delivery fee or service charge is read into its own `fees` list (text,
+photo, voice, Edit), never a line or part of the tip, and shared over every
+line by price with the tax and tip. The card shows no fee line; each line's
+amount holds its share. An Edit sends the fees back and a tip correction
+leaves them alone. The cap was full, so `same-place-lines` became a two-dish
+order with a service fee and a tip (still 20 of 20).
 
 Duplicate warning (Phase 3.5 PR 1; DECISIONS.md 2026-10-29): every saved
 card (new message, `/pending`, Fix date, Edit) gets at most one `!` line
