@@ -185,7 +185,7 @@ dbt models and the agent read it, so numbers agree everywhere.
   Confirm / Discard / Fix date / Edit appear when checks pass. Text and
   voice with no date default to today and warn. Photos with no
   printed/caption date persist without Confirm. Edit sets
-  `awaiting_edit`; the next text patches the stored JSON. A message with
+  `awaiting_edit`; the next text, or a voice note (transcribed first), patches the stored JSON. A message with
   several events gets one such reply per event. Funded by appears on expense previews only.
 
 ### Storage — Supabase Postgres (rows) + AWS S3 (media)
