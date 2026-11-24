@@ -11,7 +11,9 @@ models:
       confirmed ingestion. A null account is chequing: from_account_id and
       to_account_id on a transfer, deposit_account_id on income (where its
       source's money lands). recurring_series_name and recurring_cadence
-      come from the linked series; both null when unlinked.
+      come from the linked series; both null when unlinked. channel_name is
+      the app or service the purchase went through, null when bought
+      directly.
     columns:
       - name: transaction_id
         data_tests: [unique, not_null]

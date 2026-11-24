@@ -67,6 +67,7 @@ select
     case when t.type = 'expense' then t.funding_source_name = 'self' end as is_self_funded,
     t.merchant_name,
     t.venue_name,
+    t.channel_name,
     t.income_source_name,
     t.is_support,
     t.deposit_account_name,

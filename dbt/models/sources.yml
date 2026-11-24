@@ -17,6 +17,8 @@ sources:
       - name: item_types
       - name: merchants
       - name: venues
+      - name: channels
+        description: The app or service a purchase went through (migration 0025).
       - name: income_sources
       - name: accounts
       - name: funding_sources

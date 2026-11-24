@@ -28,6 +28,7 @@ select
     f.name as funding_source_name,
     m.name as merchant_name,
     v.name as venue_name,
+    ch.name as channel_name,
     s.name as income_source_name,
     s.is_support,
     s.deposit_account_id,
@@ -44,6 +45,7 @@ from {{ source('ledger', 'transactions') }} as t
 left join {{ source('ledger', 'funding_sources') }} as f on f.id = t.funding_source_id
 left join {{ source('ledger', 'merchants') }} as m on m.id = t.merchant_id
 left join {{ source('ledger', 'venues') }} as v on v.id = t.venue_id
+left join {{ source('ledger', 'channels') }} as ch on ch.id = t.channel_id
 left join {{ source('ledger', 'income_sources') }} as s on s.id = t.income_source_id
 left join {{ source('ledger', 'accounts') }} as d on d.id = s.deposit_account_id
 left join {{ source('ledger', 'accounts') }} as fa on fa.id = t.from_account_id
