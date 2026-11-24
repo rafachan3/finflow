@@ -482,6 +482,22 @@ accessories, never Entertainment and activities; a streaming subscription
 is Memberships. Goldens stay at 20: `rules-override`, `receipt-no-date`
 (now a two-line merch receipt) and `rules-default-hint` were extended.
 
+Line notes (#171, branch `feat/line-item-notes`, not merged; DECISIONS.md
+2026-11-24, "A note about one line goes on that line"): a reason the owner
+gives about one item is that line's note, not the transaction's. Migration
+0026 adds nullable `transaction_items.note`. Text, photo, voice and Edit
+return a nullable `note` per line; `canonicalNotes` moves a note on every
+line to a header that has none and drops a line note equal to the header's.
+The card prints a line's note indented under that line; Confirm writes it;
+an Edit can move a note between the header and a line. `fct_transactions`
+gains `item_note` (its own column, never joined into `notes`);
+`fct_ledger_entry` keeps the header note. Goldens stay at 20:
+`receipt-line-tag` now carries a purchase reason and a bananas reason.
+**Owner step:** push migration 0026 (`supabase db push`, dry-run first)
+before merging; Confirm writes the column at once. **Follow-up (grafana/,
+not in this PR):** Ledger "Line items" shows `f.notes` as Note, and the
+search box matches `f.notes` only; both should read `f.item_note` too.
+
 Migration 0011 is applied to production. Owner/CoS actions, in order: merge
 the PR (it auto-deploys code that reads the column), then from `lambda/`:
 `RECEIPTS_BUCKET=finflow-receipts-$(aws sts get-caller-identity --query Account --output text) AWS_REGION=ca-central-1 npm run backfill:media-merchant -- --dry-run`,
