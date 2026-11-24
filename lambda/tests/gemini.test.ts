@@ -1462,8 +1462,40 @@ describe("multi-event extraction", () => {
       const item = (schema.properties.events?.items ?? schema).properties.items.items;
       expect(item.properties.tags).toEqual({ type: "ARRAY", items: { type: "STRING" } });
       expect(item.required).toContain("tags");
-      expect(item.propertyOrdering.slice(-4)).toEqual(["item_type", "tags", "bucket_why", "bucket"]);
+      expect(item.propertyOrdering.slice(-5)).toEqual(["item_type", "tags", "note", "bucket_why", "bucket"]);
     }
+  });
+
+  it("asks text, photo, voice and Edit for each line's own note, and an Edit sends it back", async () => {
+    const fetchMock = vi.fn().mockImplementation(async () => ({
+      ok: true,
+      json: async () => geminiJson(events(extracted)),
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    const base = { apiKey: "k", taxonomy, bucketRules: "", today: "2026-08-17" };
+    const media = { ...base, caption: "", mimeType: "image/jpeg" };
+    await extractFromText({ ...base, text: "lunch 20" });
+    await extractFromPhoto({ ...media, image: Buffer.from([0xff]) });
+    await extractFromVoice({ ...media, mimeType: "audio/ogg", audio: Buffer.from([0x4f]) });
+    fetchMock.mockImplementationOnce(async () => ({ ok: true, json: async () => geminiJson(extracted) }));
+    const noted = { ...current, items: [{ ...current.items[0], note: "it was a long day" }] } as Extraction;
+    await patchExtraction({ ...base, current: noted, correction: "that note is about the whole lunch" });
+
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+    for (const [, init] of fetchMock.mock.calls) {
+      const body = JSON.parse(init.body as string);
+      const system = body.systemInstruction.parts[0].text as string;
+      expect(system).toContain("A line's note follows the same rules for a reason the owner gives about that line only");
+      expect(system).toContain("a reason about the whole purchase stays in the event's notes");
+      expect(system).toContain("Never repeat the event's notes on a line, nor one line's note on another.");
+      const schema = body.generationConfig.responseSchema;
+      const item = (schema.properties.events?.items ?? schema).properties.items.items;
+      expect(item.properties.note).toEqual({ type: "STRING", nullable: true });
+      expect(item.required).toContain("note");
+    }
+    const patch = JSON.parse(fetchMock.mock.calls[3][1].body as string);
+    const sent = JSON.parse(patch.contents[0].parts[0].text);
+    expect(sent.items.map((i: { note: unknown }) => i.note)).toEqual(["it was a long day"]);
   });
 
   it("asks text, photo, voice and Edit for the account a transfer leaves, with null as chequing", async () => {
@@ -1557,6 +1589,7 @@ describe("an expense the reader gave no lines", () => {
         subcategory: "Other shopping",
         item_type: null,
         tags: [],
+        note: null,
         bucket: "wants",
         bucket_why: "no items were read; defaulted to wants",
         from_total: true,

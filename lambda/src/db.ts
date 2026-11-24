@@ -931,8 +931,8 @@ export async function confirmIngestion(
         }
         const line = await client.query<{ id: string }>(
           `INSERT INTO transaction_items (
-             transaction_id, description, amount, subcategory_id, item_type_id, bucket
-           ) VALUES ($1, $2, $3, $4, $5, $6)
+             transaction_id, description, amount, subcategory_id, item_type_id, bucket, note
+           ) VALUES ($1, $2, $3, $4, $5, $6, $7)
            RETURNING id`,
           [
             transactionId,
@@ -941,6 +941,8 @@ export async function confirmIngestion(
             sub.rows[0].id,
             itemTypeId,
             item.bucket,
+            // Rows stored before line notes have none.
+            item.note ?? null,
           ],
         );
         // Rows stored before line tags have none.

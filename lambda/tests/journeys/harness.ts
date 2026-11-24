@@ -593,6 +593,12 @@ export const ledger = {
        from transaction_items i order by i.description`,
     );
   },
+  /** Each line's own note, by description. */
+  lineNotes() {
+    return sql<{ description: string; note: string | null }>(
+      `select description, note from transaction_items order by description`,
+    );
+  },
   /** Each transaction's whole-transaction tags, by type. */
   transactionTags() {
     return sql<{ type: string; tags: string[] }>(

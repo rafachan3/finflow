@@ -153,6 +153,18 @@ describe("confirmIngestion", () => {
     ).toEqual([{ name: "Social" }]);
   });
 
+  it("writes a line's own note on that line only, and the header's on the transaction", async () => {
+    const [milk, cookies] = expense().items;
+    const [id] = await save(211, expense({ notes: "stocking up", items: [milk, { ...cookies, note: "for the party" }] }));
+    await db.confirmIngestion(id);
+
+    expect(await sql("select description, note from transaction_items order by amount")).toEqual([
+      { description: "milk", note: null },
+      { description: "cookies", note: "for the party" },
+    ]);
+    expect(await sql("select notes from transactions")).toEqual([{ notes: "stocking up" }]);
+  });
+
   it("confirms a row stored before line tags, with no tags on its lines", async () => {
     const [id] = await save(206, expense());
     await expect(db.confirmIngestion(id)).resolves.toMatchObject({ status: "confirmed" });

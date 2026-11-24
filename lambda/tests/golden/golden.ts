@@ -1,6 +1,6 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { merchantKey } from "../../src/commands.js";
-import { canonicalTags, stripCategoryPrefix } from "../../src/extraction.js";
+import { canonicalNotes, canonicalTags, stripCategoryPrefix } from "../../src/extraction.js";
 import { discountsOf, editedTotal, lineAmounts, type EditParts } from "../../src/tax-tip.js";
 
 /**
@@ -59,6 +59,8 @@ export type ExpectedEvent = {
   tags?: string[];
   /** Each line's own tags, in line order, as sets. */
   lineTags?: string[][];
+  /** Each line's own note, in line order: null for none, else whole words it must contain. */
+  lineNotes?: (string[] | null)[];
 };
 
 export type Golden = {
@@ -96,6 +98,7 @@ export type RawEvent = {
     description?: unknown;
     bucket?: unknown;
     tags?: unknown;
+    note?: unknown;
     category?: unknown;
     subcategory?: unknown;
     item_type?: unknown;
@@ -178,6 +181,12 @@ function names(v: unknown): string[] {
 
 const tagSet = (tags: string[]) => `[${[...tags].sort().join(", ")}]`;
 
+const text = (v: unknown) => (typeof v === "string" ? v : null);
+
+/** Golden words are plain letters and apostrophes, so no escaping; a curly apostrophe reads as straight. */
+const hasWord = (note: string, w: string) =>
+  new RegExp(`(^|[^\\w'])${w}($|[^\\w'])`, "i").test(note.replace(/\u2019/g, "'"));
+
 function cents(v: unknown): number {
   return Math.round(Number(v) * 100);
 }
@@ -192,6 +201,8 @@ export function mismatches(events: RawEvent[], expected: ExpectedEvent[]): strin
     const got = events[i];
     const at = `event ${i}`;
     const items = Array.isArray(got.items) ? got.items : [];
+    // Judged as stored: after a note on every line has moved to the header.
+    const notes = canonicalNotes(text(got.notes), items.map((item) => text(item.note)));
     if (got.type !== want.type) out.push(`${at}: type ${String(got.type)} != ${want.type}`);
     if (items.length !== want.lines) out.push(`${at}: ${items.length} lines != ${want.lines}`);
     if (want.amount !== undefined && got.amount !== want.amount) {
@@ -208,7 +219,7 @@ export function mismatches(events: RawEvent[], expected: ExpectedEvent[]): strin
     const flags = [
       ["merchant", want.merchant, got.merchant],
       ["date", want.date, got.date],
-      ["note", want.note, got.notes],
+      ["note", want.note, notes.notes],
     ] as const;
     for (const [field, wanted, value] of flags) {
       if (wanted !== undefined && present(value) !== wanted) {
@@ -231,11 +242,9 @@ export function mismatches(events: RawEvent[], expected: ExpectedEvent[]): strin
     if (want.channel !== undefined && (got.channel ?? null) !== want.channel) {
       out.push(`${at}: channel ${String(got.channel ?? null)} != ${String(want.channel)}`);
     }
-    const note = typeof got.notes === "string" ? got.notes.replace(/\u2019/g, "'") : "";
-    // Golden words are plain letters and apostrophes, so no escaping.
-    const hasWord = (w: string) => new RegExp(`(^|[^\\w'])${w}($|[^\\w'])`, "i").test(note);
-    for (const w of want.noteHas ?? []) if (!hasWord(w)) out.push(`${at}: note lacks "${w}"`);
-    for (const w of want.noteLacks ?? []) if (hasWord(w)) out.push(`${at}: note has "${w}"`);
+    const note = notes.notes ?? "";
+    for (const w of want.noteHas ?? []) if (!hasWord(note, w)) out.push(`${at}: note lacks "${w}"`);
+    for (const w of want.noteLacks ?? []) if (hasWord(note, w)) out.push(`${at}: note has "${w}"`);
     const words = note.split(/\s+/).filter(Boolean).length;
     if (want.noteMaxWords !== undefined && words > want.noteMaxWords) {
       out.push(`${at}: note has ${words} words > ${want.noteMaxWords}`);
@@ -288,6 +297,16 @@ export function mismatches(events: RawEvent[], expected: ExpectedEvent[]): strin
         if (tagSet(tags.lineTags[j]) !== tagSet(wanted)) {
           out.push(`${at}: line ${j} tags ${tagSet(tags.lineTags[j])} != ${tagSet(wanted)}`);
         }
+      });
+    }
+    if (want.lineNotes !== undefined && items.length === want.lines) {
+      want.lineNotes.forEach((words, j) => {
+        const own = notes.lineNotes[j];
+        if (own === null || words === null) {
+          if (own !== words) out.push(`${at}: line ${j} note ${words === null ? "unexpected" : "missing"}`);
+          return;
+        }
+        for (const w of words) if (!hasWord(own, w)) out.push(`${at}: line ${j} note lacks "${w}"`);
       });
     }
     if (got.type === "expense" && items.length === want.lines && items.length > 0) {
