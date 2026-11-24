@@ -75,6 +75,7 @@ EXPECTED = {
         "Recurring commitments": ["Series", "Cadence", "Bucket", "Latest amount", "Last paid", "Months of 3"],
         "Wants by weekday": ["weekday", "Mean wants per day"],
         "Wants by days since pay": ["Days since pay", "Mean wants per day"],
+        "Spent through apps per month": ["month", "Through apps"],
     },
     "finflow-ledger": {
         "Selection by merchant": ["Merchant", "Spent", "Purchases"],

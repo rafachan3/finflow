@@ -1735,6 +1735,70 @@
           "valueSize": 12
         }
       }
+    },
+    {
+      "id": 15,
+      "type": "barchart",
+      "title": "Spent through apps per month",
+      "description": "Your own spending that went through an app or service (DoorDash, Uber Eats, Instacart, Too Good To Go, ...), each month. Bought directly, including through a shop's own app or site, is left out. The last 12 full months and this month; * marks this month so far.",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "finflow-marts"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 87,
+        "w": 24,
+        "h": 7
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "finflow-marts"
+          },
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "select\n  to_char(p.month_start, 'Mon YY') || case when p.is_complete_month then '' else '*' end as month,\n  coalesce(sum(f.amount), 0) as \"Through apps\"\nfrom (select * from marts.fct_month_plan order by month_start desc limit 13) p\nleft join marts.fct_transactions f on f.month_start = p.month_start and f.type = 'expense' and f.is_self_funded\n  and f.channel_name is not null\ngroup by p.month_start, p.is_complete_month\norder by p.month_start"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "prefix:$",
+          "decimals": 0,
+          "min": 0,
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "#898781"
+          },
+          "custom": {
+            "fillOpacity": 100,
+            "lineWidth": 0
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "xField": "month",
+        "orientation": "vertical",
+        "stacking": "none",
+        "showValue": "auto",
+        "barWidth": 0.6,
+        "groupWidth": 0.7,
+        "legend": {
+          "showLegend": false,
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        },
+        "text": {
+          "valueSize": 12
+        }
+      }
     }
   ]
 }

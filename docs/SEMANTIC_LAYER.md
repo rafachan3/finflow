@@ -337,6 +337,10 @@ here so the dashboard and the agent compute them the same way.
 - **Spend by context tag:** own spend lines where `'<tag>' = any(tags)`.
   `fct_transactions.tags` is a line's effective tags: its own line tags plus
   its transaction's header tags.
+- **Spend through apps:** own spend lines where `channel_name is not null`
+  (the purchase went through an app or service such as DoorDash). A null
+  channel means bought directly, including through the shop's own app or
+  site.
 - **Transfers by account kind:** `transfers` grouped by `account_kind`
   (`savings`, `investment`, `debt`), the kind of the account entered.
 - **Withdrawals by account kind:** `withdrawals` grouped by
