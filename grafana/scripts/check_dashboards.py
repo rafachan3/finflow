@@ -79,6 +79,7 @@ EXPECTED = {
     "finflow-ledger": {
         "Selection by merchant": ["Merchant", "Spent", "Purchases"],
         "Selection by venue": ["Venue", "Spent", "Purchases"],
+        "Selection by channel": ["Channel", "Spent", "Purchases"],
         "Income and transfers": ["Date", "Type", "From or to", "Amount"],
         "This selection": ["Spent", "Per month", "Line items"],
         "By category": ["Category", "Spent", "Per month", "Line items", "Share", "Change"],
@@ -86,8 +87,8 @@ EXPECTED = {
                            "Change"],
         "Selection by month": ["month", "Spent"],
         "Line items": [
-            "Date", "Item", "Merchant", "Venue", "Category", "Subcategory", "Bucket", "Amount",
-            "Tags", "Paid by", "Note"],
+            "Date", "Item", "Merchant", "Venue", "Channel", "Category", "Subcategory", "Bucket",
+            "Amount", "Tags", "Paid by", "Note"],
     },
     "finflow-labels": {
         "Tags": ["Tag", *LABEL_COLUMNS],
