@@ -179,7 +179,10 @@ counts as recurring.
 `transaction_items` row for an expense, plus one row per income or transfer
 transaction (the header stands in for its own line). Its `amount` is the line
 amount for an expense line and the header amount otherwise, so every metric
-below is a filtered `sum(amount)` over this one table.
+below is a filtered `sum(amount)` over this one table. Each row also carries
+its transaction's `merchant_name`, `venue_name` (the kind of place) and
+`channel_name` (the app it went through, null when bought directly); none is
+a metric.
 `fct_monthly_summary` has one row per month from the first data month to the
 current Toronto month, zero-filled, with one column per metric. If a row is
 already dated in a later month (a bill logged ahead), the list runs to that
@@ -544,8 +547,8 @@ One row per `stg_transactions` row.
 
 | Column | Formula | Edge cases |
 |---|---|---|
-| `transaction_id`, `occurred_on`, `month_start`, `type`, `amount`, `description`, `notes`, `merchant_name`, `venue_name`, `income_source_name`, `from_account_name`, `to_account_name`, `funding_source_name`, `is_recurring`, `recurring_series_name`, `recurring_cadence`, `entry_source` | from `stg_transactions`; `amount` is the header | A null account name is chequing. Series name and cadence are null when unlinked |
-| `counterparty` | expense: `merchant · venue`, omitting a missing side; income: `income_source_name`; transfer: `from → to` with a null side shown as `Chequing` | Null when an expense has neither merchant nor venue |
+| `transaction_id`, `occurred_on`, `month_start`, `type`, `amount`, `description`, `notes`, `merchant_name`, `venue_name`, `channel_name`, `income_source_name`, `from_account_name`, `to_account_name`, `funding_source_name`, `is_recurring`, `recurring_series_name`, `recurring_cadence`, `entry_source` | from `stg_transactions`; `amount` is the header | A null account name is chequing. Series name and cadence are null when unlinked. `channel_name` is the app or service the purchase went through (migration 0025); null means bought directly. `venue_name` is only ever the kind of place |
+| `counterparty` | expense: `merchant · venue · channel`, omitting a missing part; income: `income_source_name`; transfer: `from → to` with a null side shown as `Chequing` | Null when an expense has no merchant, venue or channel |
 | `is_self_funded` | expense: `funding_source_name = 'self'`; otherwise null | |
 | `line_count` | count of expense lines | `0` on income and transfers |
 | `category_summary` | `category › subcategory` of the largest-amount line, then ` +n` for *n* other distinct paths | Null on income and transfers. A tie breaks on category, subcategory, then item id. Two lines in the same path do not add `+n` |

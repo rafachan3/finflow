@@ -60,6 +60,7 @@ select
     t.notes,
     t.merchant_name,
     t.venue_name,
+    t.channel_name,
     t.income_source_name,
     t.from_account_name,
     t.to_account_name,
@@ -70,11 +71,7 @@ select
             || ' → '
             || coalesce(t.to_account_name, 'Chequing')
         when 'expense' then
-            case
-                when t.merchant_name is not null and t.venue_name is not null
-                    then t.merchant_name || ' · ' || t.venue_name
-                else coalesce(t.merchant_name, t.venue_name)
-            end
+            nullif(concat_ws(' · ', t.merchant_name, t.venue_name, t.channel_name), '')
     end as counterparty,
     t.funding_source_name,
     case when t.type = 'expense' then t.funding_source_name = 'self' end
