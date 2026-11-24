@@ -699,9 +699,12 @@ export async function patchExtraction(args: {
   taxonomy: TaxonomySnapshot;
   bucketRules: string;
   today: string;
+  /** The model to start on, e.g. the one that just transcribed this correction. */
+  from?: string;
 }): Promise<Extraction> {
   const extractor = await generateJson({
     apiKey: args.apiKey,
+    from: args.from,
     schema: EXTRACTOR_SCHEMA,
     system: extractorSystem(
       args.today,
@@ -772,4 +775,31 @@ export async function extractFromVoice(args: {
       },
     ],
   });
+}
+
+const TRANSCRIBE_SYSTEM =
+  "Transcribe this voice note word for word, in the language spoken. Return only what is said; if nothing is said, return an empty string.";
+
+/**
+ * A voice note read as the text of an Edit correction. `model` is the one that
+ * answered, so the patch that follows starts there and `tookMs` lets the caller
+ * skip it when too little of the Lambda's 60 s is left (REASK_BUDGET_MS).
+ */
+export async function transcribeVoice(args: {
+  apiKey: string;
+  audio: Buffer;
+  mimeType: string;
+}): Promise<{ transcript: string; model: string; tookMs: number }> {
+  const startedAt = clock.now();
+  const { data, model } = await generateJson({
+    apiKey: args.apiKey,
+    system: TRANSCRIBE_SYSTEM,
+    schema: { type: "OBJECT", properties: { transcript: { type: "STRING" } }, required: ["transcript"] },
+    userParts: [{ inlineData: { mimeType: args.mimeType, data: args.audio.toString("base64") } }],
+  });
+  return {
+    transcript: String((data as { transcript?: unknown }).transcript ?? "").trim(),
+    model,
+    tookMs: clock.now() - startedAt,
+  };
 }

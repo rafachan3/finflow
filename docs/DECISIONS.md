@@ -628,7 +628,8 @@ Keyboard: Confirm / Discard, then Fix date / Edit. Dateless photos
 omit Confirm; Edit stays. While waiting for a date, hide Edit. While
 waiting for a correction, Discard only. One outstanding wait:
 `awaiting_date` or `awaiting_edit`. A photo or voice while waiting is
-still waiting. Failed checks stay `awaiting_edit`. Passed checks
+still waiting (a voice note while waiting for a correction is now the
+correction, 2026-11-23). Failed checks stay `awaiting_edit`. Passed checks
 write the extraction and return to `pending`. Missing-date-only still
 applies without Confirm, same as a dateless receipt.
 
@@ -3570,3 +3571,17 @@ golden failed twice (2026-10-29, 2026-11-19).
   cannot guarantee the items, and the lighter model answers whenever
   Flash is out of quota or overloaded); guessing a category silently (the fallback line is always
   flagged on the card).
+
+## 2026-11-23 — A voice note while waiting for a correction is the correction
+A correction sent as a voice note was refused with "Still waiting for a
+correction" and never read (#169). While a card is `awaiting_edit`, a voice
+note is now downloaded, transcribed by its own small Gemini call (a
+transcript-only schema; the extractor and patch prompts are unchanged), and
+the transcript goes through the same patch path as typed text: it patches
+the open card, starts no second transaction, and does not re-download the
+receipt. A transcribe failure or an empty transcript keeps the card waiting
+with its Keep as is / Discard buttons. A photo while waiting, and a voice
+note while waiting for a date, stay refused.
+**Ruled out:** sending the audio straight to the patch call (a prompt change
+that re-hashes every golden); running the voice extractor (it would start a
+second transaction).

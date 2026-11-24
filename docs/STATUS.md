@@ -122,8 +122,10 @@ the second. Dateless photos still omit Confirm; Edit stays. Edit sets
 `ingestions.status` to `awaiting_edit` (migration 0008, applied). Next
 text is a freeform correction; Gemini patches the stored extraction
 (no photo/voice re-download) then the bucket specialist. Checks fail
-→ stay waiting. Checks pass → `pending` and a new preview. A photo or
-voice while waiting is still waiting. Discard works from
+→ stay waiting. Checks pass → `pending` and a new preview. A photo
+while waiting is still waiting; a voice note while waiting for a
+correction is transcribed and applied as that correction (#169, one
+extra Gemini call; while waiting for a date it is still refused). Discard works from
 `awaiting_edit`. One outstanding wait at a time (`awaiting_date` or
 `awaiting_edit`). Phone-tested 2026-09-08: amount, category, and a
 photo while still waiting all held.
