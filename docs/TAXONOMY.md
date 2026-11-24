@@ -153,7 +153,9 @@ Two separate attributes of the whole transaction, both optional:
 
 - **Venue** — the kind of place that sold it: Supermarket · Dépanneur ·
   Coffee Shop · Fast Food · Pharmacy. A quick-service restaurant (burgers,
-  sandwiches, poutine, pizza by the slice) is Fast Food. The same meal from
+  sandwiches, poutine, pizza by the slice) is Fast Food; a restaurant with
+  table service (a diner, a bistro) is not, even when its menu has burgers or
+  sandwiches. The same meal from
   the same restaurant has the same venue however it was ordered. A place that is none of these
   (a dollar, discount, hardware, department, online or warehouse store, a
   rideshare) has no venue; never the nearest one.

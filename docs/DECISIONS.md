@@ -3795,3 +3795,7 @@ as the whole receipt's reason. Notes now split the way tags already do.
 - **Ruled out:** copying a line note onto the header (the Ledger would show
   one item's reason as the purchase's), and a Grafana change in this PR
   (the Ledger "Line items" Note column is a follow-up).
+
+## 2026-11-24: A table-service restaurant is not Fast Food (#188)
+
+- One sentence in the shared `VENUE` instruction and TAXONOMY.md: a restaurant with table service (a diner, a bistro) is not Fast Food, even when its menu has burgers or sandwiches. Flash-Lite had stretched #183's quick-service sentence to a sit-down diner. `receipt-with-tip` is the guard; `same-place-lines` and `text-with-note` keep a burger place Fast Food however it was ordered. **Ruled out:** a new golden (the suite stays at 20).

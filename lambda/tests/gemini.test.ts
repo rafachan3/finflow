@@ -1303,6 +1303,7 @@ describe("multi-event extraction", () => {
       expect(system).toContain("venue is a name from the Venues list only when the place clearly is that kind of place");
       expect(system).toContain("(a pharmacy or drugstore is Pharmacy, a grocery store is Supermarket)");
       expect(system).toContain("A quick-service restaurant (burgers, sandwiches, poutine, pizza by the slice, fried chicken) is Fast Food");
+      expect(system).toContain("A restaurant with table service (a diner, a bistro) is not Fast Food, even when its menu has burgers or sandwiches");
       expect(system).toContain(
         "A dollar or discount store, hardware store, department store, online shop, rideshare or warehouse store is none of them: return null",
       );

@@ -482,6 +482,11 @@ accessories, never Entertainment and activities; a streaming subscription
 is Memberships. Goldens stay at 20: `rules-override`, `receipt-no-date`
 (now a two-line merch receipt) and `rules-default-hint` were extended.
 
+Diner venue (#188, branch `fix/diner-not-fast-food`, not merged; DECISIONS.md
+2026-11-24): `VENUE` and TAXONOMY.md say a restaurant with table service (a
+diner, a bistro) is not Fast Food. `receipt-with-tip` guards it; goldens
+stay at 20, all re-hashed.
+
 Line notes (#171, branch `feat/line-item-notes`, not merged; DECISIONS.md
 2026-11-24, "A note about one line goes on that line"): a reason the owner
 gives about one item is that line's note, not the transaction's. Migration
