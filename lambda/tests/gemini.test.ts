@@ -1397,6 +1397,15 @@ describe("multi-event extraction", () => {
     }
   });
 
+  it("tells text, photo, voice and Edit that travel gear is Shopping, with the Travel tag for the trip", async () => {
+    for (const system of await fourSystems()) {
+      expect(system).toContain("Travel is the cost of a trip: Flights, Hotels, and Other travel for any other trip cost");
+      expect(system).toContain("A thing you keep is Shopping, even when it is bought for a trip; the Travel tag says it was for a trip");
+      expect(system).toContain("Something you wear or carry (a neck pouch) is Shopping / Clothing and accessories");
+      expect(system).toContain("(a luggage tag, a small travel bottle) is Shopping / Other shopping");
+    }
+  });
+
   it("tells text, photo, voice and Edit to prefer a 4-digit-year date and read NN/NN/NN within the last year", async () => {
     for (const system of await fourSystems()) {
       expect(system).toContain("Today is 2026-08-17");

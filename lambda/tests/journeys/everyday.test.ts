@@ -147,6 +147,32 @@ describe("logging one purchase", () => {
     ]);
   });
 
+  it("travel gear bought for a trip is saved as Shopping with the Travel tag, never Other travel", async () => {
+    gemini.extract = golden("rules-override").recorded;
+    await chat.text(
+      "18.40 taxi home from the airport on Oct 24, and 24.00 for a neck pouch, 9.00 for a luggage tag and 6.00 for a travel bottle at Gate Goods for my next trip",
+    );
+
+    const [, gear] = chat.replies();
+    expect(gear.text).toContain("Tags: Travel");
+    expect(gear.text).toContain("• Neck pouch — 24.00\n  Shopping / Clothing and accessories / wants");
+    expect(gear.text).toContain("• Luggage tag — 9.00\n  Shopping / Other shopping / wants");
+    expect(gear.text).not.toContain("Other travel");
+    await chat.tap(gear, "Confirm");
+    expect(
+      await sql(
+        `select i.description, c.name as category, s.name as subcategory
+         from transaction_items i join subcategories s on s.id = i.subcategory_id
+         join categories c on c.id = s.category_id
+         order by i.description`,
+      ),
+    ).toEqual([
+      { description: "Luggage tag", category: "Shopping", subcategory: "Other shopping" },
+      { description: "Neck pouch", category: "Shopping", subcategory: "Clothing and accessories" },
+      { description: "Travel bottle", category: "Shopping", subcategory: "Other shopping" },
+    ]);
+  });
+
   it("someone else paying is saved with them as the funder", async () => {
     gemini.extract = golden("paid-by-family").recorded;
     await chat.text("20 dinner at Salad Bar on Oct 24, my family paid");

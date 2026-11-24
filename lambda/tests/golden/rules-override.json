@@ -1,8 +1,8 @@
 {
-  "name": "a rule overrules the subcategory's wants hint",
+  "name": "a rule overrules the subcategory's wants hint, and travel gear bought for a trip is Shopping",
   "input": {
     "kind": "text",
-    "text": "18.40 taxi home from the airport on Oct 24"
+    "text": "18.40 taxi home from the airport on Oct 24, and 24.00 for a neck pouch, 9.00 for a luggage tag and 6.00 for a travel bottle at Gate Goods for my next trip"
   },
   "rules": "bucket-rules.synthetic.md",
   "expect": {
@@ -13,6 +13,19 @@
         "date": true,
         "buckets": [
           "needs"
+        ]
+      },
+      {
+        "type": "expense",
+        "lines": 3,
+        "date": true,
+        "tags": [
+          "Travel"
+        ],
+        "classes": [
+          "Shopping / Clothing and accessories",
+          "Shopping / Other shopping",
+          "Shopping / Other shopping"
         ]
       }
     ]
@@ -42,6 +55,65 @@
             "item_type": null,
             "bucket_why": "taxis and rideshares are needs for this owner",
             "bucket": "needs"
+          }
+        ],
+        "confidence": 0.9
+      },
+      {
+        "type": "expense",
+        "amount": "39.00",
+        "currency": "CAD",
+        "date": "2026-10-24",
+        "description": "Travel gear at Gate Goods",
+        "merchant": "Gate Goods",
+        "venue": null,
+        "channel": null,
+        "tags": [
+          "Travel"
+        ],
+        "funded_by": null,
+        "is_recurring": false,
+        "income_source": null,
+        "from_account": null,
+        "to_account": null,
+        "notes": null,
+        "taxes": [],
+        "discounts": [],
+        "fees": [],
+        "tip": null,
+        "items": [
+          {
+            "description": "Neck pouch",
+            "price": "24.00",
+            "taxable": false,
+            "category": "Shopping",
+            "subcategory": "Clothing and accessories",
+            "item_type": null,
+            "tags": [],
+            "bucket_why": "no rule covers clothing; Clothing and accessories hint is wants",
+            "bucket": "wants"
+          },
+          {
+            "description": "Luggage tag",
+            "price": "9.00",
+            "taxable": false,
+            "category": "Shopping",
+            "subcategory": "Other shopping",
+            "item_type": null,
+            "tags": [],
+            "bucket_why": "no rule covers it and Other shopping has no hint; wants",
+            "bucket": "wants"
+          },
+          {
+            "description": "Travel bottle",
+            "price": "6.00",
+            "taxable": false,
+            "category": "Shopping",
+            "subcategory": "Other shopping",
+            "item_type": null,
+            "tags": [],
+            "bucket_why": "no rule covers it and Other shopping has no hint; wants",
+            "bucket": "wants"
           }
         ],
         "confidence": 0.9

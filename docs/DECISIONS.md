@@ -3717,3 +3717,19 @@ Too Good To Go). A delivery order needs both answers.
   venue Fast Food at the counter and DoorDash through the app. Also ruled
   out: guessing a venue for the moved rows from their lines (Instacart
   groceries as Supermarket), and channel as a free-text field.
+
+## 2026-11-24: What you keep is Shopping, whatever it is for (#153, #155, #156)
+
+Owner rulings in the issues, after confirmed lines were moved by hand. The
+extractor filed an object by its theme or its use instead of by what was
+bought. Each case is a TAXONOMY.md example and one sentence in the shared
+`KEPT_GOODS` instruction (text, photo, voice, Edit and the re-ask).
+
+- **Travel gear is Shopping (#153).** Travel is only the cost of a trip:
+  Flights, Hotels, Other travel. A pouch you carry is Clothing and
+  accessories; a luggage tag or a small travel bottle is Other shopping.
+  The Travel tag says the purchase was for a trip (rule 10), as road-trip
+  snacks stay Food and drink. `rules-override` gained a second event: three
+  pieces of gear at one shop for a trip.
+- **Ruled out:** a Travel subcategory for gear (the taxonomy has none, and
+  the tag already answers "was it for a trip").
