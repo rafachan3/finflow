@@ -1,5 +1,5 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
-import type { Extraction } from "../../src/extraction.js";
+import { validateExtraction, type Extraction } from "../../src/extraction.js";
 import { closeHelpers, resetData, sql, withClient } from "./db-helpers.js";
 import { merchantKey } from "../../src/commands.js";
 import { expense, income, pending, transfer } from "./fixtures.js";
@@ -240,6 +240,38 @@ describe("confirmIngestion", () => {
     await expect(db.confirmIngestion(id)).resolves.toMatchObject({ status: "confirmed" });
     const [tx] = await sql("select merchant_id from transactions");
     expect(tx).toEqual({ merchant_id: null });
+  });
+
+  it("links the merchant a name names over another merchant whose alias is that name", async () => {
+    // The alias holder is inserted first, so ordering by id alone would pick it.
+    await sql(`insert into merchants (name, aliases) values ('Maple Kiosk', '{"Acme Mart Pharmacy"}'), ('Acme Mart Pharmacy', '{}')`);
+    for (const [i, merchant] of ["Acme Mart Pharmacy", "acme mart  PHARMACY"].entries()) {
+      const [id] = await save(270 + i, expense({ merchant }));
+      await db.confirmIngestion(id);
+    }
+    expect(await sql("select m.name from transactions t join merchants m on m.id = t.merchant_id")).toEqual([
+      { name: "Acme Mart Pharmacy" },
+      { name: "Acme Mart Pharmacy" },
+    ]);
+  });
+
+  it("loads only usable aliases, so a null, blank or delimiter-holding one breaks neither the checks nor Confirm", async () => {
+    await sql(`insert into merchants (name, aliases) values ('Maple Kiosk', array[null, '  ', 'MAPLE, KIOSK', 'MAPLE KIOSK)', 'MAPLE KIOSK #12'])`);
+    const taxonomy = await db.loadTaxonomy();
+    expect(taxonomy.merchantAliases["Maple Kiosk"]).toEqual(["MAPLE KIOSK #12"]);
+    expect(validateExtraction(expense({ merchant: "Maple, Kiosk" }), taxonomy).warnings).toContain(
+      'merchant "Maple, Kiosk" is not in lookup; will save without merchant',
+    );
+    for (const [i, merchant] of ["maple kiosk #12", "MAPLE, KIOSK"].entries()) {
+      await db.confirmIngestion((await save(280 + i, expense({ merchant, description: merchant })))[0]);
+    }
+    const rows = await sql("select t.description, m.name from transactions t left join merchants m on m.id = t.merchant_id");
+    expect(rows).toEqual(
+      expect.arrayContaining([
+        { description: "maple kiosk #12", name: "Maple Kiosk" },
+        { description: "MAPLE, KIOSK", name: null },
+      ]),
+    );
   });
 
   it("links a merchant named by one of its whole aliases, and never a longer name that starts with the merchant or an alias", async () => {

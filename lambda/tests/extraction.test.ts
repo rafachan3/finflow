@@ -10,6 +10,7 @@ import {
   normalizeTaxonomyNames,
   parseCents,
   parseDateReply,
+  usableAliases,
   validateExtraction,
   type Extraction,
   type TaxonomySnapshot,
@@ -253,6 +254,14 @@ describe("validateExtraction", () => {
   it("finds a listed merchant by one of its whole aliases, whatever its case or spacing", () => {
     const result = validateExtraction(expense({ merchant: "McDonalds  #4021" }), taxonomy);
     expect(result.warnings.some((w) => /merchant/i.test(w))).toBe(false);
+  });
+
+  it("keeps only aliases that are set, not blank, and hold none of the Merchants line's delimiters", () => {
+    expect(usableAliases([null, "", "   ", "MAPLE, KIOSK", "MAPLE; KIOSK", "MAPLE KIOSK)", "MAPLE KIOSK #12", "MAPLEKIOSK.CA"])).toEqual([
+      "MAPLE KIOSK #12",
+      "MAPLEKIOSK.CA",
+    ]);
+    expect(usableAliases([])).toEqual([]);
   });
 
   it("reads no aliases for a merchant named like an object property", () => {

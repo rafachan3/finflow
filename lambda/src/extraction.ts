@@ -361,6 +361,14 @@ export function merchantAliases(taxonomy: TaxonomySnapshot, merchant: string): s
   return Object.hasOwn(taxonomy.merchantAliases, merchant) ? taxonomy.merchantAliases[merchant] : [];
 }
 
+/**
+ * Hand-seeded aliases that are safe to use: a null or blank one would break the
+ * key, and one holding `,` `;` or `)` would break the `Merchants:` line's format.
+ */
+export function usableAliases(aliases: readonly (string | null)[]): string[] {
+  return aliases.filter((a): a is string => typeof a === "string" && a.trim() !== "" && !/[,;)]/.test(a));
+}
+
 export function validateExtraction(
   extraction: Extraction,
   taxonomy: TaxonomySnapshot,
