@@ -3718,6 +3718,27 @@ Too Good To Go). A delivery order needs both answers.
   out: guessing a venue for the moved rows from their lines (Instacart
   groceries as Supermarket), and channel as a free-text field.
 
+## 2026-11-24: Channel on the dashboards (#163 PR 3)
+
+Owner-approved plan: the channel shows on Ledger, Tags and merchants and
+Trends; This month, Income and Reliance stay as they are.
+
+- **Ledger filter values.** All, Bought directly, then each channel in
+  the data. "Bought directly" is the null channel, so the filter can pick
+  out purchases that went through no app; the "Selection by channel"
+  table names the null row the same way.
+- **Channels section leaves out bought directly**, as Merchants leaves
+  out purchases with no merchant: that row would be most of the spending
+  and hide the apps.
+- **"Spent through apps" is a recipe, not a metric** (SEMANTIC_LAYER.md,
+  Recipes): a filter on `fct_transactions`, like spend by context tag. A
+  metric would need a `fct_monthly_summary` column and MetricFlow YAML
+  for one Trends chart.
+- **Ruled out:** a stacked by-channel Trends chart (its columns would
+  change with the data, and the dashboard check pins each panel's
+  columns); a Ledger link from the Trends chart (the filter picks one
+  channel, not "any app").
+
 ## 2026-11-24: What you keep is Shopping, whatever it is for (#153, #155, #156)
 
 Owner rulings in the issues, after confirmed lines were moved by hand. The

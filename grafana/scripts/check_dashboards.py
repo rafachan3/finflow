@@ -75,10 +75,12 @@ EXPECTED = {
         "Recurring commitments": ["Series", "Cadence", "Bucket", "Latest amount", "Last paid", "Months of 3"],
         "Wants by weekday": ["weekday", "Mean wants per day"],
         "Wants by days since pay": ["Days since pay", "Mean wants per day"],
+        "Spent through apps per month": ["month", "Through apps"],
     },
     "finflow-ledger": {
         "Selection by merchant": ["Merchant", "Spent", "Purchases"],
         "Selection by venue": ["Venue", "Spent", "Purchases"],
+        "Selection by channel": ["Channel", "Spent", "Purchases"],
         "Income and transfers": ["Date", "Type", "From or to", "Amount"],
         "This selection": ["Spent", "Per month", "Line items"],
         "By category": ["Category", "Spent", "Per month", "Line items", "Share", "Change"],
@@ -86,8 +88,8 @@ EXPECTED = {
                            "Change"],
         "Selection by month": ["month", "Spent"],
         "Line items": [
-            "Date", "Item", "Merchant", "Venue", "Category", "Subcategory", "Bucket", "Amount",
-            "Tags", "Paid by", "Note"],
+            "Date", "Item", "Merchant", "Venue", "Channel", "Category", "Subcategory", "Bucket",
+            "Amount", "Tags", "Paid by", "Note"],
     },
     "finflow-labels": {
         "Tags": ["Tag", *LABEL_COLUMNS],
@@ -96,6 +98,9 @@ EXPECTED = {
         "Merchants": ["Merchant", *LABEL_COLUMNS],
         "What you bought at each merchant": ["Merchant", "Subcategory", "Per month", "Share"],
         "${merchant_r}": ["month", "Spent"],
+        "Channels": ["Channel", *LABEL_COLUMNS],
+        "What you bought through each channel": ["Channel", "Subcategory", "Per month", "Share"],
+        "${channel_r}": ["month", "Spent"],
     },
     "finflow-income": {
         "Last full month": ["Income", "Mean, last 3 full months", "Financial future", "Set aside",
