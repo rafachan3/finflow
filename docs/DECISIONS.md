@@ -3655,3 +3655,40 @@ one. Confirm was already exact; the rewrite happened before it.
 - **Ruled out:** a per-pair exception list; a prefix or fuzzy match at
   Confirm; learning aliases from confirmed extractions; a new golden file
   (the cap).
+
+## 2026-11-24: Venue is the kind of place; the app is a separate channel (#163)
+
+Owner decision. `venues` answered two questions at once: what kind of
+place sold it (Fast Food, Supermarket) and how it was bought (Instacart,
+Too Good To Go). A delivery order needs both answers.
+
+- **Venue is always the kind of place.** The same meal from the same
+  restaurant has the same venue however it was ordered.
+- **Channel is new and nullable**: `channels` lookup and
+  `transactions.channel_id` (migration 0025), seeded with DoorDash, Uber
+  Eats, Instacart and Too Good To Go. Null means bought directly, including
+  through the restaurant's or store's own app or site; an app not listed
+  also leaves it null (adding one is an insert into `channels`).
+- **The data move.** Rows whose venue was an app keep it as their channel,
+  and their venue is left empty: the app does not say what kind of place
+  sold it (Instacart delivers from supermarkets, pharmacies and warehouse
+  stores; Too Good To Go from bakeries, cafés and supermarkets), so no SQL
+  rule could set it without guessing. The apps leave the venues list. The
+  owner can set a venue by hand where it is known.
+- **Subcategory unchanged.** Delivery vs Takeout / Quick Service still says
+  how the food was obtained.
+- **Ingestion (PR 1 of #163).** Text, photo, voice and Edit share one
+  `CHANNEL` instruction and a `Channels:` list; the card shows
+  `Channel: X` under the venue only when set; Confirm writes it; an Edit
+  can set or clear it. An unlisted channel fails the checks.
+- **Goldens stayed at 20.** `same-place-lines` became a two-dish order from
+  Maple Burger on DoorDash (venue Fast Food, channel DoorDash, Delivery);
+  `text-with-note`, a lunch bought at the counter, now checks venue Fast
+  Food and no channel.
+- **Later PRs:** dbt (staging, marts, SEMANTIC_LAYER.md) and the
+  dashboards, agreed with the owner first. Until then the marts do not
+  show the channel, and the moved rows read as having no venue.
+- **Ruled out:** venue = the app (closed PR #180): the same meal would get
+  venue Fast Food at the counter and DoorDash through the app. Also ruled
+  out: guessing a venue for the moved rows from their lines (Instacart
+  groceries as Supermarket), and channel as a free-text field.

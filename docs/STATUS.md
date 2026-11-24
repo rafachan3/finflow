@@ -440,6 +440,19 @@ characters), counting the rest as skipped. No extraction prompt or golden
 change. Aliases are whole names seeded by hand and linked on Confirm since
 #154; link-on-add and the media backfill still match the name only.
 
+Venue and channel (#163 PR 1, DECISIONS.md 2026-11-24, branch
+`feat/purchase-channel`, not merged): venue is always the kind of place; a
+new nullable channel records the app an order went through. Migration 0025
+adds `channels` (DoorDash, Uber Eats, Instacart, Too Good To Go) and
+`transactions.channel_id`, moves rows whose venue was an app to that
+channel with no venue, and drops the apps from `venues`. Text, photo, voice
+and Edit read the channel; the card shows `Channel: X` under the venue only
+when set; Confirm saves it; an Edit sets or clears it. **Owner step:** push
+migration 0025 (`supabase db push`, dry-run first) before merging; the
+Lambda reads `channels` at once. Next: dbt (PR 2) and dashboards (PR 3,
+agreed with the owner first); until then the marts show no channel and the
+moved rows have no venue.
+
 Migration 0011 is applied to production. Owner/CoS actions, in order: merge
 the PR (it auto-deploys code that reads the column), then from `lambda/`:
 `RECEIPTS_BUCKET=finflow-receipts-$(aws sts get-caller-identity --query Account --output text) AWS_REGION=ca-central-1 npm run backfill:media-merchant -- --dry-run`,
