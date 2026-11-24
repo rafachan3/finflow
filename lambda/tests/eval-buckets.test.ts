@@ -19,6 +19,7 @@ const tx = (over: Partial<TruthTx> = {}): TruthTx => ({
   description: "Lunch",
   merchant: null,
   venue: null,
+  channel: null,
   funded_by: "self",
   tags: [],
   notes: null,
@@ -106,18 +107,19 @@ describe("messageFor", () => {
     expect(messageFor(tx())).toBe("Lunch 12.50");
   });
 
-  it("adds merchant, venue, funder, tags and notes when present", () => {
+  it("adds merchant, venue, channel, funder, tags and notes when present", () => {
     const msg = messageFor(
       tx({
         merchant: "Acme Mart",
         venue: "Supermarket",
+        channel: "Instacart",
         funded_by: "Example Funder",
         tags: ["Travel"],
         notes: "for the trip",
       }),
     );
     expect(msg).toBe(
-      "Lunch 12.50 at Acme Mart (Supermarket), paid by Example Funder, tags: Travel. for the trip",
+      "Lunch 12.50 at Acme Mart (Supermarket) via Instacart, paid by Example Funder, tags: Travel. for the trip",
     );
   });
 

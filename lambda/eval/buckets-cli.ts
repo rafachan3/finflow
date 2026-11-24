@@ -42,17 +42,18 @@ const MIN_GAP_MS = 13_000;
 // owner chose every bucket. Bot rows only had Gemini's bucket confirmed.
 const TRUTH_SQL = `
   SELECT t.id, t.occurred_on::text, t.amount::text, t.description, t.notes,
-         m.name AS merchant, v.name AS venue, f.name AS funded_by,
+         m.name AS merchant, v.name AS venue, c.name AS channel, f.name AS funded_by,
          coalesce(array_agg(tg.name ORDER BY tg.name) FILTER (WHERE tg.name IS NOT NULL), '{}') AS tags
   FROM transactions t
   JOIN funding_sources f ON f.id = t.funding_source_id
   LEFT JOIN merchants m ON m.id = t.merchant_id
   LEFT JOIN venues v ON v.id = t.venue_id
+  LEFT JOIN channels c ON c.id = t.channel_id
   LEFT JOIN transaction_tags tt ON tt.transaction_id = t.id
   LEFT JOIN tags tg ON tg.id = tt.tag_id
   WHERE t.type = 'expense'
     AND NOT EXISTS (SELECT 1 FROM ingestions i WHERE i.transaction_id = t.id)
-  GROUP BY t.id, m.name, v.name, f.name
+  GROUP BY t.id, m.name, v.name, c.name, f.name
   ORDER BY t.id`;
 
 const LINES_SQL = `
