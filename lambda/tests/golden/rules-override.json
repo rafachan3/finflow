@@ -18,7 +18,6 @@
       {
         "type": "expense",
         "lines": 3,
-        "date": true,
         "tags": [
           "Travel"
         ],
