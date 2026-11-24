@@ -62,6 +62,31 @@ describe("logging one purchase", () => {
     expect(await ledger.transactions()).toMatchObject([{ merchant: "Acme Mart" }]);
   });
 
+  it("a delivery-app order and a counter order get the same venue, and only the app order is saved with a channel", async () => {
+    const delivery = golden("same-place-lines");
+    gemini.extract = delivery.recorded;
+    await chat.text((delivery.input as { text: string }).text);
+    expect(chat.last().text).toContain("Merchant: Maple Burger\nVenue: Fast Food\nChannel: DoorDash\n");
+    await chat.tap(chat.last(), "Confirm");
+
+    gemini.extract = golden("text-with-note").recorded;
+    await chat.text("14 lunch at Sandwich Shop on Oct 25, was to tierd didnt pak lunch");
+    expect(chat.last().text).toContain("Merchant: Sandwich Shop\nVenue: Fast Food\n");
+    expect(chat.last().text).not.toContain("Channel:");
+    await chat.tap(chat.last(), "Confirm");
+
+    expect(
+      await sql(
+        `select t.amount::text, v.name as venue, c.name as channel
+         from transactions t left join venues v on v.id = t.venue_id
+         left join channels c on c.id = t.channel_id order by t.amount`,
+      ),
+    ).toEqual([
+      { amount: "14.00", venue: "Fast Food", channel: null },
+      { amount: "29.30", venue: "Fast Food", channel: "DoorDash" },
+    ]);
+  });
+
   it("tapping Confirm twice saves once and says it was already handled", async () => {
     gemini.extract = golden("text-with-note").recorded;
     await chat.text("14 lunch at Sandwich Shop on Oct 25, was to tierd didnt pak lunch");

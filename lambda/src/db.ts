@@ -62,6 +62,9 @@ export async function loadTaxonomy(
   const venues = await q.query<{ name: string }>(
     `SELECT name FROM venues ORDER BY name`,
   );
+  const channels = await q.query<{ name: string }>(
+    `SELECT name FROM channels ORDER BY name`,
+  );
   const tags = await q.query<{ name: string }>(
     `SELECT name FROM tags ORDER BY name`,
   );
@@ -82,6 +85,7 @@ export async function loadTaxonomy(
     subcategories: subs.rows,
     itemTypes: types.rows,
     venues: venues.rows.map((r) => r.name),
+    channels: channels.rows.map((r) => r.name),
     tags: tags.rows.map((r) => r.name),
     fundingSources: funding.rows.map((r) => r.name),
     merchants: merchants.rows.map((r) => r.name),
@@ -811,6 +815,11 @@ export async function confirmIngestion(
             [extraction.venue],
           );
 
+    // Absent on cards extracted before channels; validation above checked the name.
+    const channelId = extraction.channel
+      ? await lookupId(client, `SELECT id FROM channels WHERE name = $1`, [extraction.channel])
+      : null;
+
     const incomeSourceId =
       extraction.income_source === null
         ? null
@@ -856,8 +865,8 @@ export async function confirmIngestion(
       `INSERT INTO transactions (
          occurred_on, type, amount, currency, description,
          merchant_id, venue_id, income_source_id, to_account_id,
-         funding_source_id, is_recurring, notes, from_account_id, recurring_series_id
-       ) VALUES ($1, $2, $3, 'CAD', $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+         funding_source_id, is_recurring, notes, from_account_id, recurring_series_id, channel_id
+       ) VALUES ($1, $2, $3, 'CAD', $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
        RETURNING id`,
       [
         extraction.date,
@@ -873,6 +882,7 @@ export async function confirmIngestion(
         extraction.notes ?? null,
         fromAccountId,
         linkId,
+        channelId,
       ],
     );
     const transactionId = tx.rows[0].id;

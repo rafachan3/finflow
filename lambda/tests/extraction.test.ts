@@ -35,6 +35,7 @@ const taxonomy: TaxonomySnapshot = {
     { category: "Food and drink", name: "Non-Alcoholic Beverages" },
   ],
   venues: ["Fast Food", "Supermarket"],
+  channels: ["DoorDash"],
   tags: ["Social", "Travel"],
   fundingSources: ["self"],
   merchants: ["McDonald's"],
@@ -206,6 +207,15 @@ describe("validateExtraction", () => {
       taxonomy,
     );
     expect(result.ok).toBe(false);
+  });
+
+  it("rejects an unlisted channel, and takes a listed one or none, as on a card stored before channels", () => {
+    expect(validateExtraction(expense({ channel: "Pigeon Post" }), taxonomy).errors).toContain(
+      "unknown channel: Pigeon Post",
+    );
+    expect(validateExtraction(expense({ channel: "DoorDash" }), taxonomy).ok).toBe(true);
+    expect(validateExtraction(expense({ channel: null }), taxonomy).ok).toBe(true);
+    expect(validateExtraction(expense(), taxonomy).ok).toBe(true);
   });
 
   it("rejects unknown venue or tag", () => {
@@ -507,6 +517,15 @@ describe("formatPreview", () => {
     expect(withPosition("Saved.", `${header}\nBurger (2 of 3)`)).toBe("Saved.");
     expect(withPosition("Saved.", header)).toBe("Saved.");
     expect(withPosition("Saved.", undefined)).toBe("Saved.");
+  });
+
+  it("shows the channel under the venue only when the purchase went through an app", () => {
+    const app = expense({ merchant: "Maple Burger", channel: "DoorDash" });
+    expect(formatPreview(app, validateExtraction(app, taxonomy))).toContain(
+      "Merchant: Maple Burger\nVenue: Fast Food\nChannel: DoorDash",
+    );
+    const direct = expense({ merchant: "Maple Burger", channel: null });
+    expect(formatPreview(direct, validateExtraction(direct, taxonomy))).not.toMatch(/Channel:/);
   });
 
   it("shows the note under the description, and no Note line without one", () => {

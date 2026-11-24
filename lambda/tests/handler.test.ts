@@ -94,6 +94,7 @@ const taxonomy: TaxonomySnapshot = {
   ],
   itemTypes: [{ category: "Food and drink", name: "Meals & Prepared Food" }],
   venues: ["Fast Food"],
+  channels: [],
   tags: ["Social"],
   fundingSources: ["self"],
   merchants: ["Chipotle"],

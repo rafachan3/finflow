@@ -22,6 +22,7 @@ const taxonomy: TaxonomySnapshot = {
     { category: "Food and drink", name: "Meals & Prepared Food" },
   ],
   venues: ["Fast Food"],
+  channels: ["DoorDash"],
   tags: ["Social", "Travel"],
   fundingSources: ["self"],
   merchants: ["Chipotle"],
@@ -1306,6 +1307,45 @@ describe("multi-event extraction", () => {
       );
       expect(system).toContain("Never pick the nearest venue");
     }
+  });
+
+  it("tells text, photo, voice and Edit that the venue is the kind of place however it was ordered, and the app is the channel", async () => {
+    for (const system of await fourSystems()) {
+      expect(system).toContain("The same meal from the same restaurant has the same venue whether it was ordered at the counter or through an app");
+      expect(system).toContain("channel is a name from the Channels list when the purchase went through that app or service");
+      expect(system).toContain("A channel is never the venue");
+      expect(system).toContain("ordered directly, including through the restaurant's or store's own app or site, or through an app not listed: return null");
+      expect(system).toContain("Channels: DoorDash");
+    }
+  });
+
+  it("reads the channel, and an Edit sends it back and can set or clear it", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => geminiJson(events({ ...extracted, channel: "DoorDash" })) })
+      .mockResolvedValueOnce({ ok: true, json: async () => geminiJson({ ...extracted, channel: null }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => geminiJson({ ...extracted, channel: "DoorDash" }) });
+    vi.stubGlobal("fetch", fetchMock);
+    const base = { apiKey: "k", taxonomy, bucketRules: "", today: "2026-08-17" };
+
+    const [read] = await extractFromText({ ...base, text: "chipotle on doordash 12.50" });
+    expect(read.channel).toBe("DoorDash");
+    const schema = JSON.parse(fetchMock.mock.calls[0][1].body as string).generationConfig.responseSchema
+      .properties.events.items;
+    expect(schema.properties.channel).toEqual({ type: "STRING", nullable: true });
+    expect(schema.required).toContain("channel");
+
+    const cleared = await patchExtraction({ ...base, current: read, correction: "I picked it up myself" });
+    expect(JSON.parse(JSON.parse(fetchMock.mock.calls[1][1].body as string).contents[0].parts[0].text).channel).toBe(
+      "DoorDash",
+    );
+    expect(cleared.channel).toBeNull();
+
+    // A card stored before channels has none: the Edit sends null.
+    const { channel: _, ...old } = current as typeof current & { channel?: string };
+    const set = await patchExtraction({ ...base, current: old, correction: "it was on doordash" });
+    expect(JSON.parse(JSON.parse(fetchMock.mock.calls[2][1].body as string).contents[0].parts[0].text).channel).toBeNull();
+    expect(set.channel).toBe("DoorDash");
   });
 
   it("tells text, photo and voice to use a listed spelling only for that whole business, never for a longer name", async () => {

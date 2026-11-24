@@ -96,6 +96,11 @@ const LINE_AMOUNTS =
 const VENUE =
   "venue is a name from the Venues list only when the place clearly is that kind of place (a pharmacy or drugstore is Pharmacy, a grocery store is Supermarket). A dollar or discount store, hardware store, department store, online shop, rideshare or warehouse store is none of them: return null. Never pick the nearest venue; when unsure, return null.";
 
+// Venue is the kind of place; the app an order went through is its own field
+// (#163), so a delivered meal and a counter meal get the same venue.
+const CHANNEL =
+  "The same meal from the same restaurant has the same venue whether it was ordered at the counter or through an app. channel is a name from the Channels list when the purchase went through that app or service (a delivery or pickup app, a grocery delivery service). A channel is never the venue, and the business that sold it stays the merchant. When it was ordered directly, including through the restaurant's or store's own app or site, or through an app not listed: return null.";
+
 // The lighter model gave a laundromat washer cycle Laundry Supply (#89).
 // TAXONOMY.md classification rule 8.
 const ITEM_TYPE_GOODS =
@@ -117,6 +122,7 @@ const EXTRACTOR_STATIC_PROMPT = [
   ENGLISH_DESCRIPTIONS,
   MERCHANT,
   VENUE,
+  CHANNEL,
   FUNDED_BY,
   TRANSFER_ACCOUNTS,
   NOTES,
@@ -139,6 +145,7 @@ const PHOTO_EXTRACTOR_STATIC_PROMPT = [
   ENGLISH_DESCRIPTIONS,
   MERCHANT,
   VENUE,
+  CHANNEL,
   FUNDED_BY,
   TRANSFER_ACCOUNTS,
   NOTES,
@@ -161,6 +168,7 @@ const VOICE_EXTRACTOR_STATIC_PROMPT = [
   ENGLISH_DESCRIPTIONS,
   MERCHANT,
   VENUE,
+  CHANNEL,
   FUNDED_BY,
   TRANSFER_ACCOUNTS,
   NOTES,
@@ -189,6 +197,7 @@ const PATCH_EXTRACTOR_STATIC_PROMPT = [
   "Use Other … subcategories only when nothing more specific fits.",
   ENGLISH_DESCRIPTIONS,
   VENUE,
+  CHANNEL,
   FUNDED_BY,
   TRANSFER_ACCOUNTS,
   NOTES,
@@ -259,6 +268,7 @@ const EXTRACTOR_SCHEMA = {
     description: { type: "STRING" },
     merchant: { type: "STRING", nullable: true },
     venue: { type: "STRING", nullable: true },
+    channel: { type: "STRING", nullable: true },
     tags: { type: "ARRAY", items: { type: "STRING" } },
     funded_by: { type: "STRING", nullable: true },
     is_recurring: { type: "BOOLEAN" },
@@ -290,6 +300,7 @@ const EXTRACTOR_SCHEMA = {
     "description",
     "merchant",
     "venue",
+    "channel",
     "tags",
     "is_recurring",
     "income_source",
@@ -404,6 +415,7 @@ function taxonomyPrompt(taxonomy: TaxonomySnapshot): string {
     "Item types (null if the category has none, or if none fits):",
     types || "(none)",
     `Venues: ${taxonomy.venues.join(", ") || "(none)"}`,
+    `Channels: ${taxonomy.channels.join(", ") || "(none)"}`,
     `Tags: ${taxonomy.tags.join(", ") || "(none)"}`,
     `Funding: ${taxonomy.fundingSources.join(", ")}`,
     `Merchants: ${merchants.join(", ") || "(none)"}`,
@@ -476,6 +488,7 @@ function asExtraction(raw: unknown, repair = true): Extraction {
     description: String(o.description ?? ""),
     merchant: asString(o.merchant),
     venue: asString(o.venue),
+    channel: asString(o.channel),
     tags: Array.isArray(o.tags) ? o.tags.map(String) : [],
     funded_by: type === "expense" ? (fundedBy ?? "self") : fundedBy,
     is_recurring: Boolean(o.is_recurring),
@@ -679,6 +692,7 @@ function extractionForPatch(current: Extraction): unknown {
     description: current.description,
     merchant: current.merchant,
     venue: current.venue,
+    channel: current.channel ?? null,
     tags: current.tags,
     funded_by: current.funded_by,
     is_recurring: current.is_recurring,

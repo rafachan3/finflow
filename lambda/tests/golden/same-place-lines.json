@@ -1,8 +1,8 @@
 {
-  "name": "two dishes at one place stay one purchase with two lines, the service fee and tip shared across them",
+  "name": "two dishes at one place ordered through a delivery app stay one purchase with two lines, the service fee and tip shared across them; the venue is the kind of place, the app is the channel, the restaurant the merchant, the food Delivery",
   "input": {
     "kind": "text",
-    "text": "pad thai 16.00 and spring rolls 6.00 from Lotus Kitchen, plus a 3.30 service fee and a 4.00 tip, 29.30 total"
+    "text": "a burger 16.00 and a poutine 6.00 from Maple Burger on DoorDash, plus a 3.30 service fee and a 4.00 tip, 29.30 total"
   },
   "expect": {
     "events": [
@@ -17,7 +17,16 @@
         "fees": [
           "3.30"
         ],
-        "merchant": true
+        "merchant": true,
+        "merchantIs": [
+          "Maple Burger"
+        ],
+        "venue": "Fast Food",
+        "channel": "DoorDash",
+        "classes": [
+          "Food and drink / Delivery / Meals & Prepared Food",
+          "Food and drink / Delivery / Meals & Prepared Food"
+        ]
       }
     ]
   },
@@ -28,9 +37,10 @@
         "amount": "29.30",
         "currency": "CAD",
         "date": "",
-        "description": "Thai food from Lotus Kitchen",
-        "merchant": "Lotus Kitchen",
-        "venue": null,
+        "description": "Burger and poutine from Maple Burger",
+        "merchant": "Maple Burger",
+        "venue": "Fast Food",
+        "channel": "DoorDash",
         "tags": [],
         "funded_by": null,
         "is_recurring": false,
@@ -46,22 +56,22 @@
         "tip": "4.00",
         "items": [
           {
-            "description": "Pad thai",
+            "description": "Burger",
             "price": "16.00",
             "taxable": false,
             "category": "Food and drink",
-            "subcategory": "Takeout / Quick Service",
+            "subcategory": "Delivery",
             "item_type": "Meals & Prepared Food",
             "tags": [],
             "bucket_why": "subcategory default hint",
             "bucket": "wants"
           },
           {
-            "description": "Spring rolls",
+            "description": "Poutine",
             "price": "6.00",
             "taxable": false,
             "category": "Food and drink",
-            "subcategory": "Takeout / Quick Service",
+            "subcategory": "Delivery",
             "item_type": "Meals & Prepared Food",
             "tags": [],
             "bucket_why": "subcategory default hint",

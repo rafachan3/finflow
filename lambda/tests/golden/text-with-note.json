@@ -1,5 +1,5 @@
 {
-  "name": "a stated date and a reason are kept, the reason copy-edited",
+  "name": "a stated date and a reason are kept, the reason copy-edited; a lunch bought at the counter has the same venue as a delivered one and no channel",
   "input": {
     "kind": "text",
     "text": "14 lunch at Sandwich Shop on Oct 25, was to tierd didnt pak lunch"
@@ -23,7 +23,9 @@
           "Sandwich",
           "14"
         ],
-        "noteMaxWords": 10
+        "noteMaxWords": 10,
+        "venue": "Fast Food",
+        "channel": null
       }
     ]
   },
@@ -37,6 +39,7 @@
         "description": "Lunch at Sandwich Shop",
         "merchant": "Sandwich Shop",
         "venue": "Fast Food",
+        "channel": null,
         "tags": [],
         "funded_by": null,
         "is_recurring": false,
