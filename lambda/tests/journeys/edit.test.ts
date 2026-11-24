@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { clock, GEMINI_FALLBACK_MODEL, GEMINI_MODEL, REASK_BUDGET_MS } from "../../src/gemini.js";
 import { golden } from "../golden/golden.js";
+import { sql } from "../integration/db-helpers.js";
 import { chat, gemini, labels, ledger, useJourneys } from "./harness.js";
 
 vi.mock("../../src/config.js", async () => {
@@ -37,6 +38,25 @@ describe("correcting a card with Edit", () => {
     expect(await ledger.transactions()).toMatchObject([
       { amount: "14.50", date: "2026-10-25", notes: "I was too tired and didn't pack lunch." },
     ]);
+  });
+
+  it("an Edit can say the order went through an app, and another that it did not, and Confirm saves no channel", async () => {
+    const card = await lunchCard();
+    const lunch = (golden("text-with-note").recorded as { events: object[] }).events[0];
+    await chat.tap(card, "Edit");
+    gemini.patch = { ...lunch, channel: "DoorDash" };
+    await chat.text("it was on doordash");
+    expect(chat.last().text).toContain("Venue: Fast Food\nChannel: DoorDash\n");
+    expect(JSON.parse(gemini.lastUserText[0]).channel).toBeNull();
+
+    await chat.tap(chat.last(), "Edit");
+    gemini.patch = { ...lunch, channel: null };
+    await chat.text("no, I picked it up at the counter");
+    expect(JSON.parse(gemini.lastUserText[0]).channel).toBe("DoorDash");
+    expect(chat.last().text).not.toContain("Channel:");
+
+    await chat.tap(chat.last(), "Confirm");
+    expect(await sql("select channel_id from transactions")).toEqual([{ channel_id: null }]);
   });
 
   it("an Edit that turns a deposit into a withdrawal saves the account it leaves", async () => {

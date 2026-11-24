@@ -18,6 +18,8 @@ export type TruthTx = {
   description: string;
   merchant: string | null;
   venue: string | null;
+  /** The app it went through; null when bought directly. */
+  channel: string | null;
   funded_by: string;
   tags: string[];
   notes: string | null;
@@ -93,6 +95,7 @@ export function messageFor(tx: TruthTx): string {
   let msg = `${tx.description} ${tx.amount}`;
   if (tx.merchant) msg += ` at ${tx.merchant}`;
   if (tx.venue) msg += ` (${tx.venue})`;
+  if (tx.channel) msg += ` via ${tx.channel}`;
   if (tx.lines.length > 1) msg += `: ${tx.lines.map((l) => `${l.description} ${l.amount}`).join(", ")}`;
   if (tx.funded_by !== "self") msg += `, paid by ${tx.funded_by}`;
   if (tx.tags.length) msg += `, tags: ${tx.tags.join(", ")}`;

@@ -3669,3 +3669,51 @@ one. Confirm was already exact; the rewrite happened before it.
 - **Ruled out:** a unique-alias constraint (a row-spanning array rule needs a
   trigger and a migration, not added here); aliasing in the media backfill and
   the mention review (still name-only).
+
+## 2026-11-24: Venue is the kind of place; the app is a separate channel (#163)
+
+Owner decision. `venues` answered two questions at once: what kind of
+place sold it (Fast Food, Supermarket) and how it was bought (Instacart,
+Too Good To Go). A delivery order needs both answers.
+
+- **Venue is always the kind of place.** The same meal from the same
+  restaurant has the same venue however it was ordered.
+- **Channel is new and nullable**: `channels` lookup and
+  `transactions.channel_id` (migration 0025), seeded with DoorDash, Uber
+  Eats, Instacart and Too Good To Go. Null means bought directly, including
+  through the restaurant's or store's own app or site; an app not listed
+  also leaves it null (adding one is an insert into `channels`).
+- **The data move.** Rows whose venue was an app keep it as their channel,
+  and their venue is left empty: the app does not say what kind of place
+  sold it (Instacart delivers from supermarkets, pharmacies and warehouse
+  stores; Too Good To Go from bakeries, cafés and supermarkets), so no SQL
+  rule could set it without guessing. The apps leave the venues list. The
+  owner can set a venue by hand where it is known.
+- **Subcategory unchanged.** Delivery vs Takeout / Quick Service still says
+  how the food was obtained.
+- **Ingestion (PR 1 of #163).** Text, photo, voice and Edit share one
+  `CHANNEL` instruction and a `Channels:` list; the card shows
+  `Channel: X` under the venue only when set; Confirm writes it; an Edit
+  can set or clear it. An unlisted channel fails the checks.
+- **The channel never decides the subcategory** (TAXONOMY.md rule 9, and
+  the same sentence in the shared instruction). Without the app as venue,
+  nothing told the model that an Instacart order of groceries is still
+  Groceries: delivered groceries stay Groceries, prepared food brought to
+  the door is Delivery, food picked up through an app is classified as at
+  that counter; an order through a delivery app is Delivery unless the
+  owner says it was picked up. Flash-Lite left the venue null for a burger
+  place and a sandwich shop once the apps were gone, so the venue rule now
+  names a quick-service restaurant as Fast Food however the food was
+  ordered. The needs/wants accuracy check names the channel in its
+  messages (`via Instacart`), as it named the venue before.
+- **Goldens stayed at 20.** `same-place-lines` became a two-dish order from
+  Maple Burger on DoorDash (venue Fast Food, channel DoorDash, Delivery);
+  `text-with-note`, a lunch bought at the counter, now checks venue Fast
+  Food and no channel.
+- **Later PRs:** dbt (staging, marts, SEMANTIC_LAYER.md) and the
+  dashboards, agreed with the owner first. Until then the marts do not
+  show the channel, and the moved rows read as having no venue.
+- **Ruled out:** venue = the app (closed PR #180): the same meal would get
+  venue Fast Food at the counter and DoorDash through the app. Also ruled
+  out: guessing a venue for the moved rows from their lines (Instacart
+  groceries as Supermarket), and channel as a free-text field.

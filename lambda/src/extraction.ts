@@ -50,6 +50,8 @@ export type Extraction = {
   description: string;
   merchant: string | null;
   venue: string | null;
+  /** App or service it went through (DoorDash, Instacart); null = bought directly. Absent on rows extracted before 2026-11-24. */
+  channel?: string | null;
   tags: string[];
   funded_by: string | null;
   is_recurring: boolean;
@@ -84,6 +86,7 @@ export type TaxonomySnapshot = {
   }[];
   itemTypes: { category: string; name: string }[];
   venues: string[];
+  channels: string[];
   tags: string[];
   fundingSources: string[];
   merchants: string[];
@@ -407,6 +410,9 @@ export function validateExtraction(
   if (extraction.venue !== null && !hasName(taxonomy.venues, extraction.venue)) {
     errors.push(`unknown venue: ${extraction.venue}`);
   }
+  if (extraction.channel && !hasName(taxonomy.channels, extraction.channel)) {
+    errors.push(`unknown channel: ${extraction.channel}`);
+  }
 
   for (const tag of extraction.tags) {
     if (!hasName(taxonomy.tags, tag)) {
@@ -630,6 +636,7 @@ export function formatPreview(
   if (extraction.notes) lines.push(`Note: ${extraction.notes}`);
   if (extraction.merchant) lines.push(`Merchant: ${extraction.merchant}`);
   if (extraction.venue) lines.push(`Venue: ${extraction.venue}`);
+  if (extraction.channel) lines.push(`Channel: ${extraction.channel}`);
   if (extraction.tags.length) lines.push(`Tags: ${extraction.tags.join(", ")}`);
   // The series the card links to on Confirm. With none, Gemini's guess is only
   // a hint: Confirm saves the payment as not recurring until it is in a series.

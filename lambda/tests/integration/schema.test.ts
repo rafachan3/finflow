@@ -122,6 +122,39 @@ describe("migrations", () => {
     });
   });
 
+  it("move a venue that is an app to the row's channel, leave its venue empty, and run twice", async () => {
+    const move = readFileSync(
+      new URL("../../../supabase/migrations/20261124000025_purchase_channel.sql", import.meta.url),
+      "utf8",
+    );
+    await withClient(async (client) => {
+      await client.query("begin");
+      // A database from before 0025 still lists the app as a venue.
+      await client.query("insert into venues (name) values ('Instacart')");
+      await client.query(
+        `insert into transactions (occurred_on, type, amount, description, funding_source_id, venue_id)
+         values ('2026-10-20', 'expense', 10, 'app', ${SELF}, (select id from venues where name = 'Instacart')),
+                ('2026-10-20', 'expense', 10, 'shop', ${SELF}, (select id from venues where name = 'Supermarket'))`,
+      );
+      await client.query(move);
+      await client.query(move);
+      const { rows } = await client.query(
+        `select t.description, v.name as venue, c.name as channel
+         from transactions t left join venues v on v.id = t.venue_id
+         left join channels c on c.id = t.channel_id order by t.description`,
+      );
+      const venues = await client.query("select name from venues order by name");
+      const channels = await client.query("select name from channels order by name");
+      await client.query("rollback");
+      expect(rows).toEqual([
+        { description: "app", venue: null, channel: "Instacart" },
+        { description: "shop", venue: "Supermarket", channel: null },
+      ]);
+      expect(venues.rows.map((r) => r.name)).toEqual(["Coffee Shop", "Dépanneur", "Fast Food", "Pharmacy", "Supermarket"]);
+      expect(channels.rows.map((r) => r.name)).toEqual(["DoorDash", "Instacart", "Too Good To Go", "Uber Eats"]);
+    });
+  });
+
   it("keep a line's own tags once each, and drop them with the line", async () => {
     const [{ id: tx }] = await sql<{ id: string }>(
       `insert into transactions (occurred_on, type, amount, description, funding_source_id)
