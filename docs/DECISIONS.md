@@ -3629,7 +3629,11 @@ one. Confirm was already exact; the rewrite happened before it.
   when the business named is that merchant and nothing more. A name that goes
   on past a listed name is a different business, returned as named: the card
   warns it is not in the lookup and Confirm saves no merchant. Words around
-  the name ("coffee at") are not part of it. No per-pair exception: a new
+  the name ("coffee at") are not part of it. The first wording alone failed
+  on Flash-Lite, which read "Acme Mart Pharmacy" as Acme Mart plus the
+  Pharmacy venue twice, so the rule also names store-kind words and sits
+  again right under the `Merchants:` line, where "Classify using ONLY these
+  names" pulls the other way. No per-pair exception: a new
   longer business stays unlinked without a code change, and it is never added
   to the lookup (Confirm still never creates a merchant).
 - **Aliases are whole names, seeded by hand.** `merchants.aliases` (in the

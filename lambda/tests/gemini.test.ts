@@ -1312,7 +1312,17 @@ describe("multi-event extraction", () => {
     for (const system of (await fourSystems()).slice(0, 3)) {
       expect(system).toContain("Use a listed spelling only when the business named is that listed merchant and nothing more");
       expect(system).toContain("a business whose name goes on past a listed name is a different business: return it as named");
+      expect(system).toContain("even when the extra words are a kind of store such as Books, Pharmacy or Café");
+      expect(system).toContain("Never shorten a business name to a listed merchant");
       expect(system).not.toContain("When it matches a listed merchant, use the listed spelling");
+    }
+  });
+
+  it("says under the Merchants line that a longer business is returned whole, never shortened to a listed one", async () => {
+    for (const system of await fourSystems()) {
+      expect(system).toMatch(
+        /\nMerchants: [^\n]*\nA listed merchant is only that exact business; any other business, even one whose name starts with a listed name, is returned whole as named\.\n/,
+      );
     }
   });
 
