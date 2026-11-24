@@ -1,14 +1,22 @@
 {
-  "name": "two items at one store stay one purchase with two lines",
+  "name": "two dishes at one place stay one purchase with two lines, the service fee and tip shared across them",
   "input": {
     "kind": "text",
-    "text": "milk 4 and bread 3 at Fresh Market"
+    "text": "pad thai 16.00 and spring rolls 6.00 from Lotus Kitchen, plus a 3.30 service fee and a 4.00 tip, 29.30 total"
   },
   "expect": {
     "events": [
       {
         "type": "expense",
         "lines": 2,
+        "amount": "29.30",
+        "amounts": [
+          "21.31",
+          "7.99"
+        ],
+        "fees": [
+          "3.30"
+        ],
         "merchant": true
       }
     ]
@@ -17,35 +25,50 @@
     "events": [
       {
         "type": "expense",
-        "amount": "7.00",
+        "amount": "29.30",
         "currency": "CAD",
         "date": "",
-        "description": "Groceries at Fresh Market",
-        "merchant": "Fresh Market",
-        "venue": "Supermarket",
+        "description": "Thai food from Lotus Kitchen",
+        "merchant": "Lotus Kitchen",
+        "venue": null,
         "tags": [],
         "funded_by": null,
         "is_recurring": false,
         "income_source": null,
+        "from_account": null,
         "to_account": null,
         "notes": null,
+        "taxes": [],
+        "discounts": [],
+        "fees": [
+          "3.30"
+        ],
+        "tip": "4.00",
         "items": [
           {
-            "description": "Milk",
-            "amount": "4.00",
+            "description": "Pad thai",
+            "price": "16.00",
+            "taxable": false,
             "category": "Food and drink",
-            "subcategory": "Groceries",
-            "item_type": "Ingredients & Staples"
+            "subcategory": "Takeout / Quick Service",
+            "item_type": "Meals & Prepared Food",
+            "tags": [],
+            "bucket_why": "subcategory default hint",
+            "bucket": "wants"
           },
           {
-            "description": "Bread",
-            "amount": "3.00",
+            "description": "Spring rolls",
+            "price": "6.00",
+            "taxable": false,
             "category": "Food and drink",
-            "subcategory": "Groceries",
-            "item_type": "Ingredients & Staples"
+            "subcategory": "Takeout / Quick Service",
+            "item_type": "Meals & Prepared Food",
+            "tags": [],
+            "bucket_why": "subcategory default hint",
+            "bucket": "wants"
           }
         ],
-        "confidence": 0.9
+        "confidence": 0.95
       }
     ]
   },

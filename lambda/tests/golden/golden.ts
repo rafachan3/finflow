@@ -19,6 +19,8 @@ export type ExpectedEvent = {
   amount?: string;
   /** Each line's amount paid, in order, when the case is about how tax and tip are shared. */
   amounts?: string[];
+  /** The fees list as read, when the case is about a fee kept out of the lines and the tip. */
+  fees?: string[];
   merchant?: boolean;
   date?: boolean;
   /** The exact date, when the case is about how a printed date is read. */
@@ -76,6 +78,7 @@ export type RawEvent = {
   tags?: unknown;
   discounts?: unknown;
   taxes?: unknown;
+  fees?: unknown;
   tip?: unknown;
   items?: {
     amount?: unknown;
@@ -112,7 +115,7 @@ export function bucketRules(g: Pick<Golden, "rules">): string {
 
 /**
  * A raw answer as the bot reads it: each line's amount from its price, the
- * order discounts, the taxes and the tip (tax-tip.ts). A recording from before prices already
+ * order discounts, the taxes, the fees and the tip (tax-tip.ts). A recording from before prices already
  * holds line amounts and is left as it is.
  */
 function shared(e: RawEvent): RawEvent {
@@ -123,6 +126,7 @@ function shared(e: RawEvent): RawEvent {
     names(e.taxes),
     e.tip === null || e.tip === undefined ? null : String(e.tip),
     discountsOf(e.discounts),
+    names(e.fees),
   );
   return amounts ? { ...e, items: items.map((i, j) => ({ ...i, amount: amounts[j] })) } : e;
 }
@@ -134,6 +138,7 @@ function editParts(e: RawEvent): EditParts {
     taxes: names(e.taxes),
     tip: e.tip === null || e.tip === undefined || e.tip === "" ? null : String(e.tip),
     discounts: discountsOf(e.discounts),
+    fees: names(e.fees),
     items: (e.items ?? []).map((i) => ({
       amount: String(i.amount ?? ""),
       price: String(i.price ?? i.amount ?? ""),
@@ -186,6 +191,10 @@ export function mismatches(events: RawEvent[], expected: ExpectedEvent[]): strin
     const amounts = items.map((item) => String(item.amount)).join(" + ");
     if (want.amounts !== undefined && amounts !== want.amounts.join(" + ")) {
       out.push(`${at}: line amounts ${amounts} != ${want.amounts.join(" + ")}`);
+    }
+    const fees = `[${names(got.fees).join(", ")}]`;
+    if (want.fees !== undefined && fees !== `[${want.fees.join(", ")}]`) {
+      out.push(`${at}: fees ${fees} != [${want.fees.join(", ")}]`);
     }
     const flags = [
       ["merchant", want.merchant, got.merchant],

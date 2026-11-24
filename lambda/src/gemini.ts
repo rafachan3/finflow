@@ -80,13 +80,13 @@ const EXPENSE_HAS_ITEMS =
 const BUCKETS =
   "For each expense line set bucket_why (one short clause naming the rule applied), then bucket (needs or wants). Apply the owner's needs/wants rules at the end of this prompt. They override the (hint …) on subcategories. If no rule fits or context is missing, choose wants. Income and transfer events have no lines: return an empty items list.";
 
-// The model reads prices, order discounts, taxes and the tip; tax-tip.ts
+// The model reads prices, order discounts, taxes, fees and the tip; tax-tip.ts
 // shares them across the lines, because Flash-Lite split them unevenly
-// (DECISIONS 2026-11-07, 2026-11-08). There is no tax, tip or discount line:
-// the taxonomy has nowhere for one (#31).
+// (DECISIONS 2026-11-07, 2026-11-08). There is no tax, fee, tip or discount
+// line: the taxonomy has nowhere for one (#31, #164).
 // Shared by every prompt so an Edit keeps the same rule.
 const LINE_AMOUNTS =
-  "Amounts are strings with exactly two decimal places. For an expense, amount is the total paid, including tax and any tip (pourboire, gratuity) on the receipt or in the message, even when the tip is printed or written below the total. Each line's price is its pre-tax price as printed or said, after any discount on that line. discounts lists each discount on the whole order rather than on one line (a coupon, a member or loyalty discount, a percentage off the subtotal) as a positive amount, as printed or stated; an empty list when there is none. Never add tax or tip to a price, never take a whole-order discount off a price, and never add a tax, tip or discount line. taxes lists each tax amount exactly as printed or stated (GST/TPS and QST/TVQ are two entries; an empty list when none is given). tip is the tip as printed or stated, or null. taxable is true when the receipt's tax codes mark the line as taxed; when the codes mark the untaxed lines instead, the unmarked lines are the taxed ones; false when the receipt has no tax codes. The bot shares the discounts, taxes and tip across the lines, so the prices minus the discounts plus the taxes plus the tip MUST equal amount.";
+  "Amounts are strings with exactly two decimal places. For an expense, amount is the total paid, including tax, any fee and any tip (pourboire, gratuity) on the receipt or in the message, even when the tip is printed or written below the total. Each line's price is its pre-tax price as printed or said, after any discount on that line. Lines are only the things bought. fees lists each service fee, delivery fee or service charge (frais de service, frais de livraison) as printed or stated; an empty list when there is none; a fee is never a line and never part of the tip. discounts lists each discount on the whole order rather than on one line (a coupon, a member or loyalty discount, a percentage off the subtotal) as a positive amount, as printed or stated; an empty list when there is none. Never add tax, a fee or tip to a price, never take a whole-order discount off a price, and never add a tax, fee, tip or discount line. taxes lists each tax amount exactly as printed or stated (GST/TPS and QST/TVQ are two entries; an empty list when none is given). tip is the tip as printed or stated, or null. taxable is true when the receipt's tax codes mark the line as taxed; when the codes mark the untaxed lines instead, the unmarked lines are the taxed ones; false when the receipt has no tax codes. The bot shares the discounts, taxes, fees and tip across the lines, so the prices minus the discounts plus the taxes plus the fees plus the tip MUST equal amount.";
 
 // The venue list is short, so Gemini picked the nearest one for places that
 // are none of them (a discount-store receipt became Dépanneur).
@@ -179,7 +179,7 @@ const PATCH_EXTRACTOR_STATIC_PROMPT = [
   LINE_AMOUNTS,
   // Lite added a corrected tip on top of the old one (#60); the bot now
   // recomputes the total, so the model only replaces the field.
-  "The current extraction lists each line's price, the discounts, the taxes and the tip. A correction to the tip, a tax or a discount replaces that value, it does not add to it, and a correction to a line's price replaces that price. Keep amount unchanged unless the correction states a new total paid: the bot recomputes the total from the prices, discounts, taxes and tip. When the correction states a new total, set amount to it and change the prices so the prices minus the discounts plus the taxes plus the tip equal it.",
+  "The current extraction lists each line's price, the discounts, the taxes, the fees and the tip. A correction to the tip, a tax, a fee or a discount replaces that value, it does not add to it, and a correction to a line's price replaces that price. A correction to the tip leaves the fees as they are. Keep amount unchanged unless the correction states a new total paid: the bot recomputes the total from the prices, discounts, taxes, fees and tip. When the correction states a new total, set amount to it and change the prices so the prices minus the discounts plus the taxes plus the fees plus the tip equal it.",
   "Item types must belong to the same category as the subcategory.",
   ITEM_TYPE_GOODS,
   "category, subcategory, and item_type are separate fields. Never repeat the category inside subcategory or item_type. Example: category='Food and drink', subcategory='Takeout / Quick Service', item_type='Meals & Prepared Food'.",
@@ -265,6 +265,7 @@ const EXTRACTOR_SCHEMA = {
     notes: { type: "STRING", nullable: true },
     taxes: { type: "ARRAY", items: { type: "STRING" } },
     discounts: { type: "ARRAY", items: { type: "STRING" } },
+    fees: { type: "ARRAY", items: { type: "STRING" } },
     tip: { type: "STRING", nullable: true },
     items: {
       type: "ARRAY",
@@ -293,6 +294,7 @@ const EXTRACTOR_SCHEMA = {
     "to_account",
     "taxes",
     "discounts",
+    "fees",
     "tip",
     "items",
     "confidence",
@@ -438,9 +440,10 @@ function asExtraction(raw: unknown, repair = true): Extraction {
   let priced = Array.isArray(o.items) ? o.items.map(asItem) : [];
   let taxes = Array.isArray(o.taxes) ? o.taxes.map(String) : [];
   let discounts = discountsOf(o.discounts);
+  let fees = Array.isArray(o.fees) ? o.fees.map(String) : [];
   let tip = asString(o.tip);
-  // No lines: one line at the header, which already holds any tax and tip, so
-  // none is split again (an Edit would add it twice).
+  // No lines: one line at the header, which already holds any tax, fee and
+  // tip, so none is split again (an Edit would add it twice).
   const fromTotal =
     repair && priced.length === 0
       ? lineFromTotal({ type, amount: String(o.amount ?? ""), description: String(o.description ?? "") })
@@ -449,10 +452,11 @@ function asExtraction(raw: unknown, repair = true): Extraction {
     priced = [fromTotal];
     taxes = [];
     discounts = [];
+    fees = [];
     tip = null;
   }
   // Malformed parts keep the prices; validateExtraction names the bad amount.
-  const amounts = lineAmounts(priced, taxes, tip, discounts);
+  const amounts = lineAmounts(priced, taxes, tip, discounts, fees);
   const items = amounts ? priced.map((item, i) => ({ ...item, amount: amounts[i] })) : priced;
   const fundedBy = asString(o.funded_by);
   return {
@@ -473,6 +477,7 @@ function asExtraction(raw: unknown, repair = true): Extraction {
     notes: asString(o.notes),
     taxes,
     discounts,
+    fees,
     tip,
     items,
     confidence: typeof o.confidence === "number" ? o.confidence : 0,
@@ -549,8 +554,8 @@ async function reaskEmpty(args: {
     if (events.length === asked.length) {
       const next = new Map<number, Record<string, unknown>>();
       args.empty.forEach((i, k) => {
-        const { items, taxes, discounts, tip } = events[k] ?? {};
-        const event = { ...args.raw[i], items, taxes, discounts, tip };
+        const { items, taxes, discounts, fees, tip } = events[k] ?? {};
+        const event = { ...args.raw[i], items, taxes, discounts, fees, tip };
         if (!Array.isArray(items) || items.length === 0) return;
         const before = checked(args.raw[i]);
         if (checked(event).every((e) => before.includes(e))) next.set(i, event);
@@ -675,6 +680,7 @@ function extractionForPatch(current: Extraction): unknown {
     // A card from before 2026-11-07 has its tax and tip inside the amounts.
     taxes: current.taxes ?? [],
     discounts: current.discounts ?? [],
+    fees: current.fees ?? [],
     tip: current.tip ?? null,
     // The parts, not the allocated amounts: the model edits what was read.
     items: current.items.map((item) => ({
