@@ -107,9 +107,10 @@ const ITEM_TYPE_GOODS =
   "An item type that names goods (such as Laundry Supply or Cleaning Product) is for the goods themselves: a line paying for a machine cycle instead of goods keeps its subcategory and item_type is null. A laundromat washer or dryer cycle is Housing / Laundry with item_type null; detergent, softener or dryer sheets are Laundry Supply.";
 
 // Travel gear bought for a trip landed in Travel / Other travel (#153), and a
-// themed keychain in Entertainment and activities (#155). TAXONOMY.md rule 10.
+// themed keychain and a music subscription in Entertainment and activities
+// (#155, #156). TAXONOMY.md rule 10.
 const KEPT_GOODS =
-  "Travel is the cost of a trip: Flights, Hotels, and Other travel for any other trip cost. A thing you keep is Shopping, even when it is bought for a trip; the Travel tag says it was for a trip. Something you wear or carry (a neck pouch) is Shopping / Clothing and accessories, including themed merchandise or a souvenir (an event T-shirt, a team keychain). Personal / Entertainment and activities is the event itself (a concert, a ticket, a cinema seat), never an object you keep. A durable good that is not clothing, not carried, not a gift and not a membership (a luggage tag, a small travel bottle) is Shopping / Other shopping.";
+  "Travel is the cost of a trip: Flights, Hotels, and Other travel for any other trip cost. A thing you keep is Shopping, even when it is bought for a trip; the Travel tag says it was for a trip. Something you wear or carry (a neck pouch) is Shopping / Clothing and accessories, including themed merchandise or a souvenir (an event T-shirt, a team keychain). Personal / Entertainment and activities is the event itself (a concert, a ticket, a cinema seat), never an object you keep. An entertainment service you keep paying for (a music or video streaming subscription) is Shopping / Memberships, not Entertainment and activities. A durable good that is not clothing, not carried, not a gift and not a membership (a luggage tag, a small travel bottle) is Shopping / Other shopping.";
 
 // Receipts often print YY/MM/DD, which the lighter model read as DD/MM/YY,
 // years in the past.

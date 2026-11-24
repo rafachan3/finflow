@@ -173,6 +173,24 @@ describe("logging one purchase", () => {
     ]);
   });
 
+  it("a music streaming subscription is saved as Shopping / Memberships, not an activity", async () => {
+    gemini.extract = golden("rules-default-hint").recorded;
+    await chat.text(
+      "paid 65.00 to Northwind Telecom for the internet bill and 11.99 to Tunewave for my monthly music streaming subscription",
+    );
+
+    const [, music] = chat.replies();
+    expect(music.text).toContain("• Music streaming subscription — 11.99\n  Shopping / Memberships / wants");
+    expect(music.text).not.toContain("Entertainment and activities");
+    await chat.tap(music, "Confirm");
+    expect(
+      await sql(
+        `select i.description, s.name as subcategory, i.bucket
+         from transaction_items i join subcategories s on s.id = i.subcategory_id`,
+      ),
+    ).toEqual([{ description: "Music streaming subscription", subcategory: "Memberships", bucket: "wants" }]);
+  });
+
   it("someone else paying is saved with them as the funder", async () => {
     gemini.extract = golden("paid-by-family").recorded;
     await chat.text("20 dinner at Salad Bar on Oct 24, my family paid");

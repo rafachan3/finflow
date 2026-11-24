@@ -1417,6 +1417,14 @@ describe("multi-event extraction", () => {
     }
   });
 
+  it("tells text, photo, voice and Edit that a streaming subscription is Memberships, not an activity", async () => {
+    for (const system of await fourSystems()) {
+      expect(system).toContain(
+        "An entertainment service you keep paying for (a music or video streaming subscription) is Shopping / Memberships, not Entertainment and activities",
+      );
+    }
+  });
+
   it("tells text, photo, voice and Edit to prefer a 4-digit-year date and read NN/NN/NN within the last year", async () => {
     for (const system of await fourSystems()) {
       expect(system).toContain("Today is 2026-08-17");

@@ -3737,5 +3737,10 @@ bought. Each case is a TAXONOMY.md example and one sentence in the shared
   ticket, a cinema seat), never an object. `receipt-no-date` became a
   two-line merch receipt (T-shirt and keychain, same 12.30 total, still no
   date), since the miss was on a photo.
+- **A streaming subscription is Memberships (#156).** Using a service you
+  keep paying for is not the same purchase as a ticket to an event; the
+  synthetic dbt fixture already files one as Shopping / Memberships, wants.
+  `rules-default-hint` gained a second event: a music subscription beside
+  the internet bill, each with its own merchant.
 - **Ruled out:** a Travel subcategory for gear (the taxonomy has none, and
   the tag already answers "was it for a trip").

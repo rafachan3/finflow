@@ -1,8 +1,8 @@
 {
-  "name": "with rules that say nothing about a line, its subcategory hint applies",
+  "name": "with rules that say nothing about a line, its subcategory hint applies, and a streaming subscription is Memberships",
   "input": {
     "kind": "text",
-    "text": "paid 65.00 for the internet bill"
+    "text": "paid 65.00 to Northwind Telecom for the internet bill and 11.99 to Tunewave for my monthly music streaming subscription"
   },
   "rules": "bucket-rules.synthetic.md",
   "expect": {
@@ -12,6 +12,16 @@
         "lines": 1,
         "buckets": [
           "needs"
+        ]
+      },
+      {
+        "type": "expense",
+        "lines": 1,
+        "classes": [
+          "Shopping / Memberships"
+        ],
+        "buckets": [
+          "wants"
         ]
       }
     ]
@@ -23,8 +33,8 @@
         "amount": "65.00",
         "currency": "CAD",
         "date": "",
-        "description": "Internet bill",
-        "merchant": null,
+        "description": "Internet bill from Northwind Telecom",
+        "merchant": "Northwind Telecom",
         "venue": null,
         "tags": [],
         "funded_by": null,
@@ -41,6 +51,43 @@
             "item_type": null,
             "bucket_why": "no rule covers bills; Internet and phone hint is needs",
             "bucket": "needs"
+          }
+        ],
+        "confidence": 0.9,
+        "channel": null,
+        "from_account": null
+      },
+      {
+        "type": "expense",
+        "amount": "11.99",
+        "currency": "CAD",
+        "date": "",
+        "description": "Tunewave music streaming subscription",
+        "merchant": "Tunewave",
+        "venue": null,
+        "channel": null,
+        "tags": [],
+        "funded_by": null,
+        "is_recurring": true,
+        "income_source": null,
+        "from_account": null,
+        "to_account": null,
+        "notes": null,
+        "taxes": [],
+        "discounts": [],
+        "fees": [],
+        "tip": null,
+        "items": [
+          {
+            "description": "Music streaming subscription",
+            "price": "11.99",
+            "taxable": false,
+            "category": "Shopping",
+            "subcategory": "Memberships",
+            "item_type": null,
+            "tags": [],
+            "bucket_why": "no rule covers subscriptions; Memberships hint is wants",
+            "bucket": "wants"
           }
         ],
         "confidence": 0.9

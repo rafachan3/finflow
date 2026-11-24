@@ -68,7 +68,10 @@ Definitions that need more than their name:
   as a pouch, including themed merchandise or a souvenir (an event T-shirt,
   a team keychain).
 - **Entertainment and activities** — the event itself: a concert, a ticket,
-  a cinema seat. Never an object you keep, whatever its theme.
+  a cinema seat. Never an object you keep, whatever its theme, and never a
+  service you keep paying for.
+- **Memberships** (Shopping) — an entertainment service you keep paying
+  for, such as a music or video streaming subscription.
 - **Other shopping** — the fallback for a durable personal good that is not
   clothing, not something you carry, not a gift and not a membership, such
   as a luggage tag or a small travel bottle.
