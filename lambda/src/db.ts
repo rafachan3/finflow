@@ -67,8 +67,8 @@ export async function loadTaxonomy(
   const funding = await q.query<{ name: string }>(
     `SELECT name FROM funding_sources ORDER BY name`,
   );
-  const merchants = await q.query<{ name: string }>(
-    `SELECT name FROM merchants WHERE hidden_at IS NULL ORDER BY name`,
+  const merchants = await q.query<{ name: string; aliases: string[] }>(
+    `SELECT name, aliases FROM merchants WHERE hidden_at IS NULL ORDER BY name`,
   );
   const income = await q.query<{ name: string }>(
     `SELECT name FROM income_sources ORDER BY name`,
@@ -84,6 +84,9 @@ export async function loadTaxonomy(
     tags: tags.rows.map((r) => r.name),
     fundingSources: funding.rows.map((r) => r.name),
     merchants: merchants.rows.map((r) => r.name),
+    merchantAliases: Object.fromEntries(
+      merchants.rows.filter((r) => r.aliases.length > 0).map((r) => [r.name, r.aliases]),
+    ),
     incomeSources: income.rows.map((r) => r.name),
     accounts: accounts.rows.map((r) => r.name),
   };
@@ -109,6 +112,10 @@ const MERCHANT_SPACED = (name: string) => `btrim(regexp_replace(${name}, '\\s+',
  */
 export const MERCHANT_KEY = (name: string) =>
   `lower(translate(${MERCHANT_SPACED(name)}, '${APOSTROPHE_VARIANTS}', '${"''".repeat(APOSTROPHE_VARIANTS.length)}'))`;
+/** Merchant row `m` is named `name` by its whole name or one whole alias, never a prefix. */
+const NAMES_MERCHANT = (m: string, name: string) =>
+  `(${MERCHANT_KEY(`${m}.name`)} = ${MERCHANT_KEY(name)}
+    OR EXISTS (SELECT 1 FROM unnest(${m}.aliases) a WHERE ${MERCHANT_KEY("a")} = ${MERCHANT_KEY(name)}))`;
 
 /**
  * Adds a merchant, unhides one with that name, or finds it already visible; then
@@ -562,7 +569,7 @@ export async function findDuplicates(ingestionId: string): Promise<DuplicateMatc
 }
 
 /**
- * The card's merchant when it is in no lookup row (visible or hidden, any case)
+ * The card's merchant when it is no lookup row's name or alias (visible or hidden, any case)
  * yet at least `min` other saved purchases name it: the owner may want to add
  * it. Saved means a confirmed ingestion of another Telegram update, and the
  * name is compared the way addMerchant links it.
@@ -586,7 +593,7 @@ export async function findFrequentMerchant(
       AND o.telegram_update_id <> s.telegram_update_id
       AND ${MERCHANT_KEY("o.extraction->>'merchant'")} = s.key
      WHERE s.key <> ''
-       AND NOT EXISTS (SELECT 1 FROM merchants m WHERE ${MERCHANT_KEY("m.name")} = s.key)
+       AND NOT EXISTS (SELECT 1 FROM merchants m WHERE ${NAMES_MERCHANT("m", "s.key")})
      GROUP BY s.name
      HAVING count(o.id) >= $2`,
     [ingestionId, min],
@@ -781,9 +788,10 @@ export async function confirmIngestion(
         ? null
         : await lookupId(
             client,
-            `SELECT id FROM merchants
-             WHERE ${MERCHANT_KEY("name")} = ${MERCHANT_KEY("$1::text")} AND hidden_at IS NULL
-             ORDER BY (name = $1::text) DESC, id LIMIT 1`,
+            // A name match beats another merchant's alias.
+            `SELECT id FROM merchants m
+             WHERE ${NAMES_MERCHANT("m", "$1::text")} AND hidden_at IS NULL
+             ORDER BY (name = $1::text) DESC, (${MERCHANT_KEY("name")} = ${MERCHANT_KEY("$1::text")}) DESC, id LIMIT 1`,
             [extraction.merchant],
           );
 

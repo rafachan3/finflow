@@ -15,7 +15,7 @@ const REVIEW = ["Confirm", "Discard", "Fix date", "Edit"];
 describe("several purchases in one message", () => {
   it("two stores become two labelled cards, each saved on its own Confirm", async () => {
     gemini.extract = golden("two-stores").recorded;
-    await chat.text("3 at Dollar Corner and 5 at Corner Pharmacy");
+    await chat.text("3 at Dollar Corner and 5 at Acme Mart Pharmacy");
 
     const [first, second] = chat.replies();
     expect(chat.replies()).toHaveLength(2);
@@ -33,7 +33,7 @@ describe("several purchases in one message", () => {
 
   it("discarding the second of two cards says which one, in the toast and the chat", async () => {
     gemini.extract = golden("two-stores").recorded;
-    await chat.text("3 at Dollar Corner and 5 at Corner Pharmacy");
+    await chat.text("3 at Dollar Corner and 5 at Acme Mart Pharmacy");
 
     await chat.tap(chat.replies()[1], "Discard");
     expect(chat.acks()).toEqual(["Discarded. (2 of 2)"]);
@@ -138,7 +138,7 @@ describe("several purchases in one message", () => {
 
   it("a purchase and a paycheque become an expense card and an income card", async () => {
     gemini.extract = golden("expense-and-income").recorded;
-    await chat.text("groceries at Fresh Market 40, and got paid 200 salary");
+    await chat.text("groceries at Acme Mart Wholesale 40, and got paid 200 salary");
 
     const [expense, income] = chat.replies();
     expect(expense.text).toMatch(/^Expense · .* \(1 of 2\)/);
@@ -266,7 +266,7 @@ describe("several purchases in one message", () => {
     gemini.extract = {
       events: [good, { ...other, items: [{ ...(other as { items: object[] }).items[0], subcategory: "Not a subcategory" }] }],
     };
-    await chat.text("3 at Dollar Corner and 5 at Corner Pharmacy");
+    await chat.text("3 at Dollar Corner and 5 at Acme Mart Pharmacy");
 
     const [first, second] = chat.replies();
     expect(labels(first)).toEqual(REVIEW);
@@ -277,7 +277,7 @@ describe("several purchases in one message", () => {
 
   it("Telegram resending the same message saves nothing new and sends no new cards", async () => {
     gemini.extract = golden("two-stores").recorded;
-    await chat.text("3 at Dollar Corner and 5 at Corner Pharmacy");
+    await chat.text("3 at Dollar Corner and 5 at Acme Mart Pharmacy");
     const result = await chat.retry();
 
     expect(result.body).toBe("duplicate");

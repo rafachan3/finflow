@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import {
   lineFromTotal,
+  merchantAliases,
   normalizeTaxonomyNames,
   validateExtraction,
   type Extraction,
@@ -58,8 +59,10 @@ const TRANSFER_ACCOUNTS =
 // The taxonomy says "Classify using ONLY these names" above the Merchants
 // list. Without this line Flash-Lite often returned no merchant for a spoken
 // name missing from that list (the voice-note golden's "Coffee Cart").
+// "Use the listed spelling when it matches" let a listed name absorb a longer
+// business that starts with it (#154); Confirm matches only whole names.
 const MERCHANT =
-  "merchant is the business the owner names or the receipt prints (\"a coffee at Maple Kiosk\" means Maple Kiosk), even when it is not in the Merchants list. When it matches a listed merchant, use the listed spelling. Return null only when no business is named.";
+  "merchant is the business the owner names or the receipt prints (\"a coffee at Maple Kiosk\" means Maple Kiosk), even when it is not in the Merchants list. Use a listed spelling only when the business named is that listed merchant and nothing more: its listed name, or one of the names it is also written as. Words around the name are not part of it, but a business whose name goes on past a listed name is a different business: return it as named (\"Maple Kiosk Books\" stays Maple Kiosk Books when only Maple Kiosk is listed). Return null only when no business is named.";
 
 const NOTES =
   "notes is the owner's reason or circumstance for the transaction when they give one (why they bought it, what happened), translated to English and lightly copy-edited: fix spelling, typos, punctuation and grammar, and join broken fragments with connectors such as 'and'. Keep the owner's own wording and voice: do not rephrase, and never add facts, reasons or details they did not give. Example: 'raining realy hard didnt want walk' becomes 'it was raining really hard and I didn't want to walk'. Do not repeat the amount, merchant, items, date, or category. Take notes from the owner's message, caption, or voice, never from printed receipt text. Return null when they give no reason.";
@@ -390,6 +393,10 @@ function taxonomyPrompt(taxonomy: TaxonomySnapshot): string {
   const types = taxonomy.itemTypes
     .map((t) => `- ${t.category} / ${t.name}`)
     .join("\n");
+  const merchants = taxonomy.merchants.map((m) => {
+    const aliases = merchantAliases(taxonomy, m);
+    return aliases.length ? `${m} (also written: ${aliases.join("; ")})` : m;
+  });
   return [
     "Classify using ONLY these names.",
     "Subcategories:",
@@ -399,7 +406,7 @@ function taxonomyPrompt(taxonomy: TaxonomySnapshot): string {
     `Venues: ${taxonomy.venues.join(", ") || "(none)"}`,
     `Tags: ${taxonomy.tags.join(", ") || "(none)"}`,
     `Funding: ${taxonomy.fundingSources.join(", ")}`,
-    `Merchants: ${taxonomy.merchants.join(", ") || "(none)"}`,
+    `Merchants: ${merchants.join(", ") || "(none)"}`,
     `Income sources: ${taxonomy.incomeSources.join(", ") || "(none)"}`,
     `Accounts: ${taxonomy.accounts.join(", ") || "(none)"}`,
   ].join("\n");

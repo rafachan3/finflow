@@ -87,6 +87,8 @@ export type TaxonomySnapshot = {
   tags: string[];
   fundingSources: string[];
   merchants: string[];
+  /** Other whole spellings of a listed merchant (receipt names), keyed by its name. */
+  merchantAliases: Record<string, string[]>;
   incomeSources: string[];
   accounts: string[];
 };
@@ -354,6 +356,11 @@ export function normalizeTaxonomyNames(
   };
 }
 
+/** A listed merchant's aliases; own keys only, so a merchant named "constructor" has none. */
+export function merchantAliases(taxonomy: TaxonomySnapshot, merchant: string): string[] {
+  return Object.hasOwn(taxonomy.merchantAliases, merchant) ? taxonomy.merchantAliases[merchant] : [];
+}
+
 export function validateExtraction(
   extraction: Extraction,
   taxonomy: TaxonomySnapshot,
@@ -399,9 +406,13 @@ export function validateExtraction(
     }
   }
 
+  // A whole name or a whole alias, as Confirm links it: never a prefix.
+  const key = extraction.merchant === null ? null : merchantKey(extraction.merchant);
   if (
-    extraction.merchant !== null &&
-    !taxonomy.merchants.some((m) => merchantKey(m) === merchantKey(extraction.merchant!))
+    key !== null &&
+    !taxonomy.merchants.some((m) =>
+      [m, ...merchantAliases(taxonomy, m)].some((name) => merchantKey(name) === key),
+    )
   ) {
     warnings.push(
       `merchant "${extraction.merchant}" is not in lookup; will save without merchant`,

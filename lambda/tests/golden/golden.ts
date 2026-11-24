@@ -1,4 +1,5 @@
 import { readdirSync, readFileSync } from "node:fs";
+import { merchantKey } from "../../src/commands.js";
 import { canonicalTags, stripCategoryPrefix } from "../../src/extraction.js";
 import { discountsOf, editedTotal, lineAmounts, type EditParts } from "../../src/tax-tip.js";
 
@@ -22,6 +23,11 @@ export type ExpectedEvent = {
   /** The fees list as read, when the case is about a fee kept out of the lines and the tip. */
   fees?: string[];
   merchant?: boolean;
+  /**
+   * The spellings the merchant may have, compared as Confirm compares them, when the
+   * case is about which business is named: a listed name and its aliases all link.
+   */
+  merchantIs?: string[];
   date?: boolean;
   /** The exact date, when the case is about how a printed date is read. */
   dateIs?: string;
@@ -205,6 +211,13 @@ export function mismatches(events: RawEvent[], expected: ExpectedEvent[]): strin
       if (wanted !== undefined && present(value) !== wanted) {
         out.push(`${at}: ${field} ${wanted ? "missing" : "unexpected"}`);
       }
+    }
+    const merchant = typeof got.merchant === "string" ? got.merchant : null;
+    if (
+      want.merchantIs !== undefined &&
+      !want.merchantIs.some((name) => merchant !== null && merchantKey(name) === merchantKey(merchant))
+    ) {
+      out.push(`${at}: merchant ${String(merchant)} is not ${want.merchantIs.join(" or ")}`);
     }
     if (want.dateIs !== undefined && got.date !== want.dateIs) {
       out.push(`${at}: date ${String(got.date)} != ${want.dateIs}`);

@@ -242,6 +242,23 @@ describe("confirmIngestion", () => {
     expect(tx).toEqual({ merchant_id: null });
   });
 
+  it("links a merchant named by one of its whole aliases, and never a longer name that starts with the merchant or an alias", async () => {
+    const names = ["acme mart  WHOLESALE", "Acme Mart Pharmacy", "Acme Mart Wholesale Annex"];
+    for (const [i, merchant] of names.entries()) {
+      const [id] = await save(260 + i, expense({ merchant, description: merchant }));
+      await db.confirmIngestion(id);
+    }
+    const rows = await sql("select t.description, m.name from transactions t left join merchants m on m.id = t.merchant_id");
+    expect(rows).toHaveLength(3);
+    expect(rows).toEqual(
+      expect.arrayContaining([
+        { description: "acme mart  WHOLESALE", name: "Acme Mart" },
+        { description: "Acme Mart Pharmacy", name: null },
+        { description: "Acme Mart Wholesale Annex", name: null },
+      ]),
+    );
+  });
+
   it("reports already handled on a second tap and writes one transaction", async () => {
     const [id] = await save(205, expense());
     await db.confirmIngestion(id);
@@ -997,6 +1014,16 @@ describe("findFrequentMerchant", () => {
     expect(await db.findFrequentMerchant(await saveOne(expense({ merchant: "Example Online" })), 3)).toBeNull();
   });
 
+  it("is empty for a whole alias of a merchant, but counts a longer name that starts with one", async () => {
+    await bought("example.ca", 3);
+    expect(await db.findFrequentMerchant(await saveOne(expense({ merchant: "EXAMPLE.CA" })), 3)).toBeNull();
+    await bought("Acme Mart Pharmacy", 3);
+    expect(await db.findFrequentMerchant(await saveOne(expense({ merchant: "Acme Mart Pharmacy" })), 3)).toEqual({
+      name: "Acme Mart Pharmacy",
+      count: 3,
+    });
+  });
+
   it("counts apostrophe styles as one name, and finds a lookup row spelled with another", async () => {
     await bought("Joe’s Diner", 1);
     await bought("JOE'S DINER", 2);
@@ -1029,6 +1056,10 @@ describe("loadTaxonomy", () => {
     expect(t.accounts).toEqual(["Emergency fund", "Retirement account"]);
     expect(t.fundingSources).toEqual(["family", "self"]);
     expect(t.merchants).toEqual(["Acme Mart", "Example Online"]);
+    expect(t.merchantAliases).toEqual({
+      "Acme Mart": ["ACME MART WHOLESALE"],
+      "Example Online": ["EXAMPLE MKTP", "EXAMPLE.CA"],
+    });
     expect(t.tags).toEqual(expect.arrayContaining(["Partner", "Social"]));
     expect(t.subcategories).toContainEqual({
       category: "Food and drink",

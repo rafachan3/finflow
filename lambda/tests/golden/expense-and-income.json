@@ -1,15 +1,19 @@
 {
-  "name": "a purchase and a paycheque become two entries",
+  "name": "a purchase and a paycheque become two entries; a purchase named by a merchant's alias is that merchant",
   "input": {
     "kind": "text",
-    "text": "groceries at Fresh Market 40, and got paid 200 salary"
+    "text": "groceries at Acme Mart Wholesale 40, and got paid 200 salary"
   },
   "expect": {
     "events": [
       {
         "type": "expense",
         "lines": 1,
-        "merchant": true
+        "merchant": true,
+        "merchantIs": [
+          "Acme Mart",
+          "ACME MART WHOLESALE"
+        ]
       },
       {
         "type": "income",
@@ -24,8 +28,8 @@
         "amount": "40.00",
         "currency": "CAD",
         "date": "",
-        "description": "Groceries at Fresh Market",
-        "merchant": "Fresh Market",
+        "description": "Groceries at Acme Mart Wholesale",
+        "merchant": "Acme Mart",
         "venue": "Supermarket",
         "tags": [],
         "funded_by": null,

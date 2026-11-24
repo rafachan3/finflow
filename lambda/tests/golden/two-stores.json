@@ -1,8 +1,8 @@
 {
-  "name": "two stores in one message become two purchases; a dollar store has no venue, a pharmacy is Pharmacy",
+  "name": "two stores in one message become two purchases; a dollar store has no venue, a pharmacy is Pharmacy, and a business whose name starts with a listed merchant keeps its own name",
   "input": {
     "kind": "text",
-    "text": "3 at Dollar Corner and 5 at Corner Pharmacy"
+    "text": "3 at Dollar Corner and 5 at Acme Mart Pharmacy"
   },
   "expect": {
     "events": [
@@ -16,6 +16,9 @@
         "type": "expense",
         "lines": 1,
         "merchant": true,
+        "merchantIs": [
+          "Acme Mart Pharmacy"
+        ],
         "venue": "Pharmacy"
       }
     ]
@@ -52,8 +55,8 @@
         "amount": "5.00",
         "currency": "CAD",
         "date": "",
-        "description": "Corner Pharmacy purchase",
-        "merchant": "Corner Pharmacy",
+        "description": "Acme Mart Pharmacy purchase",
+        "merchant": "Acme Mart Pharmacy",
         "venue": "Pharmacy",
         "tags": [],
         "funded_by": null,

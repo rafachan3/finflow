@@ -25,6 +25,7 @@ const taxonomy: TaxonomySnapshot = {
   tags: ["Social", "Travel"],
   fundingSources: ["self"],
   merchants: ["Chipotle"],
+  merchantAliases: {},
   incomeSources: [],
   accounts: [],
 };
@@ -1305,6 +1306,32 @@ describe("multi-event extraction", () => {
       );
       expect(system).toContain("Never pick the nearest venue");
     }
+  });
+
+  it("tells text, photo and voice to use a listed spelling only for that whole business, never for a longer name", async () => {
+    for (const system of (await fourSystems()).slice(0, 3)) {
+      expect(system).toContain("Use a listed spelling only when the business named is that listed merchant and nothing more");
+      expect(system).toContain("a business whose name goes on past a listed name is a different business: return it as named");
+      expect(system).not.toContain("When it matches a listed merchant, use the listed spelling");
+    }
+  });
+
+  it("offers each merchant's aliases on the Merchants line as other spellings of that one business", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => geminiJson(events(extracted)) });
+    vi.stubGlobal("fetch", fetchMock);
+    await extractFromText({
+      apiKey: "k",
+      text: "lunch 20",
+      taxonomy: {
+        ...taxonomy,
+        merchants: ["Chipotle", "Maple Kiosk"],
+        merchantAliases: { "Maple Kiosk": ["MAPLE KIOSK #12", "MAPLEKIOSK.CA"] },
+      },
+      bucketRules: "",
+      today: "2026-08-17",
+    });
+    const system = JSON.parse(fetchMock.mock.calls[0][1].body as string).systemInstruction.parts[0].text as string;
+    expect(system).toContain("Merchants: Chipotle, Maple Kiosk (also written: MAPLE KIOSK #12; MAPLEKIOSK.CA)\n");
   });
 
   it("tells text, photo, voice and Edit that a machine cycle has no goods item type", async () => {

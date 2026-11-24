@@ -37,6 +37,7 @@ const taxonomy: TaxonomySnapshot = {
   tags: ["Social", "Travel"],
   fundingSources: ["self"],
   merchants: ["McDonald's"],
+  merchantAliases: { "McDonald's": ["MCDONALDS #4021"] },
   incomeSources: ["Salary"],
   accounts: ["Rainy-day fund"],
 };
@@ -247,6 +248,24 @@ describe("validateExtraction", () => {
   it("finds a listed merchant whatever its case, spacing or apostrophe", () => {
     const result = validateExtraction(expense({ merchant: " MCDONALD’S " }), taxonomy);
     expect(result.warnings.some((w) => /merchant/i.test(w))).toBe(false);
+  });
+
+  it("finds a listed merchant by one of its whole aliases, whatever its case or spacing", () => {
+    const result = validateExtraction(expense({ merchant: "McDonalds  #4021" }), taxonomy);
+    expect(result.warnings.some((w) => /merchant/i.test(w))).toBe(false);
+  });
+
+  it("reads no aliases for a merchant named like an object property", () => {
+    const result = validateExtraction(expense({ merchant: "constructor" }), { ...taxonomy, merchants: ["constructor"] });
+    expect(result.warnings.some((w) => /merchant/i.test(w))).toBe(false);
+  });
+
+  it("warns that a business whose name only starts with a listed merchant or an alias is not in the lookup", () => {
+    for (const merchant of ["McDonald's Playland", "MCDONALDS #4021 Drive-Thru"]) {
+      expect(validateExtraction(expense({ merchant }), taxonomy).warnings).toContain(
+        `merchant "${merchant}" is not in lookup; will save without merchant`,
+      );
+    }
   });
 
   it("requires income_source and no lines on income", () => {
