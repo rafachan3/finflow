@@ -1,5 +1,5 @@
 {
-  "name": "a stated date and a reason are kept, the reason copy-edited",
+  "name": "a stated date and a reason are kept, the reason copy-edited; a lunch bought at the counter is Fast Food, Takeout / Quick Service",
   "input": {
     "kind": "text",
     "text": "14 lunch at Sandwich Shop on Oct 25, was to tierd didnt pak lunch"
@@ -23,7 +23,11 @@
           "Sandwich",
           "14"
         ],
-        "noteMaxWords": 10
+        "noteMaxWords": 10,
+        "venue": "Fast Food",
+        "classes": [
+          "Food and drink / Takeout / Quick Service / Meals & Prepared Food"
+        ]
       }
     ]
   },

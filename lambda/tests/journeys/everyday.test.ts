@@ -62,6 +62,33 @@ describe("logging one purchase", () => {
     expect(await ledger.transactions()).toMatchObject([{ merchant: "Acme Mart" }]);
   });
 
+  it("a delivery-app order shows the app as its venue and the restaurant as its merchant, and a counter order keeps Fast Food", async () => {
+    const venues = () =>
+      sql<{ venue: string; subcategory: string }>(
+        `select v.name as venue, s.name as subcategory
+         from transactions t join venues v on v.id = t.venue_id
+         join transaction_items i on i.transaction_id = t.id
+         join subcategories s on s.id = i.subcategory_id
+         order by t.created_at, i.description`,
+      );
+    const delivery = golden("same-place-lines");
+    gemini.extract = delivery.recorded;
+    await chat.text((delivery.input as { text: string }).text);
+    expect(chat.last().text).toContain("Merchant: Burger Barn\nVenue: DoorDash");
+    await chat.tap(chat.last(), "Confirm");
+
+    gemini.extract = golden("text-with-note").recorded;
+    await chat.text("14 lunch at Sandwich Shop on Oct 25, was to tierd didnt pak lunch");
+    expect(chat.last().text).toContain("Merchant: Sandwich Shop\nVenue: Fast Food");
+    await chat.tap(chat.last(), "Confirm");
+
+    expect(await venues()).toEqual([
+      { venue: "DoorDash", subcategory: "Delivery" },
+      { venue: "DoorDash", subcategory: "Delivery" },
+      { venue: "Fast Food", subcategory: "Takeout / Quick Service" },
+    ]);
+  });
+
   it("tapping Confirm twice saves once and says it was already handled", async () => {
     gemini.extract = golden("text-with-note").recorded;
     await chat.text("14 lunch at Sandwich Shop on Oct 25, was to tierd didnt pak lunch");
