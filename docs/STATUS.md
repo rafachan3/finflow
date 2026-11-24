@@ -465,6 +465,16 @@ omitted); the fixture sends "Late lunch" through DoorDash and
 agreed with the owner first); until then no dashboard shows the channel and
 the moved rows have no venue.
 
+Classification examples (#153 #155 #156, PR #185, branch
+`fix/classification-examples`, not merged; DECISIONS.md 2026-11-24): one
+shared `KEPT_GOODS` instruction and TAXONOMY.md rule 10 say a thing you keep
+is Shopping. Travel gear bought for a trip is Clothing and accessories (a
+pouch) or Other shopping (a luggage tag, a small travel bottle), with the
+Travel tag; themed merchandise you wear or carry is Clothing and
+accessories, never Entertainment and activities; a streaming subscription
+is Memberships. Goldens stay at 20: `rules-override`, `receipt-no-date`
+(now a two-line merch receipt) and `rules-default-hint` were extended.
+
 Migration 0011 is applied to production. Owner/CoS actions, in order: merge
 the PR (it auto-deploys code that reads the column), then from `lambda/`:
 `RECEIPTS_BUCKET=finflow-receipts-$(aws sts get-caller-identity --query Account --output text) AWS_REGION=ca-central-1 npm run backfill:media-merchant -- --dry-run`,
