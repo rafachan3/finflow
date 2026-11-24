@@ -457,13 +457,20 @@ and Edit read the channel; the card shows `Channel: X` under the venue only
 when set; Confirm saves it; an Edit sets or clears it. **Owner step:** push
 migration 0025 (`supabase db push`, dry-run first) before merging; the
 Lambda reads `channels` at once. PR 1 merged as #183 (migration 0025
-applied). PR 2 (`feat/dbt-purchase-channel`, not merged): `stg_transactions`,
+applied). PR 2 merged as #184: `stg_transactions`,
 `fct_transactions` and `fct_ledger_entry` carry `channel_name`, and the
 ledger `counterparty` reads merchant · venue · channel (a missing part
 omitted); the fixture sends "Late lunch" through DoorDash and
-`fixture_ledger_entry_channel_expected` pins it. Next: dashboards (PR 3,
-agreed with the owner first); until then no dashboard shows the channel and
-the moved rows have no venue.
+`fixture_ledger_entry_channel_expected` pins it. PR 3
+(`feat/grafana-purchase-channel`, not merged; DECISIONS.md 2026-11-24,
+"Channel on the dashboards"): Ledger gains a Channel filter (All, Bought
+directly, each app), "Selection by channel" and a Channel column in Line
+items; Tags and merchants gains a Channels section mirroring Merchants;
+Trends gains "Spent through apps per month" (SEMANTIC_LAYER.md recipe
+"Spend through apps"). This month, Income and Reliance are unchanged. The
+fixture's August "Dinners out" now goes through Uber Eats. Rendered locally
+on the fixture before the PR. **After merge:** `terraform plan` (expect 3
+dashboards to change) and `apply`; no migration, no `dbt-nightly` needed.
 
 Migration 0011 is applied to production. Owner/CoS actions, in order: merge
 the PR (it auto-deploys code that reads the column), then from `lambda/`:
