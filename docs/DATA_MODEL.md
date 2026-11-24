@@ -132,6 +132,7 @@ erDiagram
     smallint subcategory_id FK
     smallint item_type_id FK "nullable"
     bucket_type bucket "needs | wants"
+    text note "nullable — this line only"
   }
 
   transaction_tags {
@@ -362,7 +363,10 @@ create table transaction_items (
   amount         numeric(12,2) not null check (amount > 0),
   subcategory_id smallint not null references subcategories(id),
   item_type_id   smallint references item_types(id),
-  bucket         bucket_type not null
+  bucket         bucket_type not null,
+  -- The owner's reason about this line only (migration 0026); a reason about
+  -- the whole purchase is transactions.notes.
+  note           text
 );
 create index on transaction_items (transaction_id);
 create index on transaction_items (subcategory_id);
@@ -642,12 +646,12 @@ amount:
   "items": [
     { "description": "Burger combo", "amount": "19.55",
       "category": "Food and drink", "subcategory": "Takeout / Quick Service",
-      "item_type": "Meals & Prepared Food", "tags": [], "bucket": "wants",
-      "bucket_why": "takeout is discretionary" },
+      "item_type": "Meals & Prepared Food", "tags": [], "note": null,
+      "bucket": "wants", "bucket_why": "takeout is discretionary" },
     { "description": "Coke", "amount": "8.05",
       "category": "Food and drink", "subcategory": "Takeout / Quick Service",
-      "item_type": "Non-Alcoholic Beverages", "tags": [], "bucket": "wants",
-      "bucket_why": "soft drink" }
+      "item_type": "Non-Alcoholic Beverages", "tags": [], "note": null,
+      "bucket": "wants", "bucket_why": "soft drink" }
   ],
   "confidence": 0.91,
   "usage": {
@@ -670,7 +674,10 @@ before it existed have none (read as null). `funded_by` is required when `type` 
 null on income and transfer. The extraction call sets each line's `bucket`
 and `bucket_why`; on income and transfer lines the bucket is ignored. The header's `tags` are
 context for the whole transaction; a line's `tags` are context for that line
-only, and rows extracted before line tags have none (read as `[]`). `date_source`
+only, and rows extracted before line tags have none (read as `[]`). Notes
+split the same way: the header's `notes` is the owner's reason about the
+whole purchase, a line's `note` a reason about that line only, and rows
+extracted before line notes have none (read as null). `date_source`
 is `stated` (user, caption, or receipt), `today_default` (text with no date),
 `missing` (photo with no date — Confirm omitted), or `fix` (owner typed a
 date after Fix date).
@@ -723,6 +730,9 @@ bump when SSM rules change.
 - A line's effective tags are its `transaction_item_tags` plus its
   transaction's `transaction_tags`. A line tag never repeats a header tag,
   and a tag on every line of an expense is stored once, on the header
+  (application logic: `normalizeTaxonomyNames`).
+- A line note never repeats the header note, and one note on every line of
+  an expense is stored once, on the header, when the header has none
   (application logic: `normalizeTaxonomyNames`).
 - A transaction belongs to at most one recurring series (one FK column), and
   only to a series of its own kind: the composite FK `(recurring_series_id,
