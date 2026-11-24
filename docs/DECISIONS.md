@@ -3738,3 +3738,30 @@ Trends; This month, Income and Reliance stay as they are.
   change with the data, and the dashboard check pins each panel's
   columns); a Ledger link from the Trends chart (the filter picks one
   channel, not "any app").
+
+## 2026-11-24: What you keep is Shopping, whatever it is for (#153, #155, #156)
+
+Owner rulings in the issues, after confirmed lines were moved by hand. The
+extractor filed an object by its theme or its use instead of by what was
+bought. Each case is a TAXONOMY.md example and one sentence in the shared
+`KEPT_GOODS` instruction (text, photo, voice, Edit and the re-ask).
+
+- **Travel gear is Shopping (#153).** Travel is only the cost of a trip:
+  Flights, Hotels, Other travel. A pouch you carry is Clothing and
+  accessories; a luggage tag or a small travel bottle is Other shopping.
+  The Travel tag says the purchase was for a trip (rule 10), as road-trip
+  snacks stay Food and drink. `rules-override` gained a second event: three
+  pieces of gear at one shop for a trip.
+- **Themed merchandise is what it is (#155).** Something you wear or carry
+  is Clothing and accessories even when it is a souvenir of an event (a
+  team keychain); Entertainment and activities is the event (a concert, a
+  ticket, a cinema seat), never an object. `receipt-no-date` became a
+  two-line merch receipt (T-shirt and keychain, same 12.30 total, still no
+  date), since the miss was on a photo.
+- **A streaming subscription is Memberships (#156).** Using a service you
+  keep paying for is not the same purchase as a ticket to an event; the
+  synthetic dbt fixture already files one as Shopping / Memberships, wants.
+  `rules-default-hint` gained a second event: a music subscription beside
+  the internet bill, each with its own merchant.
+- **Ruled out:** a Travel subcategory for gear (the taxonomy has none, and
+  the tag already answers "was it for a trip").

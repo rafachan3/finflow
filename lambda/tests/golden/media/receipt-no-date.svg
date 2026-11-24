@@ -3,11 +3,12 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="420" height="420" viewBox="0 0 420 420">
   <rect width="420" height="420" fill="#ffffff"/>
   <g font-family="Courier New, Courier, monospace" font-size="18" fill="#111111">
-    <text x="210" y="50" font-size="26" font-weight="bold" text-anchor="middle">BIG BOX MARKET</text>
+    <text x="210" y="50" font-size="26" font-weight="bold" text-anchor="middle">STADIUM SHOP</text>
     <text x="210" y="80" text-anchor="middle">Store #042</text>
     <line x1="30" y1="110" x2="390" y2="110" stroke="#111111" stroke-dasharray="6 4"/>
-    <text x="30" y="145">EGGS 30 PACK</text><text x="390" y="145" text-anchor="end">12.30</text>
-    <line x1="30" y1="170" x2="390" y2="170" stroke="#111111" stroke-dasharray="6 4"/>
+    <text x="30" y="140">CUP FINAL T-SHIRT</text><text x="390" y="140" text-anchor="end">8.30</text>
+    <text x="30" y="162">CUP FINAL KEYCHAIN</text><text x="390" y="162" text-anchor="end">4.00</text>
+    <line x1="30" y1="178" x2="390" y2="178" stroke="#111111" stroke-dasharray="6 4"/>
     <text x="30" y="205">SUBTOTAL</text><text x="390" y="205" text-anchor="end">12.30</text>
     <text x="30" y="235">TAX</text><text x="390" y="235" text-anchor="end">0.00</text>
     <text x="30" y="275" font-size="22" font-weight="bold">TOTAL</text><text x="390" y="275" font-size="22" font-weight="bold" text-anchor="end">12.30</text>

@@ -147,6 +147,50 @@ describe("logging one purchase", () => {
     ]);
   });
 
+  it("travel gear bought for a trip is saved as Shopping with the Travel tag, never Other travel", async () => {
+    gemini.extract = golden("rules-override").recorded;
+    await chat.text(
+      "18.40 taxi home from the airport on Oct 24, and 24.00 for a neck pouch, 9.00 for a luggage tag and 6.00 for a travel bottle at Gate Goods for my next trip",
+    );
+
+    const [, gear] = chat.replies();
+    expect(gear.text).toContain("Tags: Travel");
+    expect(gear.text).toContain("• Neck pouch — 24.00\n  Shopping / Clothing and accessories / wants");
+    expect(gear.text).toContain("• Luggage tag — 9.00\n  Shopping / Other shopping / wants");
+    expect(gear.text).not.toContain("Other travel");
+    await chat.tap(gear, "Confirm");
+    expect(
+      await sql(
+        `select i.description, c.name as category, s.name as subcategory
+         from transaction_items i join subcategories s on s.id = i.subcategory_id
+         join categories c on c.id = s.category_id
+         order by i.description`,
+      ),
+    ).toEqual([
+      { description: "Luggage tag", category: "Shopping", subcategory: "Other shopping" },
+      { description: "Neck pouch", category: "Shopping", subcategory: "Clothing and accessories" },
+      { description: "Travel bottle", category: "Shopping", subcategory: "Other shopping" },
+    ]);
+  });
+
+  it("a music streaming subscription is saved as Shopping / Memberships, not an activity", async () => {
+    gemini.extract = golden("rules-default-hint").recorded;
+    await chat.text(
+      "paid 65.00 to Northwind Telecom for the internet bill and 11.99 to Tunewave for my monthly music streaming subscription",
+    );
+
+    const [, music] = chat.replies();
+    expect(music.text).toContain("• Music streaming subscription — 11.99\n  Shopping / Memberships / wants");
+    expect(music.text).not.toContain("Entertainment and activities");
+    await chat.tap(music, "Confirm");
+    expect(
+      await sql(
+        `select i.description, s.name as subcategory, i.bucket
+         from transaction_items i join subcategories s on s.id = i.subcategory_id`,
+      ),
+    ).toEqual([{ description: "Music streaming subscription", subcategory: "Memberships", bucket: "wants" }]);
+  });
+
   it("someone else paying is saved with them as the funder", async () => {
     gemini.extract = golden("paid-by-family").recorded;
     await chat.text("20 dinner at Salad Bar on Oct 24, my family paid");
@@ -270,6 +314,29 @@ describe("receipts and voice notes", () => {
     await chat.text("yesterday");
     await chat.tap(chat.last(), "Confirm");
     expect(await ledger.transactions()).toMatchObject([{ amount: "12.30" }]);
+  });
+
+  it("a themed T-shirt and keychain on one receipt are both saved as Clothing and accessories, not an activity", async () => {
+    gemini.extract = golden("receipt-no-date").recorded;
+    await chat.photo();
+
+    const card = chat.last();
+    expect(card.text).toContain("• Cup final T-shirt — 8.30\n  Shopping / Clothing and accessories / wants");
+    expect(card.text).toContain("• Cup final keychain — 4.00\n  Shopping / Clothing and accessories / wants");
+    expect(card.text).not.toContain("Entertainment and activities");
+    await chat.tap(card, "Fix date");
+    await chat.text("yesterday");
+    await chat.tap(chat.last(), "Confirm");
+    expect(
+      await sql(
+        `select i.description, s.name as subcategory
+         from transaction_items i join subcategories s on s.id = i.subcategory_id
+         order by i.amount desc`,
+      ),
+    ).toEqual([
+      { description: "Cup final T-shirt", subcategory: "Clothing and accessories" },
+      { description: "Cup final keychain", subcategory: "Clothing and accessories" },
+    ]);
   });
 
   it("a voice note is archived as audio and offered for Confirm with today's date", async () => {

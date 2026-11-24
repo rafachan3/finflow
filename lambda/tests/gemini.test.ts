@@ -1397,6 +1397,34 @@ describe("multi-event extraction", () => {
     }
   });
 
+  it("tells text, photo, voice and Edit that travel gear is Shopping, with the Travel tag for the trip", async () => {
+    for (const system of await fourSystems()) {
+      expect(system).toContain("Travel is the cost of a trip: Flights, Hotels, and Other travel for any other trip cost");
+      expect(system).toContain("A thing you keep is Shopping, even when it is bought for a trip; the Travel tag says it was for a trip");
+      expect(system).toContain("Something you wear or carry (a neck pouch) is Shopping / Clothing and accessories");
+      expect(system).toContain("(a luggage tag, a small travel bottle) is Shopping / Other shopping");
+    }
+  });
+
+  it("tells text, photo, voice and Edit that themed merchandise you wear or carry is Clothing and accessories, not an activity", async () => {
+    for (const system of await fourSystems()) {
+      expect(system).toContain(
+        "is Shopping / Clothing and accessories, including themed merchandise or a souvenir (an event T-shirt, a team keychain)",
+      );
+      expect(system).toContain(
+        "Personal / Entertainment and activities is the event itself (a concert, a ticket, a cinema seat), never an object you keep",
+      );
+    }
+  });
+
+  it("tells text, photo, voice and Edit that a streaming subscription is Memberships, not an activity", async () => {
+    for (const system of await fourSystems()) {
+      expect(system).toContain(
+        "An entertainment service you keep paying for (a music or video streaming subscription) is Shopping / Memberships, not Entertainment and activities",
+      );
+    }
+  });
+
   it("tells text, photo, voice and Edit to prefer a 4-digit-year date and read NN/NN/NN within the last year", async () => {
     for (const system of await fourSystems()) {
       expect(system).toContain("Today is 2026-08-17");

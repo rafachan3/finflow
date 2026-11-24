@@ -1,5 +1,5 @@
 {
-  "name": "a receipt with no printed date leaves the date empty",
+  "name": "a receipt with no printed date leaves the date empty, and themed merchandise you wear or carry is Clothing and accessories",
   "input": {
     "kind": "photo",
     "caption": "",
@@ -9,8 +9,12 @@
     "events": [
       {
         "type": "expense",
-        "lines": 1,
-        "date": false
+        "lines": 2,
+        "date": false,
+        "classes": [
+          "Shopping / Clothing and accessories",
+          "Shopping / Clothing and accessories"
+        ]
       }
     ]
   },
@@ -21,9 +25,9 @@
         "amount": "12.30",
         "currency": "CAD",
         "date": "",
-        "description": "Big Box Market groceries",
-        "merchant": "Big Box Market",
-        "venue": "Supermarket",
+        "description": "Stadium Shop purchase",
+        "merchant": "Stadium Shop",
+        "venue": null,
         "tags": [],
         "funded_by": null,
         "is_recurring": false,
@@ -32,16 +36,39 @@
         "notes": null,
         "items": [
           {
-            "description": "Eggs",
-            "amount": "12.30",
-            "category": "Food and drink",
-            "subcategory": "Groceries",
-            "item_type": "Ingredients & Staples"
+            "description": "Cup final T-shirt",
+            "price": "8.30",
+            "taxable": false,
+            "category": "Shopping",
+            "subcategory": "Clothing and accessories",
+            "item_type": null,
+            "tags": [],
+            "bucket_why": "no rule covers clothing; Clothing and accessories hint is wants",
+            "bucket": "wants"
+          },
+          {
+            "description": "Cup final keychain",
+            "price": "4.00",
+            "taxable": false,
+            "category": "Shopping",
+            "subcategory": "Clothing and accessories",
+            "item_type": null,
+            "tags": [],
+            "bucket_why": "no rule covers clothing; Clothing and accessories hint is wants",
+            "bucket": "wants"
           }
         ],
-        "confidence": 0.9
+        "confidence": 0.9,
+        "channel": null,
+        "from_account": null,
+        "taxes": [
+          "0.00"
+        ],
+        "discounts": [],
+        "fees": [],
+        "tip": null
       }
     ]
   },
-  "request_sha256": "68b8b36262e27f8610cf61c978df4b3f44734690f7588be859650d4ac3bb07ff"
+  "request_sha256": "7258023fd9ff67a43a9ea5a4d052d82fb588e79c3358eed506bd7a390c94fd1c"
 }

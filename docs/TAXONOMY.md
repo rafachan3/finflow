@@ -64,6 +64,19 @@ Definitions that need more than their name:
 - **Certifications and career** — proving qualifications or advancing/finding
   work rather than learning itself: exam fees, professional memberships,
   résumé services, networking events.
+- **Clothing and accessories** — clothes and things you wear or carry, such
+  as a pouch, including themed merchandise or a souvenir (an event T-shirt,
+  a team keychain).
+- **Entertainment and activities** — the event itself: a concert, a ticket,
+  a cinema seat. Never an object you keep, whatever its theme, and never a
+  service you keep paying for.
+- **Memberships** (Shopping) — an entertainment service you keep paying
+  for, such as a music or video streaming subscription.
+- **Other shopping** — the fallback for a durable personal good that is not
+  clothing, not something you carry, not a gift and not a membership, such
+  as a luggage tag or a small travel bottle.
+- **Other travel** — a trip cost that is not a flight or a hotel. Never a
+  thing you keep (rule 10).
 
 Every category has an "Other …" subcategory. It is a fallback, not a common
 classification: prefer a specific subcategory whenever the available
@@ -191,6 +204,11 @@ channel and have no venue until the owner sets one.
    through an app (Too Good To Go) is classified as if bought at that
    counter: a bakery or café bag is Takeout / Quick Service, a supermarket
    bag of retail goods is Groceries.
+10. **Travel is the cost of a trip; a thing you keep is Shopping**, even
+    when it is bought for a trip. A pouch you carry is Clothing and
+    accessories; a luggage tag or a small travel bottle is Other shopping.
+    The Travel tag, not the category, says the purchase was for a trip, as
+    road-trip snacks stay Food and drink with the Travel tag.
 
 ## Needs / wants bucket
 
