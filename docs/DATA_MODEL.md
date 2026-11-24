@@ -254,7 +254,8 @@ create table merchants (
 );
 
 -- Venue / channel of purchase (Supermarket, Coffee Shop, Pharmacy, ...).
--- Single-valued per transaction, unlike tags.
+-- Single-valued per transaction, unlike tags. Migration 0025 seeds the
+-- delivery apps DoorDash and Uber Eats (docs/TAXONOMY.md, "Venues").
 create table venues (
   id   smallint generated always as identity primary key,
   name text not null unique

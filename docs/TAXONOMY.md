@@ -161,6 +161,19 @@ Kept deliberately restrained; this is not a medical ontology.
    washer or dryer cycle is Housing / Laundry with no item type; detergent,
    softener or dryer sheets are Laundry Supply.
 
+## Venues
+
+A transaction has at most one venue: the kind of place, or the channel it
+was bought through. The seed lists Supermarket, Dépanneur, Coffee Shop, Fast
+Food and Pharmacy (place types) and Instacart, Too Good To Go, DoorDash and
+Uber Eats (channels; the delivery apps since migration 0025).
+
+- A venue is set only when the place clearly is that kind; otherwise none.
+- When a listed channel and a place type both fit, the channel wins. A meal
+  ordered on a delivery app has the app as its venue, the restaurant as its
+  merchant, and the Delivery subcategory. Fast Food is an order at the
+  counter, with the Takeout / Quick Service subcategory.
+
 ## Needs / wants bucket
 
 The bucket is a per-line judgment, not a property of the subcategory (the
