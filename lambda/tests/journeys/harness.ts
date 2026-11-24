@@ -163,11 +163,11 @@ export const gemini = {
   lastSystem: "",
   /** The text parts of the latest request; an Edit's first is the card it corrects. */
   lastUserText: [] as string[],
-  /** The merchants the latest extract request offered Gemini. */
+  /** The merchants the latest extract request offered Gemini, without their aliases. */
   merchants(): string[] {
     const line = gemini.lastSystem.split("\n").find((l) => l.startsWith("Merchants: "));
     const list = line?.slice("Merchants: ".length) ?? "";
-    return list === "(none)" ? [] : list.split(", ");
+    return list === "(none)" ? [] : list.split(", ").map((m) => m.replace(/ \(also written: [^)]*\)$/, ""));
   },
 };
 

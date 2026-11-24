@@ -97,6 +97,7 @@ const taxonomy: TaxonomySnapshot = {
   tags: ["Social"],
   fundingSources: ["self"],
   merchants: ["Chipotle"],
+  merchantAliases: {},
   incomeSources: [],
   accounts: [],
 };

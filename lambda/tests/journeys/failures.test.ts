@@ -48,7 +48,7 @@ describe("when something goes wrong", () => {
   it("a card that fails to send after saving does not stop the next card or blame the message", async () => {
     gemini.extract = golden("two-stores").recorded;
     chat.failNextSends(1);
-    await chat.text("3 at Dollar Corner and 5 at Corner Pharmacy");
+    await chat.text("3 at Dollar Corner and 5 at Acme Mart Pharmacy");
 
     const received = chat.replies();
     expect(received).toHaveLength(1);

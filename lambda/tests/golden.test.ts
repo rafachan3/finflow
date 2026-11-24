@@ -172,6 +172,25 @@ describe("mismatches", () => {
     ]);
   });
 
+  it("reports a merchant that is none of the expected spellings, comparing names as Confirm does", () => {
+    const event = (merchantIs: string[], merchant: string | null) =>
+      mismatches(
+        [{ type: "expense", amount: "5.00", merchant, items: [{ amount: "5.00" }] }],
+        [{ type: "expense", lines: 1, merchantIs }],
+      );
+    expect(event(["Acme Mart Pharmacy"], " ACME mart  pharmacy")).toEqual([]);
+    // The longer name shortened to the listed merchant it starts with.
+    expect(event(["Acme Mart Pharmacy"], "Acme Mart")).toEqual(["event 0: merchant Acme Mart is not Acme Mart Pharmacy"]);
+    expect(event(["Acme Mart Pharmacy"], null)).toEqual(["event 0: merchant null is not Acme Mart Pharmacy"]);
+    // A listed name or one of its aliases both link on Confirm.
+    const acme = ["Acme Mart", "ACME MART WHOLESALE"];
+    expect(event(acme, "Acme Mart")).toEqual([]);
+    expect(event(acme, "Acme Mart Wholesale")).toEqual([]);
+    expect(event(acme, "Acme Mart Wholesale Annex")).toEqual([
+      "event 0: merchant Acme Mart Wholesale Annex is not Acme Mart or ACME MART WHOLESALE",
+    ]);
+  });
+
   it("reports a transfer's accounts, reading a recording without from_account as chequing", () => {
     const want: ExpectedEvent = { type: "transfer", lines: 0, fromAccount: "Savings", toAccount: null };
     const deposit = { type: "transfer", items: [], to_account: "Savings" };

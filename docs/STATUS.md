@@ -2,7 +2,7 @@
 
 Living state of the project. Read this first; update it whenever work lands.
 
-**Last updated:** 2026-11-23
+**Last updated:** 2026-11-24
 **Current phase:** Phase 5 (Grafana) under way: D (This month) merged as #137 and applied 2026-11-09; feedback round 1 merged as #140 and applied 2026-11-10; round 2 (income in money, Trends dashboard, no time picker) merged as #141 and applied 2026-11-10; round 3 (unallocated cash, shorter tooltips, Trends grown to three panels) merged as #143 and applied 2026-11-10; round 4 (leaner cards, Trends at six panels) merged as #145 and applied 2026-11-10, waiting for the owner's look; the nightly now builds models on one thread (deadlock fix, DECISIONS 2026-11-15); round 5 (one income-and-buckets chart, per-bucket category tables, Ledger v1 with click-through) merged as #151 (`249efd3`) and applied 2026-11-15; round 6 (denser layouts, recurring, merchants, largest purchases, Ledger period) merged as #157 (`69d41fa`) and applied 2026-11-15; round 7 (design review fixes, weekday and pay-cycle views, recurring commitments, fuller Ledger; the Review dashboard is dropped) merged as #159 (`f6d49a6`) and applied 2026-11-16; round 8 (income line joined again, merchant and venue kept apart, Ledger periods and category table, plus three new dashboards: Tags and merchants, Income and financial future, Reliance on others) merged as #161, #162, #165, #166 (migration 0024, pushed, `dbt-nightly` dispatched and green), #167 and #168 (`6728598`) and applied 2026-11-16, waiting for the owner's look. **Owner step:** mark the support source in the database (`update income_sources set is_support = true where name = ...`); until then Reliance on others shows support as zero. **Next:** the owner's feedback on round 8. "Needs attention" is on hold until the owner rules (the recommendation is not to build it): on 2026-11-16 it would have listed nothing (nightly ledger health: no warnings, no future-dated entries), and of the 35 pairs the duplicate test first raised one was a real duplicate; the nightly ledger-health issue already covers it
 
 ## Phase progress
@@ -359,7 +359,16 @@ photo, voice, Edit), never a line or part of the tip, and shared over every
 line by price with the tax and tip. The card shows no fee line; each line's
 amount holds its share. An Edit sends the fees back and a tip correction
 leaves them alone. The cap was full, so `same-place-lines` became a two-dish
-order with a service fee and a tip (still 20 of 20).
+order with a service fee and a tip (still 20 of 20). #154
+(`fix/merchant-whole-name-match`, DECISIONS.md 2026-11-24): a merchant matches
+only as a whole name. Text, photo and voice use a listed spelling only for
+that business and nothing more, so a longer business that starts with a listed
+name is shown as named, warned "not in lookup" and saved with no merchant.
+`merchants.aliases` (hand-seeded, whole names) now reach the `Merchants:` line
+as `Name (also written: A; B)`, and Confirm, the "not in lookup" warning and
+the frequent-merchant hint accept the name or one alias. No migration. Still
+20 of 20 goldens: `two-stores` and `expense-and-income` were extended, judged
+by a new `merchantIs` expectation.
 
 Duplicate warning (Phase 3.5 PR 1; DECISIONS.md 2026-10-29): every saved
 card (new message, `/pending`, Fix date, Edit) gets at most one `!` line
@@ -428,7 +437,8 @@ voice notes (a few rows qualified on 2026-10-29). It reads only a message's
 sole saved row, and only if that row is event 0; it asks for every business
 the media names and stores one only when exactly one is named (at most 100
 characters), counting the rest as skipped. No extraction prompt or golden
-change. Aliases ("MK" for Maple Kiosk) are not handled yet.
+change. Aliases are whole names seeded by hand and linked on Confirm since
+#154; link-on-add and the media backfill still match the name only.
 
 Migration 0011 is applied to production. Owner/CoS actions, in order: merge
 the PR (it auto-deploys code that reads the column), then from `lambda/`:
@@ -957,8 +967,9 @@ infra change.
 
 ## Open questions
 
-- Whether `merchants.aliases` is seeded by hand or learned from extractions
-  over time.
+- ~~Whether `merchants.aliases` is seeded by hand or learned from extractions
+  over time.~~ Answered 2026-11-24 (#154): by hand, whole names only
+  (DECISIONS.md 2026-11-24).
 - ~~Was anything spent or earned from 2026-08-13 to 2026-08-16, between the
   Notion import and the bot going live?~~ Answered 2026-11-07: August 2026
   is complete. SEMANTIC_LAYER.md still marks it partial until updated.

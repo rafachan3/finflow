@@ -190,3 +190,37 @@ describe("merchant commands", () => {
     expect(gemini.calls).toEqual([]);
   });
 });
+
+describe("a merchant is its whole name or one whole alias", () => {
+  it("a business whose name starts with a listed merchant is shown as named, warned about, and saved with no merchant", async () => {
+    gemini.extract = golden("two-stores").recorded;
+    await chat.text("3 at Dollar Corner and 5 at Acme Mart Pharmacy");
+
+    const pharmacy = chat.replies()[1];
+    expect(pharmacy.text).toContain("Merchant: Acme Mart Pharmacy");
+    expect(pharmacy.text).toContain('merchant "Acme Mart Pharmacy" is not in lookup; will save without merchant');
+    await chat.tap(pharmacy, "Confirm");
+    expect(await ledger.transactions()).toMatchObject([{ amount: "5.00", merchant: null }]);
+  });
+
+  it("a purchase named by an alias, read back with the listed spelling, links that merchant", async () => {
+    gemini.extract = golden("expense-and-income").recorded;
+    await chat.text("groceries at Acme Mart Wholesale 40, and got paid 200 salary");
+
+    const groceries = chat.replies()[0];
+    expect(groceries.text).toContain("Merchant: Acme Mart");
+    expect(groceries.text).not.toContain("not in lookup");
+    await chat.tap(groceries, "Confirm");
+    expect(await ledger.transactions()).toMatchObject([{ amount: "40.00", merchant: "Acme Mart" }]);
+  });
+
+  it("an alias is offered to Gemini as another spelling, and a purchase read back with the alias links its merchant", async () => {
+    geminiReadsMerchant("example.ca");
+    await chat.text("14 lunch from example.ca on Oct 25");
+
+    expect(gemini.lastSystem).toContain("Example Online (also written: EXAMPLE MKTP; EXAMPLE.CA)");
+    expect(chat.last().text).not.toContain("not in lookup");
+    await chat.tap(chat.last(), "Confirm");
+    expect(await ledger.transactions()).toMatchObject([{ merchant: "Example Online" }]);
+  });
+});
