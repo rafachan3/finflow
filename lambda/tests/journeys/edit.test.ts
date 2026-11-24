@@ -136,13 +136,48 @@ describe("correcting a card with Edit", () => {
     expect(labels(chat.last())).toEqual(["Confirm", "Discard", "Fix date", "Edit"]);
   });
 
-  it("a voice note sent while waiting for a correction is not read", async () => {
+  it("a voice note sent while waiting for a correction is the correction", async () => {
     const card = await lunchCard();
     await chat.tap(card, "Edit");
+    gemini.transcript = "it was fourteen fifty";
+    gemini.patch = golden("edit-amount").recorded;
     const callsBefore = gemini.calls.length;
     await chat.voice();
 
-    expect(gemini.calls).toHaveLength(callsBefore);
+    expect(gemini.calls.slice(callsBefore).map((c) => c.kind)).toEqual(["transcribe", "patch"]);
+    expect(gemini.lastUserText[1]).toBe("it was fourteen fifty");
+    const fixed = chat.last();
+    expect(fixed.text.split("\n")[0]).toBe("Expense · 2026-10-25 · CAD 14.50");
+    expect(await ledger.ingestions()).toMatchObject([{ source: "text", status: "pending" }]);
+
+    await chat.tap(fixed, "Confirm");
+    expect(await ledger.transactions()).toMatchObject([{ amount: "14.50" }]);
+  });
+
+  it("a voice note with nothing in it keeps the card waiting", async () => {
+    const card = await lunchCard();
+    await chat.tap(card, "Edit");
+    gemini.transcript = "  ";
+    const callsBefore = gemini.calls.length;
+    await chat.voice();
+
+    expect(gemini.calls.slice(callsBefore).map((c) => c.kind)).toEqual(["transcribe"]);
     expect(chat.last().text).toMatch(/^Still waiting for a correction/);
+    expect(labels(chat.last())).toEqual(["Keep as is", "Discard"]);
+    expect((await ledger.ingestions())[0].status).toBe("awaiting_edit");
+  });
+
+  it("a voice note that cannot be read keeps the card waiting for the next try", async () => {
+    const card = await lunchCard();
+    await chat.tap(card, "Edit");
+    await chat.voice();
+
+    expect(chat.last().text).toMatch(/^Couldn't read that voice note/);
+    expect(labels(chat.last())).toEqual(["Keep as is", "Discard"]);
+    expect((await ledger.ingestions())[0].status).toBe("awaiting_edit");
+
+    gemini.patch = golden("edit-amount").recorded;
+    await chat.text("it was 14.50");
+    expect(chat.last().text.split("\n")[0]).toBe("Expense · 2026-10-25 · CAD 14.50");
   });
 });

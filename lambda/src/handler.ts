@@ -52,7 +52,7 @@ import {
   type Extraction,
   type TaxonomySnapshot,
 } from "./extraction.js";
-import { extractFromPhoto, extractFromText, extractFromVoice, patchExtraction } from "./gemini.js";
+import { extractFromPhoto, extractFromText, extractFromVoice, patchExtraction, transcribeVoice } from "./gemini.js";
 import {
   ALREADY_LINKED,
   linkedSummary,
@@ -311,6 +311,37 @@ async function handleAwaitingEdit(
     );
     return ok("ok");
   }
+}
+
+/** A voice note sent while a card waits for a correction: its transcript is the correction, applied as typed text is. */
+async function handleAwaitingVoiceEdit(
+  message: NonNullable<TelegramUpdate["message"]>,
+  config: Awaited<ReturnType<typeof getConfig>>,
+  awaiting: { id: string; extraction: Extraction },
+): Promise<APIGatewayProxyResultV2> {
+  let text: string;
+  try {
+    const file = await downloadTelegramFile(config.botToken, voiceFileId(message.voice));
+    text = await transcribeVoice({
+      apiKey: config.geminiApiKey,
+      audio: file.bytes,
+      mimeType: file.mimeType,
+    });
+  } catch (err) {
+    console.error("voice correction transcribe error", err);
+    await sendMessage(
+      config.botToken,
+      message.chat.id,
+      failureReply(err, "Couldn't read that voice note. Try again."),
+      waitingKeyboard(awaiting.id),
+    );
+    return ok("ok");
+  }
+  if (!text) {
+    await sendMessage(config.botToken, message.chat.id, WAITING_EDIT, waitingKeyboard(awaiting.id));
+    return ok("ok");
+  }
+  return await handleAwaitingEdit(text, message.chat.id, config, awaiting);
 }
 
 /** A saved row's card: the preview, any implausible-date or likely-duplicate warning, any merchant hint, and the buttons its checks allow. */
@@ -664,6 +695,9 @@ async function handleMessage(
       awaiting.status === "awaiting_edit" ? WAITING_EDIT : WAITING_DATE;
     const text = message.text?.trim();
     if (!text) {
+      if (awaiting.status === "awaiting_edit" && message.voice) {
+        return await handleAwaitingVoiceEdit(message, config, awaiting);
+      }
       await sendMessage(
         config.botToken,
         message.chat.id,

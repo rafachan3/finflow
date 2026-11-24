@@ -143,7 +143,7 @@ export function takeTelegramRejections(): string[] {
   return telegram.rejected.splice(0);
 }
 
-type GeminiCall = { model: string; kind: "extract" | "reask" | "patch" };
+type GeminiCall = { model: string; kind: "extract" | "reask" | "patch" | "transcribe" };
 
 /** Scripted Gemini: set `extract` / `patch` per journey. */
 export const gemini = {
@@ -152,6 +152,8 @@ export const gemini = {
   delays: [] as number[],
   extract: undefined as unknown,
   patch: undefined as unknown,
+  /** What a voice note says when it is read as a correction. */
+  transcript: undefined as string | undefined,
   /** The answer to the second call for an expense that came back with no items; the extract answer again when unset. */
   reask: undefined as unknown,
   /** Every re-ask is refused with a 503, so the first answer is the only one. */
@@ -251,7 +253,7 @@ const server = setupServer(
       const body = (await request.json()) as GeminiRequest;
       const props = body.generationConfig.responseSchema.properties;
       const system = body.systemInstruction.parts[0].text;
-      const kind = !props.events ? "patch" : system.startsWith("You complete Canadian") ? "reask" : "extract";
+      const kind = props.transcript ? "transcribe" : !props.events ? "patch" : system.startsWith("You complete Canadian") ? "reask" : "extract";
       gemini.calls.push({ model, kind });
       if (kind === "reask" && gemini.reaskFails) {
         return HttpResponse.json({ error: { message: "overloaded" } }, { status: 503 });
@@ -261,7 +263,12 @@ const server = setupServer(
       if (gemini.overloaded.has(model)) {
         return HttpResponse.json({ error: { message: "overloaded" } }, { status: 503 });
       }
-      const data = kind === "patch" ? gemini.patch : kind === "reask" ? (gemini.reask ?? gemini.extract) : gemini.extract;
+      const data =
+        kind === "transcribe"
+          ? gemini.transcript === undefined
+            ? undefined
+            : { transcript: gemini.transcript }
+          : kind === "patch" ? gemini.patch : kind === "reask" ? (gemini.reask ?? gemini.extract) : gemini.extract;
       if (data === undefined) {
         return HttpResponse.json(
           { error: { message: `no scripted ${kind} reply` } },
@@ -317,6 +324,7 @@ export function useJourneys(): void {
     };
     gemini.extract = undefined;
     gemini.patch = undefined;
+    gemini.transcript = undefined;
     gemini.reask = undefined;
     gemini.reaskFails = false;
     gemini.overloaded = new Set();

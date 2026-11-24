@@ -773,3 +773,21 @@ export async function extractFromVoice(args: {
     ],
   });
 }
+
+const TRANSCRIBE_SYSTEM =
+  "Transcribe this voice note word for word, in the language spoken. Return only what is said; if nothing is said, return an empty string.";
+
+/** A voice note read as the text of an Edit correction. */
+export async function transcribeVoice(args: {
+  apiKey: string;
+  audio: Buffer;
+  mimeType: string;
+}): Promise<string> {
+  const { data } = await generateJson({
+    apiKey: args.apiKey,
+    system: TRANSCRIBE_SYSTEM,
+    schema: { type: "OBJECT", properties: { transcript: { type: "STRING" } }, required: ["transcript"] },
+    userParts: [{ inlineData: { mimeType: args.mimeType, data: args.audio.toString("base64") } }],
+  });
+  return String((data as { transcript?: unknown }).transcript ?? "").trim();
+}
