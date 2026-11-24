@@ -246,7 +246,8 @@ on `main`, then POSTs a wrong webhook secret to the deployed Function URL
 (read with `get-function-url-config`, never committed) and fails unless it
 gets 401. That smoke step has no inventory row: it is not a test file.
 A last deploy step reads the bot token from SSM, masks it, and runs
-`npm run telegram:commands` to set the command menu. It is not a test either;
+`npm run telegram:commands` (up to 3 attempts, 10s then 30s apart) to set the
+command menu. It is not a test either;
 its payload is the unit-tested `commandMenu()`. A failure there turns the run
 red but leaves the deployed code in place.
 
