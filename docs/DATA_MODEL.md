@@ -14,7 +14,7 @@ lives on `transaction_items` **lines**. A three-level taxonomy — 11 categories
 [TAXONOMY.md](TAXONOMY.md)) — classifies each line, along with a per-line
 needs/wants `bucket`. Every expense has at least one line; a receipt with
 line-item detail has many, and lines from one receipt may belong to different
-categories. Merchants, venues, funding sources, income sources, and accounts
+categories. Merchants, venues, channels, funding sources, income sources, and accounts
 are lookup tables; tags stay for free-form *context* only (Travel, Social,
 Avoidable…), on the header when they cover the whole transaction and on a
 line when the owner gives them for that line only. Every Telegram message lands in `ingestions` before it can
@@ -36,6 +36,7 @@ erDiagram
   item_types |o--o{ transaction_items : "details"
   merchants |o--o{ transactions : "sold by"
   venues |o--o{ transactions : "bought at"
+  channels |o--o{ transactions : "ordered through"
   income_sources |o--o{ transactions : "earned from"
   accounts |o--o{ transactions : "transferred to"
   accounts |o--o{ transactions : "transferred from"
@@ -62,7 +63,8 @@ erDiagram
     char3 currency "CAD"
     text description
     integer merchant_id FK "nullable"
-    smallint venue_id FK "nullable"
+    smallint venue_id FK "nullable; the kind of place"
+    smallint channel_id FK "nullable; null = bought directly"
     smallint income_source_id FK "required if income"
     smallint from_account_id FK "transfer only; null = chequing"
     smallint to_account_id FK "null = chequing"
@@ -186,6 +188,11 @@ erDiagram
     text name UK
   }
 
+  channels {
+    smallint id PK
+    text name UK
+  }
+
   income_sources {
     smallint id PK
     text name UK
@@ -253,9 +260,18 @@ create table merchants (
   hidden_at timestamptz                           -- set: kept on past rows, not offered or linked
 );
 
--- Venue / channel of purchase (Supermarket, Coffee Shop, Pharmacy, ...).
--- Single-valued per transaction, unlike tags.
+-- Venue: the kind of place that sold it (Supermarket, Coffee Shop, Pharmacy,
+-- ...), the same however it was ordered. Single-valued per transaction, unlike tags.
 create table venues (
+  id   smallint generated always as identity primary key,
+  name text not null unique
+);
+
+-- Channel (migration 0025): the app or service the purchase went through
+-- (DoorDash, Uber Eats, Instacart, Too Good To Go). A transaction with none
+-- was bought directly, including through the seller's own app or site.
+-- 0025 moved the venues that were channels here (TAXONOMY.md).
+create table channels (
   id   smallint generated always as identity primary key,
   name text not null unique
 );
@@ -313,6 +329,7 @@ create table transactions (
   description       text not null,
   merchant_id       integer  references merchants(id),
   venue_id          smallint references venues(id),
+  channel_id        smallint references channels(id),  -- migration 0025; null = bought directly
   income_source_id  smallint references income_sources(id),
   from_account_id   smallint references accounts(id),  -- null = chequing
   to_account_id     smallint references accounts(id),  -- null = chequing
@@ -586,8 +603,8 @@ tracked file). Migrations 0003 and 0013 create them.
 The repo is public and the seed data splits accordingly:
 
 - **Tracked seed migration** — everything generic and fork-ready: categories,
-  subcategories (with `default_bucket` hints), item types, venues, context
-  tags, and the `'self'` funding source. This is the template a fork starts
+  subcategories (with `default_bucket` hints), item types, venues, channels,
+  context tags, and the `'self'` funding source. This is the template a fork starts
   from; [TAXONOMY.md](TAXONOMY.md) is its contract.
 - **Untracked personal overlay** — `supabase/seed.personal.sql`, gitignored,
   applied once by hand (`psql -f`). Holds the owner-specific lookup values:
@@ -615,6 +632,7 @@ amount:
   "description": "McDonald's lunch",
   "merchant": "McDonald's",
   "venue": "Fast Food",
+  "channel": null,
   "tags": ["Social"],
   "funded_by": "self",
   "is_recurring": false,

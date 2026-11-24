@@ -71,11 +71,12 @@ information reasonably supports one.
 
 ## Food and drink
 
-The subcategory describes **how or through what channel** the food or drink
-was obtained. The item type describes **what the item actually is**. Never
+The subcategory describes **how** the food or drink was obtained (counter,
+table, delivery); the app it went through is the transaction's channel, not
+the subcategory. The item type describes **what the item actually is**. Never
 let one override the other.
 
-### Subcategories (channel)
+### Subcategories (how)
 
 - **Groceries** — food or beverages purchased as *retail goods* rather than
   through a food-service transaction. Not limited to food prepared at home;
@@ -132,6 +133,27 @@ was bought. Both questions stay independently answerable.
 Oral Care · Body Care · Medication · Medical Device · Equipment · Membership
 
 Kept deliberately restrained; this is not a medical ontology.
+
+## Venue and channel
+
+Two separate attributes of the whole transaction, both optional:
+
+- **Venue** — the kind of place that sold it: Supermarket · Dépanneur ·
+  Coffee Shop · Fast Food · Pharmacy. The same meal from the same restaurant
+  has the same venue however it was ordered. A place that is none of these
+  (a dollar, discount, hardware, department, online or warehouse store, a
+  rideshare) has no venue; never the nearest one.
+- **Channel** — the app or service the purchase went through: DoorDash ·
+  Uber Eats · Instacart · Too Good To Go. Empty means bought directly,
+  including through the restaurant's or store's own app or site. A channel
+  is never a venue, and an app not listed leaves the channel empty.
+
+The subcategory still says Delivery vs Takeout / Quick Service as above.
+Example: a meal from Maple Burger ordered at the counter is venue Fast Food,
+no channel, Takeout / Quick Service; delivered by DoorDash it is venue Fast
+Food, channel DoorDash, Delivery. Migration 0025 moved the venues that were
+channels (Instacart, Too Good To Go) to channels; their rows keep the
+channel and have no venue until the owner sets one.
 
 ## Classification rules
 
