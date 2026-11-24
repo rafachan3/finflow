@@ -97,6 +97,9 @@ EXPECTED = {
         "Merchants": ["Merchant", *LABEL_COLUMNS],
         "What you bought at each merchant": ["Merchant", "Subcategory", "Per month", "Share"],
         "${merchant_r}": ["month", "Spent"],
+        "Channels": ["Channel", *LABEL_COLUMNS],
+        "What you bought through each channel": ["Channel", "Subcategory", "Per month", "Share"],
+        "${channel_r}": ["month", "Spent"],
     },
     "finflow-income": {
         "Last full month": ["Income", "Mean, last 3 full months", "Financial future", "Set aside",
