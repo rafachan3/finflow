@@ -3700,7 +3700,11 @@ Too Good To Go). A delivery order needs both answers.
   nothing told the model that an Instacart order of groceries is still
   Groceries: delivered groceries stay Groceries, prepared food brought to
   the door is Delivery, food picked up through an app is classified as at
-  that counter. The needs/wants accuracy check names the channel in its
+  that counter; an order through a delivery app is Delivery unless the
+  owner says it was picked up. Flash-Lite left the venue null for a burger
+  place and a sandwich shop once the apps were gone, so the venue rule now
+  names a quick-service restaurant as Fast Food however the food was
+  ordered. The needs/wants accuracy check names the channel in its
   messages (`via Instacart`), as it named the venue before.
 - **Goldens stayed at 20.** `same-place-lines` became a two-dish order from
   Maple Burger on DoorDash (venue Fast Food, channel DoorDash, Delivery);

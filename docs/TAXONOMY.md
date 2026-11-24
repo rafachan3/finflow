@@ -139,8 +139,9 @@ Kept deliberately restrained; this is not a medical ontology.
 Two separate attributes of the whole transaction, both optional:
 
 - **Venue** — the kind of place that sold it: Supermarket · Dépanneur ·
-  Coffee Shop · Fast Food · Pharmacy. The same meal from the same restaurant
-  has the same venue however it was ordered. A place that is none of these
+  Coffee Shop · Fast Food · Pharmacy. A quick-service restaurant (burgers,
+  sandwiches, poutine, pizza by the slice) is Fast Food. The same meal from
+  the same restaurant has the same venue however it was ordered. A place that is none of these
   (a dollar, discount, hardware, department, online or warehouse store, a
   rideshare) has no venue; never the nearest one.
 - **Channel** — the app or service the purchase went through: DoorDash ·
@@ -184,7 +185,9 @@ channel and have no venue until the owner sets one.
    softener or dryer sheets are Laundry Supply.
 9. The **channel never decides the subcategory**. Groceries delivered by a
    grocery delivery service (Instacart) stay Groceries; prepared food
-   brought to the door is Delivery, through an app or not; food picked up
+   brought to the door is Delivery, through an app or not, and an order
+   through a delivery app is delivered unless the owner says it was
+   picked up; food picked up
    through an app (Too Good To Go) is classified as if bought at that
    counter: a bakery or café bag is Takeout / Quick Service, a supermarket
    bag of retail goods is Groceries.

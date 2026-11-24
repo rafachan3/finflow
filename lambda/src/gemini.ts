@@ -94,12 +94,12 @@ const LINE_AMOUNTS =
 // The venue list is short, so Gemini picked the nearest one for places that
 // are none of them (a discount-store receipt became Dépanneur).
 const VENUE =
-  "venue is a name from the Venues list only when the place clearly is that kind of place (a pharmacy or drugstore is Pharmacy, a grocery store is Supermarket). A dollar or discount store, hardware store, department store, online shop, rideshare or warehouse store is none of them: return null. Never pick the nearest venue; when unsure, return null.";
+  "venue is a name from the Venues list only when the place clearly is that kind of place (a pharmacy or drugstore is Pharmacy, a grocery store is Supermarket). A quick-service restaurant (burgers, sandwiches, poutine, pizza by the slice, fried chicken) is Fast Food, whether the food was eaten there, taken out or delivered. A dollar or discount store, hardware store, department store, online shop, rideshare or warehouse store is none of them: return null. Never pick the nearest venue; when unsure, return null.";
 
 // Venue is the kind of place; the app an order went through is its own field
 // (#163), so a delivered meal and a counter meal get the same venue.
 const CHANNEL =
-  "The same meal from the same restaurant has the same venue whether it was ordered at the counter or through an app. channel is a name from the Channels list when the purchase went through that app or service (a delivery or pickup app, a grocery delivery service). A channel is never the venue, and the business that sold it stays the merchant. When it was ordered directly, including through the restaurant's or store's own app or site, or through an app not listed: return null. The channel never decides the subcategory: groceries delivered by a grocery delivery service stay Groceries, prepared food brought to the door is Delivery, and food picked up through an app is classified as if bought at that counter.";
+  "The same meal from the same restaurant has the same venue whether it was ordered at the counter or through an app. channel is a name from the Channels list when the purchase went through that app or service (a delivery or pickup app, a grocery delivery service). A channel is never the venue, and the business that sold it stays the merchant. When it was ordered directly, including through the restaurant's or store's own app or site, or through an app not listed: return null. The channel never decides the subcategory: groceries delivered by a grocery delivery service stay Groceries, prepared food ordered through a delivery app is Delivery unless the owner says it was picked up, and food picked up through an app is classified as if bought at that counter.";
 
 // The lighter model gave a laundromat washer cycle Laundry Supply (#89).
 // TAXONOMY.md classification rule 8.

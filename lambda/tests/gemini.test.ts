@@ -1302,6 +1302,7 @@ describe("multi-event extraction", () => {
     for (const system of await fourSystems()) {
       expect(system).toContain("venue is a name from the Venues list only when the place clearly is that kind of place");
       expect(system).toContain("(a pharmacy or drugstore is Pharmacy, a grocery store is Supermarket)");
+      expect(system).toContain("A quick-service restaurant (burgers, sandwiches, poutine, pizza by the slice, fried chicken) is Fast Food");
       expect(system).toContain(
         "A dollar or discount store, hardware store, department store, online shop, rideshare or warehouse store is none of them: return null",
       );
@@ -1316,6 +1317,7 @@ describe("multi-event extraction", () => {
       expect(system).toContain("A channel is never the venue");
       expect(system).toContain("ordered directly, including through the restaurant's or store's own app or site, or through an app not listed: return null");
       expect(system).toContain("The channel never decides the subcategory: groceries delivered by a grocery delivery service stay Groceries");
+      expect(system).toContain("prepared food ordered through a delivery app is Delivery unless the owner says it was picked up");
       expect(system).toContain("food picked up through an app is classified as if bought at that counter");
       expect(system).toContain("Channels: DoorDash");
     }
