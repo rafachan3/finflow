@@ -700,6 +700,45 @@ describe("merchants", () => {
     expect(await count("merchants")).toBe(2);
   });
 
+  it("will not add a spelling that is another merchant's alias, and names that merchant", async () => {
+    expect(await db.addMerchant("acme  mart WHOLESALE")).toMatchObject({
+      exists: "Acme Mart",
+      alias: "acme  mart WHOLESALE",
+      linked: 0,
+    });
+    expect(await db.addMerchant("Acme Mart")).not.toHaveProperty("alias");
+    expect(await count("merchants")).toBe(2);
+  });
+
+  it("a spelling two merchants share as an alias resolves to the merchant with that name, else the lowest id, and adds nothing", async () => {
+    await sql(`insert into merchants (name, aliases) values ('Maple Kiosk', '{"MK"}'), ('Oak Stand', '{"MK"}'), ('MK', '{}')`);
+    expect(await db.addMerchant("mk")).toMatchObject({ exists: "MK" });
+    await sql("delete from merchants where name = 'MK'");
+    expect(await db.addMerchant("mk")).toMatchObject({ exists: "Maple Kiosk", alias: "mk" });
+    expect(await count("merchants")).toBe(4);
+  });
+
+  it("adding a hidden merchant relinks rows named by its name or any alias, never a longer name", async () => {
+    await sql("update merchants set hidden_at = now() where name = 'Acme Mart'");
+    const [id] = await save(906, expense({ merchant: "ACME MART WHOLESALE" }));
+    await db.confirmIngestion(id);
+    await imported("Acme  Mart wholesale");
+    await imported("Acme Mart Wholesale Annex");
+    expect(await db.addMerchant("Acme Mart")).toMatchObject({ added: "Acme Mart", unhid: true, linked: 2 });
+    expect(await sql("select description from transactions where merchant_id is null")).toEqual([
+      { description: "Acme Mart Wholesale Annex" },
+    ]);
+  });
+
+  it("a blank alias names nothing, so adding the merchant links no blank row", async () => {
+    await sql(`insert into merchants (name, aliases) values ('Maple Kiosk', array['  ', ''])`);
+    await imported("   ");
+    const [id] = await save(907, expense({ merchant: " ", description: "x" }));
+    await db.confirmIngestion(id);
+    expect(await db.addMerchant("Maple Kiosk")).toMatchObject({ exists: "Maple Kiosk", linked: 0 });
+    expect(await sql("select count(*)::int n from transactions where merchant_id is null")).toEqual([{ n: 2 }]);
+  });
+
   it("deletes a merchant that no transaction uses, whatever the case", async () => {
     await db.addMerchant("Maple Kiosk");
     expect(await db.deleteMerchant("maple kiosk")).toEqual({ deleted: "Maple Kiosk" });

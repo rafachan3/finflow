@@ -3656,6 +3656,20 @@ one. Confirm was already exact; the rewrite happened before it.
   Confirm; learning aliases from confirmed extractions; a new golden file
   (the cap).
 
+## 2026-11-24: /addmerchant matches by name or alias, like Confirm (#179)
+
+- **One business, one row.** `/addmerchant` finds an existing merchant by the
+  Confirm rule (whole name or whole alias, by the merchant key). A spelling that
+  is only another merchant's alias adds nothing and replies `X is already an
+  alias of Y.`; if Y is hidden it is unhidden. Link-on-add and unhide link every
+  row whose key matches the name or an alias. Where two merchants share a
+  spelling, the one named so wins, then a visible one, then the lowest `id`.
+- **No alias is ever added by a command**, so "refuse a shared alias when it is
+  added" has no code path to guard; aliases stay hand-seeded SQL.
+- **Ruled out:** a unique-alias constraint (a row-spanning array rule needs a
+  trigger and a migration, not added here); aliasing in the media backfill and
+  the mention review (still name-only).
+
 ## 2026-11-24: Venue is the kind of place; the app is a separate channel (#163)
 
 Owner decision. `venues` answered two questions at once: what kind of

@@ -73,13 +73,19 @@ export function cleanMerchantName(raw: string): { name: string } | { error: stri
 }
 
 export function addReply(
-  result: { added: string; unhid: boolean; linked: number } | { exists: string; linked: number },
+  result:
+    | { added: string; unhid: boolean; linked: number; alias?: string }
+    | { exists: string; linked: number; alias?: string },
 ): string {
   const tx = result.linked === 1 ? "transaction that names" : "transactions that name";
   const linked = result.linked > 0 ? ` Linked ${result.linked} past ${tx} it exactly.` : "";
-  if ("exists" in result) return `Already a merchant: ${result.exists}.${linked}`;
+  if ("exists" in result) {
+    const what = result.alias ? `${result.alias} is already an alias of` : "Already a merchant:";
+    return `${what} ${result.exists}.${linked}`;
+  }
   const verb = result.unhid ? "Unhid" : "Added";
-  return `${verb} merchant: ${result.added}.${linked} The next message will use it.`;
+  const via = result.alias ? ` (${result.alias} is its alias)` : "";
+  return `${verb} merchant: ${result.added}${via}.${linked} The next message will use it.`;
 }
 
 export function deleteReply(

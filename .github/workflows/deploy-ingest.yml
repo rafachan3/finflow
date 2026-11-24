@@ -71,7 +71,8 @@ jobs:
           test "$code" = 401
       # Last on purpose. The new code is already live, so a failure here turns
       # the run red without undoing the deploy, and no continue-on-error hides
-      # it. setMyCommands is idempotent: re-run the job to retry.
+      # it. setMyCommands is idempotent, so a transient network error (runner to
+      # api.telegram.org timed out once) is retried 3 times with 10s, 30s backoff.
       - name: Register bot command menu
         run: |
           token=$(aws ssm get-parameter \
@@ -79,4 +80,9 @@ jobs:
             --with-decryption \
             --query Parameter.Value --output text)
           echo "::add-mask::$token"
-          TELEGRAM_BOT_TOKEN="$token" npm run telegram:commands
+          export TELEGRAM_BOT_TOKEN="$token"
+          for delay in 10 30 0; do
+            npm run telegram:commands && exit 0
+            [ "$delay" -gt 0 ] && { echo "retrying in ${delay}s"; sleep "$delay"; }
+          done
+          exit 1

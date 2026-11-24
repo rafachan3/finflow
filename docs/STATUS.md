@@ -438,7 +438,14 @@ sole saved row, and only if that row is event 0; it asks for every business
 the media names and stores one only when exactly one is named (at most 100
 characters), counting the rest as skipped. No extraction prompt or golden
 change. Aliases are whole names seeded by hand and linked on Confirm since
-#154; link-on-add and the media backfill still match the name only.
+#154. Since #179, `/addmerchant` matches by the same whole name or whole alias
+as Confirm: a spelling that is another merchant's alias adds nothing and
+replies `X is already an alias of Y.`; link-on-add and an unhide link every
+row named by the name or an alias. The media backfill and the mention review
+still match the name only. There is no command that adds an alias, so no
+shared alias can enter through the bot; a hand-seeded shared one still
+resolves by name, then lowest `id`, and only a trigger could forbid it in the
+table (not added: no migration here).
 
 Venue and channel (#163 PR 1, DECISIONS.md 2026-11-24, branch
 `feat/purchase-channel`, not merged): venue is always the kind of place; a

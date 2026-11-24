@@ -61,6 +61,15 @@ describe("merchant command replies", () => {
     expect(addReply({ exists: "Acme Mart", linked: 4 })).toBe(
       "Already a merchant: Acme Mart. Linked 4 past transactions that name it exactly.",
     );
+    expect(addReply({ exists: "Acme Mart", alias: "ACME MART WHOLESALE", linked: 0 })).toBe(
+      "ACME MART WHOLESALE is already an alias of Acme Mart.",
+    );
+    expect(addReply({ exists: "Acme Mart", alias: "ACME MART WHOLESALE", linked: 2 })).toBe(
+      "ACME MART WHOLESALE is already an alias of Acme Mart. Linked 2 past transactions that name it exactly.",
+    );
+    expect(addReply({ added: "Acme Mart", alias: "ACME MART WHOLESALE", unhid: true, linked: 1 })).toBe(
+      "Unhid merchant: Acme Mart (ACME MART WHOLESALE is its alias). Linked 1 past transaction that names it exactly. The next message will use it.",
+    );
     expect(deleteReply({ deleted: "Maple Kiosk" }, "maple kiosk")).toBe("Deleted merchant: Maple Kiosk.");
     expect(deleteReply({ missing: true }, "Nowhere")).toBe(
       "No merchant named Nowhere. Send /merchants for the list.",
