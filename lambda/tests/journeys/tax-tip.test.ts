@@ -124,6 +124,48 @@ describe("tax and tip on a receipt", () => {
     expect((await lineAmounts()).map((l) => l.amount)).toEqual(["6.21", "8.28", "16.55"]);
   });
 
+  it("a service fee is shared across the dishes with the tip, and a tip Edit keeps the fee", async () => {
+    const g = golden("same-place-lines");
+    gemini.extract = g.recorded;
+    await chat.text((g.input as { text: string }).text);
+    const card = chat.last();
+    expect(card.text.split("\n")[0]).toContain("CAD 29.30");
+    expect(card.text).toContain("✓ lines 21.31 + 7.99 = 29.30");
+    expect(card.text).not.toMatch(/service fee/i);
+
+    await chat.tap(card, "Edit");
+    const [order] = (g.recorded as { events: object[] }).events;
+    // The model keeps the card's date (today, defaulted) and replaces only the tip.
+    const today = card.text.split("\n")[0].split(" · ")[1];
+    gemini.patch = { ...order, date: today, tip: "5.00" };
+    await chat.text("the tip was 5");
+    expect(JSON.parse(gemini.lastUserText[0])).toMatchObject({ date: today, fees: ["3.30"], tip: "4.00" });
+
+    const fixed = chat.last();
+    expect(fixed.text.split("\n")[0]).toContain("CAD 30.30");
+    expect(fixed.text).toContain("✓ lines 22.04 + 8.26 = 30.30");
+    await chat.tap(fixed, "Confirm");
+    expect(await ledger.transactions()).toMatchObject([{ amount: "30.30", lines: 2 }]);
+    expect((await lineAmounts()).map((l) => l.amount)).toEqual(["8.26", "22.04"]);
+  });
+
+  it("a tip Edit that comes back with the fee twice keeps the total and shows an error card", async () => {
+    const g = golden("same-place-lines");
+    gemini.extract = g.recorded;
+    await chat.text((g.input as { text: string }).text);
+    const today = chat.last().text.split("\n")[0].split(" · ")[1];
+    await chat.tap(chat.last(), "Edit");
+    const [order] = (g.recorded as { events: object[] }).events;
+    gemini.patch = { ...order, date: today, tip: "5.00", fees: ["3.30", "3.30"] };
+    await chat.text("the tip was 5");
+
+    const card = chat.last().text;
+    expect(card.split("\n")[0]).toContain("CAD 29.30");
+    expect(card).toContain("✗ lines sum 33.60 != header 29.30");
+    expect(labels(chat.last())).not.toContain("Confirm");
+    expect(await ledger.transactions()).toEqual([]);
+  });
+
   it("a receipt whose prices, taxes and tip do not add up to its total cannot be confirmed", async () => {
     gemini.extract = { events: [{ ...quebec, amount: "25.52" }] };
     await chat.photo();

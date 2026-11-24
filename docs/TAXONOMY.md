@@ -90,7 +90,8 @@ let one override the other.
 - **Delivery** — prepared food or beverages delivered to the customer, via a
   platform or the establishment itself. The delivery method determines the
   subcategory even when the establishment would otherwise be a restaurant.
-  Delivery fees tied to a food order belong to the same transaction.
+  A delivery fee, service fee or service charge is never a line of its own:
+  like the tip, it is shared across all of the order's items by price.
 - **Bars and nightlife** — purchases whose context is primarily drinking,
   nightlife, or going out socially rather than ordinary dining. Includes food
   ordered at a drinking-focused venue and cover charges.

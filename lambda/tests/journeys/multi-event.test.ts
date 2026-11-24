@@ -48,19 +48,20 @@ describe("several purchases in one message", () => {
     gemini.extract = {
       events: [{ ...event, items: [{ ...event.items[0], bucket: "needs" }, event.items[1]] }],
     };
-    await chat.text("milk 4 and bread 3 at Fresh Market");
+    await chat.text("pad thai 16.00 and spring rolls 6.00 from Lotus Kitchen");
 
     expect(chat.replies()).toHaveLength(1);
     const card = chat.last();
     expect(card.text).not.toMatch(/of \d\)/);
-    expect(card.text).toContain("• Milk — 4.00");
-    expect(card.text).toContain("• Bread — 3.00");
+    // The recording's service fee and tip are shared into the two lines.
+    expect(card.text).toContain("• Pad thai — 21.31");
+    expect(card.text).toContain("• Spring rolls — 7.99");
 
     await chat.tap(card, "Confirm");
-    expect(await ledger.transactions()).toMatchObject([{ amount: "7.00", lines: 2 }]);
+    expect(await ledger.transactions()).toMatchObject([{ amount: "29.30", lines: 2 }]);
     expect(await ledger.items()).toMatchObject([
-      { description: "Bread", bucket: "wants" },
-      { description: "Milk", bucket: "needs" },
+      { description: "Pad thai", bucket: "needs" },
+      { description: "Spring rolls", bucket: "wants" },
     ]);
   });
 

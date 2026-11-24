@@ -65,6 +65,8 @@ export type Extraction = {
   tip?: Money | null;
   /** Whole-order discounts as positive amounts (coupons, total-bill discounts); absent before 2026-11-08. */
   discounts?: Money[];
+  /** Service fees, delivery fees and service charges as printed or stated, shared like the tip; absent before 2026-11-23. */
+  fees?: Money[];
   /** The header Gemini gave when it held another funder's lines and code replaced it (#96). */
   stated_amount?: Money;
   items: ExtractionItem[];
@@ -413,9 +415,10 @@ export function validateExtraction(
     for (const extra of [
       ...(extraction.taxes ?? []),
       ...(extraction.discounts ?? []),
+      ...(extraction.fees ?? []),
       extraction.tip ?? "0.00",
     ]) {
-      if (parseCents(extra) === null) errors.push(`tax, tip and discount must be two-decimal: ${extra}`);
+      if (parseCents(extra) === null) errors.push(`tax, fee, tip and discount must be two-decimal: ${extra}`);
     }
     if (extraction.items.some((i) => i.from_total)) {
       warnings.push(

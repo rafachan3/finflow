@@ -155,7 +155,22 @@ describe("lineAmounts", () => {
     expect(lineAmounts([line], [], null, ["3.00"])).toEqual(["0.00"]);
   });
 
-  it("always sums to prices - discounts + taxes + tip, takes each line's discount by price, and never below zero", () => {
+  it("shares a service fee across the lines by price, with the tip, so the fee is never a line", () => {
+    // Synthetic delivery order: 16.00 and 6.00 of food, a 3.30 service fee and a 4.00 tip.
+    const thai: PricedLine[] = [
+      { price: "16.00", taxable: false },
+      { price: "6.00", taxable: false },
+    ];
+    expect(lineAmounts(thai, [], "4.00", [], ["3.30"])).toEqual(["21.31", "7.99"]);
+    // A delivery fee and a service fee are two entries, both shared.
+    expect(lineAmounts(thai, [], null, [], ["2.20", "1.10"])).toEqual(["18.40", "6.90"]);
+  });
+
+  it("returns null when a fee is not two-decimal", () => {
+    expect(lineAmounts([{ price: "3.00", taxable: false }], [], null, [], ["1.5"])).toBeNull();
+  });
+
+  it("always sums to prices - discounts + taxes + fees + tip, takes each line's discount by price, and never below zero", () => {
     const next = rng(118);
     const bad: unknown[] = [];
     for (let run = 0; run < 1000; run++) {
@@ -170,15 +185,17 @@ describe("lineAmounts", () => {
       );
       const taxes = Array.from({ length: Math.floor(next() * 3) }, () => money(Math.floor(next() * 2000)));
       const tip = next() < 0.5 ? null : money(Math.floor(next() * 3000));
-      const out = lineAmounts(lines, taxes, tip, discounts)!.map(cents);
+      const fees = Array.from({ length: Math.floor(next() * 3) }, () => money(Math.floor(next() * 1000)));
+      const out = lineAmounts(lines, taxes, tip, discounts, fees)!.map(cents);
       const off = sum(discounts.map(cents));
-      const exactSum = sum(out) === sum(prices) - off + sum(taxes.map(cents)) + (tip ? cents(tip) : 0);
+      const extra = sum(taxes.map(cents)) + sum(fees.map(cents)) + (tip ? cents(tip) : 0);
+      const exactSum = sum(out) === sum(prices) - off + extra;
       const negative = out.some((c) => c < 0);
       // With no tax or tip, each line's reduction is within a cent of discount * price / total.
       const bare = lineAmounts(lines, [], null, discounts)!.map(cents);
       const offShare =
         sum(prices) > 0 && bare.some((c, i) => Math.abs(prices[i] - c - (off * prices[i]) / sum(prices)) >= 1);
-      if (!exactSum || negative || offShare) bad.push({ lines, discounts, taxes, tip, out });
+      if (!exactSum || negative || offShare) bad.push({ lines, discounts, taxes, tip, fees, out });
     }
     expect(bad).toEqual([]);
   });
@@ -266,6 +283,47 @@ describe("editedTotal", () => {
     const dropped = { ...coupon, discounts: [], items: [{ ...coupon.items[0], amount: "13.35" }, { ...coupon.items[1], amount: "8.90" }] };
     expect(editedTotal({ ...coupon, amount: "22.25" }, { ...dropped, amount: "22.25" })).toBe("17.25");
     expect(editedTotal(dropped, coupon)).toBe("17.25");
+  });
+
+  it("follows the recomputed lines for a corrected fee or a tip correction that keeps the fee, and keeps the total when a fee is dropped", () => {
+    // The delivery order: 16.00 and 6.00, a 3.30 service fee, a 4.00 tip.
+    const thai = {
+      amount: "29.30",
+      taxes: [],
+      tip: "4.00",
+      fees: ["3.30"],
+      items: [
+        { price: "16.00", taxable: false, amount: "21.31" },
+        { price: "6.00", taxable: false, amount: "7.99" },
+      ],
+    };
+    // The tip was 5.00, the fee untouched: lineAmounts gives 22.04 and 8.26.
+    const tip = { ...thai, tip: "5.00", items: [{ ...thai.items[0], amount: "22.04" }, { ...thai.items[1], amount: "8.26" }] };
+    expect(editedTotal(tip, thai)).toBe("30.30");
+    // The fee was 2.20: lineAmounts gives 20.51 and 7.69.
+    const fee = { ...thai, fees: ["2.20"], items: [{ ...thai.items[0], amount: "20.51" }, { ...thai.items[1], amount: "7.69" }] };
+    expect(editedTotal(fee, thai)).toBe("28.20");
+    const dropped = { ...thai, fees: [], items: [{ ...thai.items[0], amount: "18.91" }, { ...thai.items[1], amount: "7.09" }] };
+    expect(editedTotal(dropped, thai)).toBe("29.30");
+  });
+
+  it("keeps the stored total when a tip Edit also changes the fees, so a fee added twice fails the line-sum check", () => {
+    const thai = {
+      amount: "29.30",
+      taxes: [],
+      tip: "4.00",
+      fees: ["3.30"],
+      items: [
+        { price: "16.00", taxable: false, amount: "21.31" },
+        { price: "6.00", taxable: false, amount: "7.99" },
+      ],
+    };
+    // The tip went to 5.00 and the model repeated the fee: the lines sum to 33.60.
+    const twice = { ...thai, tip: "5.00", fees: ["3.30", "3.30"], items: [{ ...thai.items[0], amount: "24.44" }, { ...thai.items[1], amount: "9.16" }] };
+    expect(editedTotal(twice, thai)).toBe("29.30");
+    // A fee changed along with a line's price is refused the same way.
+    const price = { ...thai, fees: ["2.20"], items: [{ ...thai.items[0], price: "17.00", amount: "21.59" }, { ...thai.items[1], amount: "7.61" }] };
+    expect(editedTotal(price, thai)).toBe("29.30");
   });
 
   it("keeps the stored total on a card stored before prices, whose lines already hold its tax and tip", () => {

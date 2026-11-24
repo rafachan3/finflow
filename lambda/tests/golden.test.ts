@@ -112,6 +112,34 @@ describe("mismatches", () => {
     ]);
   });
 
+  it("shares a recorded fee as the bot does, and reports a fee read into the tip or as a line", () => {
+    const thai = {
+      type: "expense",
+      amount: "29.30",
+      taxes: [],
+      fees: ["3.30"],
+      tip: "4.00",
+      items: [
+        { price: "16.00", taxable: false },
+        { price: "6.00", taxable: false },
+      ],
+    };
+    const g = { input: { kind: "text" }, recorded: { events: [thai] } } as unknown as Golden;
+    const want: ExpectedEvent = { type: "expense", lines: 2, amount: "29.30", amounts: ["21.31", "7.99"], fees: ["3.30"] };
+    expect(mismatches(recordedEvents(g), [want])).toEqual([]);
+    // The same line amounts either way: only the fees list tells them apart.
+    const inTip = { ...thai, fees: [], tip: "7.30" };
+    expect(mismatches(recordedEvents({ ...g, recorded: { events: [inTip] } }), [want])).toEqual([
+      "event 0: fees [] != [3.30]",
+    ]);
+    const asLine = { ...thai, fees: undefined, items: [...thai.items, { price: "3.30", taxable: false }] };
+    expect(mismatches(recordedEvents({ ...g, recorded: { events: [asLine] } }), [want])).toEqual([
+      "event 0: 3 lines != 2",
+      "event 0: line amounts 18.53 + 6.95 + 3.82 != 21.31 + 7.99",
+      "event 0: fees [] != [3.30]",
+    ]);
+  });
+
   it("judges an edit's total as patchExtraction keeps it: the recomputed lines unless the total changed", () => {
     const base = recordedEvents(golden("receipt-with-tip"))[0];
     const edit = (amount: string) =>
