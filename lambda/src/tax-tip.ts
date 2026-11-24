@@ -120,9 +120,10 @@ export type EditParts = {
  * An Edit's header. When the model left the total alone, the sum of the
  * recomputed lines replaces it only for a correction to the tip, a fee, a
  * whole-order discount or a line's price: the taxes and the number of lines
- * are unchanged, and no tip, fee or discount is removed. Then the model does
- * no arithmetic. Any other difference (a dropped tax, a lost line, tip, fee or
- * discount) keeps the stored total, and the line-sum check fails it
+ * are unchanged, no tip, fee or discount is removed, and the fees change only
+ * when nothing else does. Then the model does no arithmetic. Any other
+ * difference (a dropped tax, a lost line, tip, fee or discount, or a fee that
+ * changed along with the tip) keeps the stored total, and the line-sum check fails it
  * visibly. A total the model changed stands. A card stored before prices
  * keeps its total: its line amounts already hold the tax and tip, so a
  * recomputed sum would count a tip twice.
@@ -135,17 +136,21 @@ export function editedTotal(patched: EditParts, current: EditParts): Money {
   const off = (p: EditParts) => p.discounts ?? [];
   const fees = (p: EditParts) => p.fees ?? [];
   const prices = (p: EditParts) => JSON.stringify(p.items.map((i) => [i.price, i.taxable ?? false]));
+  const feeChanged = JSON.stringify(fees(patched)) !== JSON.stringify(fees(current));
+  const otherChanged =
+    tip(patched) !== tip(current) ||
+    prices(patched) !== prices(current) ||
+    JSON.stringify(off(patched)) !== JSON.stringify(off(current));
   const sameShape =
     JSON.stringify(patched.taxes ?? []) === JSON.stringify(current.taxes ?? []) &&
     patched.items.length === current.items.length &&
     (tip(patched) !== null || tip(current) === null) &&
     off(patched).length >= off(current).length &&
-    fees(patched).length >= fees(current).length;
-  const tipOrPrice =
-    tip(patched) !== tip(current) ||
-    prices(patched) !== prices(current) ||
-    JSON.stringify(off(patched)) !== JSON.stringify(off(current)) ||
-    JSON.stringify(fees(patched)) !== JSON.stringify(fees(current));
+    fees(patched).length >= fees(current).length &&
+    // A fee correction changes only the fees: a fee that moves with the tip,
+    // a price or a discount is the model adding one twice (#60).
+    !(feeChanged && otherChanged);
+  const tipOrPrice = feeChanged || otherChanged;
   if (!same || !priced || !sameShape || !tipOrPrice || cents.length === 0 || cents.includes(null)) {
     return patched.amount;
   }

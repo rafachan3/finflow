@@ -149,6 +149,23 @@ describe("tax and tip on a receipt", () => {
     expect((await lineAmounts()).map((l) => l.amount)).toEqual(["8.26", "22.04"]);
   });
 
+  it("a tip Edit that comes back with the fee twice keeps the total and shows an error card", async () => {
+    const g = golden("same-place-lines");
+    gemini.extract = g.recorded;
+    await chat.text((g.input as { text: string }).text);
+    const today = chat.last().text.split("\n")[0].split(" · ")[1];
+    await chat.tap(chat.last(), "Edit");
+    const [order] = (g.recorded as { events: object[] }).events;
+    gemini.patch = { ...order, date: today, tip: "5.00", fees: ["3.30", "3.30"] };
+    await chat.text("the tip was 5");
+
+    const card = chat.last().text;
+    expect(card.split("\n")[0]).toContain("CAD 29.30");
+    expect(card).toContain("✗ lines sum 33.60 != header 29.30");
+    expect(labels(chat.last())).not.toContain("Confirm");
+    expect(await ledger.transactions()).toEqual([]);
+  });
+
   it("a receipt whose prices, taxes and tip do not add up to its total cannot be confirmed", async () => {
     gemini.extract = { events: [{ ...quebec, amount: "25.52" }] };
     await chat.photo();

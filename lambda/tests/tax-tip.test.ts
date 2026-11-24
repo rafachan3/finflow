@@ -307,6 +307,25 @@ describe("editedTotal", () => {
     expect(editedTotal(dropped, thai)).toBe("29.30");
   });
 
+  it("keeps the stored total when a tip Edit also changes the fees, so a fee added twice fails the line-sum check", () => {
+    const thai = {
+      amount: "29.30",
+      taxes: [],
+      tip: "4.00",
+      fees: ["3.30"],
+      items: [
+        { price: "16.00", taxable: false, amount: "21.31" },
+        { price: "6.00", taxable: false, amount: "7.99" },
+      ],
+    };
+    // The tip went to 5.00 and the model repeated the fee: the lines sum to 33.60.
+    const twice = { ...thai, tip: "5.00", fees: ["3.30", "3.30"], items: [{ ...thai.items[0], amount: "24.44" }, { ...thai.items[1], amount: "9.16" }] };
+    expect(editedTotal(twice, thai)).toBe("29.30");
+    // A fee changed along with a line's price is refused the same way.
+    const price = { ...thai, fees: ["2.20"], items: [{ ...thai.items[0], price: "17.00", amount: "21.59" }, { ...thai.items[1], amount: "7.61" }] };
+    expect(editedTotal(price, thai)).toBe("29.30");
+  });
+
   it("keeps the stored total on a card stored before prices, whose lines already hold its tax and tip", () => {
     const old = { amount: "50.00", items: [{ amount: "50.00" }] };
     const patched = { amount: "50.00", taxes: [], tip: "8.00", items: [{ price: "50.00", taxable: false, amount: "58.00" }] };
