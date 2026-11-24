@@ -1308,6 +1308,16 @@ describe("multi-event extraction", () => {
     }
   });
 
+  it("tells text, photo, voice and Edit that a listed delivery app beats the restaurant's place type", async () => {
+    for (const system of await fourSystems()) {
+      expect(system).toContain(
+        "When a listed delivery app or other listed channel and a place type both fit, the venue is the channel",
+      );
+      expect(system).toContain("the restaurant stays the merchant and the food is Delivery");
+      expect(system).toContain("Fast Food is only an order at the counter");
+    }
+  });
+
   it("tells text, photo and voice to use a listed spelling only for that whole business, never for a longer name", async () => {
     for (const system of (await fourSystems()).slice(0, 3)) {
       expect(system).toContain("Use a listed spelling only when the business named is that listed merchant and nothing more");
