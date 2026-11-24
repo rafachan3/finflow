@@ -131,36 +131,43 @@ const NAMES_MERCHANT = (m: string, name: string) =>
  * archived media found (media_merchant); a history import has no ingestion, so
  * its whole description must be the name. The unique constraint is
  * case-sensitive, so a name matching in another case or apostrophe is matched here.
+ * A merchant is matched, and its rows linked, by its whole name or one whole alias,
+ * as Confirm does; a name that is only another merchant's alias adds nothing and
+ * comes back as `alias`. Where two merchants share it, the one named so wins,
+ * then a visible one, then the lowest id.
  */
 export async function addMerchant(
   name: string,
 ): Promise<
-  { id: number; added: string; unhid: boolean; linked: number } | { id: number; exists: string; linked: number }
+  | { id: number; added: string; unhid: boolean; linked: number; alias?: string }
+  | { id: number; exists: string; linked: number; alias?: string }
 > {
   const db = await getPool();
   // One statement: insert unless a merchant matches by key; unhide that one if it is
   // hidden. Whichever merchant results only ever fills a NULL merchant_id.
-  const res = await db.query<{ id: number; name: string; kind: string; linked: number }>(
+  const res = await db.query<{ id: number; name: string; kind: string; linked: number; via_alias: boolean }>(
     `WITH m AS (
-       SELECT id, name, hidden_at FROM merchants
-       WHERE ${MERCHANT_KEY("name")} = ${MERCHANT_KEY("$1::text")} FOR UPDATE
+       SELECT id, name, aliases, hidden_at FROM merchants
+       WHERE ${NAMES_MERCHANT("merchants", "$1::text")}
+       ORDER BY (${MERCHANT_KEY("name")} = ${MERCHANT_KEY("$1::text")}) DESC, (hidden_at IS NULL) DESC, id
+       LIMIT 1 FOR UPDATE
      ),
      ins AS (
        INSERT INTO merchants (name)
        SELECT $1::text WHERE NOT EXISTS (SELECT 1 FROM m)
-       RETURNING id, name
+       RETURNING id, name, aliases
      ),
      unhid AS (
        UPDATE merchants SET hidden_at = NULL
        WHERE id IN (SELECT id FROM m WHERE hidden_at IS NOT NULL)
-       RETURNING id, name
+       RETURNING id, name, aliases
      ),
      target AS (
-       SELECT id, name, 'added' AS kind FROM ins
+       SELECT id, name, aliases, 'added' AS kind FROM ins
        UNION ALL
-       SELECT id, name, 'unhid' FROM unhid
+       SELECT id, name, aliases, 'unhid' FROM unhid
        UNION ALL
-       SELECT id, name, 'exists' FROM m WHERE hidden_at IS NULL
+       SELECT id, name, aliases, 'exists' FROM m WHERE hidden_at IS NULL
      ),
      linked AS (
        UPDATE transactions t SET merchant_id = target.id
@@ -170,24 +177,26 @@ export async function addMerchant(
            EXISTS (
              SELECT 1 FROM ingestions i
              WHERE i.transaction_id = t.id
-               AND ${MERCHANT_KEY("target.name")} IN (
-                 ${MERCHANT_KEY("i.extraction->>'merchant'")}, ${MERCHANT_KEY("i.media_merchant")}
-               )
+               AND (${NAMES_MERCHANT("target", "i.extraction->>'merchant'")}
+                    OR ${NAMES_MERCHANT("target", "i.media_merchant")})
            )
            OR (
              NOT EXISTS (SELECT 1 FROM ingestions i WHERE i.transaction_id = t.id)
-             AND ${MERCHANT_KEY("t.description")} = ${MERCHANT_KEY("target.name")}
+             AND ${NAMES_MERCHANT("target", "t.description")}
            )
          )
        RETURNING t.id
      )
-     SELECT id, name, kind, (SELECT count(*)::int FROM linked) AS linked FROM target`,
+     SELECT id, name, kind, (SELECT count(*)::int FROM linked) AS linked,
+            ${MERCHANT_KEY("name")} <> ${MERCHANT_KEY("$1::text")} AS via_alias
+     FROM target`,
     [name],
   );
   const row = res.rows[0];
+  const alias = row.via_alias ? { alias: name } : {};
   return row.kind === "exists"
-    ? { id: row.id, exists: row.name, linked: row.linked }
-    : { id: row.id, added: row.name, unhid: row.kind === "unhid", linked: row.linked };
+    ? { id: row.id, exists: row.name, linked: row.linked, ...alias }
+    : { id: row.id, added: row.name, unhid: row.kind === "unhid", linked: row.linked, ...alias };
 }
 
 /**

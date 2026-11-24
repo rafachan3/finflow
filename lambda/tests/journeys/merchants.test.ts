@@ -150,6 +150,47 @@ describe("merchant commands", () => {
     expect(await send("/addmerchant Acme Mart")).toEqual(["Already a merchant: Acme Mart."]);
   });
 
+  it("/addmerchant with a spelling that is another merchant's alias adds nothing and names that merchant", async () => {
+    await ledger.importRow("Acme Mart  wholesale");
+
+    expect(await send("/addmerchant ACME MART WHOLESALE")).toEqual([
+      "ACME MART WHOLESALE is already an alias of Acme Mart. Linked 1 past transaction that names it exactly.",
+    ]);
+    expect(await ledger.transactions()).toMatchObject([{ merchant: "Acme Mart" }]);
+    expect(await send("/addmerchant example.ca")).toEqual(["example.ca is already an alias of Example Online."]);
+    expect(await send("/merchants")).toEqual(["Merchants (2): Acme Mart, Example Online"]);
+  });
+
+  it("/addmerchant on a hidden merchant relinks the rows saved under its name or any of its aliases", async () => {
+    geminiReadsMerchant("Acme Mart");
+    await chat.text("14 lunch at Acme Mart on Oct 25");
+    await chat.tap(chat.last(), "Confirm");
+    await chat.text("/delmerchant Acme Mart");
+    geminiReadsMerchant("ACME MART WHOLESALE");
+    await chat.text("14 lunch at Acme Mart Wholesale on Oct 26");
+    await chat.tap(chat.last(), "Confirm");
+    await ledger.importRow("acme mart wholesale");
+    await ledger.importRow("Acme Mart Wholesale Annex");
+    expect(await ledger.transactions()).toMatchObject([
+      { merchant: "Acme Mart" },
+      { merchant: null },
+      { merchant: null },
+      { merchant: null },
+    ]);
+
+    expect(await send("/addmerchant Acme Mart")).toEqual([
+      "Unhid merchant: Acme Mart. Linked 2 past transactions that name it exactly. The next message will use it.",
+      // The longer name is only a mention: the owner picks it in the review.
+      "Check 1 that mentions Acme Mart. Tap to pick, then Link:",
+    ]);
+    expect(await ledger.transactions()).toMatchObject([
+      { merchant: "Acme Mart" },
+      { merchant: "Acme Mart" },
+      { merchant: "Acme Mart" },
+      { merchant: null },
+    ]);
+  });
+
   it("/merchants lists them sorted, and a command with no usable name gets a hint, not a write", async () => {
     expect(await send("/merchants")).toEqual(["Merchants (2): Acme Mart, Example Online"]);
     expect(await send("/addmerchant")).toEqual(["Send /addmerchant Name"]);
