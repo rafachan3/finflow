@@ -65,7 +65,10 @@ Definitions that need more than their name:
   work rather than learning itself: exam fees, professional memberships,
   résumé services, networking events.
 - **Clothing and accessories** — clothes and things you wear or carry, such
-  as a pouch.
+  as a pouch, including themed merchandise or a souvenir (an event T-shirt,
+  a team keychain).
+- **Entertainment and activities** — the event itself: a concert, a ticket,
+  a cinema seat. Never an object you keep, whatever its theme.
 - **Other shopping** — the fallback for a durable personal good that is not
   clothing, not something you carry, not a gift and not a membership, such
   as a luggage tag or a small travel bottle.

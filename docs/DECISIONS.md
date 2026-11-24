@@ -3731,5 +3731,11 @@ bought. Each case is a TAXONOMY.md example and one sentence in the shared
   The Travel tag says the purchase was for a trip (rule 10), as road-trip
   snacks stay Food and drink. `rules-override` gained a second event: three
   pieces of gear at one shop for a trip.
+- **Themed merchandise is what it is (#155).** Something you wear or carry
+  is Clothing and accessories even when it is a souvenir of an event (a
+  team keychain); Entertainment and activities is the event (a concert, a
+  ticket, a cinema seat), never an object. `receipt-no-date` became a
+  two-line merch receipt (T-shirt and keychain, same 12.30 total, still no
+  date), since the miss was on a photo.
 - **Ruled out:** a Travel subcategory for gear (the taxonomy has none, and
   the tag already answers "was it for a trip").

@@ -1406,6 +1406,17 @@ describe("multi-event extraction", () => {
     }
   });
 
+  it("tells text, photo, voice and Edit that themed merchandise you wear or carry is Clothing and accessories, not an activity", async () => {
+    for (const system of await fourSystems()) {
+      expect(system).toContain(
+        "is Shopping / Clothing and accessories, including themed merchandise or a souvenir (an event T-shirt, a team keychain)",
+      );
+      expect(system).toContain(
+        "Personal / Entertainment and activities is the event itself (a concert, a ticket, a cinema seat), never an object you keep",
+      );
+    }
+  });
+
   it("tells text, photo, voice and Edit to prefer a 4-digit-year date and read NN/NN/NN within the last year", async () => {
     for (const system of await fourSystems()) {
       expect(system).toContain("Today is 2026-08-17");

@@ -298,6 +298,29 @@ describe("receipts and voice notes", () => {
     expect(await ledger.transactions()).toMatchObject([{ amount: "12.30" }]);
   });
 
+  it("a themed T-shirt and keychain on one receipt are both saved as Clothing and accessories, not an activity", async () => {
+    gemini.extract = golden("receipt-no-date").recorded;
+    await chat.photo();
+
+    const card = chat.last();
+    expect(card.text).toContain("• Cup final T-shirt — 8.30\n  Shopping / Clothing and accessories / wants");
+    expect(card.text).toContain("• Cup final keychain — 4.00\n  Shopping / Clothing and accessories / wants");
+    expect(card.text).not.toContain("Entertainment and activities");
+    await chat.tap(card, "Fix date");
+    await chat.text("yesterday");
+    await chat.tap(chat.last(), "Confirm");
+    expect(
+      await sql(
+        `select i.description, s.name as subcategory
+         from transaction_items i join subcategories s on s.id = i.subcategory_id
+         order by i.amount desc`,
+      ),
+    ).toEqual([
+      { description: "Cup final T-shirt", subcategory: "Clothing and accessories" },
+      { description: "Cup final keychain", subcategory: "Clothing and accessories" },
+    ]);
+  });
+
   it("a voice note is archived as audio and offered for Confirm with today's date", async () => {
     gemini.extract = golden("voice-note").recorded;
     const before = todayToronto();
