@@ -99,7 +99,7 @@ const VENUE =
 // Venue is the kind of place; the app an order went through is its own field
 // (#163), so a delivered meal and a counter meal get the same venue.
 const CHANNEL =
-  "The same meal from the same restaurant has the same venue whether it was ordered at the counter or through an app. channel is a name from the Channels list when the purchase went through that app or service (a delivery or pickup app, a grocery delivery service). A channel is never the venue, and the business that sold it stays the merchant. When it was ordered directly, including through the restaurant's or store's own app or site, or through an app not listed: return null.";
+  "The same meal from the same restaurant has the same venue whether it was ordered at the counter or through an app. channel is a name from the Channels list when the purchase went through that app or service (a delivery or pickup app, a grocery delivery service). A channel is never the venue, and the business that sold it stays the merchant. When it was ordered directly, including through the restaurant's or store's own app or site, or through an app not listed: return null. The channel never decides the subcategory: groceries delivered by a grocery delivery service stay Groceries, prepared food brought to the door is Delivery, and food picked up through an app is classified as if bought at that counter.";
 
 // The lighter model gave a laundromat washer cycle Laundry Supply (#89).
 // TAXONOMY.md classification rule 8.

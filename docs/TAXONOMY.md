@@ -182,6 +182,12 @@ channel and have no venue until the owner sets one.
    instead of goods keeps its subcategory and has no item type. A laundromat
    washer or dryer cycle is Housing / Laundry with no item type; detergent,
    softener or dryer sheets are Laundry Supply.
+9. The **channel never decides the subcategory**. Groceries delivered by a
+   grocery delivery service (Instacart) stay Groceries; prepared food
+   brought to the door is Delivery, through an app or not; food picked up
+   through an app (Too Good To Go) is classified as if bought at that
+   counter: a bakery or café bag is Takeout / Quick Service, a supermarket
+   bag of retail goods is Groceries.
 
 ## Needs / wants bucket
 

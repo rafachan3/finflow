@@ -1309,12 +1309,14 @@ describe("multi-event extraction", () => {
     }
   });
 
-  it("tells text, photo, voice and Edit that the venue is the kind of place however it was ordered, and the app is the channel", async () => {
+  it("tells text, photo, voice and Edit that the venue is the kind of place however it was ordered, and the app is the channel, never the subcategory", async () => {
     for (const system of await fourSystems()) {
       expect(system).toContain("The same meal from the same restaurant has the same venue whether it was ordered at the counter or through an app");
       expect(system).toContain("channel is a name from the Channels list when the purchase went through that app or service");
       expect(system).toContain("A channel is never the venue");
       expect(system).toContain("ordered directly, including through the restaurant's or store's own app or site, or through an app not listed: return null");
+      expect(system).toContain("The channel never decides the subcategory: groceries delivered by a grocery delivery service stay Groceries");
+      expect(system).toContain("food picked up through an app is classified as if bought at that counter");
       expect(system).toContain("Channels: DoorDash");
     }
   });

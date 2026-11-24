@@ -3695,6 +3695,13 @@ Too Good To Go). A delivery order needs both answers.
   `CHANNEL` instruction and a `Channels:` list; the card shows
   `Channel: X` under the venue only when set; Confirm writes it; an Edit
   can set or clear it. An unlisted channel fails the checks.
+- **The channel never decides the subcategory** (TAXONOMY.md rule 9, and
+  the same sentence in the shared instruction). Without the app as venue,
+  nothing told the model that an Instacart order of groceries is still
+  Groceries: delivered groceries stay Groceries, prepared food brought to
+  the door is Delivery, food picked up through an app is classified as at
+  that counter. The needs/wants accuracy check names the channel in its
+  messages (`via Instacart`), as it named the venue before.
 - **Goldens stayed at 20.** `same-place-lines` became a two-dish order from
   Maple Burger on DoorDash (venue Fast Food, channel DoorDash, Delivery);
   `text-with-note`, a lunch bought at the counter, now checks venue Fast
