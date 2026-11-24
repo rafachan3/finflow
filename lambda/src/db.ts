@@ -117,12 +117,14 @@ export const MERCHANT_KEY = (name: string) =>
   `lower(translate(${MERCHANT_SPACED(name)}, '${APOSTROPHE_VARIANTS}', '${"''".repeat(APOSTROPHE_VARIANTS.length)}'))`;
 /**
  * Merchant row `m` is named `name` by its whole name or one whole alias, never a prefix.
- * An alias usableAliases drops (it holds `,` `;` or `)`) is skipped here too.
+ * An alias usableAliases drops (it holds `,` `;` or `)`) is skipped here too, and a
+ * blank name names nothing, so a blank alias or merchant never matches a blank row.
  */
 const NAMES_MERCHANT = (m: string, name: string) =>
-  `(${MERCHANT_KEY(`${m}.name`)} = ${MERCHANT_KEY(name)}
-    OR EXISTS (SELECT 1 FROM unnest(${m}.aliases) a
-               WHERE a !~ '[,;)]' AND ${MERCHANT_KEY("a")} = ${MERCHANT_KEY(name)}))`;
+  `(${MERCHANT_KEY(name)} <> ''
+    AND (${MERCHANT_KEY(`${m}.name`)} = ${MERCHANT_KEY(name)}
+         OR EXISTS (SELECT 1 FROM unnest(${m}.aliases) a
+                    WHERE a !~ '[,;)]' AND ${MERCHANT_KEY("a")} = ${MERCHANT_KEY(name)})))`;
 
 /**
  * Adds a merchant, unhides one with that name, or finds it already visible; then

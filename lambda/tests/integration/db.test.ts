@@ -730,6 +730,15 @@ describe("merchants", () => {
     ]);
   });
 
+  it("a blank alias names nothing, so adding the merchant links no blank row", async () => {
+    await sql(`insert into merchants (name, aliases) values ('Maple Kiosk', array['  ', ''])`);
+    await imported("   ");
+    const [id] = await save(907, expense({ merchant: " ", description: "x" }));
+    await db.confirmIngestion(id);
+    expect(await db.addMerchant("Maple Kiosk")).toMatchObject({ exists: "Maple Kiosk", linked: 0 });
+    expect(await sql("select count(*)::int n from transactions where merchant_id is null")).toEqual([{ n: 2 }]);
+  });
+
   it("deletes a merchant that no transaction uses, whatever the case", async () => {
     await db.addMerchant("Maple Kiosk");
     expect(await db.deleteMerchant("maple kiosk")).toEqual({ deleted: "Maple Kiosk" });
