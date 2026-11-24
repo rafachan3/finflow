@@ -24,7 +24,9 @@ models:
       the line's effective tags (its own plus its transaction's). A null
       account name is chequing: deposit_account_name on income,
       from_account_name and to_account_name on a transfer. channel_name is
-      the app the purchase went through, null when bought directly.
+      the app the purchase went through, null when bought directly. notes is
+      the transaction's note, repeated on each of its lines; item_note is the
+      owner's note about that line only, null on income and transfers.
     # The MetricFlow semantic model: every metric in docs/SEMANTIC_LAYER.md,
     # by the same name. dbt/scripts/check_metrics.py compares `mf query`
     # with fct_monthly_summary month by month.

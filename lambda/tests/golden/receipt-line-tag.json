@@ -1,8 +1,8 @@
 {
-  "name": "a receipt caption tags the whole purchase with a trip and one item with who it was for; the receipt's FP code marks two lines taxed and leaves the bananas zero-rated, so code puts GST and QST on those two lines only",
+  "name": "a receipt caption tags the whole purchase with a trip and one item with who it was for, and gives a reason for the purchase and one for that item only; the receipt's FP code marks two lines taxed and leaves the bananas zero-rated, so code puts GST and QST on those two lines only",
   "input": {
     "kind": "photo",
-    "caption": "road trip snacks; the bananas were for Partner",
+    "caption": "road trip snacks, we left before sunrise; the bananas were for Partner, she skipped breakfast",
     "media": "receipt-tax-codes.png"
   },
   "expect": {
@@ -25,6 +25,21 @@
             "Partner"
           ],
           []
+        ],
+        "note": true,
+        "noteHas": [
+          "sunrise"
+        ],
+        "noteLacks": [
+          "breakfast",
+          "bananas"
+        ],
+        "lineNotes": [
+          null,
+          [
+            "breakfast"
+          ],
+          null
         ]
       }
     ]
@@ -60,6 +75,7 @@
             "subcategory": "Groceries",
             "item_type": "Snacks & Sweets",
             "tags": [],
+            "note": null,
             "bucket_why": "default bucket for Groceries has no hint",
             "bucket": "wants"
           },
@@ -73,6 +89,7 @@
             "tags": [
               "Partner"
             ],
+            "note": "she skipped breakfast",
             "bucket_why": "default bucket for Groceries has no hint",
             "bucket": "wants"
           },
@@ -84,15 +101,16 @@
             "subcategory": "Groceries",
             "item_type": "Non-Alcoholic Beverages",
             "tags": [],
+            "note": null,
             "bucket_why": "default bucket for Groceries has no hint",
             "bucket": "wants"
           }
         ],
         "confidence": 0.98,
         "funded_by": null,
-        "notes": null
+        "notes": "we left before sunrise"
       }
     ]
   },
-  "request_sha256": "bab224eeaa0dd922ea81e2597384f4724c6ab7d9923d178eb6423fac7558cde9"
+  "request_sha256": "a9a3c8b63a63beafca8a1e838a58b422ec1a4ff8d288ed30680759e52568056c"
 }

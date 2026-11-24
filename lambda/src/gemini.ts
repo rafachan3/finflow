@@ -65,7 +65,7 @@ const MERCHANT =
   "merchant is the business the owner names or the receipt prints (\"a coffee at Maple Kiosk\" means Maple Kiosk), even when it is not in the Merchants list. Use a listed spelling only when the business named is that listed merchant and nothing more: its listed name, or one of the names it is also written as. Words around the name are not part of it, but a business whose name goes on past a listed name is a different business: return it as named (\"Maple Kiosk Books\" stays Maple Kiosk Books when only Maple Kiosk is listed), even when the extra words are a kind of store such as Books, Pharmacy or Café. Never shorten a business name to a listed merchant; the venue may still come from those words. Return null only when no business is named.";
 
 const NOTES =
-  "notes is the owner's reason or circumstance for the transaction when they give one (why they bought it, what happened), translated to English and lightly copy-edited: fix spelling, typos, punctuation and grammar, and join broken fragments with connectors such as 'and'. Keep the owner's own wording and voice: do not rephrase, and never add facts, reasons or details they did not give. Example: 'raining realy hard didnt want walk' becomes 'it was raining really hard and I didn't want to walk'. Do not repeat the amount, merchant, items, date, or category. Take notes from the owner's message, caption, or voice, never from printed receipt text. Return null when they give no reason.";
+  "notes is the owner's reason or circumstance for the transaction when they give one (why they bought it, what happened), translated to English and lightly copy-edited: fix spelling, typos, punctuation and grammar, and join broken fragments with connectors such as 'and'. Keep the owner's own wording and voice: do not rephrase, and never add facts, reasons or details they did not give. Example: 'raining realy hard didnt want walk' becomes 'it was raining really hard and I didn't want to walk'. Do not repeat the amount, merchant, items, date, or category. Take notes from the owner's message, caption, or voice, never from printed receipt text. Return null when they give no reason. A line's note follows the same rules for a reason the owner gives about that line only ('the bananas were for the kids, they skipped breakfast' gives the bananas line the note 'they skipped breakfast'); a reason about the whole purchase stays in the event's notes. Never repeat the event's notes on a line, nor one line's note on another. Lines with no reason of their own return null.";
 
 // Line tags let one receipt line carry context the others do not (Phase 3.5).
 // normalizeTaxonomyNames moves a tag every line repeats to the event.
@@ -73,7 +73,7 @@ const TAGS =
   "tags on the event are context for the whole transaction (a trip, an occasion). A line's tags are context the owner gives for that line only (\"the bananas were for <a name from the Tags list>\" tags the bananas line). Never repeat an event tag on a line. Use only names from the Tags list. Lines with no tag of their own return an empty list.";
 
 const SPLIT_EVENTS =
-  "Return events: one event per separate transaction, in the order the owner mentioned them. Split by place: one event per merchant or place. Amounts at the same place, or with no place given, are one expense with several items. Income and transfers are always their own event. A receipt photo is one event; the caption may add others. A date or funder stated once applies to every event unless an event states its own. notes and tags belong to the event they describe.";
+  "Return events: one event per separate transaction, in the order the owner mentioned them. Split by place: one event per merchant or place. Amounts at the same place, or with no place given, are one expense with several items. Income and transfers are always their own event. A receipt photo is one event; the caption may add others. A date or funder stated once applies to every event unless an event states its own. notes and tags belong to the event they describe, and a line's note and tags to that line.";
 
 // A lighter model returned a purchase named only in a photo caption as an
 // expense with an empty items list.
@@ -264,6 +264,7 @@ const ITEM_PROPERTIES = {
   item_type: { type: "STRING", nullable: true },
   // Before the bucket: who a line was for can bear on the needs/wants rules.
   tags: { type: "ARRAY", items: { type: "STRING" } },
+  note: { type: "STRING", nullable: true },
   bucket_why: { type: "STRING" },
   bucket: { type: "STRING", enum: ["needs", "wants"] },
 };
@@ -455,6 +456,7 @@ function asItem(raw: unknown): ExtractionItem & PricedLine {
     subcategory: String(o.subcategory ?? ""),
     item_type: asString(o.item_type),
     tags: Array.isArray(o.tags) ? o.tags.map(String) : [],
+    note: asString(o.note),
     bucket: o.bucket === "needs" ? "needs" : "wants",
     ...(why ? { bucket_why: why } : {}),
   };
@@ -725,6 +727,7 @@ function extractionForPatch(current: Extraction): unknown {
       subcategory: item.subcategory,
       item_type: item.item_type,
       tags: item.tags ?? [],
+      note: item.note ?? null,
       bucket_why: item.bucket_why ?? null,
       bucket: item.bucket,
     })),

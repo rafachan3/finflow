@@ -152,6 +152,10 @@ join categories as c on c.name = v.category
 join subcategories as sc on sc.category_id = c.id and sc.name = v.subcategory
 left join item_types as it on it.category_id = c.id and it.name = v.item_type;
 
+-- A note about one line of the weekly shop, whose header has none.
+update transaction_items set note = 'for movie night'
+where id = 'b0000000-0000-0000-0000-000000000062';
+
 -- Header tags on an expense and on a transfer; a line tag on one receipt line.
 insert into transaction_tags (transaction_id, tag_id)
 select v.transaction_id::uuid, t.id

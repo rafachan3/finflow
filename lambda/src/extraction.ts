@@ -19,6 +19,8 @@ export type ExtractionItem = {
   tags?: string[];
   /** Line tags the model gave that are not in the Tags list; the card warns. */
   dropped_tags?: string[];
+  /** The owner's reason about this line only; absent on rows extracted before line notes. */
+  note?: string | null;
   bucket: Bucket;
   bucket_why?: string;
   /** Made from the header total because the reader gave the purchase no lines; the card warns. */
@@ -315,9 +317,25 @@ export function canonicalTags(
 }
 
 /**
- * Gemini often repeats "Category / " inside subcategory and item_type; tags go
- * canonical. A line tag missing from the Tags list is dropped before that, so
- * one copied onto every line never becomes a header tag that blocks the card.
+ * Each note in one place, like tags: one note on every line is the reason for
+ * the whole purchase and moves to a header that has none, and a line never
+ * repeats the header's note.
+ */
+export function canonicalNotes(
+  header: string | null,
+  lines: (string | null | undefined)[],
+): { notes: string | null; lineNotes: (string | null)[] } {
+  const own = lines.map((n) => n?.trim() || null);
+  const everyLine = own.length && own.every((n) => n !== null && n === own[0]) ? own[0] : null;
+  const notes = header?.trim() || everyLine;
+  return { notes, lineNotes: own.map((n) => (n === notes ? null : n)) };
+}
+
+/**
+ * Gemini often repeats "Category / " inside subcategory and item_type; tags and
+ * notes go canonical. A line tag missing from the Tags list is dropped before
+ * that, so one copied onto every line never becomes a header tag that blocks
+ * the card.
  */
 export function normalizeTaxonomyNames(
   extraction: Extraction,
@@ -330,9 +348,14 @@ export function normalizeTaxonomyNames(
     extraction.tags,
     extraction.items.map((item) => (item.tags ?? []).filter((t) => hasName(taxonomy.tags, t))),
   );
+  const { notes, lineNotes } = canonicalNotes(
+    extraction.notes ?? null,
+    extraction.items.map((item) => item.note),
+  );
   return {
     ...extraction,
     tags,
+    notes,
     items: extraction.items.map((item, i) => {
       const subcategory = stripCategoryPrefix(item.category, item.subcategory);
       const itemTypeRaw = item.item_type
@@ -351,6 +374,7 @@ export function normalizeTaxonomyNames(
         subcategory: sub?.name ?? subcategory,
         item_type: itemTypeRaw === null ? null : (it?.name ?? itemTypeRaw),
         tags: lineTags[i],
+        note: lineNotes[i],
         ...(unknown[i].length
           ? { dropped_tags: [...new Set([...(item.dropped_tags ?? []), ...unknown[i]])] }
           : {}),
@@ -668,6 +692,7 @@ export function formatPreview(
       );
       if (item.bucket_why) lines.push(`  ${item.bucket_why}`);
       if (item.tags?.length) lines.push(`  Tags: ${item.tags.join(", ")}`);
+      if (item.note) lines.push(`  Note: ${item.note}`);
     }
   }
 

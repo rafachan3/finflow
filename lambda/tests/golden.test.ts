@@ -268,6 +268,23 @@ describe("mismatches", () => {
     ]);
   });
 
+  it("reports each line's own note, once a note on every line counts as the header's", () => {
+    const want: ExpectedEvent = { type: "expense", lines: 2, note: false, lineNotes: [null, ["breakfast"]] };
+    const event = (notes: string | null, lines: (string | null | undefined)[]) =>
+      mismatches([{ type: "expense", amount: "2.00", notes, items: lines.map((note) => ({ amount: "1.00", note })) }], [want]);
+    expect(event(null, [null, "she skipped breakfast"])).toEqual([]);
+    expect(event(null, [undefined, "she skipped lunch"])).toEqual(['event 0: line 1 note lacks "breakfast"']);
+    expect(event(null, ["she skipped breakfast", "she skipped breakfast"])).toEqual([
+      "event 0: note unexpected",
+      "event 0: line 1 note missing",
+    ]);
+    expect(event("she skipped breakfast", [null, "she skipped breakfast"])).toEqual([
+      "event 0: note unexpected",
+      "event 0: line 1 note missing",
+    ]);
+    expect(event(null, ["for me", "she skipped breakfast"])).toEqual(["event 0: line 0 note unexpected"]);
+  });
+
   it("reports a note that keeps a typo, misses a correction, or grows too long", () => {
     const want: ExpectedEvent = {
       type: "income",

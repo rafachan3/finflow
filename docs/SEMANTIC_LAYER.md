@@ -182,7 +182,9 @@ amount for an expense line and the header amount otherwise, so every metric
 below is a filtered `sum(amount)` over this one table. Each row also carries
 its transaction's `merchant_name`, `venue_name` (the kind of place) and
 `channel_name` (the app it went through, null when bought directly); none is
-a metric.
+a metric. `notes` is the transaction's note, the same on every line of the
+purchase; `item_note` is the owner's note about that line only (migration
+0026), never concatenated into `notes`, and null on income and transfers.
 `fct_monthly_summary` has one row per month from the first data month to the
 current Toronto month, zero-filled, with one column per metric. If a row is
 already dated in a later month (a bill logged ahead), the list runs to that
@@ -192,8 +194,9 @@ expense data.
 `fct_ledger_entry` has one row per `transactions` row (the header). It is a
 listing mart for the Ledger dashboard, not a metric: no MetricFlow model,
 and nothing in `fct_monthly_summary` is summed from it. Its `amount` is the
-header amount. Expense line detail stays on `fct_transactions`; the ledger
-joins the two on `transaction_id`.
+header amount, and its `notes` the header note: a line's `item_note` stays on
+`fct_transactions`. Expense line detail stays on `fct_transactions`; the
+ledger joins the two on `transaction_id`.
 `fct_month_rolling` has one row per (`month_start`, `window_months`) for
 every month of the month list and every N in the dbt var `window_months`.
 It is a planning mart, not a metric: no MetricFlow model. Money sums and

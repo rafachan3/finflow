@@ -3765,3 +3765,33 @@ bought. Each case is a TAXONOMY.md example and one sentence in the shared
   the internet bill, each with its own merchant.
 - **Ruled out:** a Travel subcategory for gear (the taxonomy has none, and
   the tag already answers "was it for a trip").
+
+## 2026-11-24: A note about one line goes on that line (#171)
+
+A reason that names one item was saved on `transactions.notes`, so it read
+as the whole receipt's reason. Notes now split the way tags already do.
+
+- **Storage:** a nullable `transaction_items.note` (migration 0026), not a
+  notes table and not the line's description (both out of scope in the
+  issue). Income and transfers have no lines, so their note stays on the
+  transaction.
+- **One request:** each extracted line gets a nullable `note` in the same
+  Gemini call, under the NOTES rules (the owner's words, copy-edited,
+  nothing added, never from printed receipt text). No second call.
+- **Canonical, like tags:** `canonicalNotes` moves a note that every line
+  carries to a header with none, and drops a line note equal to the
+  header's, so a model that copies the purchase's reason onto the lines
+  still stores it once. A one-line purchase's line note therefore becomes
+  the header note, which keeps the Ledger listing showing it. Different
+  notes on every line, or a header note plus one on each line, stay put.
+- **Marts:** `fct_transactions.item_note` is its own column; it is never
+  concatenated into `notes`, which stays the header's on every line.
+  `fct_ledger_entry` keeps the header note.
+- **Golden:** the suite stays at 20. `receipt-line-tag` gained a purchase
+  reason and a bananas reason in its caption; its recording was extended by
+  hand with the two notes the expectation names (no local eval key in this
+  worktree), and this PR's live eval checked a real answer before its
+  hash was committed.
+- **Ruled out:** copying a line note onto the header (the Ledger would show
+  one item's reason as the purchase's), and a Grafana change in this PR
+  (the Ledger "Line items" Note column is a follow-up).

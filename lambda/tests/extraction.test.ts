@@ -453,6 +453,30 @@ describe("normalizeTaxonomyNames", () => {
     expect(normalized.items.map((i) => i.tags)).toEqual([["Social"], []]);
   });
 
+  it("keeps a line note on that line, and a note on every line once, on the header", () => {
+    const [burger, coke] = expense().items;
+    const one = normalizeTaxonomyNames(
+      expense({ notes: "it was raining", items: [{ ...burger, note: " for the long drive " }, coke] }),
+      taxonomy,
+    );
+    expect(one.notes).toBe("it was raining");
+    expect(one.items.map((i) => i.note)).toEqual(["for the long drive", null]);
+    expect(normalizeTaxonomyNames(one, taxonomy)).toEqual(one);
+
+    // A model that copies the purchase's reason onto every line, or onto one line.
+    const copied = expense({ notes: null, items: [{ ...burger, note: "it was raining" }, { ...coke, note: "it was raining" }] });
+    const moved = normalizeTaxonomyNames(copied, taxonomy);
+    expect(moved.notes).toBe("it was raining");
+    expect(moved.items.map((i) => i.note)).toEqual([null, null]);
+    const repeated = expense({ notes: "it was raining", items: [{ ...burger, note: "it was raining" }, coke] });
+    expect(normalizeTaxonomyNames(repeated, taxonomy).items.map((i) => i.note)).toEqual([null, null]);
+
+    // Two lines with notes of their own stay where they are.
+    const both = expense({ notes: null, items: [{ ...burger, note: "for me" }, { ...coke, note: "for later" }] });
+    expect(normalizeTaxonomyNames(both, taxonomy)).toMatchObject({ notes: null });
+    expect(normalizeTaxonomyNames(both, taxonomy).items.map((i) => i.note)).toEqual(["for me", "for later"]);
+  });
+
   it("keeps income and transfer tags on the header, once each", () => {
     const pay = expense({ type: "income", tags: ["Social", "Social"], items: [] });
     expect(normalizeTaxonomyNames(pay, taxonomy).tags).toEqual(["Social"]);
@@ -471,6 +495,16 @@ describe("formatPreview", () => {
       "  Tags: Travel",
     ]);
     expect(lines.filter((l) => l.includes("Tags:"))).toEqual(["Tags: Social", "  Tags: Travel"]);
+  });
+
+  it("shows a line's own note under that line, and the purchase's note under the description", () => {
+    const [burger, coke] = expense().items;
+    const e = expense({ notes: "it was raining", items: [burger, { ...coke, note: "for the long drive" }] });
+    const lines = formatPreview(e, validateExtraction(e, taxonomy)).split("\n");
+    expect(lines[2]).toBe("Note: it was raining");
+    const coke_ = lines.indexOf("• Coke — 8.05");
+    expect(lines.slice(coke_ + 1, coke_ + 4)).toContain("  Note: for the long drive");
+    expect(lines.filter((l) => l.includes("Note:"))).toEqual(["Note: it was raining", "  Note: for the long drive"]);
   });
 
   it("shows header fields, tags, every line, and check results", () => {

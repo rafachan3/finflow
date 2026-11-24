@@ -14,7 +14,7 @@ useJourneys();
 type Line = { description: string; tags: string[] };
 type Event = { tags: string[]; items: Line[] };
 
-const CAPTION = "road trip snacks; the bananas were for Partner";
+const CAPTION = "road trip snacks, we left before sunrise; the bananas were for Partner, she skipped breakfast";
 const receipt = () => (golden("receipt-line-tag").recorded as { events: Event[] }).events[0];
 
 /** Makes every pending card look saved before line tags: its lines have no `tags` key. */
