@@ -39,31 +39,35 @@ const total = (cents: number[]) => cents.reduce((a, b) => a + b, 0);
 
 /**
  * Each line's amount paid: its price, less its share of the order discounts,
- * plus its share of the taxes and of the tip. Discounts come off every line
- * by price. Taxes then go to the taxable lines, or to every line when none
- * is marked, and the tip to every line, both weighted by discounted price.
- * The result sums to prices - discounts + taxes + tip exactly. Null when an
- * amount is not two-decimal or the discounts exceed the prices.
+ * plus its share of the taxes, the fees and the tip. Discounts come off every
+ * line by price. Taxes then go to the taxable lines, or to every line when
+ * none is marked; the fees (service, delivery) and the tip go to every line;
+ * all weighted by discounted price. The result sums to prices - discounts +
+ * taxes + fees + tip exactly. Null when an amount is not two-decimal or the
+ * discounts exceed the prices.
  */
 export function lineAmounts(
   lines: PricedLine[],
   taxes: Money[],
   tip: Money | null,
   discounts: Money[] = [],
+  fees: Money[] = [],
 ): Money[] | null {
   const prices = lines.map((l) => parseCents(l.price));
   const tax = taxes.map(parseCents);
   const off = discounts.map(parseCents);
+  const fee = fees.map(parseCents);
   const tipCents = tip === null ? 0 : parseCents(tip);
-  if (tipCents === null || [...prices, ...tax, ...off].includes(null)) return null;
+  if (tipCents === null || [...prices, ...tax, ...off, ...fee].includes(null)) return null;
   const p = prices as number[];
   const offShares = allocate(total(off as number[]), p);
   const net = p.map((c, i) => c - offShares[i]);
   if (net.some((c) => c < 0)) return null;
   const flagged = net.map((c, i) => (lines[i].taxable ? c : 0));
   const taxShares = allocate(total(tax as number[]), flagged.some((c) => c > 0) ? flagged : net);
+  const feeShares = allocate(total(fee as number[]), net);
   const tipShares = allocate(tipCents, net);
-  return net.map((c, i) => money(c + taxShares[i] + tipShares[i]));
+  return net.map((c, i) => money(c + taxShares[i] + feeShares[i] + tipShares[i]));
 }
 
 /** An event as the funder rule sees it: its header, funder and line amounts paid. */
@@ -107,15 +111,17 @@ export type EditParts = {
   taxes?: Money[];
   tip?: Money | null;
   discounts?: Money[];
+  /** Absent on cards stored before 2026-11-23. */
+  fees?: Money[];
   items: { amount: Money; price?: Money; taxable?: boolean }[];
 };
 
 /**
  * An Edit's header. When the model left the total alone, the sum of the
- * recomputed lines replaces it only for a correction to the tip, a whole-order
- * discount or a line's price: the taxes and the number of lines are
- * unchanged, and no tip or discount is removed. Then the model does no
- * arithmetic. Any other difference (a dropped tax, a lost line, tip or
+ * recomputed lines replaces it only for a correction to the tip, a fee, a
+ * whole-order discount or a line's price: the taxes and the number of lines
+ * are unchanged, and no tip, fee or discount is removed. Then the model does
+ * no arithmetic. Any other difference (a dropped tax, a lost line, tip, fee or
  * discount) keeps the stored total, and the line-sum check fails it
  * visibly. A total the model changed stands. A card stored before prices
  * keeps its total: its line amounts already hold the tax and tip, so a
@@ -127,16 +133,19 @@ export function editedTotal(patched: EditParts, current: EditParts): Money {
   const priced = current.items.every((i) => i.price !== undefined);
   const tip = (p: EditParts) => p.tip ?? null;
   const off = (p: EditParts) => p.discounts ?? [];
+  const fees = (p: EditParts) => p.fees ?? [];
   const prices = (p: EditParts) => JSON.stringify(p.items.map((i) => [i.price, i.taxable ?? false]));
   const sameShape =
     JSON.stringify(patched.taxes ?? []) === JSON.stringify(current.taxes ?? []) &&
     patched.items.length === current.items.length &&
     (tip(patched) !== null || tip(current) === null) &&
-    off(patched).length >= off(current).length;
+    off(patched).length >= off(current).length &&
+    fees(patched).length >= fees(current).length;
   const tipOrPrice =
     tip(patched) !== tip(current) ||
     prices(patched) !== prices(current) ||
-    JSON.stringify(off(patched)) !== JSON.stringify(off(current));
+    JSON.stringify(off(patched)) !== JSON.stringify(off(current)) ||
+    JSON.stringify(fees(patched)) !== JSON.stringify(fees(current));
   if (!same || !priced || !sameShape || !tipOrPrice || cents.length === 0 || cents.includes(null)) {
     return patched.amount;
   }

@@ -172,16 +172,17 @@ describe("validateExtraction", () => {
     }
   });
 
-  it("rejects a tax, discount or tip that is not two-decimal", () => {
+  it("rejects a tax, discount, fee or tip that is not two-decimal", () => {
     expect(
-      validateExtraction(expense({ taxes: ["0.40"], discounts: ["1.00"], tip: "2.00" }), taxonomy).errors,
+      validateExtraction(expense({ taxes: ["0.40"], discounts: ["1.00"], fees: ["3.30"], tip: "2.00" }), taxonomy).errors,
     ).toEqual([]);
     expect(
-      validateExtraction(expense({ taxes: ["0.4"], discounts: ["1"], tip: "2" }), taxonomy).errors,
+      validateExtraction(expense({ taxes: ["0.4"], discounts: ["1"], fees: ["3.3"], tip: "2" }), taxonomy).errors,
     ).toEqual([
-      "tax, tip and discount must be two-decimal: 0.4",
-      "tax, tip and discount must be two-decimal: 1",
-      "tax, tip and discount must be two-decimal: 2",
+      "tax, fee, tip and discount must be two-decimal: 0.4",
+      "tax, fee, tip and discount must be two-decimal: 1",
+      "tax, fee, tip and discount must be two-decimal: 3.3",
+      "tax, fee, tip and discount must be two-decimal: 2",
     ]);
   });
 
