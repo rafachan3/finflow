@@ -3613,3 +3613,41 @@ price, and the taxes and tip were then shared onto it.
 - **Ruled out:** a fee subcategory (the taxonomy has none for the tip
   either, #31); adding the fee to the tip field (the issue rules it out);
   a new golden file (the cap).
+
+## 2026-11-24: A merchant matches only as a whole name or a whole alias (#154)
+
+**Supersedes** "matching extractions by aliases" in the ruled-out list of
+"An in-use merchant is hidden, not kept" (2026-10-29). Fuzzy similarity stays
+ruled out.
+
+The prompt told the model to use the listed spelling when a business
+"matches" a listed merchant, and a listed name that begins a longer business
+name counted as a match, so the longer business was saved under the shorter
+one. Confirm was already exact; the rewrite happened before it.
+
+- **One rule, the linker's.** Text, photo and voice use a listed spelling only
+  when the business named is that merchant and nothing more. A name that goes
+  on past a listed name is a different business, returned as named: the card
+  warns it is not in the lookup and Confirm saves no merchant. Words around
+  the name ("coffee at") are not part of it. No per-pair exception: a new
+  longer business stays unlinked without a code change, and it is never added
+  to the lookup (Confirm still never creates a merchant).
+- **Aliases are whole names, seeded by hand.** `merchants.aliases` (in the
+  schema since migration 0001) reach the `Merchants:` line as
+  `Name (also written: A; B)`. Confirm links when the extracted key equals the
+  name or one alias, preferring a name match over another merchant's alias;
+  the "not in lookup" warning and the frequent-merchant hint use the same
+  rule. An alias is the whole string, so it cannot absorb a longer business
+  as a prefix did. This answers STATUS's open question: hand-seeded, never
+  learned from extractions. No migration and no command to edit aliases.
+- **Not changed:** `/addmerchant` link-on-add, the mention review and the
+  media backfill still match the merchant's name only; an alias seeded later
+  does not relink past transactions.
+- **Goldens stayed at 20.** `two-stores` now names "Acme Mart Pharmacy" (it
+  must keep its own name although the example seed lists Acme Mart), and
+  `expense-and-income` names "Acme Mart Wholesale", the seed's alias. A new
+  `merchantIs` expectation lists the spellings that link, compared by the
+  merchant key. The plain listed name is guarded by journeys, not a golden.
+- **Ruled out:** a per-pair exception list; a prefix or fuzzy match at
+  Confirm; learning aliases from confirmed extractions; a new golden file
+  (the cap).
