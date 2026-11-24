@@ -3655,3 +3655,22 @@ one. Confirm was already exact; the rewrite happened before it.
 - **Ruled out:** a per-pair exception list; a prefix or fuzzy match at
   Confirm; learning aliases from confirmed extractions; a new golden file
   (the cap).
+
+## 2026-11-24: A delivery app beats the restaurant's place type as the venue (#163)
+
+- **Decision.** A transaction has one venue. When a listed delivery app (or
+  another listed channel, such as Instacart or Too Good To Go) and a place
+  type both fit, the venue is the channel. A meal ordered on DoorDash or Uber
+  Eats has the app as its venue, the restaurant as its merchant, and the
+  Delivery subcategory. Fast Food is an order at the counter (Takeout /
+  Quick Service). The rule is one sentence in the shared `VENUE` instruction
+  (text, photo, voice, Edit) and a Venues section in TAXONOMY.md.
+- **Seed.** DoorDash and Uber Eats were in the live database only; migration
+  0025 seeds both (idempotent), so a fresh database and the eval offer them.
+  No venue renamed or removed: the dashboards read them.
+- **Goldens stayed at 20.** `same-place-lines` is now a fast-food order on
+  DoorDash (venue, merchant and Delivery judged); `text-with-note` now
+  judges the counter lunch as Fast Food, Takeout / Quick Service.
+- **Ruled out:** the app as the merchant (the restaurant is the business
+  paid for the food); a separate channel field beside the venue (a schema
+  change for one rule); a new golden file (the cap).

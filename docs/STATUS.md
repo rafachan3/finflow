@@ -368,7 +368,14 @@ name is shown as named, warned "not in lookup" and saved with no merchant.
 as `Name (also written: A; B)`, and Confirm, the "not in lookup" warning and
 the frequent-merchant hint accept the name or one alias. No migration. Still
 20 of 20 goldens: `two-stores` and `expense-and-income` were extended, judged
-by a new `merchantIs` expectation.
+by a new `merchantIs` expectation. #163
+(`fix/delivery-app-venue`, DECISIONS.md 2026-11-24): when a listed delivery
+app and a place type both fit, the venue is the app; the restaurant stays the
+merchant and the food is Delivery, and Fast Food stays a counter order
+(Takeout / Quick Service). Migration 0025 seeds the DoorDash and Uber Eats
+venues (idempotent; **owner step:** push it before merging). Still 20 of 20
+goldens: `same-place-lines` became a fast-food order on DoorDash and
+`text-with-note` now judges the counter lunch as Fast Food.
 
 Duplicate warning (Phase 3.5 PR 1; DECISIONS.md 2026-10-29): every saved
 card (new message, `/pending`, Fix date, Edit) gets at most one `!` line
