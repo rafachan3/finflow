@@ -426,9 +426,10 @@ export const chat = {
     const photo = receipt();
     return deliver(message(caption ? { photo, caption } : { photo }));
   },
-  voice() {
+  voice(caption = "") {
     telegram.files = { "voice-1": "voice/file_2.oga" };
-    return deliver(message({ voice: { file_id: "voice-1", duration: 4 } }));
+    const voice = { file_id: "voice-1", duration: 4 };
+    return deliver(message(caption ? { voice, caption } : { voice }));
   },
   /** Taps a button on the message as it shows now; Telegram sends that state with the tap. */
   tap(reply: Reply, label: string, from = OWNER) {

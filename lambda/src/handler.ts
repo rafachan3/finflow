@@ -52,7 +52,7 @@ import {
   type Extraction,
   type TaxonomySnapshot,
 } from "./extraction.js";
-import { extractFromPhoto, extractFromText, extractFromVoice, patchExtraction, transcribeVoice } from "./gemini.js";
+import { extractFromPhoto, extractFromText, extractFromVoice, patchExtraction, REASK_BUDGET_MS, transcribeVoice } from "./gemini.js";
 import {
   ALREADY_LINKED,
   linkedSummary,
@@ -270,11 +270,13 @@ async function handleAwaitingEdit(
   chatId: number,
   config: Awaited<ReturnType<typeof getConfig>>,
   awaiting: { id: string; extraction: Extraction },
+  from?: string,
 ): Promise<APIGatewayProxyResultV2> {
   try {
     const today = todayToronto();
     const taxonomy = await loadTaxonomy();
     const extraction = await patchExtraction({
+      from,
       apiKey: config.geminiApiKey,
       current: awaiting.extraction,
       correction: text,
@@ -320,13 +322,27 @@ async function handleAwaitingVoiceEdit(
   awaiting: { id: string; extraction: Extraction },
 ): Promise<APIGatewayProxyResultV2> {
   let text: string;
+  let model: string;
   try {
     const file = await downloadTelegramFile(config.botToken, voiceFileId(message.voice));
-    text = await transcribeVoice({
+    const heard = await transcribeVoice({
       apiKey: config.geminiApiKey,
       audio: file.bytes,
       mimeType: file.mimeType,
     });
+    // A caption is part of what the owner said: it goes first, as in handleVoice.
+    text = [message.caption?.trim(), heard.transcript].filter(Boolean).join("\n");
+    model = heard.model;
+    if (heard.tookMs > REASK_BUDGET_MS) {
+      // Too little of the Lambda's 60 s is left for the patch: keep waiting.
+      await sendMessage(
+        config.botToken,
+        message.chat.id,
+        "That voice note took too long to read. Try again, or type the correction.",
+        waitingKeyboard(awaiting.id),
+      );
+      return ok("ok");
+    }
   } catch (err) {
     console.error("voice correction transcribe error", err);
     await sendMessage(
@@ -341,7 +357,7 @@ async function handleAwaitingVoiceEdit(
     await sendMessage(config.botToken, message.chat.id, WAITING_EDIT, waitingKeyboard(awaiting.id));
     return ok("ok");
   }
-  return await handleAwaitingEdit(text, message.chat.id, config, awaiting);
+  return await handleAwaitingEdit(text, message.chat.id, config, awaiting, model);
 }
 
 /** A saved row's card: the preview, any implausible-date or likely-duplicate warning, any merchant hint, and the buttons its checks allow. */
