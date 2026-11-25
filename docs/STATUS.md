@@ -472,6 +472,8 @@ fixture's August "Dinners out" now goes through Uber Eats. Rendered locally
 on the fixture before the PR. **After merge:** `terraform plan` (expect 3
 dashboards to change) and `apply`; no migration, no `dbt-nightly` needed.
 
+Trends "Wants by days since pay" (`fix/days-since-pay-axis`, not merged): the x-axis read "$0".."$14" because the text field inherited the panel's `prefix:$` unit; a by-name override sets it to `none`, bars stay in dollars. Rendered locally on the fixture. **After merge:** `terraform apply` (Trends changes).
+
 Classification examples (#153 #155 #156, PR #185, branch
 `fix/classification-examples`, not merged; DECISIONS.md 2026-11-24): one
 shared `KEPT_GOODS` instruction and TAXONOMY.md rule 10 say a thing you keep
