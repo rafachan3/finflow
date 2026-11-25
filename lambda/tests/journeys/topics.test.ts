@@ -392,10 +392,14 @@ describe("Discard inside a purchase topic", () => {
     gemini.extract = golden("text-with-note").recorded;
     await chat.text("14 lunch at Sandwich Shop");
     const [card] = cards();
+    const sent = chat.replies().length;
     chat.refuseNextTopicDeletes(1);
 
     await chat.tap(card, "Discard");
     expect(takeTelegramRejections()).toEqual(["deleteForumTopic: refused"]);
+
+    expect(chat.acks()).toEqual(["Discarded: Sandwich Shop · $14.00."]);
+    expect(chat.replies()).toHaveLength(sent);
 
     expect(chat.topicName(card.thread!)).toBe("🗑 Sandwich Shop · $14.00");
     expect(labels(chat.current(card))).toEqual([]);
@@ -431,5 +435,32 @@ describe("Discard inside a purchase topic", () => {
     expect(labels(chat.current(first))).toEqual(labels(first));
     expect(chat.last().text).toBe("Discarded: Acme Mart Pharmacy · $5.00.");
     expect(chat.last().thread).toBe(chat.lastTopic());
+  });
+
+  it("discarding a purchase whose topic holds another purchase's card hands the topic to that purchase", async () => {
+    gemini.extract = golden("two-stores").recorded;
+    chat.refuseNextTopicCreates(1);
+    await chat.text("3 at Dollar Corner and 5 at Acme Mart Pharmacy");
+    takeTelegramRejections();
+    const topic = chat.lastTopic();
+    const [first, second] = cards();
+    await chat.tap(second, "Fix date");
+
+    await chat.tap(first, "Discard");
+
+    expect(chat.acks()).toEqual(["Send the date.", "Discarded: Dollar Corner · $3.00."]);
+    expect(chat.calls("deleteForumTopic")).toEqual([]);
+    expect(chat.topicName(topic)).toBe("Acme Mart Pharmacy · $5.00");
+    expect(labels(chat.current(first))).toEqual([]);
+    expect((await ledger.ingestions())[1].telegram_thread_id).toBe(topic);
+
+    // The wait still listens in that topic: a date sent there lands on the second purchase.
+    await chat.inTopic(topic).text("2026-10-30");
+    const fixed = cards().at(-1)!;
+    expect(labels(fixed)).toContain("Confirm");
+    expect(fixed.thread).toBe(topic);
+    const [, row] = await ledger.ingestions();
+    expect(row.status).toBe("pending");
+    expect(row.card_message_id).toBe(fixed.messageId);
   });
 });

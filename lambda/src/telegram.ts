@@ -318,7 +318,7 @@ export function savedCardKeyboard(): { inline_keyboard: InertButton[][] } {
 /**
  * Buttons on a date or correction wait prompt. Keep as is returns the card to
  * `pending` and resends it; Discard drops the row. No Fix date here: the owner
- * is already waiting for a date, and tapping it would only say "Already handled."
+ * is already waiting for a date, and tapping it would only say it was already handled.
  * `k:` / `d:` + uuid stay well under Telegram's 64-byte callback_data limit.
  */
 export function waitingKeyboard(ingestionId: string): { inline_keyboard: Button[][] } {

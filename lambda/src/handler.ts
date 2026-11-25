@@ -39,6 +39,7 @@ import {
   setIngestionCardMessage,
   setIngestionTopic,
   getIngestion,
+  findSharingIngestion,
 } from "./db.js";
 import {
   alreadyHandled,
@@ -1088,6 +1089,19 @@ async function handleCallback(
       // sharing another purchase's topic, has no thread and deletes nothing.
       if (row.threadId === null) {
         await sendMessage(botToken, chatId, ack, undefined, { thread });
+        return ok("ok");
+      }
+      // A card whose own topic was refused sits here, maybe with its wait
+      // prompt: the topic becomes that purchase's instead of going.
+      const sharing = await findSharingIngestion(chatId, row.threadId);
+      if (sharing) {
+        await setIngestionTopic(sharing.id, row.threadId);
+        try {
+          await editForumTopic(botToken, chatId, row.threadId, topicName(sharing.extraction));
+        } catch (err) {
+          console.error("topic hand-over rename error", err);
+        }
+        await retireCard(botToken, chatId, cb.message?.message_id);
       } else if ((await retireTopic(botToken, chatId, row.threadId, topicName(row.extraction, "🗑 "))) !== "deleted") {
         await retireCard(botToken, chatId, cb.message?.message_id);
       }

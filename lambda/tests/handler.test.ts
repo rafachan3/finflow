@@ -10,6 +10,7 @@ vi.mock("../src/config.js", () => ({
 vi.mock("../src/db.js", () => ({
   confirmIngestion: vi.fn(),
   getIngestion: vi.fn(),
+  findSharingIngestion: vi.fn(),
   discardIngestion: vi.fn(),
   insertPendingIngestions: vi.fn(),
   loadTaxonomy: vi.fn(),

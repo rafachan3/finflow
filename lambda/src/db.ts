@@ -487,6 +487,27 @@ export async function findIngestionByThread(
   return result.rows[0] ?? null;
 }
 
+/**
+ * An open purchase of this chat whose card sits in this topic without owning
+ * it (its own topic was refused), oldest first; null when there is none.
+ */
+export async function findSharingIngestion(
+  chatId: number,
+  threadId: number,
+): Promise<{ id: string; extraction: Extraction } | null> {
+  const db = await getPool();
+  const result = await db.query<{ id: string; extraction: Extraction }>(
+    `SELECT id, extraction FROM ingestions
+     WHERE telegram_thread_id IS NULL AND ${WAIT_THREAD} = $2
+       AND status IN ('pending', 'awaiting_date', 'awaiting_edit')
+       AND raw_payload #>> '{message,chat,id}' = $1
+     ORDER BY created_at, event_index
+     LIMIT 1`,
+    [String(chatId), threadId],
+  );
+  return result.rows[0] ?? null;
+}
+
 /** One ingestion with its own topic and card message; null for an unknown id. */
 export async function getIngestion(ingestionId: string): Promise<{
   status: string;
