@@ -176,6 +176,16 @@ async function busyWaiting(
 }
 
 /**
+ * Where the wait just started on `ingestionId` listens: the row's topic, else
+ * the tapped card's. A prompt elsewhere would be answered where the wait does
+ * not hear it.
+ */
+async function waitThread(ingestionId: string, tapped: number | undefined): Promise<number | undefined> {
+  const awaiting = await findAwaitingIngestion();
+  return (awaiting?.id === ingestionId ? awaiting.threadId : null) ?? tapped;
+}
+
+/**
  * Removes the buttons of a card that Fix date or Edit will replace with a new
  * one. Its Confirm carries the series proposed for the old reading, so a tap
  * after the correction would link the corrected payment to that series. Best
@@ -240,11 +250,49 @@ function previewOffer(extraction: Extraction, checks: { ok: boolean; errors: str
   return { persist: false, confirm: false };
 }
 
+type Awaiting = NonNullable<Awaited<ReturnType<typeof findAwaitingIngestion>>>;
+
+/**
+ * The card of a waiting row after its date or correction, in `thread`, the
+ * topic the answer came in. A row from before topics answered inside a topic
+ * no purchase owns adopts it, so the tidy-up never takes it for a topic with
+ * no purchase; another purchase's topic is never adopted or renamed. The topic
+ * is renamed only when the purchase's name changed; topic calls are best effort.
+ */
+async function sendCorrectedCard(
+  botToken: string,
+  chatId: number,
+  awaiting: Awaiting,
+  extraction: Extraction,
+  checks: CheckResult,
+  thread: number | undefined,
+): Promise<void> {
+  let rename = awaiting.ownTopic && topicName(extraction) !== topicName(awaiting.extraction);
+  if (awaiting.threadId === null && thread !== undefined) {
+    try {
+      if ((await findIngestionByThread(chatId, thread)) === null) {
+        await setIngestionTopic(awaiting.id, thread);
+        rename = true;
+      }
+    } catch (err) {
+      console.error("topic adopt error", err);
+    }
+  }
+  await sendCard(botToken, chatId, awaiting.id, extraction, checks, { thread });
+  if (rename && thread !== undefined) {
+    try {
+      await editForumTopic(botToken, chatId, thread, topicName(extraction));
+    } catch (err) {
+      console.error("topic rename error", err);
+    }
+  }
+}
+
 async function handleAwaitingDate(
   text: string,
   chatId: number,
   botToken: string,
-  awaiting: { id: string; extraction: Extraction },
+  awaiting: Awaiting,
   thread?: number,
 ): Promise<APIGatewayProxyResultV2> {
   const today = todayToronto();
@@ -278,7 +326,7 @@ async function handleAwaitingDate(
     return ok("ok");
   }
 
-  await sendCard(botToken, chatId, awaiting.id, extraction, checks);
+  await sendCorrectedCard(botToken, chatId, awaiting, extraction, checks, thread);
   return ok("ok");
 }
 
@@ -286,7 +334,7 @@ async function handleAwaitingEdit(
   text: string,
   chatId: number,
   config: Awaited<ReturnType<typeof getConfig>>,
-  awaiting: { id: string; extraction: Extraction },
+  awaiting: Awaiting,
   from?: string,
   thread?: number,
 ): Promise<APIGatewayProxyResultV2> {
@@ -320,7 +368,7 @@ async function handleAwaitingEdit(
       return ok("ok");
     }
 
-    await sendCard(config.botToken, chatId, awaiting.id, extraction, checks);
+    await sendCorrectedCard(config.botToken, chatId, awaiting, extraction, checks, thread);
     return ok("ok");
   } catch (err) {
     console.error("edit extract error", err);
@@ -339,7 +387,7 @@ async function handleAwaitingEdit(
 async function handleAwaitingVoiceEdit(
   message: NonNullable<TelegramUpdate["message"]>,
   config: Awaited<ReturnType<typeof getConfig>>,
-  awaiting: { id: string; extraction: Extraction },
+  awaiting: Awaiting,
 ): Promise<APIGatewayProxyResultV2> {
   const thread = topicThread(message);
   let text: string;
@@ -814,7 +862,10 @@ async function handleMessage(
     return ok("ok");
   }
 
-  const awaiting = await findAwaitingIngestion();
+  // A wait listens only in its own topic; elsewhere a message is a new purchase.
+  // A row from before topics has none and takes the next message, as before.
+  const found = await findAwaitingIngestion();
+  const awaiting = found && (found.threadId === null || found.threadId === thread) ? found : null;
   if (awaiting) {
     const waiting =
       awaiting.status === "awaiting_edit" ? WAITING_EDIT : WAITING_DATE;
@@ -966,7 +1017,7 @@ async function handleCallback(
     await answerCallbackQuery(botToken, cb.id, ack);
     if (started === "started") {
       await retireCard(botToken, chatId, cb.message?.message_id);
-      await sendMessage(botToken, chatId, ASK_DATE, waitingKeyboard(ingestionId), { thread });
+      await sendMessage(botToken, chatId, ASK_DATE, waitingKeyboard(ingestionId), { thread: await waitThread(ingestionId, thread) });
     } else {
       await sendMessage(botToken, chatId, ack, undefined, { thread });
     }
@@ -978,7 +1029,7 @@ async function handleCallback(
     await answerCallbackQuery(botToken, cb.id, ack);
     if (started === "started") {
       await retireCard(botToken, chatId, cb.message?.message_id);
-      await sendMessage(botToken, chatId, ASK_EDIT, waitingKeyboard(ingestionId), { thread });
+      await sendMessage(botToken, chatId, ASK_EDIT, waitingKeyboard(ingestionId), { thread: await waitThread(ingestionId, thread) });
     } else {
       await sendMessage(botToken, chatId, ack, undefined, { thread });
     }
@@ -1000,7 +1051,7 @@ async function handleCallback(
       restored.id,
       restored.extraction,
       validateExtraction(restored.extraction, taxonomy),
-      { thread },
+      { thread: restored.threadId ?? thread },
     );
     return ok("ok");
   } else {

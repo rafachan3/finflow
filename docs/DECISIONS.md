@@ -3850,3 +3850,21 @@ one gets a topic the bot creates.
   none blocks saving, the card or the reply.
 - **Ruled out:** a quote across topics; storing the shared topic on the
   fallback row.
+
+## 2026-11-25: A waiting card listens only in its topic
+
+Fix date and Edit start a wait in the purchase's topic; only a message in
+that topic answers it. Any other message is a new purchase.
+
+- **The wait's topic:** the row's own topic, else the topic its message came
+  in (a card whose topic Telegram refused sits there). Read from the stored
+  update, so no schema change.
+- **Before topics:** a row with neither still takes the next message, as
+  before. Answered inside a topic, it adopts that topic, so the tidy-up does
+  not take that topic for one with no purchase.
+- **Rename:** only a purchase's own topic, and only when its
+  `Merchant · $amount` changed; a refused card's shared topic keeps the
+  first purchase's name.
+- **One wait at a time stays:** Fix date or Edit on a second card while one
+  waits still answers "busy". Ruled out: one wait per topic, since nothing
+  needs two at once and it would widen every waiting lookup.

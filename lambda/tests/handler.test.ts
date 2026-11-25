@@ -476,6 +476,8 @@ describe("handler", () => {
     vi.mocked(findAwaitingIngestion).mockResolvedValue({
       id: "ing-1",
       status: "awaiting_date",
+      threadId: null,
+      ownTopic: false,
       extraction: {
         ...extraction,
         date: "2026-08-18",
@@ -508,6 +510,8 @@ describe("handler", () => {
     vi.mocked(findAwaitingIngestion).mockResolvedValue({
       id: "ing-1",
       status: "awaiting_date",
+      threadId: null,
+      ownTopic: false,
       extraction,
     });
 
@@ -614,6 +618,8 @@ describe("handler", () => {
     vi.mocked(findAwaitingIngestion).mockResolvedValue({
       id: "ing-1",
       status: "awaiting_date",
+      threadId: null,
+      ownTopic: false,
       extraction,
     });
 
@@ -787,6 +793,8 @@ describe("handler", () => {
     vi.mocked(findAwaitingIngestion).mockResolvedValue({
       id: "ing-1",
       status: "awaiting_date",
+      threadId: null,
+      ownTopic: false,
       extraction,
     });
 
@@ -840,6 +848,7 @@ describe("handler", () => {
     vi.mocked(restoreIngestionPending).mockResolvedValue({
       id: "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
       extraction,
+      threadId: null,
     });
 
     await handler(
@@ -902,6 +911,8 @@ describe("handler", () => {
     vi.mocked(findAwaitingIngestion).mockResolvedValue({
       id: "ing-1",
       status: "awaiting_edit",
+      threadId: null,
+      ownTopic: false,
       extraction,
     });
     vi.mocked(patchExtraction).mockResolvedValue(patched);
@@ -936,6 +947,8 @@ describe("handler", () => {
     vi.mocked(findAwaitingIngestion).mockResolvedValue({
       id: "ing-1",
       status: "awaiting_edit",
+      threadId: null,
+      ownTopic: false,
       extraction,
     });
     vi.mocked(patchExtraction).mockResolvedValue({
@@ -962,6 +975,8 @@ describe("handler", () => {
     vi.mocked(findAwaitingIngestion).mockResolvedValue({
       id: "ing-1",
       status: "awaiting_edit",
+      threadId: null,
+      ownTopic: false,
       extraction,
     });
 

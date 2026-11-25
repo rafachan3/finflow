@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { golden } from "../golden/golden.js";
-import { chat, gemini, invokeNudge, ledger, takeTelegramRejections, useJourneys, type Reply } from "./harness.js";
+import { chat, gemini, invokeNudge, labels, ledger, takeTelegramRejections, useJourneys, type Reply } from "./harness.js";
 
 vi.mock("../../src/config.js", async () => {
   const { journeyConfig } = await import("./harness.js");
@@ -181,5 +181,133 @@ describe("replies stay in their topic", () => {
     const digest = chat.calls("sendMessage").at(-1)!;
     expect(digest.text).toContain("Recurring");
     expect(digest).not.toHaveProperty("message_thread_id");
+  });
+});
+
+describe("Fix date and Edit inside a purchase topic", () => {
+  it("Fix date inside a purchase topic asks there, and the date sent there gives a new card in the same topic", async () => {
+    gemini.extract = golden("receipt-no-date").recorded;
+    await chat.photo();
+    const [card] = cards();
+
+    await chat.tap(card, "Fix date");
+    const prompt = chat.last();
+    expect(prompt.text).toBe("Send the date as YYYY-MM-DD, Aug 10, or yesterday.");
+    expect(prompt.thread).toBe(card.thread);
+    const renames = chat.calls("editForumTopic").length;
+
+    await chat.inTopic(card.thread!).text("2026-11-20");
+    const fixed = cards().at(-1)!;
+    expect(labels(fixed)).toContain("Confirm");
+    expect(fixed.thread).toBe(card.thread);
+    // A date is not in the topic's name, so the topic keeps it.
+    expect(chat.calls("editForumTopic")).toHaveLength(renames);
+    const [row] = await ledger.ingestions();
+    expect(row.card_message_id).toBe(fixed.messageId);
+    expect(row.telegram_thread_id).toBe(card.thread);
+  });
+
+  it("an Edit that changes the amount renames the topic", async () => {
+    gemini.extract = golden("text-with-note").recorded;
+    await chat.text("14 lunch at Sandwich Shop");
+    const [card] = cards();
+
+    await chat.tap(card, "Edit");
+    expect(chat.last().thread).toBe(card.thread);
+    gemini.patch = golden("edit-amount").recorded;
+    await chat.inTopic(card.thread!).text("it was 14.50");
+
+    expect(cards().at(-1)!.thread).toBe(card.thread);
+    expect(chat.topicName(card.thread!)).toBe("Sandwich Shop · $14.50");
+  });
+
+  it("while a card waits for a date, a purchase sent from the main view becomes its own card, not the date", async () => {
+    gemini.extract = golden("receipt-no-date").recorded;
+    await chat.photo();
+    const [cardA] = cards();
+    await chat.tap(cardA, "Fix date");
+
+    gemini.extract = golden("text-with-note").recorded;
+    await chat.text("14 lunch at Sandwich Shop");
+
+    const card2 = cards().at(-1)!;
+    expect(card2.thread).toBe(chat.lastTopic());
+    expect(card2.thread).not.toBe(cardA.thread);
+    expect(chat.topicName(card2.thread!)).toBe("Sandwich Shop · $14.00");
+    expect((await ledger.ingestions())[0].status).toBe("awaiting_date");
+    expect(chat.replies().map((r) => r.text)).not.toContain(
+      "Still waiting for a date for the previous item. Send YYYY-MM-DD, Aug 10, or yesterday — or tap Keep as is / Discard.",
+    );
+  });
+
+  it("Keep as is in a topic resends the card there", async () => {
+    gemini.extract = golden("text-with-note").recorded;
+    await chat.text("14 lunch at Sandwich Shop");
+    const [card] = cards();
+    await chat.tap(card, "Fix date");
+    const renames = chat.calls("editForumTopic").length;
+
+    await chat.tap(chat.last(), "Keep as is");
+
+    const kept = cards().at(-1)!;
+    expect(labels(kept)).toContain("Confirm");
+    expect(kept.thread).toBe(card.thread);
+    expect(chat.calls("editForumTopic")).toHaveLength(renames);
+  });
+
+  it("while a card whose topic was refused waits for a correction, a purchase from the main view is not that correction", async () => {
+    gemini.extract = golden("two-stores").recorded;
+    chat.refuseNextTopicCreates(1);
+    await chat.text("3 at Dollar Corner and 5 at Acme Mart Pharmacy");
+    takeTelegramRejections();
+    const [, second] = cards();
+    await chat.tap(second, "Edit");
+    expect(chat.last().thread).toBe(second.thread);
+
+    gemini.extract = golden("text-with-note").recorded;
+    await chat.text("14 lunch at Sandwich Shop");
+
+    expect(cards().at(-1)!.thread).toBe(chat.lastTopic());
+    expect(gemini.calls.map((c) => c.kind)).not.toContain("patch");
+    expect((await ledger.ingestions())[1].status).toBe("awaiting_edit");
+  });
+
+  it("a card from before topics, dated from inside a topic, gets its new card there and keeps that topic", async () => {
+    chat.topicMode(false);
+    gemini.extract = golden("receipt-no-date").recorded;
+    await chat.photo();
+    await chat.tap(cards()[0], "Fix date");
+
+    chat.topicMode(true);
+    await chat.text("yesterday");
+
+    const fixed = cards().at(-1)!;
+    expect(fixed.thread).toBe(chat.lastTopic());
+    const [row] = await ledger.ingestions();
+    expect(row.telegram_thread_id).toBe(chat.lastTopic());
+    expect(row.card_message_id).toBe(fixed.messageId);
+  });
+
+  it("a card from before topics, dated inside another purchase's topic, leaves that topic and its name alone", async () => {
+    chat.topicMode(false);
+    gemini.extract = golden("receipt-no-date").recorded;
+    await chat.photo();
+    const [old] = cards();
+
+    chat.topicMode(true);
+    gemini.extract = golden("text-with-note").recorded;
+    await chat.text("14 lunch at Sandwich Shop");
+    const other = cards().at(-1)!;
+    await chat.tap(old, "Fix date");
+    const renames = chat.calls("editForumTopic").length;
+
+    await chat.inTopic(other.thread!).text("yesterday");
+
+    expect(cards().at(-1)!.thread).toBe(other.thread);
+    expect(chat.calls("editForumTopic")).toHaveLength(renames);
+    expect(chat.topicName(other.thread!)).toBe("Sandwich Shop · $14.00");
+    const [oldRow, otherRow] = await ledger.ingestions();
+    expect(oldRow.telegram_thread_id).toBeNull();
+    expect(otherRow.telegram_thread_id).toBe(other.thread);
   });
 });

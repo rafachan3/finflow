@@ -394,18 +394,34 @@ export async function discardIngestion(
   return !result.rowCount ? "already_handled" : "discarded";
 }
 
+/**
+ * The topic a waiting row listens in: its own, else the topic its message came
+ * in (a card whose own topic Telegram refused sits there). Null only for a row
+ * from before topics. A thread counts only on a topic message, as in topicThread.
+ */
+const WAIT_THREAD = `coalesce(telegram_thread_id,
+  CASE WHEN raw_payload #>> '{message,is_topic_message}' = 'true'
+    THEN (raw_payload #>> '{message,message_thread_id}')::int END)`;
+
 export async function findAwaitingIngestion(): Promise<{
   id: string;
   extraction: Extraction;
   status: "awaiting_date" | "awaiting_edit";
+  threadId: number | null;
+  /** The topic is this purchase's alone, so its name may follow the purchase. */
+  ownTopic: boolean;
 } | null> {
   const db = await getPool();
   const result = await db.query<{
     id: string;
     extraction: Extraction;
     status: "awaiting_date" | "awaiting_edit";
+    threadId: number | null;
+    ownTopic: boolean;
   }>(
-    `SELECT id, extraction, status FROM ingestions
+    `SELECT id, extraction, status, ${WAIT_THREAD} AS "threadId",
+            telegram_thread_id IS NOT NULL AS "ownTopic"
+     FROM ingestions
      WHERE status IN ('awaiting_date', 'awaiting_edit')
      ORDER BY created_at DESC
      LIMIT 1`,
@@ -718,16 +734,16 @@ export async function applyIngestionEdit(
 /**
  * Leaves a date or edit wait without changing the stored extraction: status
  * back to `pending` so Confirm works again. Idempotent; returns null when the
- * row is no longer waiting.
+ * row is no longer waiting. `threadId` is the topic the wait was in.
  */
 export async function restoreIngestionPending(
   ingestionId: string,
-): Promise<{ id: string; extraction: Extraction } | null> {
+): Promise<{ id: string; extraction: Extraction; threadId: number | null } | null> {
   const db = await getPool();
-  const result = await db.query<{ id: string; extraction: Extraction }>(
+  const result = await db.query<{ id: string; extraction: Extraction; threadId: number | null }>(
     `UPDATE ingestions SET status = 'pending'
      WHERE id = $1 AND status IN ('awaiting_date', 'awaiting_edit')
-     RETURNING id, extraction`,
+     RETURNING id, extraction, ${WAIT_THREAD} AS "threadId"`,
     [ingestionId],
   );
   return result.rows[0] ?? null;
