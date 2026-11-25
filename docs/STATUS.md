@@ -503,6 +503,8 @@ before merging; Confirm writes the column at once. **Follow-up (grafana/,
 not in this PR):** Ledger "Line items" shows `f.notes` as Note, and the
 search box matches `f.notes` only; both should read `f.item_note` too.
 
+Ledger line note (#171, branch `feat/ledger-line-note`): "Line items" Note is `coalesce(f.item_note, f.notes)` and the Search box matches `item_note` too.
+
 Fuller note rewrite (#172, branch `feat/fuller-note-rewrite`, not merged;
 DECISIONS.md 2026-11-24, "A note is rewritten until it is clear"): `NOTES`
 now rewrites the transaction note and a line note until someone who did not
