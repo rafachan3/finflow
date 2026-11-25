@@ -1125,25 +1125,40 @@ async function handleCallback(
  */
 export const UTILITY_TOPIC_TTL_SECONDS = 60 * 60;
 
+/** The owner's own message, not a stranger's or Telegram's topic notice: only these tidy topics. */
+function tidiesTopics(message: TelegramMessage, allowedChatIds: Set<number>): boolean {
+  return allowedChatIds.has(message.chat.id) && !message.forum_topic_created && !message.forum_topic_edited;
+}
+
 /**
- * After the owner's message: a topic no purchase owns is noted for tidying,
- * and those past their hour are deleted (renamed ⚙️ when Telegram refuses,
- * never tried again). Best effort: it never changes the reply.
+ * Before the reply: a topic no purchase owns yet is noted for tidying, and a
+ * message in one restarts its hour. A purchase the message brings takes the
+ * topic over and drops the note. Best effort: it never changes the reply.
  */
-async function tidyTopics(message: TelegramMessage, config: Awaited<ReturnType<typeof getConfig>>): Promise<void> {
-  const chatId = message.chat.id;
-  if (!config.allowedChatIds.has(chatId) || message.forum_topic_created || message.forum_topic_edited) return;
+async function noteUtilityTopic(message: TelegramMessage): Promise<void> {
+  const thread = topicThread(message);
+  if (thread === undefined) return;
   try {
-    const thread = topicThread(message);
-    if (thread !== undefined && (await findIngestionByThread(chatId, thread)) === null) {
+    if ((await findIngestionByThread(message.chat.id, thread)) === null) {
       const command = parseCommand(message.text);
-      await registerUtilityTopic(chatId, thread, command ? `/${command.name}` : "No purchase");
-    }
-    for (const stale of await takeStaleUtilityTopics(chatId, UTILITY_TOPIC_TTL_SECONDS)) {
-      await retireTopic(config.botToken, chatId, stale.threadId, `⚙️ ${stale.label}`);
+      await registerUtilityTopic(message.chat.id, thread, command ? `/${command.name}` : "No purchase");
     }
   } catch (err) {
-    console.error("topic tidy error", err);
+    console.error("topic note error", err);
+  }
+}
+
+/**
+ * After the reply: deletes the noted topics past their hour, renamed ⚙️ when
+ * Telegram refuses and never tried again. Best effort: it never changes the reply.
+ */
+async function sweepUtilityTopics(botToken: string, chatId: number): Promise<void> {
+  try {
+    for (const stale of await takeStaleUtilityTopics(chatId, UTILITY_TOPIC_TTL_SECONDS)) {
+      await retireTopic(botToken, chatId, stale.threadId, `⚙️ ${stale.label}`);
+    }
+  } catch (err) {
+    console.error("topic sweep error", err);
   }
 }
 
@@ -1160,8 +1175,11 @@ export async function handler(
     const update = parseUpdate(event);
 
     if (update.message) {
+      const tidy = tidiesTopics(update.message, config.allowedChatIds);
+      // Noted before the reply, so another invocation's sweep never takes a topic in use.
+      if (tidy) await noteUtilityTopic(update.message);
       const response = await handleMessage(update, config);
-      await tidyTopics(update.message, config);
+      if (tidy) await sweepUtilityTopics(config.botToken, update.message.chat.id);
       return response;
     }
 

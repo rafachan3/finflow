@@ -116,10 +116,11 @@ dbt models and the agent read it, so numbers agree everywhere.
   A reply goes to the topic of the message or the tapped card; what the
   bot sends on its own (the daily digest) posts in the main view. A row
   stores its topic (`telegram_thread_id`) and its card
-  (`card_message_id`). After the reply, the handler tidies topics: a topic
-  no purchase owns (a command's, or a message with no purchase such as a
-  failed extraction) is noted in `utility_topics`, and the first owner
-  message an hour or more after the last one in it deletes it (Close on a
+  (`card_message_id`). Before the reply, the handler notes a topic no
+  purchase owns (a command's, or a message with no purchase such as a
+  failed extraction) in `utility_topics`, so a concurrent sweep never takes
+  a topic in use; after the reply it sweeps: the first owner message an
+  hour or more after the last one in a noted topic deletes it (Close on a
   `/recurring` menu deletes its topic at once). That row is the one
   exception to "nothing is written until extraction and validation pass":
   it holds the chat, thread, command name or `No purchase`, and a

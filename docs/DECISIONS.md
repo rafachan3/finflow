@@ -3903,7 +3903,8 @@ owner message an hour or more after the owner's last message in it.
   topics linger, the nudge run is the upgrade path.
 - **One hour:** covers a `/recurring` or mention-review session, and is at
   least the 15-minute prompt window. Each owner message in the topic
-  restarts it; taps do not.
+  restarts it, noted before the reply so a concurrent invocation's sweep
+  never takes a topic in use; taps do not.
 - **The one write without a purchase:** a `utility_topics` row (chat,
   thread, `/command` or `No purchase`, timestamp; no message content). It
   is the exception to "nothing is written until extraction and validation
@@ -3914,6 +3915,7 @@ owner message an hour or more after the owner's last message in it.
   `⚙️ No purchase`) and not tried again; the row is claimed by delete
   before the call, so two invocations never both act on it.
 - **Close** on a `/recurring` menu in its command's topic deletes the
-  topic at once; elsewhere it deletes only the menu message.
+  topic at once; if that is refused, or elsewhere, it deletes the menu
+  message.
 - **Ruled out:** an EventBridge schedule or a timer; tidying from the
   nudge run now; retrying a refused delete.

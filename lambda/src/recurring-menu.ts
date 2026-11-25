@@ -1011,9 +1011,9 @@ function onDigest(screen: Screen): Screen {
 }
 
 /**
- * Close: in the topic its command opened, deletes that topic with the menu
- * (renamed ⚙️ when Telegram refuses). Elsewhere (a Saved reply in a purchase's
- * topic) it deletes only the menu message. Telegram refuses to delete one older
+ * Close: in the topic its command opened, deletes that topic with the menu.
+ * When Telegram refuses, the topic is renamed ⚙️ and the menu message goes as
+ * anywhere else (a Saved reply in a purchase's topic): it is deleted. Telegram refuses to delete one older
  * than 48 hours; that one is edited into a plain "Closed." with no buttons. A
  * failure of both is only logged, so Telegram does not retry the tap.
  */
@@ -1024,8 +1024,7 @@ async function close(ctx: TapContext): Promise<void> {
   } catch (err) {
     console.error("menu topic lookup error", err);
   }
-  if (label !== null) {
-    await retireTopic(ctx.botToken, ctx.chatId, ctx.thread!, `⚙️ ${label}`);
+  if (label !== null && (await retireTopic(ctx.botToken, ctx.chatId, ctx.thread!, `⚙️ ${label}`)) === "deleted") {
     return;
   }
   try {

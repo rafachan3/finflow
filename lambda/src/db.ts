@@ -478,13 +478,13 @@ export async function setIngestionTopic(ingestionId: string, threadId: number): 
 
 /**
  * A topic a command or a message with no purchase opened, to tidy away later.
- * Each owner message in it restarts its hour.
+ * Each owner message in it restarts its hour and names it after that message.
  */
 export async function registerUtilityTopic(chatId: number, threadId: number, label: string): Promise<void> {
   const db = await getPool();
   await db.query(
     `INSERT INTO utility_topics (chat_id, thread_id, label) VALUES ($1, $2, $3)
-     ON CONFLICT (chat_id, thread_id) DO UPDATE SET opened_at = now()`,
+     ON CONFLICT (chat_id, thread_id) DO UPDATE SET label = excluded.label, opened_at = now()`,
     [chatId, threadId, label],
   );
 }

@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { retryWait } from "../../src/gemini.js";
 import { golden } from "../golden/golden.js";
 import { chat, gemini, invokeNudge, labels, ledger, takeTelegramRejections, useJourneys, type Reply } from "./harness.js";
 
@@ -524,6 +525,47 @@ describe("command and no-purchase topics are deleted when done", () => {
     await chat.tap(menu, "✕ Close");
 
     expect(chat.topicExists(menu.thread!)).toBe(false);
+    expect(await ledger.utilityTopics()).toEqual([]);
+  });
+
+  it("a message in an hour-old command topic keeps it from a tidy-up running at the same time", async () => {
+    await chat.text("/merchants");
+    const topic = chat.lastTopic();
+    await ledger.ageUtilityTopics(3600);
+
+    // Hold the message at Gemini's first retry while another message's tidy-up runs.
+    gemini.extract = golden("text-with-note").recorded;
+    gemini.overloaded = new Set(ALL_MODELS);
+    let atRetry!: () => void;
+    const reachedRetry = new Promise<void>((resolve) => (atRetry = resolve));
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    retryWait.sleep = async () => {
+      atRetry();
+      await held;
+    };
+    const slow = chat.inTopic(topic).text("14 lunch at Sandwich Shop");
+    await reachedRetry;
+    await chat.text("/merchants");
+    release();
+    await slow;
+
+    expect(chat.topicExists(topic)).toBe(true);
+    expect(chat.last().text).toContain("Gemini is overloaded right now");
+    expect(chat.last().thread).toBe(topic);
+  });
+
+  it("Close on a /recurring menu whose topic cannot be deleted renames it ⚙️ and closes the menu", async () => {
+    await trackGym();
+    await chat.text("/recurring");
+    const menu = chat.last();
+    chat.refuseNextTopicDeletes(1);
+
+    await chat.tap(menu, "✕ Close");
+
+    expect(takeTelegramRejections()).toEqual(["deleteForumTopic: refused"]);
+    expect(chat.topicName(menu.thread!)).toBe("⚙️ /recurring");
+    expect(chat.exists(menu)).toBe(false);
     expect(await ledger.utilityTopics()).toEqual([]);
   });
 
