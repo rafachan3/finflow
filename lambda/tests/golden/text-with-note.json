@@ -1,8 +1,8 @@
 {
-  "name": "a stated date and a reason are kept, the reason copy-edited; a lunch bought at the counter has the same venue as a delivered one and no channel",
+  "name": "a stated date and a reason are kept, the garbled reason rewritten into one clear explanation with nothing added; a lunch bought at the counter has the same venue as a delivered one and no channel",
   "input": {
     "kind": "text",
-    "text": "14 lunch at Sandwich Shop on Oct 25, was to tierd didnt pak lunch"
+    "text": "14 lunch at Sandwich Shop on Oct 25, didnt pak it, was to tierd, my lunch i mean"
   },
   "expect": {
     "events": [
@@ -14,16 +14,24 @@
         "note": true,
         "noteHas": [
           "tired",
-          "pack"
+          "pack",
+          "lunch"
         ],
         "noteLacks": [
           "tierd",
           "didnt",
           "pak",
+          "it",
+          "mean",
           "Sandwich",
-          "14"
+          "14",
+          "work",
+          "hungry",
+          "morning",
+          "owner",
+          "user"
         ],
-        "noteMaxWords": 10,
+        "noteMaxWords": 12,
         "venue": "Fast Food",
         "channel": null
       }
@@ -45,7 +53,7 @@
         "is_recurring": false,
         "income_source": null,
         "to_account": null,
-        "notes": "I was too tired and didn't pack lunch.",
+        "notes": "I was too tired and didn't pack my lunch.",
         "items": [
           {
             "description": "Sub",

@@ -503,6 +503,15 @@ before merging; Confirm writes the column at once. **Follow-up (grafana/,
 not in this PR):** Ledger "Line items" shows `f.notes` as Note, and the
 search box matches `f.notes` only; both should read `f.item_note` too.
 
+Fuller note rewrite (#172, branch `feat/fuller-note-rewrite`, not merged;
+DECISIONS.md 2026-11-24, "A note is rewritten until it is clear"): `NOTES`
+now rewrites the transaction note and a line note until someone who did not
+hear the message can tell what happened (fragments joined, what is ambiguous
+or out of order rephrased), still sounding like what was said and adding
+nothing. `text-with-note` now sends a garbled, out-of-order reason and
+fails a note that keeps the unresolved "it" or the "I mean" aside, adds a
+fact, or reads as a third-person report. Goldens stay at 20, all re-hashed.
+
 Migration 0011 is applied to production. Owner/CoS actions, in order: merge
 the PR (it auto-deploys code that reads the column), then from `lambda/`:
 `RECEIPTS_BUCKET=finflow-receipts-$(aws sts get-caller-identity --query Account --output text) AWS_REGION=ca-central-1 npm run backfill:media-merchant -- --dry-run`,

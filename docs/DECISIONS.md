@@ -3799,3 +3799,34 @@ as the whole receipt's reason. Notes now split the way tags already do.
 ## 2026-11-24: A table-service restaurant is not Fast Food (#188)
 
 - One sentence in the shared `VENUE` instruction and TAXONOMY.md: a restaurant with table service (a diner, a bistro) is not Fast Food, even when its menu has burgers or sandwiches. Flash-Lite had stretched #183's quick-service sentence to a sit-down diner. `receipt-with-tip` is the guard; `same-place-lines` and `text-with-note` keep a burger place Fast Food however it was ordered. **Ruled out:** a new golden (the suite stays at 20).
+
+## 2026-11-24: A note is rewritten until it is clear (#172)
+
+Supersedes the 2026-10-28 ruling "Notes get a light copy-edit, not a
+rewrite": its "keep the owner's own wording and voice, do not rephrase"
+line no longer applies. The note's reader is a later agent asking why a
+purchase happened, and a garbled phrasing kept word for word is hard for
+it to use. The owner accepts that the note is no longer their exact words.
+
+- **The balance:** someone who did not hear the message can tell the
+  circumstance, and the owner still recognizes what they said. Gemini fixes
+  spelling, grammar and agreement, joins fragments into one explanation
+  with the references a reader needs, and rephrases or reorders what is
+  ambiguous or out of order, using only what was said. A short reason
+  stays short, in the owner's first person, never a formal summary or a
+  third-person report.
+- **Unchanged:** no fact, reason, motive, amount, merchant, item, date or
+  category they did not give; never from printed receipt text; null when
+  no reason was given; translated to English. The card shows the note
+  before Confirm, so Edit can still change it, and the raw message stays
+  in `ingestions.raw_payload`.
+- **Scope:** one rewrite of the `NOTES` instruction in the existing request,
+  so it applies to the transaction note and to a line note (#171) alike. It
+  does not decide where a note is stored.
+- **Golden:** the suite stays at 20. `text-with-note` sends
+  `didnt pak it, was to tierd, my lunch i mean` and fails a note that keeps
+  the unresolved "it" or the "I mean" aside, keeps a typo, adds a fact
+  (work, hungry, morning) or reads as a report (owner, user). Word checks,
+  not an exact string, so a fair rewording still passes.
+- **Ruled out:** keeping the 2026-10-28 voice rule; a full rewrite that adds
+  context they did not give; a second Gemini request just for the note.
