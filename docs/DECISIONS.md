@@ -3868,3 +3868,25 @@ that topic answers it. Any other message is a new purchase.
 - **One wait at a time stays:** Fix date or Edit on a second card while one
   waits still answers "busy". Ruled out: one wait per topic, since nothing
   needs two at once and it would widen every waiting lookup.
+
+## 2026-11-25: Confirm marks the card saved in place
+
+Confirm no longer posts a `Saved.` message. The card's buttons become one
+`✅ Saved`, its own topic is renamed `✅ Merchant · $amount`, and the toast
+names the purchase.
+
+- **Toast:** `Saved: Merchant · $amount.` instead of `Saved. (k of n)`;
+  the name already tells two cards of one message apart. Discard keeps its
+  `(k of n)` until it is reworked too.
+- **The button:** `disabled` with no `callback_data`. With callback_data
+  Telegram does not show it disabled; without it a tap sends nothing, so no
+  handler is needed (live check of 2026-11-25).
+- **`Saved.` still sent** when it carries the recurring buttons or the
+  series-gone note: the recurring add flow redraws the message its buttons
+  are on, and must not overwrite the card. It goes into the purchase's
+  topic.
+- **Best effort:** a refused rename is logged and never blocks Confirm.
+  A card from before topics, or one sharing another purchase's topic,
+  renames none.
+- **Ruled out:** a `sv` callback on the Saved button, and keeping the
+  chat message for every Confirm (one more message per purchase).

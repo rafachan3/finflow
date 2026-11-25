@@ -26,7 +26,7 @@ describe("several purchases in one message", () => {
 
     await chat.tap(first, "Confirm");
     await chat.tap(second, "Confirm");
-    expect(chat.acks()).toEqual(["Saved. (1 of 2)", "Saved. (2 of 2)"]);
+    expect(chat.acks()).toEqual(["Saved: Dollar Corner · $3.00.", "Saved: Acme Mart Pharmacy · $5.00."]);
     const saved = await ledger.transactions();
     expect(saved.map((t) => t.amount)).toEqual(["3.00", "5.00"]);
   });

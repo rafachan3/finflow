@@ -71,7 +71,7 @@ describe("a card waiting for a date", () => {
     await chat.tap(first, "Fix date");
     await chat.tap(second, "Confirm");
 
-    expect(chat.acks()).toEqual(["Send the date.", "Saved. (2 of 2)"]);
+    expect(chat.acks()).toEqual(["Send the date.", "Saved: Acme Mart Pharmacy · $5.00."]);
     expect(await ledger.transactions()).toMatchObject([{ amount: "5.00" }]);
   });
 

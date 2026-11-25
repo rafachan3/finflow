@@ -311,3 +311,63 @@ describe("Fix date and Edit inside a purchase topic", () => {
     expect(otherRow.telegram_thread_id).toBe(other.thread);
   });
 });
+
+describe("Confirm inside a purchase topic", () => {
+  it("Confirm turns the card's buttons into one ✅ Saved and puts ✅ on the topic, with no Saved message", async () => {
+    gemini.extract = golden("text-with-note").recorded;
+    await chat.text("14 lunch at Sandwich Shop");
+    const [card] = cards();
+    const sent = chat.replies().length;
+
+    await chat.tap(card, "Confirm");
+
+    expect(labels(chat.current(card))).toEqual(["✅ Saved"]);
+    expect(chat.current(card).text).toBe(card.text);
+    expect(chat.topicName(card.thread!)).toBe("✅ Sandwich Shop · $14.00");
+    expect(chat.replies()).toHaveLength(sent);
+    expect(chat.acks()).toEqual(["Saved: Sandwich Shop · $14.00."]);
+  });
+
+  it("Confirm still saves when the topic rename is refused", async () => {
+    gemini.extract = golden("text-with-note").recorded;
+    await chat.text("14 lunch at Sandwich Shop");
+    const [card] = cards();
+    chat.refuseNextTopicEdits(1);
+
+    await chat.tap(card, "Confirm");
+    expect(takeTelegramRejections()).toEqual(["editForumTopic: refused"]);
+
+    expect(await ledger.transactions()).toHaveLength(1);
+    expect(labels(chat.current(card))).toEqual(["✅ Saved"]);
+    expect(chat.topicName(card.thread!)).toBe("Sandwich Shop · $14.00");
+  });
+
+  it("a payment that looks recurring still gets its Saved reply with the recurring buttons, in its topic", async () => {
+    const [event] = (golden("text-with-note").recorded as { events: Record<string, unknown>[] }).events;
+    gemini.extract = { events: [{ ...event, is_recurring: true }] };
+    await chat.text("14 lunch at Sandwich Shop");
+    const [card] = cards();
+
+    await chat.tap(card, "Confirm");
+
+    const saved = chat.last();
+    expect(saved.text).toBe("Saved.");
+    expect(saved.thread).toBe(card.thread);
+    expect(labels(saved)[0]).toMatch(/^↻/);
+    expect(labels(chat.current(card))).toEqual(["✅ Saved"]);
+  });
+
+  it("an old card from before topics confirms in place and renames no topic", async () => {
+    chat.topicMode(false);
+    gemini.extract = golden("text-with-note").recorded;
+    await chat.text("14 lunch at Sandwich Shop");
+    const [card] = cards();
+    chat.topicMode(true);
+
+    await chat.tap(card, "Confirm");
+
+    expect(labels(chat.current(card))).toEqual(["✅ Saved"]);
+    expect(chat.calls("editForumTopic")).toEqual([]);
+    expect(await ledger.transactions()).toHaveLength(1);
+  });
+});

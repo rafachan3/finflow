@@ -13,6 +13,7 @@ import {
   esc,
   largestPhotoFileId,
   reviewKeyboard,
+  savedCardKeyboard,
   sendMessage,
   voiceFileId,
   waitingKeyboard,
@@ -73,6 +74,13 @@ describe("waitingKeyboard", () => {
     for (const b of keyboard.inline_keyboard.flat()) {
       expect(Buffer.byteLength(b.callback_data, "utf8")).toBeLessThanOrEqual(64);
     }
+  });
+});
+
+describe("savedCardKeyboard", () => {
+  it("the saved card keyboard is one ✅ Saved button that does nothing", () => {
+    // Disabled with no callback_data: Telegram greys it out and sends nothing on a tap.
+    expect(savedCardKeyboard()).toEqual({ inline_keyboard: [[{ text: "✅ Saved", disabled: {} }]] });
   });
 });
 

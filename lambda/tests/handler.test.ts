@@ -9,6 +9,7 @@ vi.mock("../src/config.js", () => ({
 }));
 vi.mock("../src/db.js", () => ({
   confirmIngestion: vi.fn(),
+  getIngestion: vi.fn(),
   discardIngestion: vi.fn(),
   insertPendingIngestions: vi.fn(),
   loadTaxonomy: vi.fn(),
@@ -32,6 +33,8 @@ vi.mock("../src/gemini.js", () => ({
 }));
 vi.mock("../src/telegram.js", async (importActual) => ({
   topicThread: (await importActual<typeof import("../src/telegram.js")>()).topicThread,
+  savedCardKeyboard: (await importActual<typeof import("../src/telegram.js")>()).savedCardKeyboard,
+  editForumTopic: vi.fn(),
   answerCallbackQuery: vi.fn(),
   reviewKeyboard: vi.fn((id: string) => ({ confirm: id })),
   waitingKeyboard: vi.fn((id: string) => ({ waiting: id })),
@@ -346,8 +349,14 @@ describe("handler", () => {
   );
 
   it("Confirm on a card with a series links it (cr) or excludes it (cx), and says when it could not link", async () => {
-    const { confirmIngestion } = await import("../src/db.js");
+    const { confirmIngestion, getIngestion } = await import("../src/db.js");
     const id = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
+    vi.mocked(getIngestion).mockResolvedValue({
+      status: "confirmed",
+      extraction: { ...extraction, merchant: "Sandwich Shop" },
+      threadId: null,
+      cardMessageId: 5,
+    });
     const tap = (data: string) =>
       handler(event({ update_id: 36, callback_query: { id: "cb", data, message: { message_id: 5, chat: { id: 1 } } } }));
     vi.mocked(confirmIngestion).mockResolvedValue({ status: "confirmed", transactionId: "tx", seriesGone: false, looksRecurring: false });
@@ -360,7 +369,17 @@ describe("handler", () => {
       [id, { id: 12, link: false }],
     ]);
     expect(vi.mocked(answerCallbackQuery).mock.calls.map((c) => c[2])).toEqual([
-      "Saved.",
+      "Saved: Sandwich Shop · $12.50.",
+      "Saved: Sandwich Shop · $12.50. Not linked: that recurring series is gone or no longer fits.",
+    ]);
+    expect(vi.mocked(editMessageReplyMarkup).mock.calls[0]).toEqual([
+      "t",
+      1,
+      5,
+      { inline_keyboard: [[{ text: "✅ Saved", disabled: {} }]] },
+    ]);
+    // Only the series-gone note is worth a message; a plain save sends none.
+    expect(vi.mocked(sendMessage).mock.calls.map((c) => c[2])).toEqual([
       "Saved. Not linked: that recurring series is gone or no longer fits.",
     ]);
   });

@@ -41,7 +41,7 @@ describe("logging one purchase", () => {
     expect(await ledger.transactions()).toEqual([]);
 
     await chat.tap(card, "Confirm");
-    expect(chat.acks()).toEqual(["Saved."]);
+    expect(chat.acks()).toEqual(["Saved: Sandwich Shop · $14.00."]);
     expect(await ledger.transactions()).toMatchObject([
       {
         date: "2026-10-25",
@@ -92,9 +92,10 @@ describe("logging one purchase", () => {
     await chat.text("14 lunch at Sandwich Shop on Oct 25, didnt pak it, was to tierd, my lunch i mean");
     const card = chat.last();
     await chat.tap(card, "Confirm");
-    await chat.tap(card, "Confirm");
+    // The card now shows ✅ Saved; a raced second tap still carries Confirm's data.
+    await chat.press(card, card.buttons[0].data);
 
-    expect(chat.acks()).toEqual(["Saved.", "Already handled."]);
+    expect(chat.acks()).toEqual(["Saved: Sandwich Shop · $14.00.", "Already handled."]);
     expect(await ledger.transactions()).toHaveLength(1);
   });
 

@@ -487,6 +487,27 @@ export async function findIngestionByThread(
   return result.rows[0] ?? null;
 }
 
+/** One ingestion with its own topic and card message; null for an unknown id. */
+export async function getIngestion(ingestionId: string): Promise<{
+  status: string;
+  extraction: Extraction;
+  threadId: number | null;
+  cardMessageId: number | null;
+} | null> {
+  const db = await getPool();
+  const result = await db.query<{
+    status: string;
+    extraction: Extraction;
+    threadId: number | null;
+    cardMessageId: number | null;
+  }>(
+    `SELECT status, extraction, telegram_thread_id AS "threadId", card_message_id AS "cardMessageId"
+     FROM ingestions WHERE id = $1`,
+    [ingestionId],
+  );
+  return result.rows[0] ?? null;
+}
+
 /** The date of the oldest saved transaction (YYYY-MM-DD), or null for an empty ledger. */
 export async function oldestTransactionDate(): Promise<string | null> {
   const db = await getPool();

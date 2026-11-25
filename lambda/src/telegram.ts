@@ -222,6 +222,8 @@ export async function answerCallbackQuery(
 }
 
 type Button = { text: string; callback_data: string };
+/** A button that only shows a state: Telegram greys it out and sends nothing on a tap. */
+type InertButton = { text: string; disabled: Record<string, never> };
 
 /** The card's series button: `↻ Internet bill ✓` while Confirm links it, `↻ not Internet bill` once turned off. */
 function seriesLabel(name: string, linking: boolean): string {
@@ -265,10 +267,12 @@ export function reviewKeyboard(
  * "not this series" (`cx:`), and the toggle's label follows. The state lives
  * in the keyboard only; nothing is stored until Confirm.
  */
-export function toggleCardSeries(keyboard: Button[][]): Button[][] {
-  const linking = keyboard.flat().some((b) => b.callback_data.startsWith("cr:"));
+export function toggleCardSeries<B extends { text: string; callback_data?: string }>(keyboard: B[][]): B[][] {
+  // A late tap on a saved card carries its ✅ Saved button, which has no callback_data: nothing to toggle.
+  const linking = keyboard.flat().some((b) => b.callback_data?.startsWith("cr:"));
   return keyboard.map((row) =>
     row.map((b) => {
+      if (!b.callback_data) return b;
       if (b.callback_data.startsWith("rt:")) {
         const name = linking ? b.text.slice("↻ ".length, -" ✓".length) : b.text.slice("↻ not ".length);
         return { ...b, text: seriesLabel(name, !linking) };
@@ -279,6 +283,11 @@ export function toggleCardSeries(keyboard: Button[][]): Button[][] {
       return b;
     }),
   );
+}
+
+/** A confirmed card's keyboard. Disabled with no callback_data, so it is shown greyed and a tap sends nothing. */
+export function savedCardKeyboard(): { inline_keyboard: InertButton[][] } {
+  return { inline_keyboard: [[{ text: "✅ Saved", disabled: {} }]] };
 }
 
 /**

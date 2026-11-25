@@ -34,7 +34,8 @@ export function journeyConfig() {
 
 type Sent = { method: string; body: Record<string, unknown>; failed: boolean; messageId?: number };
 
-type Button = { text: string; callback_data: string };
+/** A button with no callback_data must be disabled; Telegram sends nothing when it is tapped. */
+type Button = { text: string; callback_data?: string; disabled?: object };
 type Shown = { text: string; keyboard: Button[][]; thread?: number };
 
 /** file_id -> file_path of the media the next message carries; getFile knows nothing else. */
@@ -60,6 +61,7 @@ const telegram = {
   lastTopic: undefined as number | undefined,
   refuseTopicCreates: 0,
   refuseTopicDeletes: 0,
+  refuseTopicEdits: 0,
 };
 
 function threadOf(body: Record<string, unknown>): number | undefined {
@@ -128,7 +130,8 @@ function telegramViolation(method: string, body: Record<string, unknown>): strin
   }
   for (const button of (keyboardOf(body) ?? []).flat()) {
     const bytes = Buffer.byteLength(button.callback_data ?? "", "utf8");
-    if (bytes < 1 || bytes > 64) return `${method}: button callback_data must be 1-64 bytes`;
+    const inert = button.disabled !== undefined && button.callback_data === undefined;
+    if (!inert && (bytes < 1 || bytes > 64)) return `${method}: button callback_data must be 1-64 bytes`;
     if (!button.text) return `${method}: button text must not be empty`;
   }
   if (EDITS.has(method)) {
@@ -316,8 +319,8 @@ const server = setupServer(
  * one takes it back.
  */
 function topicCall(method: string, body: Record<string, unknown>) {
-  const counter = method === "createForumTopic" ? "refuseTopicCreates" : method === "deleteForumTopic" ? "refuseTopicDeletes" : null;
-  if (counter && telegram[counter] > 0) {
+  const counter = method === "createForumTopic" ? "refuseTopicCreates" : method === "deleteForumTopic" ? "refuseTopicDeletes" : "refuseTopicEdits";
+  if (telegram[counter] > 0) {
     telegram[counter]--;
     const refused = `${method}: refused`;
     telegram.rejected.push(refused);
@@ -383,6 +386,7 @@ export function useJourneys(): void {
     telegram.lastTopic = undefined;
     telegram.refuseTopicCreates = 0;
     telegram.refuseTopicDeletes = 0;
+    telegram.refuseTopicEdits = 0;
     gemini.calls = [];
     gemini.lastSystem = "";
     gemini.lastUserText = [];
@@ -423,7 +427,7 @@ export type Reply = {
 function toReply(shown: Shown, messageId?: number, html?: string): Reply {
   return {
     text: shown.text,
-    buttons: shown.keyboard.flat().map((b) => ({ text: b.text, data: b.callback_data })),
+    buttons: shown.keyboard.flat().map((b) => ({ text: b.text, data: b.callback_data ?? "" })),
     messageId,
     ...(shown.thread !== undefined ? { thread: shown.thread } : {}),
     ...(html !== undefined ? { html } : {}),
@@ -591,6 +595,10 @@ export const chat = {
   refuseNextTopicDeletes(n: number) {
     telegram.refuseTopicDeletes = n;
   },
+  /** The next n editForumTopic calls are refused. */
+  refuseNextTopicEdits(n: number) {
+    telegram.refuseTopicEdits = n;
+  },
   /** The payloads of the bot's accepted calls to this Bot API method, in order. */
   calls(method: string): Record<string, unknown>[] {
     return telegram.sent.filter((s) => s.method === method && !s.failed).map((s) => s.body);
@@ -603,6 +611,7 @@ export const chat = {
     if (!button) {
       throw new Error(`no "${label}" button on: ${shown.text.split("\n")[0]}`);
     }
+    if (button.callback_data === undefined) throw new Error(`"${label}" is disabled: a tap sends nothing`);
     return chat.press(reply, button.callback_data, from);
   },
   /**

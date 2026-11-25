@@ -40,8 +40,7 @@ describe("/pending", () => {
 
     await chat.tap(resent[0], "Confirm");
     expect(await ledger.transactions()).toMatchObject([{ amount: "3.00" }]);
-    // The resent card has no (i of n), so its ack has none either.
-    expect(chat.acks()).toEqual(["Saved."]);
+    expect(chat.acks()).toEqual(["Saved: Dollar Corner · $3.00."]);
     const again = await send("/pending");
     expect(again.map((r) => header(r.text))).toEqual([expect.stringMatching(/ · CAD 5\.00$/)]);
   });

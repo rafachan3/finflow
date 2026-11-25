@@ -38,6 +38,7 @@ import {
   setIngestionAwaitingEdit,
   setIngestionCardMessage,
   setIngestionTopic,
+  getIngestion,
 } from "./db.js";
 import {
   applyDatePolicy,
@@ -86,6 +87,7 @@ import {
   editMessageText,
   largestPhotoFileId,
   reviewKeyboard,
+  savedCardKeyboard,
   sendMessage,
   topicThread,
   toggleCardSeries,
@@ -996,19 +998,33 @@ async function handleCallback(
   const ingestionId = match[2];
 
   let ack: string;
-  let ackButtons: object | undefined;
   if (action === "c" || withSeries) {
     const series = withSeries ? { id: Number(withSeries[3]), link: action === "cr" } : undefined;
     const result = await confirmIngestion(ingestionId, series);
     if (result === "already_handled") {
       ack = "Already handled.";
     } else {
-      ack = `${withPosition("Saved.", cb.message?.text)}${result.seriesGone ? ` ${SERIES_GONE}` : ""}`;
-      // After the save, so it adds no step: one tap adds it to the series it
-      // fits by timing and amount, or opens /recurring's add flow on it.
-      if (result.looksRecurring) {
-        ackButtons = { inline_keyboard: await savedKeyboard(result.transactionId) };
+      const row = (await getIngestion(ingestionId))!;
+      const gone = result.seriesGone ? ` ${SERIES_GONE}` : "";
+      await answerCallbackQuery(botToken, cb.id, `Saved: ${topicName(row.extraction)}.${gone}`);
+      await editMessageReplyMarkup(botToken, chatId, cb.message!.message_id!, savedCardKeyboard());
+      // Only the purchase's own topic: a card from before topics, or one sharing another purchase's topic, renames none.
+      if (row.threadId !== null) {
+        try {
+          await editForumTopic(botToken, chatId, row.threadId, topicName(row.extraction, "✅ "));
+        } catch (err) {
+          console.error("saved topic rename failed", err);
+        }
       }
+      // A message only when there is something to act on. It is not the card,
+      // because the recurring add flow redraws the message its buttons are on.
+      if (result.looksRecurring || result.seriesGone) {
+        // After the save, so it adds no step: one tap adds it to the series it
+        // fits by timing and amount, or opens /recurring's add flow on it.
+        const buttons = result.looksRecurring ? { inline_keyboard: await savedKeyboard(result.transactionId) } : undefined;
+        await sendMessage(botToken, chatId, `Saved.${gone}`, buttons, { thread: row.threadId ?? thread });
+      }
+      return ok("ok");
     }
   } else if (action === "f") {
     const started = await setIngestionAwaitingDate(ingestionId);
@@ -1060,7 +1076,7 @@ async function handleCallback(
   }
 
   await answerCallbackQuery(botToken, cb.id, ack);
-  await sendMessage(botToken, chatId, ack, ackButtons, { thread });
+  await sendMessage(botToken, chatId, ack, undefined, { thread });
   return ok("ok");
 }
 
