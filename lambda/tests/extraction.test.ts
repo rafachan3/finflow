@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  alreadyHandled,
   applyDatePolicy,
   dateWarnings,
   duplicateWarnings,
   formatPreview,
   merchantHint,
-  withPosition,
   fundingSourceToPersist,
   normalizeTaxonomyNames,
   parseCents,
@@ -545,13 +545,18 @@ describe("formatPreview", () => {
     expect(formatPreview(e, checks)).not.toContain("💡");
   });
 
-  it("adds the card's (k of n) to an ack only when its header carries one", () => {
-    const header = "Expense · 2026-08-17 · CAD 27.60";
-    expect(withPosition("Saved.", `${header} (2 of 3)\nBurger`)).toBe("Saved. (2 of 3)");
-    expect(withPosition("Discarded.", `${header} (1 of 2)`)).toBe("Discarded. (1 of 2)");
-    expect(withPosition("Saved.", `${header}\nBurger (2 of 3)`)).toBe("Saved.");
-    expect(withPosition("Saved.", header)).toBe("Saved.");
-    expect(withPosition("Saved.", undefined)).toBe("Saved.");
+  it("names the purchase and what happened to it when a tap comes too late", () => {
+    const name = "Sandwich Shop · $14.00";
+    expect(alreadyHandled(name, "confirmed")).toBe("Already handled: Sandwich Shop · $14.00 was saved.");
+    expect(alreadyHandled(name, "discarded")).toBe("Already handled: Sandwich Shop · $14.00 was discarded.");
+    expect(alreadyHandled(name, "awaiting_date")).toBe(
+      "Already handled: Sandwich Shop · $14.00 is waiting for a date or correction.",
+    );
+    expect(alreadyHandled(name, "awaiting_edit")).toBe(
+      "Already handled: Sandwich Shop · $14.00 is waiting for a date or correction.",
+    );
+    expect(alreadyHandled(name, "pending")).toBe("Already handled: Sandwich Shop · $14.00 is waiting for Confirm.");
+    expect(alreadyHandled()).toBe("Already handled.");
   });
 
   it("shows the channel under the venue only when the purchase went through an app", () => {

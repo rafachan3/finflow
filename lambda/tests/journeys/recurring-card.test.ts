@@ -270,7 +270,7 @@ describe("Confirm on a card with a series", () => {
     const shown = await card(billEvent());
     await chat.tap(shown, "Confirm");
     await chat.press(shown, shown.buttons[0].data);
-    expect(chat.acks()).toEqual(["Saved: Internet bill · $64.99.", "Already handled."]);
+    expect(chat.acks()).toEqual(["Saved: Internet bill · $64.99.", "Already handled: Internet bill · $64.99 was saved."]);
     expect(await ledger.transactions()).toHaveLength(5);
     expect((await ledger.links())["Internet bill 2026-10-15"]).toEqual({ series: "Internet bill", flagged: true });
   });

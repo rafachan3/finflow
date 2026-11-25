@@ -36,8 +36,8 @@ describe("several purchases in one message", () => {
     await chat.text("3 at Dollar Corner and 5 at Acme Mart Pharmacy");
 
     await chat.tap(chat.replies()[1], "Discard");
-    expect(chat.acks()).toEqual(["Discarded. (2 of 2)"]);
-    expect(chat.last().text).toBe("Discarded. (2 of 2)");
+    expect(chat.acks()).toEqual(["Discarded: Acme Mart Pharmacy · $5.00."]);
+    expect(chat.last().text).toBe("Discarded: Acme Mart Pharmacy · $5.00.");
   });
 
   it("two items at one store stay one card with two lines", async () => {

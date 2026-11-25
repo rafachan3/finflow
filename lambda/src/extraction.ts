@@ -563,8 +563,6 @@ function positionLabel(position?: { index: number; count: number }): string {
     : "";
 }
 
-const HEADER_POSITION = /( \(\d+ of \d+\))$/;
-
 /** The text, or its first max - 1 characters and an ellipsis. */
 export function cut(text: string, max: number): string {
   return text.length <= max ? text : `${text.slice(0, max - 1).trimEnd()}…`;
@@ -576,10 +574,18 @@ export function topicName(extraction: Extraction, prefix = ""): string {
   return `${prefix}${cut(extraction.merchant ?? extraction.description, 128 - prefix.length - tail.length)}${tail}`;
 }
 
-/** An ack with the position its card's header shows; unchanged for an unlabelled card. */
-export function withPosition(ack: string, cardText?: string): string {
-  const label = cardText?.split("\n")[0].match(HEADER_POSITION)?.[1] ?? "";
-  return ack + label;
+const HANDLED: Record<string, string> = {
+  confirmed: "was saved",
+  discarded: "was discarded",
+  awaiting_date: "is waiting for a date or correction",
+  awaiting_edit: "is waiting for a date or correction",
+  pending: "is waiting for Confirm",
+};
+
+/** The reply to a tap that comes too late: the purchase and where it stands; plain for a row not found. */
+export function alreadyHandled(name?: string, status?: string): string {
+  const state = status === undefined ? undefined : HANDLED[status];
+  return name && state ? `Already handled: ${name} ${state}.` : "Already handled.";
 }
 
 /** At most one card warning for findDuplicates' ordered matches: photo, then one amount, then parts. */

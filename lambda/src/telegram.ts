@@ -190,6 +190,31 @@ export async function deleteForumTopic(botToken: string, chatId: number, threadI
   await postTelegram(botToken, "deleteForumTopic", { chat_id: chatId, message_thread_id: threadId });
 }
 
+/**
+ * Deletes a topic the bot is done with, or renames it to `fallbackName` when
+ * Telegram refuses the delete. Best effort: each refusal is logged, never thrown.
+ */
+export async function retireTopic(
+  botToken: string,
+  chatId: number,
+  threadId: number,
+  fallbackName: string,
+): Promise<"deleted" | "renamed" | "failed"> {
+  try {
+    await deleteForumTopic(botToken, chatId, threadId);
+    return "deleted";
+  } catch (err) {
+    console.error("topic delete refused", err);
+  }
+  try {
+    await editForumTopic(botToken, chatId, threadId, fallbackName);
+    return "renamed";
+  } catch (err) {
+    console.error("topic rename refused", err);
+    return "failed";
+  }
+}
+
 let cachedUsername: string | undefined;
 
 /** The bot's @username, read once per warm container. */

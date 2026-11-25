@@ -41,6 +41,7 @@ import {
   getIngestion,
 } from "./db.js";
 import {
+  alreadyHandled,
   applyDatePolicy,
   dateWarnings,
   duplicateWarnings,
@@ -52,7 +53,6 @@ import {
   parseDateReply,
   topicName,
   validateExtraction,
-  withPosition,
   type CheckResult,
   type Extraction,
   type TaxonomySnapshot,
@@ -86,6 +86,7 @@ import {
   editMessageReplyMarkup,
   editMessageText,
   largestPhotoFileId,
+  retireTopic,
   reviewKeyboard,
   savedCardKeyboard,
   sendMessage,
@@ -200,6 +201,12 @@ async function retireCard(botToken: string, chatId: number, messageId: number | 
   } catch (err) {
     console.error("card retire error", err);
   }
+}
+
+/** The reply to a tap or answer that comes too late: which purchase, and where it stands. */
+async function handledAck(ingestionId: string): Promise<string> {
+  const row = await getIngestion(ingestionId);
+  return row ? alreadyHandled(topicName(row.extraction), row.status) : alreadyHandled();
 }
 
 function unauthorized(): APIGatewayProxyResultV2 {
@@ -324,7 +331,7 @@ async function handleAwaitingDate(
 
   const applied = await applyIngestionDate(awaiting.id, extraction);
   if (!applied) {
-    await sendMessage(botToken, chatId, "Already handled.", undefined, { thread });
+    await sendMessage(botToken, chatId, await handledAck(awaiting.id), undefined, { thread });
     return ok("ok");
   }
 
@@ -366,7 +373,7 @@ async function handleAwaitingEdit(
 
     const applied = await applyIngestionEdit(awaiting.id, extraction);
     if (!applied) {
-      await sendMessage(config.botToken, chatId, "Already handled.", undefined, { thread });
+      await sendMessage(config.botToken, chatId, await handledAck(awaiting.id), undefined, { thread });
       return ok("ok");
     }
 
@@ -1002,7 +1009,7 @@ async function handleCallback(
     const series = withSeries ? { id: Number(withSeries[3]), link: action === "cr" } : undefined;
     const result = await confirmIngestion(ingestionId, series);
     if (result === "already_handled") {
-      ack = "Already handled.";
+      ack = await handledAck(ingestionId);
     } else {
       const row = (await getIngestion(ingestionId))!;
       const gone = result.seriesGone ? ` ${SERIES_GONE}` : "";
@@ -1029,7 +1036,7 @@ async function handleCallback(
   } else if (action === "f") {
     const started = await setIngestionAwaitingDate(ingestionId);
     if (started === "busy") return busyWaiting(botToken, cb.id, chatId, thread);
-    ack = started === "started" ? "Send the date." : "Already handled.";
+    ack = started === "started" ? "Send the date." : await handledAck(ingestionId);
     await answerCallbackQuery(botToken, cb.id, ack);
     if (started === "started") {
       await retireCard(botToken, chatId, cb.message?.message_id);
@@ -1041,7 +1048,7 @@ async function handleCallback(
   } else if (action === "e") {
     const started = await setIngestionAwaitingEdit(ingestionId);
     if (started === "busy") return busyWaiting(botToken, cb.id, chatId, thread);
-    ack = started === "started" ? "Send the correction." : "Already handled.";
+    ack = started === "started" ? "Send the correction." : await handledAck(ingestionId);
     await answerCallbackQuery(botToken, cb.id, ack);
     if (started === "started") {
       await retireCard(botToken, chatId, cb.message?.message_id);
@@ -1054,8 +1061,9 @@ async function handleCallback(
     // Keep as is: leave the wait, resend the Confirm card as stored. No Gemini.
     const restored = await restoreIngestionPending(ingestionId);
     if (!restored) {
-      await answerCallbackQuery(botToken, cb.id, "Already handled.");
-      await sendMessage(botToken, chatId, "Already handled.", undefined, { thread });
+      ack = await handledAck(ingestionId);
+      await answerCallbackQuery(botToken, cb.id, ack);
+      await sendMessage(botToken, chatId, ack, undefined, { thread });
       return ok("ok");
     }
     await answerCallbackQuery(botToken, cb.id, "Kept as is.");
@@ -1072,7 +1080,20 @@ async function handleCallback(
     return ok("ok");
   } else {
     const result = await discardIngestion(ingestionId);
-    ack = result === "discarded" ? withPosition("Discarded.", cb.message?.text) : "Already handled.";
+    if (result === "discarded") {
+      const row = (await getIngestion(ingestionId))!;
+      ack = `Discarded: ${topicName(row.extraction)}.`;
+      await answerCallbackQuery(botToken, cb.id, ack);
+      // Only the purchase's own topic goes: a card from before topics, or one
+      // sharing another purchase's topic, has no thread and deletes nothing.
+      if (row.threadId === null) {
+        await sendMessage(botToken, chatId, ack, undefined, { thread });
+      } else if ((await retireTopic(botToken, chatId, row.threadId, topicName(row.extraction, "🗑 "))) !== "deleted") {
+        await retireCard(botToken, chatId, cb.message?.message_id);
+      }
+      return ok("ok");
+    }
+    ack = await handledAck(ingestionId);
   }
 
   await answerCallbackQuery(botToken, cb.id, ack);

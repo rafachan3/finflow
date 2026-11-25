@@ -95,7 +95,7 @@ describe("logging one purchase", () => {
     // The card now shows ✅ Saved; a raced second tap still carries Confirm's data.
     await chat.press(card, card.buttons[0].data);
 
-    expect(chat.acks()).toEqual(["Saved: Sandwich Shop · $14.00.", "Already handled."]);
+    expect(chat.acks()).toEqual(["Saved: Sandwich Shop · $14.00.", "Already handled: Sandwich Shop · $14.00 was saved."]);
     expect(await ledger.transactions()).toHaveLength(1);
   });
 
@@ -106,7 +106,7 @@ describe("logging one purchase", () => {
     await chat.tap(card, "Discard");
     await chat.tap(card, "Discard");
 
-    expect(chat.acks()).toEqual(["Discarded.", "Already handled."]);
+    expect(chat.acks()).toEqual(["Discarded: Sandwich Shop · $14.00.", "Already handled: Sandwich Shop · $14.00 was discarded."]);
     expect(await ledger.transactions()).toEqual([]);
     expect((await ledger.ingestions())[0].status).toBe("discarded");
   });

@@ -7,6 +7,7 @@ import {
   deleteForumTopic,
   editForumTopic,
   registerCommandMenu,
+  retireTopic,
   downloadTelegramFile,
   editMessageReplyMarkup,
   editMessageText,
@@ -182,6 +183,28 @@ describe("topics", () => {
     await deleteForumTopic("T", 5, 42);
     expect(sent(fetchMock, 0).body).toEqual({ chat_id: 5, message_thread_id: 42, name: "✅ A · $1.00" });
     expect(sent(fetchMock, 1).body).toEqual({ chat_id: 5, message_thread_id: 42 });
+  });
+
+  it("retireTopic renames the topic when Telegram refuses the delete", async () => {
+    const refused = { ok: false, status: 400, text: async () => '{"ok":false,"description":"Bad Request: refused"}' };
+    const fetchMock = vi.fn().mockResolvedValueOnce(refused).mockResolvedValue({ ok: true, json: async () => ({ ok: true, result: true }) });
+    vi.stubGlobal("fetch", fetchMock);
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    expect(await retireTopic("T", 5, 42, "🗑 A · $1.00")).toBe("renamed");
+    expect(sent(fetchMock, 0).url).toBe("https://api.telegram.org/botT/deleteForumTopic");
+    expect(sent(fetchMock, 1).body).toEqual({ chat_id: 5, message_thread_id: 42, name: "🗑 A · $1.00" });
+    logged.mockRestore();
+  });
+
+  it("retireTopic reports failed when the rename is refused too", async () => {
+    const refused = { ok: false, status: 400, text: async () => '{"ok":false,"description":"Bad Request: refused"}' };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(refused));
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    expect(await retireTopic("T", 5, 42, "🗑 A · $1.00")).toBe("failed");
+    expect(logged).toHaveBeenCalledWith("topic delete refused", expect.anything());
+    logged.mockRestore();
   });
 
   it("reads the bot's username once per container", async () => {

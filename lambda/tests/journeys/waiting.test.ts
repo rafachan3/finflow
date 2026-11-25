@@ -62,7 +62,7 @@ describe("a card waiting for a date", () => {
     // Keep as is clears the prompt's buttons; a raced second tap still carries k:<id>.
     await chat.press(prompt, keep!.data);
     await chat.press(prompt, keep!.data);
-    expect(chat.acks()).toEqual(["Send the date.", "Kept as is.", "Already handled."]);
+    expect(chat.acks()).toEqual(["Send the date.", "Kept as is.", "Already handled: Dollar Corner · $3.00 is waiting for Confirm."]);
     expect((await ledger.ingestions()).filter((r) => r.status === "pending")).toHaveLength(2);
   });
 
@@ -121,6 +121,6 @@ describe("a card waiting for a date", () => {
     await chat.tap(chat.last(), "Discard");
     await chat.tap(second, "Fix date");
 
-    expect(chat.acks()).toEqual(["Send the date.", "Discarded.", "Send the date."]);
+    expect(chat.acks()).toEqual(["Send the date.", "Discarded: Dollar Corner · $3.00.", "Send the date."]);
   });
 });

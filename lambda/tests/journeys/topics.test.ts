@@ -371,3 +371,65 @@ describe("Confirm inside a purchase topic", () => {
     expect(await ledger.transactions()).toHaveLength(1);
   });
 });
+
+describe("Discard inside a purchase topic", () => {
+  it("Discard deletes the purchase's topic with its card, and the pop-up names the purchase", async () => {
+    gemini.extract = golden("text-with-note").recorded;
+    await chat.text("14 lunch at Sandwich Shop");
+    const [card] = cards();
+    const sent = chat.replies().length;
+
+    await chat.tap(card, "Discard");
+
+    expect(chat.acks()).toEqual(["Discarded: Sandwich Shop · $14.00."]);
+    expect(chat.topicExists(card.thread!)).toBe(false);
+    expect(chat.exists(card)).toBe(false);
+    expect((await ledger.ingestions())[0].status).toBe("discarded");
+    expect(chat.replies()).toHaveLength(sent);
+  });
+
+  it("if the topic cannot be deleted, Discard renames it 🗑 and clears the card's buttons", async () => {
+    gemini.extract = golden("text-with-note").recorded;
+    await chat.text("14 lunch at Sandwich Shop");
+    const [card] = cards();
+    chat.refuseNextTopicDeletes(1);
+
+    await chat.tap(card, "Discard");
+    expect(takeTelegramRejections()).toEqual(["deleteForumTopic: refused"]);
+
+    expect(chat.topicName(card.thread!)).toBe("🗑 Sandwich Shop · $14.00");
+    expect(labels(chat.current(card))).toEqual([]);
+    expect((await ledger.ingestions())[0].status).toBe("discarded");
+  });
+
+  it("a stale Confirm on a saved purchase names it", async () => {
+    gemini.extract = golden("text-with-note").recorded;
+    await chat.text("14 lunch at Sandwich Shop");
+    const [card] = cards();
+    const [{ id }] = await ledger.ingestions();
+    await chat.tap(card, "Confirm");
+
+    await chat.press(card, `c:${id}`);
+
+    expect(chat.acks()).toEqual(["Saved: Sandwich Shop · $14.00.", "Already handled: Sandwich Shop · $14.00 was saved."]);
+    expect(await ledger.transactions()).toHaveLength(1);
+  });
+
+  it("discarding a card that shares another purchase's topic leaves that topic and its card", async () => {
+    gemini.extract = golden("two-stores").recorded;
+    chat.refuseNextTopicCreates(1);
+    await chat.text("3 at Dollar Corner and 5 at Acme Mart Pharmacy");
+    takeTelegramRejections();
+    const [first, second] = cards();
+
+    await chat.tap(second, "Discard");
+
+    expect(chat.acks()).toEqual(["Discarded: Acme Mart Pharmacy · $5.00."]);
+    expect(chat.calls("deleteForumTopic")).toEqual([]);
+    expect(chat.topicName(chat.lastTopic())).toBe("Dollar Corner · $3.00");
+    expect(chat.exists(first)).toBe(true);
+    expect(labels(chat.current(first))).toEqual(labels(first));
+    expect(chat.last().text).toBe("Discarded: Acme Mart Pharmacy · $5.00.");
+    expect(chat.last().thread).toBe(chat.lastTopic());
+  });
+});

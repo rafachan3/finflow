@@ -904,6 +904,13 @@ describe("handler", () => {
 
   it("Keep as is twice says Already handled and does not resend", async () => {
     vi.mocked(restoreIngestionPending).mockResolvedValue(null);
+    const { getIngestion } = await import("../src/db.js");
+    vi.mocked(getIngestion).mockResolvedValue({
+      status: "pending",
+      extraction: { ...extraction, merchant: "Sandwich Shop" },
+      threadId: null,
+      cardMessageId: null,
+    });
 
     await handler(
       event({
@@ -916,8 +923,9 @@ describe("handler", () => {
       }),
     );
 
-    expect(answerCallbackQuery).toHaveBeenCalledWith("t", "cb-keep2", "Already handled.");
-    expect(sendMessage).toHaveBeenCalledWith("t", 1, "Already handled.", undefined, { thread: undefined });
+    const ack = "Already handled: Sandwich Shop · $12.50 is waiting for Confirm.";
+    expect(answerCallbackQuery).toHaveBeenCalledWith("t", "cb-keep2", ack);
+    expect(sendMessage).toHaveBeenCalledWith("t", 1, ack, undefined, { thread: undefined });
     expect(reviewKeyboard).not.toHaveBeenCalled();
   });
 
