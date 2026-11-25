@@ -30,7 +30,8 @@ vi.mock("../src/gemini.js", () => ({
   extractFromVoice: vi.fn(),
   patchExtraction: vi.fn(),
 }));
-vi.mock("../src/telegram.js", () => ({
+vi.mock("../src/telegram.js", async (importActual) => ({
+  topicThread: (await importActual<typeof import("../src/telegram.js")>()).topicThread,
   answerCallbackQuery: vi.fn(),
   reviewKeyboard: vi.fn((id: string) => ({ confirm: id })),
   waitingKeyboard: vi.fn((id: string) => ({ waiting: id })),
@@ -317,7 +318,7 @@ describe("handler", () => {
 
     expect(res.statusCode).toBe(200);
     expect(sendMessage).toHaveBeenCalledOnce();
-    expect(sendMessage).toHaveBeenCalledWith("t", 1, expect.stringContaining("Added merchant: Maple Kiosk."));
+    expect(sendMessage).toHaveBeenCalledWith("t", 1, expect.stringContaining("Added merchant: Maple Kiosk."), undefined, { thread: undefined });
     expect(error).toHaveBeenCalledWith("mention offer error", expect.any(Error));
     error.mockRestore();
   });
@@ -441,8 +442,7 @@ describe("handler", () => {
       "t",
       1,
       expect.stringMatching(/send the date/i),
-      { waiting: "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee" },
-    );
+      { waiting: "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee" }, { thread: undefined });
   });
 
   it.each([
@@ -467,8 +467,7 @@ describe("handler", () => {
     expect(sendMessage).toHaveBeenCalledWith(
       "t",
       1,
-      "Another card is waiting for a date or correction. Send it, or tap Keep as is / Discard on the waiting prompt, then try again.",
-    );
+      "Another card is waiting for a date or correction. Send it, or tap Keep as is / Discard on the waiting prompt, then try again.", undefined, { thread: undefined });
   });
 
   it("applies a date reply while awaiting and does not start a new extraction", async () => {
@@ -525,8 +524,7 @@ describe("handler", () => {
       "t",
       1,
       expect.stringMatching(/waiting for a date/i),
-      { waiting: "ing-1" },
-    );
+      { waiting: "ing-1" }, { thread: undefined });
   });
 
   it("extracts a receipt photo, archives it, and offers Confirm", async () => {
@@ -635,8 +633,7 @@ describe("handler", () => {
       "t",
       1,
       expect.stringMatching(/waiting for a date/i),
-      { waiting: "ing-1" },
-    );
+      { waiting: "ing-1" }, { thread: undefined });
   });
 
   it("extracts a voice note, archives it, and offers Confirm", async () => {
@@ -809,8 +806,7 @@ describe("handler", () => {
       "t",
       1,
       expect.stringMatching(/waiting for a date/i),
-      { waiting: "ing-1" },
-    );
+      { waiting: "ing-1" }, { thread: undefined });
   });
 
   it("asks for a correction on Edit and does not confirm", async () => {
@@ -837,8 +833,7 @@ describe("handler", () => {
       "t",
       1,
       expect.stringMatching(/correction/i),
-      { waiting: "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee" },
-    );
+      { waiting: "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee" }, { thread: undefined });
   });
 
   it("Keep as is restores pending and resends the card without Gemini", async () => {
@@ -894,7 +889,7 @@ describe("handler", () => {
     );
 
     expect(answerCallbackQuery).toHaveBeenCalledWith("t", "cb-keep2", "Already handled.");
-    expect(sendMessage).toHaveBeenCalledWith("t", 1, "Already handled.");
+    expect(sendMessage).toHaveBeenCalledWith("t", 1, "Already handled.", undefined, { thread: undefined });
     expect(reviewKeyboard).not.toHaveBeenCalled();
   });
 
@@ -960,8 +955,7 @@ describe("handler", () => {
       "t",
       1,
       expect.stringContaining("✗"),
-      { waiting: "ing-1" },
-    );
+      { waiting: "ing-1" }, { thread: undefined });
   });
 
   it("does not start a new photo while awaiting_edit", async () => {
@@ -988,8 +982,7 @@ describe("handler", () => {
       "t",
       1,
       expect.stringMatching(/waiting for a correction/i),
-      { waiting: "ing-1" },
-    );
+      { waiting: "ing-1" }, { thread: undefined });
   });
 });
 
@@ -1010,8 +1003,7 @@ describe("extraction failures", () => {
     expect(sendMessage).toHaveBeenCalledWith(
       "t",
       1,
-      expect.stringMatching(/Gemini is overloaded/i),
-    );
+      expect.stringMatching(/Gemini is overloaded/i), undefined, { thread: undefined });
     expect(insertPendingIngestions).not.toHaveBeenCalled();
   });
 
@@ -1028,8 +1020,7 @@ describe("extraction failures", () => {
     expect(sendMessage).toHaveBeenCalledWith(
       "t",
       1,
-      expect.stringMatching(/Gemini is overloaded/i),
-    );
+      expect.stringMatching(/Gemini is overloaded/i), undefined, { thread: undefined });
   });
 
   it("keeps the input-specific message for other failures", async () => {
@@ -1042,8 +1033,7 @@ describe("extraction failures", () => {
     expect(sendMessage).toHaveBeenCalledWith(
       "t",
       1,
-      "Couldn't parse that. Try again in a sentence.",
-    );
+      "Couldn't parse that. Try again in a sentence.", undefined, { thread: undefined });
   });
 });
 
@@ -1151,7 +1141,7 @@ describe("multi-event messages", () => {
 
     await handler(event({ update_id: 55, message: { chat: { id: 1 }, text: "hm" } }));
 
-    expect(sendMessage).toHaveBeenCalledWith("t", 1, "Couldn't parse that. Try again in a sentence.");
+    expect(sendMessage).toHaveBeenCalledWith("t", 1, "Couldn't parse that. Try again in a sentence.", undefined, { thread: undefined });
     expect(insertPendingIngestions).not.toHaveBeenCalled();
   });
 
@@ -1180,6 +1170,6 @@ describe("multi-event messages", () => {
     await handler(event({ update_id: 57, message: { chat: { id: 1 }, text: "two" } }));
 
     expect(insertPendingIngestions).not.toHaveBeenCalled();
-    expect(vi.mocked(sendMessage).mock.calls[1]).toEqual(["t", 1, "Couldn't parse that. Try again in a sentence."]);
+    expect(vi.mocked(sendMessage).mock.calls[1]).toEqual(["t", 1, "Couldn't parse that. Try again in a sentence.", undefined, { thread: undefined }]);
   });
 });

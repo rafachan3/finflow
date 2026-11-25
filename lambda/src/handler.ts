@@ -87,6 +87,7 @@ import {
   largestPhotoFileId,
   reviewKeyboard,
   sendMessage,
+  topicThread,
   toggleCardSeries,
   topicLink,
   voiceFileId,
@@ -167,9 +168,10 @@ async function busyWaiting(
   botToken: string,
   callbackId: string,
   chatId: number,
+  thread?: number,
 ): Promise<APIGatewayProxyResultV2> {
   await answerCallbackQuery(botToken, callbackId, "Finish the waiting card first.");
-  await sendMessage(botToken, chatId, BUSY_WAITING);
+  await sendMessage(botToken, chatId, BUSY_WAITING, undefined, { thread });
   return ok("ok");
 }
 
@@ -243,11 +245,12 @@ async function handleAwaitingDate(
   chatId: number,
   botToken: string,
   awaiting: { id: string; extraction: Extraction },
+  thread?: number,
 ): Promise<APIGatewayProxyResultV2> {
   const today = todayToronto();
   const parsed = parseDateReply(text, today);
   if (!parsed) {
-    await sendMessage(botToken, chatId, WAITING_DATE, waitingKeyboard(awaiting.id));
+    await sendMessage(botToken, chatId, WAITING_DATE, waitingKeyboard(awaiting.id), { thread });
     return ok("ok");
   }
 
@@ -264,13 +267,14 @@ async function handleAwaitingDate(
       chatId,
       formatPreview(extraction, checks),
       waitingKeyboard(awaiting.id),
+      { thread },
     );
     return ok("ok");
   }
 
   const applied = await applyIngestionDate(awaiting.id, extraction);
   if (!applied) {
-    await sendMessage(botToken, chatId, "Already handled.");
+    await sendMessage(botToken, chatId, "Already handled.", undefined, { thread });
     return ok("ok");
   }
 
@@ -284,6 +288,7 @@ async function handleAwaitingEdit(
   config: Awaited<ReturnType<typeof getConfig>>,
   awaiting: { id: string; extraction: Extraction },
   from?: string,
+  thread?: number,
 ): Promise<APIGatewayProxyResultV2> {
   try {
     const today = todayToronto();
@@ -304,13 +309,14 @@ async function handleAwaitingEdit(
         chatId,
         formatPreview(extraction, checks),
         waitingKeyboard(awaiting.id),
+        { thread },
       );
       return ok("ok");
     }
 
     const applied = await applyIngestionEdit(awaiting.id, extraction);
     if (!applied) {
-      await sendMessage(config.botToken, chatId, "Already handled.");
+      await sendMessage(config.botToken, chatId, "Already handled.", undefined, { thread });
       return ok("ok");
     }
 
@@ -323,6 +329,7 @@ async function handleAwaitingEdit(
       chatId,
       failureReply(err, "Couldn't apply that. Try again."),
       waitingKeyboard(awaiting.id),
+      { thread },
     );
     return ok("ok");
   }
@@ -334,6 +341,7 @@ async function handleAwaitingVoiceEdit(
   config: Awaited<ReturnType<typeof getConfig>>,
   awaiting: { id: string; extraction: Extraction },
 ): Promise<APIGatewayProxyResultV2> {
+  const thread = topicThread(message);
   let text: string;
   let model: string;
   try {
@@ -353,6 +361,7 @@ async function handleAwaitingVoiceEdit(
         message.chat.id,
         "That voice note took too long to read. Try again, or type the correction.",
         waitingKeyboard(awaiting.id),
+        { thread },
       );
       return ok("ok");
     }
@@ -363,14 +372,15 @@ async function handleAwaitingVoiceEdit(
       message.chat.id,
       failureReply(err, "Couldn't read that voice note. Try again."),
       waitingKeyboard(awaiting.id),
+      { thread },
     );
     return ok("ok");
   }
   if (!text) {
-    await sendMessage(config.botToken, message.chat.id, WAITING_EDIT, waitingKeyboard(awaiting.id));
+    await sendMessage(config.botToken, message.chat.id, WAITING_EDIT, waitingKeyboard(awaiting.id), { thread });
     return ok("ok");
   }
-  return await handleAwaitingEdit(text, message.chat.id, config, awaiting, model);
+  return await handleAwaitingEdit(text, message.chat.id, config, awaiting, model, thread);
 }
 
 /**
@@ -471,19 +481,19 @@ async function openPurchaseTopic(
  * waiting row as its date/correction prompt (Keep as is / Discard). Does not
  * flip awaiting → pending; that is Keep as is alone.
  */
-async function resendPendingCards(chatId: number, botToken: string): Promise<void> {
+async function resendPendingCards(chatId: number, botToken: string, thread?: number): Promise<void> {
   const rows = await listPendingIngestions(chatId);
   if (rows.length === 0) {
-    await sendMessage(botToken, chatId, NOTHING_PENDING);
+    await sendMessage(botToken, chatId, NOTHING_PENDING, undefined, { thread });
     return;
   }
   const taxonomy = await loadTaxonomy();
   for (const row of rows) {
     try {
       if (row.status === "awaiting_date") {
-        await sendMessage(botToken, chatId, ASK_DATE, waitingKeyboard(row.id));
+        await sendMessage(botToken, chatId, ASK_DATE, waitingKeyboard(row.id), { thread });
       } else if (row.status === "awaiting_edit") {
-        await sendMessage(botToken, chatId, ASK_EDIT, waitingKeyboard(row.id));
+        await sendMessage(botToken, chatId, ASK_EDIT, waitingKeyboard(row.id), { thread });
       } else {
         await sendCard(
           botToken,
@@ -491,6 +501,7 @@ async function resendPendingCards(chatId: number, botToken: string): Promise<voi
           row.id,
           row.extraction,
           validateExtraction(row.extraction, taxonomy),
+          { thread },
         );
       }
     } catch (err) {
@@ -506,11 +517,12 @@ async function offerMentions(
   chatId: number,
   merchantId: number,
   after: string | null,
+  thread?: number,
 ): Promise<boolean> {
   const found = await findMentions(merchantId, after);
   if (!found || found.rows.length === 0) return false;
   const { text, keyboard } = mentionsMessage(merchantId, found.name, found, after !== null);
-  await sendMessage(botToken, chatId, text, { inline_keyboard: keyboard });
+  await sendMessage(botToken, chatId, text, { inline_keyboard: keyboard }, { thread });
   return true;
 }
 
@@ -541,8 +553,9 @@ async function handleMentionTap(
   } else if (tap.kind === "more") {
     await answerCallbackQuery(botToken, cb.id);
     await editMessageReplyMarkup(botToken, chatId, messageId, { inline_keyboard: withoutMore(keyboard) });
-    if (!(await offerMentions(botToken, chatId, tap.merchantId, tap.after))) {
-      await sendMessage(botToken, chatId, NO_MORE);
+    const thread = topicThread(cb.message!);
+    if (!(await offerMentions(botToken, chatId, tap.merchantId, tap.after, thread))) {
+      await sendMessage(botToken, chatId, NO_MORE, undefined, { thread });
     }
   } else {
     const picked = ticked(keyboard);
@@ -566,37 +579,37 @@ async function handleMentionTap(
   return ok("ok");
 }
 
-type CommandContext = { chatId: number; botToken: string; args: string };
+type CommandContext = { chatId: number; botToken: string; args: string; thread?: number };
 
 /** What each slash command does; the type makes a command with no entry here a compile error. */
 const RUN: Record<CommandName, (c: CommandContext) => Promise<void>> = {
-  pending: ({ chatId, botToken }) => resendPendingCards(chatId, botToken),
-  merchants: async ({ chatId, botToken }) => {
-    await sendMessage(botToken, chatId, formatMerchants(await listMerchants()));
+  pending: ({ chatId, botToken, thread }) => resendPendingCards(chatId, botToken, thread),
+  merchants: async ({ chatId, botToken, thread }) => {
+    await sendMessage(botToken, chatId, formatMerchants(await listMerchants()), undefined, { thread });
   },
   // The typed command is the confirmation for the merchant and its exact-name links;
   // a row that only mentions it waits for the owner's pick in the review.
-  addmerchant: async ({ chatId, botToken, args }) => {
+  addmerchant: async ({ chatId, botToken, args, thread }) => {
     const clean = cleanMerchantName(args);
     if ("error" in clean) {
-      await sendMessage(botToken, chatId, clean.error);
+      await sendMessage(botToken, chatId, clean.error, undefined, { thread });
       return;
     }
     const result = await addMerchant(clean.name);
-    await sendMessage(botToken, chatId, addReply(result));
+    await sendMessage(botToken, chatId, addReply(result), undefined, { thread });
     // The reply is sent: a failed offer must not 500, or Telegram resends the command.
     try {
-      await offerMentions(botToken, chatId, result.id, null);
+      await offerMentions(botToken, chatId, result.id, null, thread);
     } catch (err) {
       console.error("mention offer error", err);
     }
   },
-  delmerchant: async ({ chatId, botToken, args }) => {
+  delmerchant: async ({ chatId, botToken, args, thread }) => {
     const name = collapseSpaces(args);
     const reply = name === "" ? DELETE_USAGE : deleteReply(await deleteMerchant(name), name);
-    await sendMessage(botToken, chatId, reply);
+    await sendMessage(botToken, chatId, reply, undefined, { thread });
   },
-  recurring: ({ chatId, botToken }) => sendRecurringList(botToken, chatId, todayToronto()),
+  recurring: ({ chatId, botToken, thread }) => sendRecurringList(botToken, chatId, todayToronto(), thread),
 };
 
 /** Check, persist, and present every event of one message, in order. */
@@ -649,9 +662,7 @@ async function offerEvents(args: {
   // message is in, unless an earlier purchase owns it (this update's rows have
   // no thread yet); every other one gets a topic of its own.
   const botToken = args.config.botToken;
-  // A thread id without the topic flag is not a topic: storing it would lose the card.
-  const message = args.update.message!;
-  const messageThread = message.is_topic_message ? message.message_thread_id : undefined;
+  const messageThread = topicThread(args.update.message!);
   let keepThread = false;
   if (messageThread !== undefined && persisted.length > 0) {
     try {
@@ -726,6 +737,8 @@ async function handlePhoto(
       config.botToken,
       message.chat.id,
       failureReply(err, "Couldn't read that receipt. Try again."),
+      undefined,
+      { thread: topicThread(message) },
     );
     return ok("ok");
   }
@@ -761,6 +774,8 @@ async function handleVoice(
       config.botToken,
       message.chat.id,
       failureReply(err, "Couldn't parse that voice note. Try again."),
+      undefined,
+      { thread: topicThread(message) },
     );
     return ok("ok");
   }
@@ -780,12 +795,14 @@ async function handleMessage(
   }
 
   // Before the wait: a command is never a date or a correction to send to Gemini.
+  const thread = topicThread(message);
   const command = parseCommand(message.text);
   if (command) {
     await RUN[command.name]({
       chatId: message.chat.id,
       botToken: config.botToken,
       args: command.args,
+      thread,
     });
     return ok("ok");
   }
@@ -811,6 +828,7 @@ async function handleMessage(
         message.chat.id,
         waiting,
         waitingKeyboard(awaiting.id),
+        { thread },
       );
       return ok("ok");
     }
@@ -820,6 +838,8 @@ async function handleMessage(
         message.chat.id,
         config,
         awaiting,
+        undefined,
+        thread,
       );
     }
     return await handleAwaitingDate(
@@ -827,6 +847,7 @@ async function handleMessage(
       message.chat.id,
       config.botToken,
       awaiting,
+      thread,
     );
   }
 
@@ -856,6 +877,8 @@ async function handleMessage(
       config.botToken,
       message.chat.id,
       failureReply(err, "Couldn't parse that. Try again in a sentence."),
+      undefined,
+      { thread: topicThread(message) },
     );
     return ok("ok");
   }
@@ -872,6 +895,7 @@ async function handleCallback(
     return ok("ignored");
   }
 
+  const thread = topicThread(cb.message!);
   const review = parseMentionTap(cb.data);
   if (review) return handleMentionTap(cb, review, chatId, botToken);
 
@@ -884,6 +908,7 @@ async function handleCallback(
     keyboard: cb.message?.reply_markup?.inline_keyboard ?? [],
     text: cb.message?.text,
     today,
+    thread,
   });
   // The scheduled digest's buttons: the nudge function sends it, but every tap reaches this webhook.
   const digest = parseDigestTap(cb.data);
@@ -936,26 +961,26 @@ async function handleCallback(
     }
   } else if (action === "f") {
     const started = await setIngestionAwaitingDate(ingestionId);
-    if (started === "busy") return busyWaiting(botToken, cb.id, chatId);
+    if (started === "busy") return busyWaiting(botToken, cb.id, chatId, thread);
     ack = started === "started" ? "Send the date." : "Already handled.";
     await answerCallbackQuery(botToken, cb.id, ack);
     if (started === "started") {
       await retireCard(botToken, chatId, cb.message?.message_id);
-      await sendMessage(botToken, chatId, ASK_DATE, waitingKeyboard(ingestionId));
+      await sendMessage(botToken, chatId, ASK_DATE, waitingKeyboard(ingestionId), { thread });
     } else {
-      await sendMessage(botToken, chatId, ack);
+      await sendMessage(botToken, chatId, ack, undefined, { thread });
     }
     return ok("ok");
   } else if (action === "e") {
     const started = await setIngestionAwaitingEdit(ingestionId);
-    if (started === "busy") return busyWaiting(botToken, cb.id, chatId);
+    if (started === "busy") return busyWaiting(botToken, cb.id, chatId, thread);
     ack = started === "started" ? "Send the correction." : "Already handled.";
     await answerCallbackQuery(botToken, cb.id, ack);
     if (started === "started") {
       await retireCard(botToken, chatId, cb.message?.message_id);
-      await sendMessage(botToken, chatId, ASK_EDIT, waitingKeyboard(ingestionId));
+      await sendMessage(botToken, chatId, ASK_EDIT, waitingKeyboard(ingestionId), { thread });
     } else {
-      await sendMessage(botToken, chatId, ack);
+      await sendMessage(botToken, chatId, ack, undefined, { thread });
     }
     return ok("ok");
   } else if (action === "k") {
@@ -963,7 +988,7 @@ async function handleCallback(
     const restored = await restoreIngestionPending(ingestionId);
     if (!restored) {
       await answerCallbackQuery(botToken, cb.id, "Already handled.");
-      await sendMessage(botToken, chatId, "Already handled.");
+      await sendMessage(botToken, chatId, "Already handled.", undefined, { thread });
       return ok("ok");
     }
     await answerCallbackQuery(botToken, cb.id, "Kept as is.");
@@ -975,6 +1000,7 @@ async function handleCallback(
       restored.id,
       restored.extraction,
       validateExtraction(restored.extraction, taxonomy),
+      { thread },
     );
     return ok("ok");
   } else {
@@ -983,7 +1009,7 @@ async function handleCallback(
   }
 
   await answerCallbackQuery(botToken, cb.id, ack);
-  await sendMessage(botToken, chatId, ack, ackButtons);
+  await sendMessage(botToken, chatId, ack, ackButtons, { thread });
   return ok("ok");
 }
 

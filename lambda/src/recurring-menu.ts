@@ -66,6 +66,7 @@ import {
   editMessageText,
   esc,
   sendMessage,
+  topicThread,
 } from "./telegram.js";
 
 export type Screen = { text: string; keyboard: Keyboard };
@@ -835,9 +836,14 @@ export function suggestionsScreen(book: Book, today: string): Screen {
 // ---- Telegram ---------------------------------------------------------------
 
 /** `/recurring`: the list as a new message. */
-export async function sendRecurringList(botToken: string, chatId: number, today: string): Promise<void> {
+export async function sendRecurringList(
+  botToken: string,
+  chatId: number,
+  today: string,
+  thread?: number,
+): Promise<void> {
   const { text, keyboard } = listScreen(await loadBook(), today);
-  await sendMessage(botToken, chatId, text, { inline_keyboard: keyboard }, { html: true });
+  await sendMessage(botToken, chatId, text, { inline_keyboard: keyboard }, { html: true, thread });
 }
 
 export type TapContext = {
@@ -850,6 +856,8 @@ export type TapContext = {
   /** The message's text as the reader sees it, as Telegram sent it back. */
   text?: string;
   today: string;
+  /** The topic the tapped message is in; its prompts go there. */
+  thread?: number;
 };
 
 /**
@@ -1046,7 +1054,7 @@ export async function handleRecurringTap(tap: RecurringTap, ctx: TapContext): Pr
     await sendMessage(ctx.botToken, ctx.chatId, outcome.prompt, {
       force_reply: true,
       input_field_placeholder: tap.op === "rename" ? "New name" : "Dec 15",
-    });
+    }, { thread: ctx.thread });
   }
   await answerCallbackQuery(ctx.botToken, ctx.callbackId, outcome.ack);
 }
@@ -1139,6 +1147,8 @@ export type PromptReply = {
   audio?: unknown;
   document?: unknown;
   reply_to_message?: { text?: string; date?: number; from?: { is_bot?: boolean } };
+  message_thread_id?: number;
+  is_topic_message?: boolean;
 };
 
 /**
@@ -1172,6 +1182,6 @@ export async function answerPrompt(
     ? await renameReply(Number(rename[1]), text)
     : await pauseReply(Number(pause![1]), pause![2], text, today);
   if (reply === null) return false;
-  await sendMessage(botToken, chatId, reply);
+  await sendMessage(botToken, chatId, reply, undefined, { thread: topicThread(message) });
   return true;
 }

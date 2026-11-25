@@ -1,15 +1,44 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { golden } from "../golden/golden.js";
-import { chat, gemini, ledger, takeTelegramRejections, useJourneys, type Reply } from "./harness.js";
+import { chat, gemini, invokeNudge, ledger, takeTelegramRejections, useJourneys, type Reply } from "./harness.js";
 
 vi.mock("../../src/config.js", async () => {
   const { journeyConfig } = await import("./harness.js");
   const config = journeyConfig();
-  return { getConfig: async () => config, getDbUrl: async () => config.databaseUrl };
+  return {
+    getConfig: async () => config,
+    getDbUrl: async () => config.databaseUrl,
+    getNudgeConfig: async () => ({
+      botToken: config.botToken,
+      allowedChatIds: config.allowedChatIds,
+      databaseUrl: config.databaseUrl,
+    }),
+  };
 });
 
 useJourneys();
 beforeEach(() => chat.topicMode(true));
+
+// Saturday 2026-10-31, 09:00 in Toronto. Only Date is faked; timers stay real.
+const NOW = new Date("2026-10-31T13:00:00Z");
+beforeAll(() => {
+  vi.useFakeTimers({ toFake: ["Date"], now: NOW });
+});
+afterAll(() => {
+  vi.useRealTimers();
+});
+
+const ALL_MODELS = ["gemini-3.6-flash", "gemini-3.5-flash", "gemini-3.5-flash-lite"];
+
+/** A gym whose Aug 3 payment was never logged: due, so the digest has something to post. */
+async function trackGym(): Promise<number> {
+  const days = ["2026-06-03", "2026-07-03", "2026-09-03", "2026-10-02"];
+  return ledger.track(
+    "Gym",
+    "monthly",
+    await ledger.add(...days.map((date) => ({ date, amount: "25.00", description: "Gym", subcategory: "Fitness" }))),
+  );
+}
 
 const cards = (): Reply[] => chat.replies().filter((r) => r.buttons.length > 0);
 
@@ -109,5 +138,48 @@ describe("each purchase in its own topic", () => {
     await chat.topicRenamedNotice(card.thread!, "Lunch");
     expect(chat.replies()).toHaveLength(sent);
     expect((await ledger.ingestions())[0].status).toBe("awaiting_date");
+  });
+});
+
+describe("replies stay in their topic", () => {
+  it("a command's reply comes back in the topic the command opened", async () => {
+    await chat.text("/merchants");
+
+    expect(chat.last().thread).toBe(chat.lastTopic());
+  });
+
+  it("a message Gemini cannot read gets its failure reply in its own topic", async () => {
+    gemini.extract = golden("text-with-note").recorded;
+    gemini.overloaded = new Set(ALL_MODELS);
+    await chat.text("14 lunch at Sandwich Shop");
+
+    expect(chat.last().text).toContain("Gemini is overloaded right now");
+    expect(chat.last().thread).toBe(chat.lastTopic());
+  });
+
+  it("/recurring opens its menu in the command's topic, and a rename prompt and its answer stay there", async () => {
+    await trackGym();
+    await chat.text("/recurring");
+    const menu = chat.last();
+    expect(menu.thread).toBe(chat.lastTopic());
+
+    await chat.tap(menu, "Gym");
+    await chat.tap(menu, "✏️ Rename");
+    const prompt = chat.last();
+    expect(prompt.text).toMatch(/^Rename #\d+ /);
+    expect(prompt.thread).toBe(menu.thread);
+
+    await chat.reply(prompt, "Fitness club");
+    expect(chat.last().text).toBe("Renamed to Fitness club.");
+    expect(chat.last().thread).toBe(menu.thread);
+  });
+
+  it("the daily digest still posts in the main view", async () => {
+    await trackGym();
+    await invokeNudge(NOW.toISOString());
+
+    const digest = chat.calls("sendMessage").at(-1)!;
+    expect(digest.text).toContain("Recurring");
+    expect(digest).not.toHaveProperty("message_thread_id");
   });
 });

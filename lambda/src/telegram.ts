@@ -56,6 +56,14 @@ async function postTelegram(
  */
 export type Format = { html?: boolean; silent?: boolean; thread?: number };
 
+/**
+ * The topic an incoming message is in. A thread id without the topic flag is
+ * a reply chain in the main view, not a topic: it counts for nothing.
+ */
+export function topicThread(message: { message_thread_id?: number; is_topic_message?: boolean }): number | undefined {
+  return message.is_topic_message ? message.message_thread_id : undefined;
+}
+
 function formatFields(format: Format): Record<string, unknown> {
   return {
     ...(format.html ? { parse_mode: "HTML", link_preview_options: { is_disabled: true } } : {}),
