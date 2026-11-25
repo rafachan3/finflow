@@ -16,7 +16,7 @@ const ASK_EDIT = "Send the correction — amount, category, a line, whatever is 
 
 async function lunchCard() {
   gemini.extract = golden("text-with-note").recorded;
-  await chat.text("14 lunch at Sandwich Shop on Oct 25, was to tierd didnt pak lunch");
+  await chat.text("14 lunch at Sandwich Shop on Oct 25, didnt pak it, was to tierd, my lunch i mean");
   return chat.last();
 }
 
@@ -32,11 +32,11 @@ describe("correcting a card with Edit", () => {
     await chat.text("it was 14.50");
     const fixed = chat.last();
     expect(fixed.text.split("\n")[0]).toBe("Expense · 2026-10-25 · CAD 14.50");
-    expect(fixed.text).toContain("Note: I was too tired and didn't pack lunch.");
+    expect(fixed.text).toContain("Note: I was too tired and didn't pack my lunch.");
 
     await chat.tap(fixed, "Confirm");
     expect(await ledger.transactions()).toMatchObject([
-      { amount: "14.50", date: "2026-10-25", notes: "I was too tired and didn't pack lunch." },
+      { amount: "14.50", date: "2026-10-25", notes: "I was too tired and didn't pack my lunch." },
     ]);
   });
 

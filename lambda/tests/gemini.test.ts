@@ -443,7 +443,7 @@ describe("extractFromText", () => {
     expect(body.systemInstruction.parts[0].text).toMatch(/never from printed receipt text/i);
   });
 
-  it("asks Gemini to copy-edit the note lightly and add nothing", async () => {
+  it("asks Gemini to rewrite the note until it is clear, in the owner's voice, and add nothing", async () => {
     const fetchMock = vi.fn().mockResolvedValueOnce({
       ok: true,
       json: async () => geminiJson(events({ ...extracted, notes: "was too tired to cook" })),
@@ -462,10 +462,13 @@ describe("extractFromText", () => {
       systemInstruction: { parts: { text: string }[] };
     };
     const prompt = body.systemInstruction.parts[0].text;
-    expect(prompt).toMatch(/lightly copy-edited: fix spelling, typos, punctuation and grammar/);
-    expect(prompt).toMatch(/join broken fragments with connectors/);
-    expect(prompt).toMatch(/Keep the owner's own wording and voice: do not rephrase/);
-    expect(prompt).toMatch(/never add facts, reasons or details/);
+    expect(prompt).toMatch(/someone who did not hear the message can tell what happened/);
+    expect(prompt).toMatch(/fix spelling, typos, punctuation, grammar and agreement/);
+    expect(prompt).toMatch(/join fragments into one explanation, with the references a reader needs/);
+    expect(prompt).toMatch(/rephrase or reorder what is ambiguous or out of order, using only what they said/);
+    expect(prompt).toMatch(/a short reason stays short, never a formal summary or a third-person report/);
+    expect(prompt).toMatch(/Never add a fact, reason, motive, amount, merchant, item, date or category/);
+    expect(prompt).not.toMatch(/do not rephrase|lightly copy-edited/);
     expect(prompt).toMatch(/translated to English/);
     expect(prompt).not.toMatch(/kept in their words/);
   });

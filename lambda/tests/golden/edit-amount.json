@@ -29,7 +29,7 @@
     "is_recurring": false,
     "income_source": null,
     "to_account": null,
-    "notes": "I was too tired and didn't pack lunch.",
+    "notes": "I was too tired and didn't pack my lunch.",
     "items": [
       {
         "description": "Sub",
@@ -41,5 +41,5 @@
     ],
     "confidence": 0.9
   },
-  "request_sha256": "9dc8ef174ef66fa29b43d232ce15ed83edbe3f88c0190a41683c0c154bc30983"
+  "request_sha256": "2d7f0188def0b65ba81d2aa851ecb23fcce3be4813dccf570b40764c0c868de2"
 }

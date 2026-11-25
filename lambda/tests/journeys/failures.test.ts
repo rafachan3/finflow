@@ -27,7 +27,7 @@ describe("when something goes wrong", () => {
   it("only the lighter model answered: the card says to check categories and buckets", async () => {
     gemini.extract = golden("text-with-note").recorded;
     gemini.overloaded = new Set(ALL_MODELS.slice(0, 2));
-    await chat.text("14 lunch at Sandwich Shop on Oct 25, was to tierd didnt pak lunch");
+    await chat.text("14 lunch at Sandwich Shop on Oct 25, didnt pak it, was to tierd, my lunch i mean");
 
     expect(chat.last().text).toContain(
       "! read by a lighter model while Gemini was busy — check categories and buckets",
