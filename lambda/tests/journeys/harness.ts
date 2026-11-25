@@ -567,6 +567,11 @@ export const chat = {
   topicNotice(name = "New topic") {
     return deliver(topicCreated(name));
   },
+  /** Telegram's notice that a topic was renamed, delivered in that topic. */
+  topicRenamedNotice(thread: number, name: string) {
+    telegram.topics.set(thread, name);
+    return deliver(message({ ...inThread(thread), forum_topic_edited: { name } }));
+  },
   /** The thread the owner's latest main-view message opened; never a topic the bot created. */
   lastTopic(): number {
     if (telegram.lastTopic === undefined) throw new Error("no main-view message opened a topic");

@@ -649,7 +649,9 @@ async function offerEvents(args: {
   // message is in, unless an earlier purchase owns it (this update's rows have
   // no thread yet); every other one gets a topic of its own.
   const botToken = args.config.botToken;
-  const messageThread = args.update.message!.message_thread_id;
+  // A thread id without the topic flag is not a topic: storing it would lose the card.
+  const message = args.update.message!;
+  const messageThread = message.is_topic_message ? message.message_thread_id : undefined;
   let keepThread = false;
   if (messageThread !== undefined && persisted.length > 0) {
     try {

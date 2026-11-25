@@ -565,7 +565,6 @@ function positionLabel(position?: { index: number; count: number }): string {
 
 const HEADER_POSITION = /( \(\d+ of \d+\))$/;
 
-/** An ack with the position its card's header shows; unchanged for an unlabelled card. */
 /** The text, or its first max - 1 characters and an ellipsis. */
 export function cut(text: string, max: number): string {
   return text.length <= max ? text : `${text.slice(0, max - 1).trimEnd()}…`;
@@ -577,6 +576,7 @@ export function topicName(extraction: Extraction, prefix = ""): string {
   return `${prefix}${cut(extraction.merchant ?? extraction.description, 128 - prefix.length - tail.length)}${tail}`;
 }
 
+/** An ack with the position its card's header shows; unchanged for an unlabelled card. */
 export function withPosition(ack: string, cardText?: string): string {
   const label = cardText?.split("\n")[0].match(HEADER_POSITION)?.[1] ?? "";
   return ack + label;

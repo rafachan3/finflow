@@ -96,14 +96,17 @@ describe("each purchase in its own topic", () => {
     expect(await ledger.ingestions()).toHaveLength(2);
   });
 
-  it("Telegram's topic-created notice gets no reply, even while a card waits for a date", async () => {
+  it("Telegram's topic-created and topic-renamed notices get no reply, even while a card waits for a date", async () => {
     gemini.extract = golden("text-with-note").recorded;
     await chat.text("14 lunch at Sandwich Shop");
-    await chat.tap(cards()[0], "Fix date");
+    const [card] = cards();
+    await chat.tap(card, "Fix date");
     const sent = chat.replies().length;
 
     await chat.topicNotice();
+    expect(chat.replies()).toHaveLength(sent);
 
+    await chat.topicRenamedNotice(card.thread!, "Lunch");
     expect(chat.replies()).toHaveLength(sent);
     expect((await ledger.ingestions())[0].status).toBe("awaiting_date");
   });
