@@ -10,6 +10,7 @@ import {
   normalizeTaxonomyNames,
   parseCents,
   parseDateReply,
+  topicName,
   usableAliases,
   validateExtraction,
   type Extraction,
@@ -791,5 +792,19 @@ describe("a purchase read with no lines", () => {
 
   it("does not warn for a line the reader gave", () => {
     expect(validateExtraction(expense(), taxonomy).warnings).not.toContain(WARNING);
+  });
+});
+
+describe("topicName", () => {
+  it("names a topic Merchant · $amount, falling back to the description, within 128 characters", () => {
+    expect(topicName(expense({ merchant: "Sandwich Shop", amount: "14.00" }))).toBe("Sandwich Shop · $14.00");
+    expect(topicName(expense({ merchant: null, description: "Lunch and coffee", amount: "16.00" }))).toBe(
+      "Lunch and coffee · $16.00",
+    );
+    const long = expense({ merchant: "x".repeat(200), amount: "14.00" });
+    expect(topicName(long)).toHaveLength(128);
+    expect(topicName(long).endsWith("… · $14.00")).toBe(true);
+    expect(topicName(long, "✅ ")).toHaveLength(128);
+    expect(topicName(long, "✅ ").startsWith("✅ x")).toBe(true);
   });
 });

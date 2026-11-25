@@ -220,7 +220,7 @@ describe("handler", () => {
       "t",
       1,
       expect.stringContaining("Confirm to save"),
-      { confirm: "ing-1" },
+      { confirm: "ing-1" }, { thread: undefined },
     );
     expect(String(vi.mocked(sendMessage).mock.calls[0][2]).split("\n")[0]).not.toMatch(/of 1\)/);
   });
@@ -264,7 +264,7 @@ describe("handler", () => {
       "t",
       1,
       expect.not.stringContaining("duplicate"),
-      { confirm: "ing-1" },
+      { confirm: "ing-1" }, { thread: undefined },
     );
     error.mockRestore();
   });
@@ -302,7 +302,7 @@ describe("handler", () => {
     await handler(event({ update_id: 33, message: { chat: { id: 1 }, text: "12.50 lunch" } }));
 
     expect(error).toHaveBeenCalledWith("merchant hint error", expect.any(Error));
-    expect(sendMessage).toHaveBeenCalledWith("t", 1, expect.not.stringContaining("💡"), { confirm: "ing-1" });
+    expect(sendMessage).toHaveBeenCalledWith("t", 1, expect.not.stringContaining("💡"), { confirm: "ing-1" }, { thread: undefined });
     error.mockRestore();
   });
 
@@ -382,9 +382,11 @@ describe("handler", () => {
       "t",
       1,
       expect.stringContaining("✗"),
+      undefined,
+      { thread: undefined },
     );
     const args = vi.mocked(sendMessage).mock.calls[0];
-    expect(args.length).toBe(3);
+    expect(args[3]).toBeUndefined();
   });
 
   it("defaults a missing Gemini date to today and warns", async () => {
@@ -411,7 +413,7 @@ describe("handler", () => {
       "t",
       1,
       expect.stringMatching(/defaulted to today/i),
-      { confirm: "ing-1" },
+      { confirm: "ing-1" }, { thread: undefined },
     );
   });
 
@@ -499,7 +501,7 @@ describe("handler", () => {
       "t",
       1,
       expect.stringContaining("2026-08-17"),
-      { confirm: "ing-1" },
+      { confirm: "ing-1" }, { thread: undefined },
     );
   });
 
@@ -606,7 +608,7 @@ describe("handler", () => {
       "t",
       1,
       expect.stringMatching(/date missing/i),
-      { confirm: "11111111-1111-1111-1111-111111111111" },
+      { confirm: "11111111-1111-1111-1111-111111111111" }, { thread: undefined },
     );
   });
 
@@ -698,7 +700,7 @@ describe("handler", () => {
       "t",
       1,
       expect.stringContaining("Confirm to save"),
-      { confirm: "11111111-1111-1111-1111-111111111111" },
+      { confirm: "11111111-1111-1111-1111-111111111111" }, { thread: undefined },
     );
     expect(extractFromText).not.toHaveBeenCalled();
     expect(extractFromPhoto).not.toHaveBeenCalled();
@@ -744,7 +746,7 @@ describe("handler", () => {
       "t",
       1,
       expect.stringMatching(/defaulted to today/i),
-      { confirm: "11111111-1111-1111-1111-111111111111" },
+      { confirm: "11111111-1111-1111-1111-111111111111" }, { thread: undefined },
     );
     expect(reviewKeyboard).not.toHaveBeenCalledWith(
       expect.anything(),
@@ -778,8 +780,10 @@ describe("handler", () => {
       "t",
       1,
       expect.stringContaining("✗"),
+      undefined,
+      { thread: undefined },
     );
-    expect(vi.mocked(sendMessage).mock.calls[0].length).toBe(3);
+    expect(vi.mocked(sendMessage).mock.calls[0][3]).toBeUndefined();
   });
 
   it("does not start a new voice note while awaiting a date", async () => {
@@ -871,7 +875,7 @@ describe("handler", () => {
       "t",
       1,
       expect.stringContaining("CAD 12.50"),
-      { confirm: "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee" },
+      { confirm: "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee" }, { thread: undefined },
     );
   });
 
@@ -929,7 +933,7 @@ describe("handler", () => {
       "t",
       1,
       expect.stringContaining("14.50"),
-      { confirm: "ing-1" },
+      { confirm: "ing-1" }, { thread: undefined },
     );
   });
 

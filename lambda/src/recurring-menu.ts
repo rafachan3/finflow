@@ -23,7 +23,7 @@
  * Dates are yyyymmdd, or `t` on a "today" button: the day it is tapped.
  */
 import { collapseSpaces } from "./commands.js";
-import { parseCents, parseDateReply } from "./extraction.js";
+import { cut, parseCents, parseDateReply } from "./extraction.js";
 import { flip, selectAll, ticked, toggle, type Keyboard } from "./mentions.js";
 import {
   amountBand,
@@ -223,10 +223,6 @@ export function cadenceText(cadence: Cadence, fit: Fit | null): string {
 
 function capitalise(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
-}
-
-export function cut(text: string, max: number): string {
-  return text.length <= max ? text : `${text.slice(0, max - 1).trimEnd()}…`;
 }
 
 // ---- What a series looks like today ----------------------------------------

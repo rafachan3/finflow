@@ -63,6 +63,11 @@ describe("the journey fakes", () => {
     ]);
   });
 
+  it("the fake refuses a send to a topic that does not exist", async () => {
+    await expect(sendMessage("t", 1, "hi", undefined, { thread: 999 })).rejects.toThrow(/HTTP 400/);
+    expect(takeTelegramRejections()).toEqual(["sendMessage: message thread not found"]);
+  });
+
   it("reject a file that no message carried", async () => {
     await expect(downloadTelegramFile("t", "photo-small")).rejects.toThrow(/HTTP 400|getFile/);
     expect(takeTelegramRejections()).toEqual(["getFile: no such file_id photo-small"]);

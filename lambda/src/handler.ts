@@ -24,6 +24,7 @@ import {
   findAwaitingIngestion,
   findDuplicates,
   findFrequentMerchant,
+  findIngestionByThread,
   oldestTransactionDate,
   insertPendingIngestions,
   findMentions,
@@ -35,6 +36,8 @@ import {
   restoreIngestionPending,
   setIngestionAwaitingDate,
   setIngestionAwaitingEdit,
+  setIngestionCardMessage,
+  setIngestionTopic,
 } from "./db.js";
 import {
   applyDatePolicy,
@@ -46,6 +49,7 @@ import {
   MISSING_DATE,
   normalizeTaxonomyNames,
   parseDateReply,
+  topicName,
   validateExtraction,
   withPosition,
   type CheckResult,
@@ -74,13 +78,17 @@ import { handleRecurringTap, answerPrompt, parseRecurringTap, savedKeyboard, sen
 import { putReceipt } from "./s3.js";
 import {
   answerCallbackQuery,
+  botUsername,
+  createForumTopic,
   downloadTelegramFile,
+  editForumTopic,
   editMessageReplyMarkup,
   editMessageText,
   largestPhotoFileId,
   reviewKeyboard,
   sendMessage,
   toggleCardSeries,
+  topicLink,
   voiceFileId,
   waitingKeyboard,
 } from "./telegram.js";
@@ -98,6 +106,11 @@ type TelegramMessage = {
   /** Unix seconds. */
   date?: number;
   reply_to_message?: { text?: string; date?: number; from?: { is_bot?: boolean } };
+  /** The topic the message is in; none in the main view or before topics. */
+  message_thread_id?: number;
+  is_topic_message?: boolean;
+  forum_topic_created?: unknown;
+  forum_topic_edited?: unknown;
 };
 type TelegramCallbackQuery = {
   id: string;
@@ -360,14 +373,18 @@ async function handleAwaitingVoiceEdit(
   return await handleAwaitingEdit(text, message.chat.id, config, awaiting, model);
 }
 
-/** A saved row's card: the preview, any implausible-date or likely-duplicate warning, any merchant hint, and the buttons its checks allow. */
+/**
+ * A saved row's card: the preview, any implausible-date or likely-duplicate
+ * warning, any merchant hint, and the buttons its checks allow. Sent in
+ * `thread` when given; the row records the card's message id.
+ */
 async function sendCard(
   botToken: string,
   chatId: number,
   ingestionId: string,
   extraction: Extraction,
   checks: CheckResult,
-  position?: { index: number; count: number },
+  opts: { position?: { index: number; count: number }; thread?: number } = {},
 ): Promise<void> {
   const { confirm } = previewOffer(extraction, checks);
   let duplicates: string[] = [];
@@ -403,12 +420,50 @@ async function sendCard(
   }
   // A warning or hint only adds a line; Confirm still follows the checks alone.
   const shown = { ...checks, warnings: [...checks.warnings, ...dates, ...duplicates] };
-  await sendMessage(
+  const messageId = await sendMessage(
     botToken,
     chatId,
-    formatPreview(extraction, shown, position, hint, series ?? undefined),
+    formatPreview(extraction, shown, opts.position, hint, series ?? undefined),
     reviewKeyboard(ingestionId, { confirm, series: series ?? undefined }),
+    { thread: opts.thread },
   );
+  if (messageId === undefined) return;
+  try {
+    await setIngestionCardMessage(ingestionId, messageId);
+  } catch (err) {
+    // The card is out; without its id only a later topic lookup misses it.
+    console.error("card id store error", err);
+  }
+}
+
+/**
+ * A new topic for a further purchase of one message, opened by a line that
+ * links back to the message's topic. Undefined when Telegram refuses the topic.
+ */
+async function openPurchaseTopic(
+  botToken: string,
+  chatId: number,
+  extraction: Extraction,
+  messageThread: number,
+): Promise<number | undefined> {
+  let thread: number;
+  try {
+    thread = await createForumTopic(botToken, chatId, topicName(extraction));
+  } catch (err) {
+    console.error("topic create error", err);
+    return undefined;
+  }
+  try {
+    const link = topicLink(await botUsername(botToken), messageThread);
+    await sendMessage(botToken, chatId, `↩️ <a href="${link}">From your message</a>`, undefined, {
+      html: true,
+      silent: true,
+      thread,
+    });
+  } catch (err) {
+    console.error("topic link error", err);
+  }
+  return thread;
 }
 
 /**
@@ -590,14 +645,45 @@ async function offerEvents(args: {
     persisted.forEach((o, k) => savedIds.set(o, inserted[k].id));
   }
 
+  // One topic holds one purchase. The first saved one keeps the topic the
+  // message is in, unless an earlier purchase owns it (this update's rows have
+  // no thread yet); every other one gets a topic of its own.
+  const botToken = args.config.botToken;
+  const messageThread = args.update.message!.message_thread_id;
+  let keepThread = false;
+  if (messageThread !== undefined && persisted.length > 0) {
+    try {
+      keepThread = (await findIngestionByThread(chatId, messageThread)) === null;
+    } catch (err) {
+      console.error("topic owner lookup error", err);
+    }
+  }
+
   for (const [index, o] of offers.entries()) {
     const position = { index, count: offers.length };
     const savedId = savedIds.get(o);
     try {
-      if (savedId) {
-        await sendCard(args.config.botToken, chatId, savedId, o.extraction, o.checks, position);
+      if (!savedId) {
+        await sendMessage(botToken, chatId, formatPreview(o.extraction, o.checks, position), undefined, {
+          thread: messageThread,
+        });
+      } else if (messageThread === undefined) {
+        await sendCard(botToken, chatId, savedId, o.extraction, o.checks, { position });
+      } else if (keepThread) {
+        keepThread = false;
+        await setIngestionTopic(savedId, messageThread);
+        await sendCard(botToken, chatId, savedId, o.extraction, o.checks, { position, thread: messageThread });
+        try {
+          await editForumTopic(botToken, chatId, messageThread, topicName(o.extraction));
+        } catch (err) {
+          console.error("topic rename error", err);
+        }
       } else {
-        await sendMessage(args.config.botToken, chatId, formatPreview(o.extraction, o.checks, position));
+        // A refused topic leaves the card in the message's topic, and the row
+        // with no thread: that topic stays its first purchase's alone.
+        const thread = await openPurchaseTopic(botToken, chatId, o.extraction, messageThread);
+        if (thread !== undefined) await setIngestionTopic(savedId, thread);
+        await sendCard(botToken, chatId, savedId, o.extraction, o.checks, { position, thread: thread ?? messageThread });
       }
     } catch (err) {
       // Rows are saved: a "Couldn't parse" reply would make the owner resend and duplicate them.
@@ -684,6 +770,10 @@ async function handleMessage(
 ): Promise<APIGatewayProxyResultV2> {
   const message = update.message!;
   if (!config.allowedChatIds.has(message.chat.id)) {
+    return ok("ignored");
+  }
+  // Telegram's notice of a topic opened or renamed is not the owner's message.
+  if (message.forum_topic_created || message.forum_topic_edited) {
     return ok("ignored");
   }
 

@@ -3830,3 +3830,23 @@ it to use. The owner accepts that the note is no longer their exact words.
   not an exact string, so a fair rewording still passes.
 - **Ruled out:** keeping the 2026-10-28 voice rule; a full rewrite that adds
   context they did not give; a second Gemini request just for the note.
+
+## 2026-11-25: Each purchase gets its own topic (Stage 1)
+
+One topic holds one purchase. The first saved purchase of a message keeps
+the topic the message opened (renamed `Merchant · $amount`); each further
+one gets a topic the bot creates.
+
+- **Link back:** a further purchase's topic opens with a one-line silent
+  message, `↩️ From your message`, linking to the message's topic
+  (`t.me/<bot>/<thread>`). Not a cross-topic `reply_parameters` quote: the
+  live check of 2026-11-25 found Telegram accepts it but
+  returns no `reply_to_message`, so whether the owner sees any link back
+  is unverified.
+- **Refused topic:** the card goes to the message's topic and the row
+  stores no `telegram_thread_id`, so a topic never holds two purchases'
+  rows and a lookup by thread always finds the purchase that owns it.
+- **Best effort:** create, rename and the link line are logged on refusal;
+  none blocks saving, the card or the reply.
+- **Ruled out:** a quote across topics; storing the shared topic on the
+  fallback row.

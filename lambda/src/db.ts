@@ -442,6 +442,35 @@ export async function listPendingIngestions(
   return result.rows;
 }
 
+/** The purchase's own topic. */
+export async function setIngestionTopic(ingestionId: string, threadId: number): Promise<void> {
+  const db = await getPool();
+  await db.query("UPDATE ingestions SET telegram_thread_id = $2 WHERE id = $1", [ingestionId, threadId]);
+}
+
+/** The card the owner taps or replies to. */
+export async function setIngestionCardMessage(ingestionId: string, messageId: number): Promise<void> {
+  const db = await getPool();
+  await db.query("UPDATE ingestions SET card_message_id = $2 WHERE id = $1", [ingestionId, messageId]);
+}
+
+/** The purchase whose topic this is, latest first; null for a topic no purchase owns. */
+export async function findIngestionByThread(
+  chatId: number,
+  threadId: number,
+): Promise<{ id: string; status: string; extraction: Extraction } | null> {
+  const db = await getPool();
+  const result = await db.query<{ id: string; status: string; extraction: Extraction }>(
+    `SELECT id, status, extraction FROM ingestions
+     WHERE telegram_thread_id = $2
+       AND raw_payload #>> '{message,chat,id}' = $1
+     ORDER BY created_at DESC, event_index DESC
+     LIMIT 1`,
+    [String(chatId), threadId],
+  );
+  return result.rows[0] ?? null;
+}
+
 /** The date of the oldest saved transaction (YYYY-MM-DD), or null for an empty ledger. */
 export async function oldestTransactionDate(): Promise<string | null> {
   const db = await getPool();
