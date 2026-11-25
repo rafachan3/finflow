@@ -101,7 +101,7 @@ dbt models and the agent read it, so numbers agree everywhere.
   `/merchants`, `/addmerchant` and `/delmerchant` read and write the
   `merchants` lookup directly, with no Confirm; the next message's
   `loadTaxonomy` sees the change. The deploy workflow's last step
-  registers the same table as the Telegram command menu.
+  registers the same table as the Telegram command menu and sets topic mode.
   `/recurring` (`src/recurring-menu.ts`) sends one message whose buttons
   edit it in place: list, detail, pause/resume/rename/delete, add from a
   saved payment, the review that links past payments, and suggestions. Each tap reads the whole recurring book
@@ -352,7 +352,7 @@ is part of any rebuild, and the "deploy your own" guide must say so.
 - The GitHub Actions deploy role may update the one function, and read exactly
   one parameter, `/finflow/telegram/bot-token` (`ssm:GetParameter` on its ARN,
   plus `kms:Decrypt` on the `aws/ssm` key via Parameter Store only), so a
-  deploy step can register the bot's command menu.
+  deploy step can register the bot's command menu and set topic mode.
 - S3 bucket: Block Public Access enabled, default encryption on, no bucket
   policy granting anything to `*`.
 - The MCP database role is `finflow_analyst`: `SELECT` on marts only, nothing

@@ -71,9 +71,9 @@ jobs:
           test "$code" = 401
       # Last on purpose. The new code is already live, so a failure here turns
       # the run red without undoing the deploy, and no continue-on-error hides
-      # it. setMyCommands is idempotent, so a transient network error (runner to
+      # it. setMyCommands and setMySettings are idempotent, so a transient network error (runner to
       # api.telegram.org timed out once) is retried 3 times with 10s, 30s backoff.
-      - name: Register bot command menu
+      - name: Register bot command menu and topic mode
         run: |
           token=$(aws ssm get-parameter \
             --name /finflow/telegram/bot-token \

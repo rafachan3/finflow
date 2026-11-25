@@ -1,6 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { COMMANDS, commandMenu } from "../src/commands.js";
 import {
+  applyTopicSettings,
+  botUsername,
+  createForumTopic,
+  deleteForumTopic,
+  editForumTopic,
   registerCommandMenu,
   downloadTelegramFile,
   editMessageReplyMarkup,
@@ -130,6 +135,65 @@ describe("command menu", () => {
     const [url, init] = fetchMock.mock.calls[0];
     expect(url).toBe("https://api.telegram.org/botTOKEN/setMyCommands");
     expect(JSON.parse(init.body)).toEqual({ commands: commandMenu() });
+  });
+});
+
+describe("topics", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const answer = (result: unknown) =>
+    vi.fn().mockResolvedValue({ ok: true, json: async () => ({ ok: true, result }) });
+  const sent = (fetchMock: ReturnType<typeof vi.fn>, n = 0) => ({
+    url: fetchMock.mock.calls[n][0],
+    body: JSON.parse(fetchMock.mock.calls[n][1].body),
+  });
+
+  it("sends into a topic with message_thread_id, and to the main view without one", async () => {
+    const fetchMock = answer({ message_id: 1 });
+    vi.stubGlobal("fetch", fetchMock);
+    await sendMessage("T", 5, "hi", undefined, { thread: 42 });
+    await sendMessage("T", 5, "hi");
+    expect(sent(fetchMock, 0).body.message_thread_id).toBe(42);
+    expect(sent(fetchMock, 1).body).not.toHaveProperty("message_thread_id");
+  });
+
+  it("creates a topic and returns its thread id", async () => {
+    const fetchMock = answer({ message_thread_id: 77, name: "x", icon_color: 7322096 });
+    vi.stubGlobal("fetch", fetchMock);
+    expect(await createForumTopic("T", 5, "Sandwich Shop · $14.00")).toBe(77);
+    expect(sent(fetchMock).url).toBe("https://api.telegram.org/botT/createForumTopic");
+    expect(sent(fetchMock).body).toEqual({ chat_id: 5, name: "Sandwich Shop · $14.00" });
+  });
+
+  it("renames and deletes a topic", async () => {
+    const fetchMock = answer(true);
+    vi.stubGlobal("fetch", fetchMock);
+    await editForumTopic("T", 5, 42, "✅ A · $1.00");
+    await deleteForumTopic("T", 5, 42);
+    expect(sent(fetchMock, 0).body).toEqual({ chat_id: 5, message_thread_id: 42, name: "✅ A · $1.00" });
+    expect(sent(fetchMock, 1).body).toEqual({ chat_id: 5, message_thread_id: 42 });
+  });
+
+  it("reads the bot's username once per container", async () => {
+    const fetchMock = answer({ username: "journey_bot" });
+    vi.stubGlobal("fetch", fetchMock);
+    expect(await botUsername("T")).toBe("journey_bot");
+    expect(await botUsername("T")).toBe("journey_bot");
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
+  it("sets topic mode with setMySettings", async () => {
+    const fetchMock = answer(true);
+    vi.stubGlobal("fetch", fetchMock);
+    await applyTopicSettings("T");
+    expect(sent(fetchMock).url).toBe("https://api.telegram.org/botT/setMySettings");
+    expect(sent(fetchMock).body).toEqual({
+      has_topics_enabled: true,
+      allows_users_to_create_topics: true,
+      has_topic_sidebar: true,
+    });
   });
 });
 

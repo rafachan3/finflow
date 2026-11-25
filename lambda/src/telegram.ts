@@ -52,13 +52,15 @@ async function postTelegram(
 /**
  * `html`: the text is Telegram HTML (parse_mode HTML), with link previews off.
  * `silent`: delivered with no notification sound.
+ * `thread`: the topic (message_thread_id) a sent message goes into; edits never take it.
  */
-export type Format = { html?: boolean; silent?: boolean };
+export type Format = { html?: boolean; silent?: boolean; thread?: number };
 
 function formatFields(format: Format): Record<string, unknown> {
   return {
     ...(format.html ? { parse_mode: "HTML", link_preview_options: { is_disabled: true } } : {}),
     ...(format.silent ? { disable_notification: true } : {}),
+    ...(format.thread !== undefined ? { message_thread_id: format.thread } : {}),
   };
 }
 
@@ -143,6 +145,58 @@ export async function deleteMessage(botToken: string, chatId: number, messageId:
 /** Sets the bot's command menu to the command table. Run by the deploy workflow. */
 export async function registerCommandMenu(botToken: string): Promise<void> {
   await postTelegram(botToken, "setMyCommands", { commands: commandMenu() });
+}
+
+/**
+ * Topic mode: topics on, the owner may open topics, sidebar on. Idempotent,
+ * run by the deploy workflow.
+ */
+export async function applyTopicSettings(botToken: string): Promise<void> {
+  await postTelegram(botToken, "setMySettings", {
+    has_topics_enabled: true,
+    allows_users_to_create_topics: true,
+    has_topic_sidebar: true,
+  });
+}
+
+/** Opens a topic; its message_thread_id. Throws on refusal, callers decide what that costs. */
+export async function createForumTopic(botToken: string, chatId: number, name: string): Promise<number> {
+  const { result } = await callTelegram(botToken, "createForumTopic", { chat_id: chatId, name });
+  const id = (result as { message_thread_id?: unknown } | undefined)?.message_thread_id;
+  if (typeof id !== "number") throw new Error("createForumTopic returned no message_thread_id");
+  return id;
+}
+
+/** Renames a topic. Throws on refusal. */
+export async function editForumTopic(
+  botToken: string,
+  chatId: number,
+  threadId: number,
+  name: string,
+): Promise<void> {
+  await postTelegram(botToken, "editForumTopic", { chat_id: chatId, message_thread_id: threadId, name });
+}
+
+/** Deletes a topic and every message in it. Throws on refusal. */
+export async function deleteForumTopic(botToken: string, chatId: number, threadId: number): Promise<void> {
+  await postTelegram(botToken, "deleteForumTopic", { chat_id: chatId, message_thread_id: threadId });
+}
+
+let cachedUsername: string | undefined;
+
+/** The bot's @username, read once per warm container. */
+export async function botUsername(botToken: string): Promise<string> {
+  if (cachedUsername === undefined) {
+    const { result } = await callTelegram(botToken, "getMe", {});
+    const name = (result as { username?: unknown } | undefined)?.username;
+    if (typeof name !== "string") throw new Error("getMe returned no username");
+    cachedUsername = name;
+  }
+  return cachedUsername;
+}
+
+export function topicLink(botUsername: string, threadId: number): string {
+  return `https://t.me/${botUsername}/${threadId}`;
 }
 
 export async function answerCallbackQuery(

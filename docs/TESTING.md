@@ -116,6 +116,7 @@ included.
 | Merchants | If the hint's lookup fails, the saved card is still sent, without the hint | `sends a saved card without the hint when the merchant check fails` |
 | Telegram | A message can be sent or edited as Telegram HTML with link previews off, and every name or description in one is escaped; the journey fakes refuse HTML Telegram would refuse (an unsupported, unclosed or misnested tag, an unescaped `&`, `<` or `>`) and count only the visible text towards the 4096 limit | `sends HTML with link previews off and keeps the buttons an edit passes`<br>`escapes &, < and > for an HTML message`<br>`count only the text an HTML message shows towards Telegram's limit`<br>`reject HTML with an unsupported tag, an unclosed tag or an unescaped character`<br>`a name or description with &, < or > is shown as typed in every HTML screen` |
 | Commands | A known slash command (every one in the menu) runs before the wait, so it is never taken as a date or a correction, and never reaches Gemini; one from a chat off the allowlist is ignored | `a merchant command while a card waits for a correction is not sent to Gemini`<br>`a merchant command from a chat that is not on the allowlist does nothing`<br>`every command in the menu is answered without asking Gemini`<br>`reads a known slash command with or without @botname, in any case, and its argument`<br>`returns nothing for plain text, an unknown command, or a longer word` |
+| Commands | Topic mode (topics on, the owner may open topics, sidebar on) is set with `setMySettings` by the same deploy step; re-running it changes nothing | `sets topic mode with setMySettings` |
 | Commands | The Telegram command menu is built from the same table the handler routes on, in the shape Telegram accepts, and is registered with `setMyCommands` | `lists exactly the commands the handler routes on, in Telegram's allowed shape`<br>`registers that menu with setMyCommands` |
 | Gemini | A 503 or 429 retries down the model chain; other errors do not retry | `retries a 503 on the fallback model and records which model answered`<br>`retries a non-JSON 503 body too`<br>`gives up after three attempts with the HTTP status in the error`<br>`moves to the next model on a 429, since free-tier quota is per model`<br>`does not retry a bad request` |
 | Gemini | A card read by the Lite model warns to check categories and buckets, and only then | `only the lighter model answered: the card says to check categories and buckets`<br>`flags a card that a Lite model read, and only then` |
@@ -255,7 +256,7 @@ on `main`, then POSTs a wrong webhook secret to the deployed Function URL
 gets 401. That smoke step has no inventory row: it is not a test file.
 A last deploy step reads the bot token from SSM, masks it, and runs
 `npm run telegram:commands` (up to 3 attempts, 10s then 30s apart) to set the
-command menu. It is not a test either;
+command menu and topic mode (`setMySettings`). It is not a test either;
 its payload is the unit-tested `commandMenu()`. A failure there turns the run
 red but leaves the deployed code in place.
 
