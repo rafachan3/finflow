@@ -78,7 +78,7 @@ describe("mismatches", () => {
     expect(mismatches([broken], [two.expect.events[0]])).toEqual([
       "event 0: type income != expense",
       "event 0: 2 lines != 1",
-      "event 0: merchant missing",
+      "event 0: merchant missing, got \"null\"",
     ]);
     expect(
       mismatches([{ ...first, amount: "9.00" }], [two.expect.events[0]]),
@@ -273,16 +273,16 @@ describe("mismatches", () => {
     const event = (notes: string | null, lines: (string | null | undefined)[]) =>
       mismatches([{ type: "expense", amount: "2.00", notes, items: lines.map((note) => ({ amount: "1.00", note })) }], [want]);
     expect(event(null, [null, "she skipped breakfast"])).toEqual([]);
-    expect(event(null, [undefined, "she skipped lunch"])).toEqual(['event 0: line 1 note lacks "breakfast"']);
+    expect(event(null, [undefined, "she skipped lunch"])).toEqual(['event 0: line 1 note lacks "breakfast", got "she skipped lunch"']);
     expect(event(null, ["she skipped breakfast", "she skipped breakfast"])).toEqual([
-      "event 0: note unexpected",
-      "event 0: line 1 note missing",
+      'event 0: note unexpected, got "she skipped breakfast"',
+      'event 0: line 1 note missing, got "null"',
     ]);
     expect(event("she skipped breakfast", [null, "she skipped breakfast"])).toEqual([
-      "event 0: note unexpected",
-      "event 0: line 1 note missing",
+      'event 0: note unexpected, got "she skipped breakfast"',
+      'event 0: line 1 note missing, got "null"',
     ]);
-    expect(event(null, ["for me", "she skipped breakfast"])).toEqual(["event 0: line 0 note unexpected"]);
+    expect(event(null, ["for me", "she skipped breakfast"])).toEqual(['event 0: line 0 note unexpected, got "for me"']);
   });
 
   it("reports a note that keeps a typo, misses a correction, or grows too long", () => {
@@ -298,10 +298,10 @@ describe("mismatches", () => {
       "event 0: note has 8 words > 6",
     ]);
     expect(note("was tierd, didnt pak lunch")).toEqual([
-      'event 0: note lacks "tired"',
-      'event 0: note lacks "didn\'t"',
-      'event 0: note has "tierd"',
-      'event 0: note has "pak"',
+      'event 0: note lacks "tired", got "was tierd, didnt pak lunch"',
+      'event 0: note lacks "didn\'t", got "was tierd, didnt pak lunch"',
+      'event 0: note has "tierd", got "was tierd, didnt pak lunch"',
+      'event 0: note has "pak", got "was tierd, didnt pak lunch"',
     ]);
   });
 });

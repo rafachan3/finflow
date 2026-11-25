@@ -181,6 +181,12 @@ function names(v: unknown): string[] {
 
 const tagSet = (tags: string[]) => `[${[...tags].sort().join(", ")}]`;
 
+/** A returned value quoted for a failure line, cut to 120 characters. */
+const shown = (v: unknown) => {
+  const s = String(v ?? null);
+  return `"${s.length > 120 ? `${s.slice(0, 120)}...` : s}"`;
+};
+
 const text = (v: unknown) => (typeof v === "string" ? v : null);
 
 /** Golden words are plain letters and apostrophes, so no escaping; a curly apostrophe reads as straight. */
@@ -223,7 +229,7 @@ export function mismatches(events: RawEvent[], expected: ExpectedEvent[]): strin
     ] as const;
     for (const [field, wanted, value] of flags) {
       if (wanted !== undefined && present(value) !== wanted) {
-        out.push(`${at}: ${field} ${wanted ? "missing" : "unexpected"}`);
+        out.push(`${at}: ${field} ${wanted ? "missing" : "unexpected"}, got ${shown(value)}`);
       }
     }
     const merchant = typeof got.merchant === "string" ? got.merchant : null;
@@ -243,8 +249,8 @@ export function mismatches(events: RawEvent[], expected: ExpectedEvent[]): strin
       out.push(`${at}: channel ${String(got.channel ?? null)} != ${String(want.channel)}`);
     }
     const note = notes.notes ?? "";
-    for (const w of want.noteHas ?? []) if (!hasWord(note, w)) out.push(`${at}: note lacks "${w}"`);
-    for (const w of want.noteLacks ?? []) if (hasWord(note, w)) out.push(`${at}: note has "${w}"`);
+    for (const w of want.noteHas ?? []) if (!hasWord(note, w)) out.push(`${at}: note lacks "${w}", got ${shown(note)}`);
+    for (const w of want.noteLacks ?? []) if (hasWord(note, w)) out.push(`${at}: note has "${w}", got ${shown(note)}`);
     const words = note.split(/\s+/).filter(Boolean).length;
     if (want.noteMaxWords !== undefined && words > want.noteMaxWords) {
       out.push(`${at}: note has ${words} words > ${want.noteMaxWords}`);
@@ -303,10 +309,10 @@ export function mismatches(events: RawEvent[], expected: ExpectedEvent[]): strin
       want.lineNotes.forEach((words, j) => {
         const own = notes.lineNotes[j];
         if (own === null || words === null) {
-          if (own !== words) out.push(`${at}: line ${j} note ${words === null ? "unexpected" : "missing"}`);
+          if (own !== words) out.push(`${at}: line ${j} note ${words === null ? "unexpected" : "missing"}, got ${shown(own)}`);
           return;
         }
-        for (const w of words) if (!hasWord(own, w)) out.push(`${at}: line ${j} note lacks "${w}"`);
+        for (const w of words) if (!hasWord(own, w)) out.push(`${at}: line ${j} note lacks "${w}", got ${shown(own)}`);
       });
     }
     if (got.type === "expense" && items.length === want.lines && items.length > 0) {
