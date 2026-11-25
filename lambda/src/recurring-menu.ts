@@ -23,6 +23,7 @@
  * Dates are yyyymmdd, or `t` on a "today" button: the day it is tapped.
  */
 import { collapseSpaces } from "./commands.js";
+import { takeUtilityTopic } from "./db.js";
 import { cut, parseCents, parseDateReply } from "./extraction.js";
 import { flip, selectAll, ticked, toggle, type Keyboard } from "./mentions.js";
 import {
@@ -65,6 +66,7 @@ import {
   editMessageReplyMarkup,
   editMessageText,
   esc,
+  retireTopic,
   sendMessage,
   topicThread,
 } from "./telegram.js";
@@ -1009,11 +1011,23 @@ function onDigest(screen: Screen): Screen {
 }
 
 /**
- * Close: deletes the menu message. Telegram refuses to delete one older than
- * 48 hours; that one is edited into a plain "Closed." with no buttons. A
+ * Close: in the topic its command opened, deletes that topic with the menu
+ * (renamed ⚙️ when Telegram refuses). Elsewhere (a Saved reply in a purchase's
+ * topic) it deletes only the menu message. Telegram refuses to delete one older
+ * than 48 hours; that one is edited into a plain "Closed." with no buttons. A
  * failure of both is only logged, so Telegram does not retry the tap.
  */
 async function close(ctx: TapContext): Promise<void> {
+  let label: string | null = null;
+  try {
+    if (ctx.thread !== undefined) label = await takeUtilityTopic(ctx.chatId, ctx.thread);
+  } catch (err) {
+    console.error("menu topic lookup error", err);
+  }
+  if (label !== null) {
+    await retireTopic(ctx.botToken, ctx.chatId, ctx.thread!, `⚙️ ${label}`);
+    return;
+  }
   try {
     await deleteMessage(ctx.botToken, ctx.chatId, ctx.messageId);
   } catch (err) {

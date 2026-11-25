@@ -40,6 +40,8 @@ import {
   setIngestionTopic,
   getIngestion,
   findSharingIngestion,
+  registerUtilityTopic,
+  takeStaleUtilityTopics,
 } from "./db.js";
 import {
   alreadyHandled,
@@ -1115,6 +1117,36 @@ async function handleCallback(
   return ok("ok");
 }
 
+/**
+ * How long a command's or a no-purchase message's topic stays after the owner's
+ * last message in it. No timer deletes it: the Lambda has no scheduler of its
+ * own, the nudge's daily run has no business with topics, and a new schedule
+ * is new infra. The owner messages daily, so the next message is the clock.
+ */
+export const UTILITY_TOPIC_TTL_SECONDS = 60 * 60;
+
+/**
+ * After the owner's message: a topic no purchase owns is noted for tidying,
+ * and those past their hour are deleted (renamed ⚙️ when Telegram refuses,
+ * never tried again). Best effort: it never changes the reply.
+ */
+async function tidyTopics(message: TelegramMessage, config: Awaited<ReturnType<typeof getConfig>>): Promise<void> {
+  const chatId = message.chat.id;
+  if (!config.allowedChatIds.has(chatId) || message.forum_topic_created || message.forum_topic_edited) return;
+  try {
+    const thread = topicThread(message);
+    if (thread !== undefined && (await findIngestionByThread(chatId, thread)) === null) {
+      const command = parseCommand(message.text);
+      await registerUtilityTopic(chatId, thread, command ? `/${command.name}` : "No purchase");
+    }
+    for (const stale of await takeStaleUtilityTopics(chatId, UTILITY_TOPIC_TTL_SECONDS)) {
+      await retireTopic(config.botToken, chatId, stale.threadId, `⚙️ ${stale.label}`);
+    }
+  } catch (err) {
+    console.error("topic tidy error", err);
+  }
+}
+
 export async function handler(
   event: APIGatewayProxyEventV2,
 ): Promise<APIGatewayProxyResultV2> {
@@ -1128,7 +1160,9 @@ export async function handler(
     const update = parseUpdate(event);
 
     if (update.message) {
-      return await handleMessage(update, config);
+      const response = await handleMessage(update, config);
+      await tidyTopics(update.message, config);
+      return response;
     }
 
     if (update.callback_query) {

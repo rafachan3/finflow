@@ -458,10 +458,63 @@ export async function listPendingIngestions(
   return result.rows;
 }
 
-/** The purchase's own topic. */
+/**
+ * The purchase's own topic. A topic it takes over from a command or a message
+ * with no purchase stops being one to tidy away, or the tidy-up would delete
+ * its card.
+ */
 export async function setIngestionTopic(ingestionId: string, threadId: number): Promise<void> {
   const db = await getPool();
-  await db.query("UPDATE ingestions SET telegram_thread_id = $2 WHERE id = $1", [ingestionId, threadId]);
+  await db.query(
+    `WITH owned AS (
+       UPDATE ingestions SET telegram_thread_id = $2 WHERE id = $1
+       RETURNING (raw_payload #>> '{message,chat,id}')::bigint AS chat_id
+     )
+     DELETE FROM utility_topics u USING owned
+     WHERE u.chat_id = owned.chat_id AND u.thread_id = $2`,
+    [ingestionId, threadId],
+  );
+}
+
+/**
+ * A topic a command or a message with no purchase opened, to tidy away later.
+ * Each owner message in it restarts its hour.
+ */
+export async function registerUtilityTopic(chatId: number, threadId: number, label: string): Promise<void> {
+  const db = await getPool();
+  await db.query(
+    `INSERT INTO utility_topics (chat_id, thread_id, label) VALUES ($1, $2, $3)
+     ON CONFLICT (chat_id, thread_id) DO UPDATE SET opened_at = now()`,
+    [chatId, threadId, label],
+  );
+}
+
+/** Claims a utility topic: its label, or null when it is not one (or another invocation took it). */
+export async function takeUtilityTopic(chatId: number, threadId: number): Promise<string | null> {
+  const db = await getPool();
+  const result = await db.query<{ label: string }>(
+    "DELETE FROM utility_topics WHERE chat_id = $1 AND thread_id = $2 RETURNING label",
+    [chatId, threadId],
+  );
+  return result.rows[0]?.label ?? null;
+}
+
+/**
+ * Claims the utility topics opened longer ago than this. Claiming by delete
+ * means two concurrent invocations never both act on one topic.
+ */
+export async function takeStaleUtilityTopics(
+  chatId: number,
+  olderThanSeconds: number,
+): Promise<{ threadId: number; label: string }[]> {
+  const db = await getPool();
+  const result = await db.query<{ threadId: number; label: string }>(
+    `DELETE FROM utility_topics
+     WHERE chat_id = $1 AND opened_at < now() - make_interval(secs => $2)
+     RETURNING thread_id AS "threadId", label`,
+    [chatId, olderThanSeconds],
+  );
+  return result.rows;
 }
 
 /** The card the owner taps or replies to. */

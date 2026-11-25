@@ -3890,3 +3890,30 @@ names the purchase.
   renames none.
 - **Ruled out:** a `sv` callback on the Saved button, and keeping the
   chat message for every Confirm (one more message per purchase).
+
+## 2026-11-25: Command and no-purchase topics are deleted when done
+
+A topic a command or a message with no purchase opened (a failed
+extraction, a message that is not a purchase) is deleted by the first
+owner message an hour or more after the owner's last message in it.
+
+- **The clock is the next owner message,** not a schedule: the Lambda has
+  no scheduler of its own, the nudge's 09:00 run has no business with
+  topics, and a new schedule is new infra. The owner messages daily. If
+  topics linger, the nudge run is the upgrade path.
+- **One hour:** covers a `/recurring` or mention-review session, and is at
+  least the 15-minute prompt window. Each owner message in the topic
+  restarts it; taps do not.
+- **The one write without a purchase:** a `utility_topics` row (chat,
+  thread, `/command` or `No purchase`, timestamp; no message content). It
+  is the exception to "nothing is written until extraction and validation
+  pass". A purchase that takes the topic over (sent in it, or a card from
+  before topics answered in it) removes the row when it stores its thread,
+  so the tidy-up never deletes a card.
+- **Refused delete:** the topic is renamed `⚙️ /command` (or
+  `⚙️ No purchase`) and not tried again; the row is claimed by delete
+  before the call, so two invocations never both act on it.
+- **Close** on a `/recurring` menu in its command's topic deletes the
+  topic at once; elsewhere it deletes only the menu message.
+- **Ruled out:** an EventBridge schedule or a timer; tidying from the
+  nudge run now; retrying a refused delete.

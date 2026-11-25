@@ -464,3 +464,125 @@ describe("Discard inside a purchase topic", () => {
     expect(row.card_message_id).toBe(fixed.messageId);
   });
 });
+
+describe("command and no-purchase topics are deleted when done", () => {
+  it("a command's topic is deleted by the first message the owner sends an hour or more later", async () => {
+    await chat.text("/merchants");
+    const topic = chat.lastTopic();
+    await ledger.ageUtilityTopics(3600);
+
+    gemini.extract = golden("text-with-note").recorded;
+    await chat.text("14 lunch at Sandwich Shop");
+
+    expect(chat.topicExists(topic)).toBe(false);
+    expect(chat.topicExists(cards().at(-1)!.thread!)).toBe(true);
+  });
+
+  it("a command's topic younger than an hour stays", async () => {
+    await chat.text("/merchants");
+    const topic = chat.lastTopic();
+    await ledger.ageUtilityTopics(3500);
+
+    await chat.text("/merchants");
+
+    expect(chat.topicExists(topic)).toBe(true);
+  });
+
+  it("a command topic used again within the hour stays an hour after its last message", async () => {
+    await chat.text("/merchants");
+    const topic = chat.lastTopic();
+    await ledger.ageUtilityTopics(3000);
+    await chat.inTopic(topic).text("/merchants");
+    await ledger.ageUtilityTopics(3000);
+
+    await chat.text("/merchants");
+    expect(chat.topicExists(topic)).toBe(true);
+
+    await ledger.ageUtilityTopics(700);
+    await chat.text("/merchants");
+    expect(chat.topicExists(topic)).toBe(false);
+  });
+
+  it("a no-purchase message's topic is deleted later like a command's", async () => {
+    gemini.extract = golden("text-with-note").recorded;
+    gemini.overloaded = new Set(ALL_MODELS);
+    await chat.text("14 lunch at Sandwich Shop");
+    const topic = chat.lastTopic();
+    expect(await ledger.utilityTopics()).toEqual([{ thread_id: topic, label: "No purchase" }]);
+    await ledger.ageUtilityTopics(3600);
+
+    await chat.text("/merchants");
+
+    expect(chat.topicExists(topic)).toBe(false);
+  });
+
+  it("Close on a /recurring menu in its topic deletes the topic", async () => {
+    await trackGym();
+    await chat.text("/recurring");
+    const menu = chat.last();
+
+    await chat.tap(menu, "✕ Close");
+
+    expect(chat.topicExists(menu.thread!)).toBe(false);
+    expect(await ledger.utilityTopics()).toEqual([]);
+  });
+
+  it("if a topic cannot be tidied away it is renamed ⚙️ and not tried again", async () => {
+    await chat.text("/merchants");
+    const topic = chat.lastTopic();
+    await ledger.ageUtilityTopics(3600);
+    chat.refuseNextTopicDeletes(1);
+
+    await chat.text("/merchants");
+    expect(takeTelegramRejections()).toEqual(["deleteForumTopic: refused"]);
+    expect(chat.topicName(topic)).toBe("⚙️ /merchants");
+
+    await ledger.ageUtilityTopics(3600);
+    await chat.text("/merchants");
+    expect(chat.topicExists(topic)).toBe(true);
+    expect(chat.calls("deleteForumTopic").filter((c) => c.message_thread_id === topic)).toEqual([]);
+  });
+
+  it("a purchase sent in a command's topic keeps that topic, which is then never tidied away", async () => {
+    await chat.text("/merchants");
+    const topic = chat.lastTopic();
+
+    gemini.extract = golden("text-with-note").recorded;
+    await chat.inTopic(topic).text("14 lunch at Sandwich Shop");
+    expect(cards().at(-1)!.thread).toBe(topic);
+    expect(chat.topicName(topic)).toBe("Sandwich Shop · $14.00");
+
+    await ledger.ageUtilityTopics(3600);
+    await chat.text("/merchants");
+    expect(chat.topicExists(topic)).toBe(true);
+  });
+
+  it("a purchase's topic is never tidied away", async () => {
+    gemini.extract = golden("receipt-no-date").recorded;
+    await chat.photo();
+    const [card] = cards();
+    await chat.tap(card, "Fix date");
+    await chat.inTopic(card.thread!).text("2026-10-30");
+
+    await ledger.ageUtilityTopics(3600);
+    await chat.text("/merchants");
+    expect(chat.topicExists(card.thread!)).toBe(true);
+  });
+
+  it("a card from before topics, dated inside a topic, keeps that topic after the tidy-up", async () => {
+    chat.topicMode(false);
+    gemini.extract = golden("receipt-no-date").recorded;
+    await chat.photo();
+    await chat.tap(cards()[0], "Fix date");
+
+    chat.topicMode(true);
+    await chat.text("/merchants");
+    const topic = chat.lastTopic();
+    await chat.inTopic(topic).text("yesterday");
+    expect(cards().at(-1)!.thread).toBe(topic);
+
+    await ledger.ageUtilityTopics(3600);
+    await chat.text("/merchants");
+    expect(chat.topicExists(topic)).toBe(true);
+  });
+});

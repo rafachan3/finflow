@@ -741,6 +741,14 @@ export const ledger = {
        from ingestions order by created_at, event_index`,
     );
   },
+  /** The topics the bot will tidy away, by thread. */
+  utilityTopics() {
+    return sql<{ thread_id: number; label: string }>("select thread_id, label from utility_topics order by thread_id");
+  },
+  /** Moves every tidy-up clock back, as if the topics opened this many seconds earlier. */
+  async ageUtilityTopics(seconds: number): Promise<void> {
+    await sql("update utility_topics set opened_at = opened_at - make_interval(secs => $1)", [seconds]);
+  },
   transactions() {
     return sql<Record<string, unknown>>(
       `select t.occurred_on::text as date, t.type::text, t.amount::text,

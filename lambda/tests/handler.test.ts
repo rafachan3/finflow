@@ -25,6 +25,7 @@ vi.mock("../src/db.js", () => ({
   oldestTransactionDate: vi.fn(),
   addMerchant: vi.fn(),
   findMentions: vi.fn(),
+  takeStaleUtilityTopics: vi.fn(async () => []),
 }));
 vi.mock("../src/gemini.js", () => ({
   extractFromText: vi.fn(),
