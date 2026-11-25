@@ -81,7 +81,7 @@ EXPECTED = {
         "Selection by merchant": ["Merchant", "Spent", "Purchases"],
         "Selection by venue": ["Venue", "Spent", "Purchases"],
         "Selection by channel": ["Channel", "Spent", "Purchases"],
-        "Income and transfers": ["Date", "Type", "From or to", "Amount"],
+        "Income and transfers": ["Date", "Type", "From or to", "Amount", "Note"],
         "This selection": ["Spent", "Per month", "Line items"],
         "By category": ["Category", "Spent", "Per month", "Line items", "Share", "Change"],
         "By subcategory": ["Subcategory", "Category", "Spent", "Per month", "Line items", "Share",
@@ -89,7 +89,7 @@ EXPECTED = {
         "Selection by month": ["month", "Spent"],
         "Line items": [
             "Date", "Item", "Merchant", "Venue", "Channel", "Category", "Subcategory", "Bucket",
-            "Amount", "Tags", "Paid by", "Note"],
+            "Amount", "Tags", "Paid by", "Item note", "Purchase note"],
     },
     "finflow-labels": {
         "Tags": ["Tag", *LABEL_COLUMNS],
