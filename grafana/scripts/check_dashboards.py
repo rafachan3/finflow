@@ -89,7 +89,7 @@ EXPECTED = {
         "Selection by month": ["month", "Spent"],
         "Line items": [
             "Date", "Item", "Merchant", "Venue", "Channel", "Category", "Subcategory", "Bucket",
-            "Amount", "Tags", "Paid by", "Note"],
+            "Amount", "Tags", "Paid by", "Item note", "Purchase note"],
     },
     "finflow-labels": {
         "Tags": ["Tag", *LABEL_COLUMNS],

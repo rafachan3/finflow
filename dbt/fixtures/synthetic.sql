@@ -156,6 +156,11 @@ left join item_types as it on it.category_id = c.id and it.name = v.item_type;
 update transactions set notes = 'includes overtime'
 where id = 'a0000000-0000-0000-0000-000000000011';
 
+-- A note on the one line of a dinner whose header has its own note, so the
+-- Ledger's Line items shows both.
+update transaction_items set note = 'tasting menu'
+where id = 'b0000000-0000-0000-0000-000000000005';
+
 -- A note about one line of the weekly shop, whose header has none.
 update transaction_items set note = 'for movie night'
 where id = 'b0000000-0000-0000-0000-000000000062';
