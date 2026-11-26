@@ -127,10 +127,11 @@ describe("tags for one line or the whole message", () => {
     await asPreLineTagCards();
 
     await chat.text("/pending");
-    const card = chat.last().text.split("\n");
+    const [resent] = chat.replies().slice(-2);
+    const card = resent.text.split("\n");
     expect(card).toContain("• Bananas — 1.95");
     expect(card.filter((l) => l.trim().startsWith("Tags:"))).toEqual(["Tags: Travel"]);
-    await chat.tap(chat.last(), "Confirm");
+    await chat.tap(resent, "Confirm");
     expect((await ledger.lineTags()).map((l) => [l.description, l.own, l.effective])).toEqual([
       ["Bananas", [], ["Travel"]],
       ["Sparkling Water", [], ["Travel"]],
@@ -143,9 +144,11 @@ describe("tags for one line or the whole message", () => {
     await chat.photo(CAPTION);
     await asPreLineTagCards();
     await chat.text("/pending");
-    await chat.tap(chat.last(), "Edit");
+    // /pending moved the card into a topic of its own, so the correction is typed there.
+    const [card] = chat.replies().slice(-2);
+    await chat.tap(card, "Edit");
     gemini.patch = withLineTags(receipt(), { Bananas: ["Partner"] });
-    await chat.text("the bananas were for Partner");
+    await chat.inTopic(card.thread!).text("the bananas were for Partner");
 
     const sent = JSON.parse(gemini.lastUserText[0]) as { items: { description: string; tags: string[] }[] };
     expect(sent.items.map((i) => i.tags)).toEqual([[], [], []]);

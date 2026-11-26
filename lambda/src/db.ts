@@ -429,27 +429,26 @@ export async function findAwaitingIngestion(): Promise<{
   return result.rows[0] ?? null;
 }
 
+type OpenIngestion = {
+  id: string;
+  extraction: Extraction;
+  status: "pending" | "awaiting_date" | "awaiting_edit";
+  /** The purchase's own topic; null before topics, or when its card shares another's. */
+  threadId: number | null;
+  /** The card's message; null until one arrived. */
+  cardMessageId: number | null;
+};
+
 /**
  * Open cards of this chat, oldest first: still `pending`, or waiting for a
  * date or correction. The chat comes from the saved update. Confirmed and
  * discarded rows are skipped.
  */
-export async function listPendingIngestions(
-  chatId: number,
-): Promise<
-  {
-    id: string;
-    extraction: Extraction;
-    status: "pending" | "awaiting_date" | "awaiting_edit";
-  }[]
-> {
+export async function listPendingIngestions(chatId: number): Promise<OpenIngestion[]> {
   const db = await getPool();
-  const result = await db.query<{
-    id: string;
-    extraction: Extraction;
-    status: "pending" | "awaiting_date" | "awaiting_edit";
-  }>(
-    `SELECT id, extraction, status FROM ingestions
+  const result = await db.query<OpenIngestion>(
+    `SELECT id, extraction, status, telegram_thread_id AS "threadId", card_message_id AS "cardMessageId"
+     FROM ingestions
      WHERE status IN ('pending', 'awaiting_date', 'awaiting_edit')
        AND raw_payload #>> '{message,chat,id}' = $1
      ORDER BY created_at, event_index`,

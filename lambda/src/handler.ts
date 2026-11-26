@@ -88,6 +88,7 @@ import {
   editForumTopic,
   editMessageReplyMarkup,
   editMessageText,
+  esc,
   largestPhotoFileId,
   retireTopic,
   reviewKeyboard,
@@ -536,39 +537,68 @@ async function openPurchaseTopic(
   return thread;
 }
 
+const WAITING_SUFFIX: Record<string, string> = {
+  awaiting_date: " (waiting for a date)",
+  awaiting_edit: " (waiting for a correction)",
+};
+
 /**
- * Resends every open card of the chat: a pending row as its Confirm card, a
- * waiting row as its date/correction prompt (Keep as is / Discard). Does not
- * flip awaiting → pending; that is Keep as is alone.
+ * Lists the chat's open purchases, oldest first, each linked to its topic, in
+ * the command's topic. A row with no topic of its own (from before topics, or
+ * sharing another purchase's) gets one, and its old card's buttons go; a row
+ * whose card never arrived gets it again in its topic. A pending row's card is
+ * its Confirm card, a waiting row's its date/correction prompt; the wait is
+ * unchanged. No card goes to the command's topic: the tidy-up deletes it.
  */
-async function resendPendingCards(chatId: number, botToken: string, thread?: number): Promise<void> {
+async function listOpenPurchases(chatId: number, botToken: string, thread?: number): Promise<void> {
   const rows = await listPendingIngestions(chatId);
   if (rows.length === 0) {
     await sendMessage(botToken, chatId, NOTHING_PENDING, undefined, { thread });
     return;
   }
   const taxonomy = await loadTaxonomy();
+  let username: string | undefined;
+  try {
+    username = await botUsername(botToken);
+  } catch (err) {
+    console.error("bot username error", err);
+  }
+  const lines: string[] = [];
   for (const row of rows) {
+    const name = topicName(row.extraction);
+    let own = row.threadId ?? undefined;
     try {
-      if (row.status === "awaiting_date") {
-        await sendMessage(botToken, chatId, ASK_DATE, waitingKeyboard(row.id), { thread });
-      } else if (row.status === "awaiting_edit") {
-        await sendMessage(botToken, chatId, ASK_EDIT, waitingKeyboard(row.id), { thread });
-      } else {
-        await sendCard(
-          botToken,
-          chatId,
-          row.id,
-          row.extraction,
-          validateExtraction(row.extraction, taxonomy),
-          { thread },
-        );
+      if (own === undefined) {
+        try {
+          const created = await createForumTopic(botToken, chatId, name);
+          await setIngestionTopic(row.id, created);
+          own = created;
+        } catch (err) {
+          // The main view is never tidied away, so the card stays reachable there.
+          console.error("topic create error", err);
+        }
+        // A waiting row's card already lost its buttons when the wait began.
+        if (row.status === "pending") await retireCard(botToken, chatId, row.cardMessageId ?? undefined);
+      }
+      if (row.threadId === null || row.cardMessageId === null) {
+        if (row.status === "awaiting_date") {
+          await sendMessage(botToken, chatId, ASK_DATE, waitingKeyboard(row.id), { thread: own });
+        } else if (row.status === "awaiting_edit") {
+          await sendMessage(botToken, chatId, ASK_EDIT, waitingKeyboard(row.id), { thread: own });
+        } else {
+          await sendCard(botToken, chatId, row.id, row.extraction, validateExtraction(row.extraction, taxonomy), {
+            thread: own,
+          });
+        }
       }
     } catch (err) {
       // One bad card must not hide the rest; /pending again retries it.
       console.error("card send error", err);
     }
+    const label = own !== undefined && username ? `<a href="${topicLink(username, own)}">${esc(name)}</a>` : esc(name);
+    lines.push(`• ${label}${WAITING_SUFFIX[row.status] ?? ""}`);
   }
+  await sendMessage(botToken, chatId, ["Open purchases:", ...lines].join("\n"), undefined, { html: true, thread });
 }
 
 /** Sends one page of the mention review; false when there is nothing to offer. */
@@ -643,7 +673,7 @@ type CommandContext = { chatId: number; botToken: string; args: string; thread?:
 
 /** What each slash command does; the type makes a command with no entry here a compile error. */
 const RUN: Record<CommandName, (c: CommandContext) => Promise<void>> = {
-  pending: ({ chatId, botToken, thread }) => resendPendingCards(chatId, botToken, thread),
+  pending: ({ chatId, botToken, thread }) => listOpenPurchases(chatId, botToken, thread),
   merchants: async ({ chatId, botToken, thread }) => {
     await sendMessage(botToken, chatId, formatMerchants(await listMerchants()), undefined, { thread });
   },
