@@ -500,7 +500,8 @@ export async function takeUtilityTopic(chatId: number, threadId: number): Promis
 
 /**
  * Claims the utility topics opened longer ago than this. Claiming by delete
- * means two concurrent invocations never both act on one topic.
+ * means two concurrent invocations never both act on one topic. A topic a
+ * purchase owns is never claimed, even if a note was left behind on it.
  */
 export async function takeStaleUtilityTopics(
   chatId: number,
@@ -510,6 +511,11 @@ export async function takeStaleUtilityTopics(
   const result = await db.query<{ threadId: number; label: string }>(
     `DELETE FROM utility_topics
      WHERE chat_id = $1 AND opened_at < now() - make_interval(secs => $2)
+       AND NOT EXISTS (
+         SELECT 1 FROM ingestions i
+         WHERE i.telegram_thread_id = utility_topics.thread_id
+           AND i.raw_payload #>> '{message,chat,id}' = utility_topics.chat_id::text
+       )
      RETURNING thread_id AS "threadId", label`,
     [chatId, olderThanSeconds],
   );

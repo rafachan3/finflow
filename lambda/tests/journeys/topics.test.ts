@@ -1,7 +1,8 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { retryWait } from "../../src/gemini.js";
 import { golden } from "../golden/golden.js";
-import { chat, gemini, invokeNudge, labels, ledger, takeTelegramRejections, useJourneys, type Reply } from "./harness.js";
+import { registerUtilityTopic } from "../../src/db.js";
+import { chat, gemini, invokeNudge, labels, ledger, OWNER, takeTelegramRejections, useJourneys, type Reply } from "./harness.js";
 
 vi.mock("../../src/config.js", async () => {
   const { journeyConfig } = await import("./harness.js");
@@ -489,6 +490,19 @@ describe("command and no-purchase topics are deleted when done", () => {
 
     expect(chat.topicExists(topic)).toBe(false);
     expect(chat.topicExists(cards().at(-1)!.thread!)).toBe(true);
+  });
+
+  it("the tidy-up never deletes a purchase's topic, even if a note was left on it", async () => {
+    gemini.extract = golden("text-with-note").recorded;
+    await chat.text("14 lunch at Sandwich Shop");
+    const card = cards().at(-1)!;
+    // A Telegram retry can note the topic just after the purchase took it over.
+    await registerUtilityTopic(OWNER, card.thread!, "No purchase");
+    await ledger.ageUtilityTopics(3600);
+
+    await chat.text("/merchants");
+
+    expect(chat.topicExists(card.thread!)).toBe(true);
   });
 
   it("a command's topic younger than an hour stays", async () => {

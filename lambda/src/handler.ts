@@ -569,6 +569,9 @@ async function listOpenPurchases(chatId: number, botToken: string, thread?: numb
     let own = row.threadId ?? undefined;
     try {
       if (own === undefined) {
+        // Cleared before the topic is stored, so any step failing below leaves the
+        // thread or the card null and the next /pending resends the card.
+        await setIngestionCardMessage(row.id, null);
         try {
           const created = await createForumTopic(botToken, chatId, name);
           await setIngestionTopic(row.id, created);
@@ -579,8 +582,6 @@ async function listOpenPurchases(chatId: number, botToken: string, thread?: numb
         }
         // A waiting row's card already lost its buttons when the wait began.
         if (row.status === "pending") await retireCard(botToken, chatId, row.cardMessageId ?? undefined);
-        // Until the new card arrives there is none, so a failed send is retried by the next /pending.
-        await setIngestionCardMessage(row.id, null);
       }
       if (row.threadId === null || row.cardMessageId === null) {
         if (row.status === "awaiting_date") {
@@ -1160,7 +1161,7 @@ async function handleCallback(
  * own, the nudge's daily run has no business with topics, and a new schedule
  * is new infra. The owner messages daily, so the next message is the clock.
  */
-export const UTILITY_TOPIC_TTL_SECONDS = 60 * 60;
+const UTILITY_TOPIC_TTL_SECONDS = 60 * 60;
 
 /** The owner's own message, not a stranger's or Telegram's topic notice: only these tidy topics. */
 function tidiesTopics(message: TelegramMessage, allowedChatIds: Set<number>): boolean {
