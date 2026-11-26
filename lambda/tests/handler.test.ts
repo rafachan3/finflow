@@ -80,6 +80,7 @@ import {
 import {
   answerCallbackQuery,
   downloadTelegramFile,
+  editForumTopic,
   editMessageReplyMarkup,
   reviewKeyboard,
   sendMessage,
@@ -384,6 +385,34 @@ describe("handler", () => {
     expect(vi.mocked(sendMessage).mock.calls.map((c) => c[2])).toEqual([
       "Saved. Not linked: that recurring series is gone or no longer fits.",
     ]);
+  });
+
+  it("Confirm still renames the topic and sends its Saved message when the ✅ Saved button cannot be drawn", async () => {
+    const { confirmIngestion, getIngestion } = await import("../src/db.js");
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const id = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
+    vi.mocked(getIngestion).mockResolvedValue({
+      status: "confirmed",
+      extraction: { ...extraction, merchant: "Sandwich Shop" },
+      threadId: 7,
+      cardMessageId: 5,
+    });
+    vi.mocked(confirmIngestion).mockResolvedValue({ status: "confirmed", transactionId: "tx", seriesGone: true, looksRecurring: false });
+    vi.mocked(editMessageReplyMarkup).mockRejectedValueOnce(new Error("message can't be edited"));
+
+    const res = await bodyOf(
+      await handler(
+        event({ update_id: 37, callback_query: { id: "cb", data: `cx:${id}:12`, message: { message_id: 5, chat: { id: 1 } } } }),
+      ),
+    );
+
+    expect(res.statusCode).toBe(200);
+    expect(error).toHaveBeenCalledWith("saved card edit error", expect.any(Error));
+    expect(editForumTopic).toHaveBeenCalledWith("t", 1, 7, "✅ Sandwich Shop · $12.50");
+    expect(vi.mocked(sendMessage).mock.calls.map((c) => c[2])).toEqual([
+      "Saved. Not linked: that recurring series is gone or no longer fits.",
+    ]);
+    error.mockRestore();
   });
 
   it("does not persist or offer Confirm when checks fail", async () => {

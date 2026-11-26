@@ -1049,7 +1049,12 @@ async function handleCallback(
       const row = (await getIngestion(ingestionId))!;
       const gone = result.seriesGone ? ` ${SERIES_GONE}` : "";
       await answerCallbackQuery(botToken, cb.id, `Saved: ${topicName(row.extraction)}.${gone}`);
-      await editMessageReplyMarkup(botToken, chatId, cb.message!.message_id!, savedCardKeyboard());
+      // The purchase is already saved, so a refused edit must not skip the rest or make Telegram resend the tap.
+      try {
+        await editMessageReplyMarkup(botToken, chatId, cb.message!.message_id!, savedCardKeyboard());
+      } catch (err) {
+        console.error("saved card edit error", err);
+      }
       // Only the purchase's own topic: a card from before topics, or one sharing another purchase's topic, renames none.
       if (row.threadId !== null) {
         try {
