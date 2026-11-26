@@ -127,18 +127,30 @@ describe("each purchase in its own topic", () => {
   });
 
   it("Telegram's topic-created and topic-renamed notices get no reply, even while a card waits for a date", async () => {
-    gemini.extract = golden("text-with-note").recorded;
-    await chat.text("14 lunch at Sandwich Shop");
-    const [card] = cards();
-    await chat.tap(card, "Fix date");
-    const sent = chat.replies().length;
+    // A wait from before topics answers a message in any topic, and Telegram
+    // always opens a new topic for the created notice, so only that wait shows the filter.
+    chat.topicMode(false);
+    gemini.extract = golden("receipt-no-date").recorded;
+    await chat.photo();
+    await chat.tap(cards()[0], "Fix date");
+    chat.topicMode(true);
+    let sent = chat.replies().length;
 
     await chat.topicNotice();
     expect(chat.replies()).toHaveLength(sent);
+    expect((await ledger.ingestions())[0].status).toBe("awaiting_date");
+    await chat.tap(chat.last(), "Keep as is");
+
+    // The renamed notice arrives in the topic whose card waits.
+    gemini.extract = golden("text-with-note").recorded;
+    await chat.text("14 lunch at Sandwich Shop");
+    const card = cards().at(-1)!;
+    await chat.tap(card, "Fix date");
+    sent = chat.replies().length;
 
     await chat.topicRenamedNotice(card.thread!, "Lunch");
     expect(chat.replies()).toHaveLength(sent);
-    expect((await ledger.ingestions())[0].status).toBe("awaiting_date");
+    expect((await ledger.ingestions())[1].status).toBe("awaiting_date");
   });
 });
 
