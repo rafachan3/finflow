@@ -579,6 +579,8 @@ async function listOpenPurchases(chatId: number, botToken: string, thread?: numb
         }
         // A waiting row's card already lost its buttons when the wait began.
         if (row.status === "pending") await retireCard(botToken, chatId, row.cardMessageId ?? undefined);
+        // Until the new card arrives there is none, so a failed send is retried by the next /pending.
+        await setIngestionCardMessage(row.id, null);
       }
       if (row.threadId === null || row.cardMessageId === null) {
         if (row.status === "awaiting_date") {

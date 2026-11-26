@@ -516,8 +516,8 @@ export async function takeStaleUtilityTopics(
   return result.rows;
 }
 
-/** The card the owner taps or replies to. */
-export async function setIngestionCardMessage(ingestionId: string, messageId: number): Promise<void> {
+/** The card the owner taps or replies to; null when none is live. */
+export async function setIngestionCardMessage(ingestionId: string, messageId: number | null): Promise<void> {
   const db = await getPool();
   await db.query("UPDATE ingestions SET card_message_id = $2 WHERE id = $1", [ingestionId, messageId]);
 }

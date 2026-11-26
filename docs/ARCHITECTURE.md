@@ -95,9 +95,11 @@ dbt models and the agent read it, so numbers agree everywhere.
   PutObject, then INSERT). All state lives in Postgres, so it stays
   stateless. Slash commands (`src/commands.ts` is the table) skip
   extraction and come before the date/correction wait, so one is never
-  taken as a date or a correction. `/pending` resends the card of every
-  row still `pending` in that chat (rows are saved before their cards
-  are sent, so a failed send leaves a row with no card).
+  taken as a date or a correction. `/pending` lists every open row of that
+  chat, linked to its topic, and sends a card only where one is missing:
+  a row whose card never arrived (rows are saved before their cards are
+  sent, so a failed send leaves a row with no card) gets it in its topic,
+  and a row with no topic of its own gets a new topic and a new card.
   `/merchants`, `/addmerchant` and `/delmerchant` read and write the
   `merchants` lookup directly, with no Confirm; the next message's
   `loadTaxonomy` sees the change. The deploy workflow's last step

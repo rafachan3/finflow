@@ -85,6 +85,45 @@ describe("/pending", () => {
     expect(await ledger.transactions()).toMatchObject([{ amount: "14.00" }]);
   });
 
+  it("a card from before topics that fails to arrive in its new topic comes back with the next /pending", async () => {
+    gemini.extract = golden("text-with-note").recorded;
+    await chat.text("14 lunch at Sandwich Shop on Oct 25");
+    chat.topicMode(true);
+    chat.failNextSends(1);
+
+    expect((await send("/pending")).map((r) => header(r.text))).toEqual(["Open purchases:"]);
+    const [card] = await send("/pending");
+    expect(chat.topicName(card.thread!)).toBe("Sandwich Shop · $14.00");
+    expect(labels(card)).toEqual(["Confirm", "Discard", "Fix date", "Edit"]);
+    await chat.tap(card, "Confirm");
+    expect(await ledger.transactions()).toMatchObject([{ amount: "14.00" }]);
+  });
+
+  it("/pending moves a correction wait sharing another purchase's topic into its own, and marks it", async () => {
+    chat.topicMode(true);
+    chat.refuseNextTopicCreates(1);
+    const [, second] = await twoCards();
+    expect(takeTelegramRejections()).toEqual(["createForumTopic: refused"]);
+    const t1 = chat.lastTopic();
+    await chat.tap(second, "Edit");
+
+    const [prompt, list] = await send("/pending");
+    expect(prompt.text).toBe("Send the correction — amount, category, a line, whatever is wrong.");
+    expect(labels(prompt)).toEqual(["Keep as is", "Discard"]);
+    expect(chat.topicName(prompt.thread!)).toBe("Acme Mart Pharmacy · $5.00");
+    expect(list.html).toBe(
+      [
+        "Open purchases:",
+        `• <a href="https://t.me/journey_bot/${t1}">Dollar Corner · $3.00</a>`,
+        `• <a href="https://t.me/journey_bot/${prompt.thread}">Acme Mart Pharmacy · $5.00</a> (waiting for a correction)`,
+      ].join("\n"),
+    );
+    expect((await ledger.ingestions()).map((r) => r.status)).toEqual(["pending", "awaiting_edit"]);
+
+    await chat.tap(prompt, "Keep as is");
+    expect([header(chat.last().text), chat.last().thread]).toEqual([expect.stringMatching(/ · CAD 5\.00$/), prompt.thread]);
+  });
+
   it("/pending sends a card to the main view when its topic is refused, and still links the next", async () => {
     await twoCards();
     chat.topicMode(true);
