@@ -34,8 +34,9 @@ export function journeyConfig() {
 
 type Sent = { method: string; body: Record<string, unknown>; failed: boolean; messageId?: number };
 
-type Button = { text: string; callback_data: string };
-type Shown = { text: string; keyboard: Button[][] };
+/** A button with no callback_data must be disabled; Telegram sends nothing when it is tapped. */
+type Button = { text: string; callback_data?: string; disabled?: object };
+type Shown = { text: string; keyboard: Button[][]; thread?: number };
 
 /** file_id -> file_path of the media the next message carries; getFile knows nothing else. */
 const telegram = {
@@ -52,7 +53,23 @@ const telegram = {
   sentAt: new Map<number, number>(),
   /** Deletes refused, as Telegram refuses a message older than 48 hours. */
   refuseDeletes: 0,
+  /** Topic mode: a main-view message opens a topic first. */
+  topicMode: false,
+  /** The chat's open topics, by message_thread_id: their current name. */
+  topics: new Map<number, string>(),
+  /** The thread the owner's latest main-view message opened. */
+  lastTopic: undefined as number | undefined,
+  refuseTopicCreates: 0,
+  refuseTopicDeletes: 0,
+  refuseTopicEdits: 0,
 };
+
+function threadOf(body: Record<string, unknown>): number | undefined {
+  return typeof body.message_thread_id === "number" ? body.message_thread_id : undefined;
+}
+
+/** The topic calls the fake answers; all but createForumTopic must name an open topic. */
+const TOPIC_CALLS = new Set(["createForumTopic", "editForumTopic", "deleteForumTopic"]);
 
 const EDITS = new Set(["editMessageText", "editMessageReplyMarkup"]);
 
@@ -113,7 +130,8 @@ function telegramViolation(method: string, body: Record<string, unknown>): strin
   }
   for (const button of (keyboardOf(body) ?? []).flat()) {
     const bytes = Buffer.byteLength(button.callback_data ?? "", "utf8");
-    if (bytes < 1 || bytes > 64) return `${method}: button callback_data must be 1-64 bytes`;
+    const inert = button.disabled !== undefined && button.callback_data === undefined;
+    if (!inert && (bytes < 1 || bytes > 64)) return `${method}: button callback_data must be 1-64 bytes`;
     if (!button.text) return `${method}: button text must not be empty`;
   }
   if (EDITS.has(method)) {
@@ -127,6 +145,15 @@ function telegramViolation(method: string, body: Record<string, unknown>): strin
   }
   if (method === "answerCallbackQuery" && typeof body.text === "string" && body.text.length > 200) {
     return "answerCallbackQuery: text must be at most 200 characters";
+  }
+  const thread = threadOf(body);
+  if ((method === "sendMessage" && thread !== undefined) || method === "editForumTopic" || method === "deleteForumTopic") {
+    if (!telegram.topics.has(thread ?? -1)) return `${method}: message thread not found`;
+  }
+  if (TOPIC_CALLS.has(method) && method !== "deleteForumTopic") {
+    const name = typeof body.name === "string" ? body.name : "";
+    const min = method === "createForumTopic" ? 1 : 0;
+    if (name.length < min || name.length > 128) return `${method}: name must be ${min}-128 characters`;
   }
   return null;
 }
@@ -208,7 +235,7 @@ const server = setupServer(
     if (method === "sendMessage") {
       const messageId = telegram.nextMessageId++;
       telegram.sent.push({ method, body, failed, messageId });
-      telegram.shown.set(messageId, { text: visibleText(body), keyboard: keyboardOf(body) ?? [] });
+      telegram.shown.set(messageId, { text: visibleText(body), keyboard: keyboardOf(body) ?? [], thread: threadOf(body) });
       telegram.sentAt.set(messageId, Math.floor(Date.now() / 1000));
       return HttpResponse.json({ ok: true, result: { message_id: messageId } });
     }
@@ -223,11 +250,17 @@ const server = setupServer(
       telegram.shown.delete(id);
       return HttpResponse.json({ ok: true, result: true });
     }
+    if (TOPIC_CALLS.has(method)) return topicCall(method, body);
+    if (method === "getMe") {
+      telegram.sent.push({ method, body, failed });
+      return HttpResponse.json({ ok: true, result: { id: 1, is_bot: true, first_name: "Journey", username: "journey_bot" } });
+    }
     telegram.sent.push({ method, body, failed });
     if (EDITS.has(method)) {
       const id = Number(body.message_id);
       const current = telegram.shown.get(id)!;
       telegram.shown.set(id, {
+        ...current,
         text: typeof body.text === "string" ? visibleText(body) : current.text,
         keyboard: keyboardOf(body) ?? (method === "editMessageText" ? [] : current.keyboard),
       });
@@ -280,6 +313,39 @@ const server = setupServer(
   ),
 );
 
+/**
+ * createForumTopic, editForumTopic and deleteForumTopic on a valid payload. A
+ * scripted refusal is recorded as a rejection too, so a journey that scripts
+ * one takes it back.
+ */
+function topicCall(method: string, body: Record<string, unknown>) {
+  const counter = method === "createForumTopic" ? "refuseTopicCreates" : method === "deleteForumTopic" ? "refuseTopicDeletes" : "refuseTopicEdits";
+  if (telegram[counter] > 0) {
+    telegram[counter]--;
+    const refused = `${method}: refused`;
+    telegram.rejected.push(refused);
+    telegram.sent.push({ method, body, failed: true });
+    return HttpResponse.json({ ok: false, description: `Bad Request: ${refused}` }, { status: 400 });
+  }
+  telegram.sent.push({ method, body, failed: false });
+  const name = String(body.name ?? "");
+  if (method === "createForumTopic") {
+    // Topic ids are message ids, as the topic's first (service) message.
+    const thread = telegram.nextMessageId++;
+    telegram.topics.set(thread, name);
+    return HttpResponse.json({ ok: true, result: { message_thread_id: thread, name, icon_color: 7322096 } });
+  }
+  const thread = Number(body.message_thread_id);
+  if (method === "editForumTopic") {
+    // An empty name keeps the current one; the current name again is accepted.
+    if (name) telegram.topics.set(thread, name);
+  } else {
+    telegram.topics.delete(thread);
+    for (const [id, shown] of telegram.shown) if (shown.thread === thread) telegram.shown.delete(id);
+  }
+  return HttpResponse.json({ ok: true, result: true });
+}
+
 const realSleep = retryWait.sleep;
 
 const s3 = mockClient(S3Client);
@@ -315,6 +381,12 @@ export function useJourneys(): void {
     telegram.nextMessageId = 1;
     telegram.sentAt = new Map();
     telegram.refuseDeletes = 0;
+    telegram.topicMode = false;
+    telegram.topics = new Map();
+    telegram.lastTopic = undefined;
+    telegram.refuseTopicCreates = 0;
+    telegram.refuseTopicDeletes = 0;
+    telegram.refuseTopicEdits = 0;
     gemini.calls = [];
     gemini.lastSystem = "";
     gemini.lastUserText = [];
@@ -342,13 +414,23 @@ export function useJourneys(): void {
   });
 }
 
-export type Reply = { text: string; buttons: { text: string; data: string }[]; messageId?: number };
+export type Reply = {
+  text: string;
+  buttons: { text: string; data: string }[];
+  messageId?: number;
+  /** The topic it was sent in; none in the main view. */
+  thread?: number;
+  /** An HTML message's text as sent, links included. */
+  html?: string;
+};
 
-function toReply(shown: Shown, messageId?: number): Reply {
+function toReply(shown: Shown, messageId?: number, html?: string): Reply {
   return {
     text: shown.text,
-    buttons: shown.keyboard.flat().map((b) => ({ text: b.text, data: b.callback_data })),
+    buttons: shown.keyboard.flat().map((b) => ({ text: b.text, data: b.callback_data ?? "" })),
     messageId,
+    ...(shown.thread !== undefined ? { thread: shown.thread } : {}),
+    ...(html !== undefined ? { html } : {}),
   };
 }
 
@@ -394,6 +476,42 @@ function message(fields: Record<string, unknown>, from = OWNER) {
   };
 }
 
+/** The fields that put a message in a topic; none for the main view. */
+function inThread(thread: number | undefined) {
+  return thread === undefined ? {} : { message_thread_id: thread, is_topic_message: true };
+}
+
+/**
+ * Telegram's notice that a topic opened: a service message whose id is the
+ * new topic's thread id.
+ */
+function topicCreated(name: string) {
+  const update = message({});
+  const thread = update.message.message_id;
+  telegram.topics.set(thread, name);
+  telegram.lastTopic = thread;
+  return {
+    ...update,
+    message: {
+      ...update.message,
+      ...inThread(thread),
+      forum_topic_created: { name, icon_color: 7322096, is_name_implicit: true },
+    },
+  };
+}
+
+/**
+ * A message sent from the main view. In topic mode Telegram first opens a
+ * topic named after its start and delivers the notice, then the message
+ * inside that topic.
+ */
+async function fromMainView(fields: Record<string, unknown>, label: string): Promise<Result> {
+  if (!telegram.topicMode) return deliver(message(fields));
+  const notice = topicCreated(label.slice(0, 16));
+  await deliver(notice);
+  return deliver(message({ ...fields, ...inThread(notice.message.message_id) }));
+}
+
 /** A receipt photo; file_unique_id is stable for a stored file, so re-sending it repeats it. */
 function receipt() {
   telegram.files = { "photo-large": "photos/file_1.jpg" };
@@ -403,10 +521,16 @@ function receipt() {
   ];
 }
 
+function voiceFields(caption: string) {
+  telegram.files = { "voice-1": "voice/file_2.oga" };
+  const voice = { file_id: "voice-1", duration: 4 };
+  return caption ? { voice, caption } : { voice };
+}
+
 /** The owner's side of the Telegram chat. */
 export const chat = {
   text(text: string, from = OWNER) {
-    return deliver(message({ text }, from));
+    return from === OWNER ? fromMainView({ text }, text) : deliver(message({ text }, from));
   },
   /**
    * A reply to a bot message, as Telegram sends one to a ForceReply prompt:
@@ -420,16 +544,64 @@ export const chat = {
       from: { id: 1, is_bot: true },
     };
     const fields = as === "photo" ? { photo: receipt(), caption: text } : { text };
-    return deliver(message({ ...fields, reply_to_message }));
+    const thread = telegram.shown.get(to.messageId ?? -1)?.thread;
+    return deliver(message({ ...fields, reply_to_message, ...inThread(thread) }));
   },
   photo(caption = "") {
     const photo = receipt();
-    return deliver(message(caption ? { photo, caption } : { photo }));
+    return fromMainView(caption ? { photo, caption } : { photo }, caption || "Photo");
   },
   voice(caption = "") {
-    telegram.files = { "voice-1": "voice/file_2.oga" };
-    const voice = { file_id: "voice-1", duration: 4 };
-    return deliver(message(caption ? { voice, caption } : { voice }));
+    return fromMainView(voiceFields(caption), caption || "Voice message");
+  },
+  /** Topic mode on or off; off by default, the chat as it was before topics. */
+  topicMode(on: boolean) {
+    telegram.topicMode = on;
+  },
+  /** Messages sent inside an existing topic. */
+  inTopic(thread: number) {
+    const send = (fields: Record<string, unknown>) => deliver(message({ ...fields, ...inThread(thread) }));
+    return {
+      text: (text: string) => send({ text }),
+      photo: (caption = "") => send(caption ? { photo: receipt(), caption } : { photo: receipt() }),
+      voice: () => send(voiceFields("")),
+    };
+  },
+  /** Only Telegram's notice that a topic opened, with no message after it. */
+  topicNotice(name = "New topic") {
+    return deliver(topicCreated(name));
+  },
+  /** Telegram's notice that a topic was renamed, delivered in that topic. */
+  topicRenamedNotice(thread: number, name: string) {
+    telegram.topics.set(thread, name);
+    return deliver(message({ ...inThread(thread), forum_topic_edited: { name } }));
+  },
+  /** The thread the owner's latest main-view message opened; never a topic the bot created. */
+  lastTopic(): number {
+    if (telegram.lastTopic === undefined) throw new Error("no main-view message opened a topic");
+    return telegram.lastTopic;
+  },
+  topicName(thread: number): string | undefined {
+    return telegram.topics.get(thread);
+  },
+  topicExists(thread: number): boolean {
+    return telegram.topics.has(thread);
+  },
+  /** The next n createForumTopic calls are refused. */
+  refuseNextTopicCreates(n: number) {
+    telegram.refuseTopicCreates = n;
+  },
+  /** The next n deleteForumTopic calls are refused. */
+  refuseNextTopicDeletes(n: number) {
+    telegram.refuseTopicDeletes = n;
+  },
+  /** The next n editForumTopic calls are refused. */
+  refuseNextTopicEdits(n: number) {
+    telegram.refuseTopicEdits = n;
+  },
+  /** The payloads of the bot's accepted calls to this Bot API method, in order. */
+  calls(method: string): Record<string, unknown>[] {
+    return telegram.sent.filter((s) => s.method === method && !s.failed).map((s) => s.body);
   },
   /** Taps a button on the message as it shows now; Telegram sends that state with the tap. */
   tap(reply: Reply, label: string, from = OWNER) {
@@ -439,6 +611,7 @@ export const chat = {
     if (!button) {
       throw new Error(`no "${label}" button on: ${shown.text.split("\n")[0]}`);
     }
+    if (button.callback_data === undefined) throw new Error(`"${label}" is disabled: a tap sends nothing`);
     return chat.press(reply, button.callback_data, from);
   },
   /**
@@ -454,7 +627,7 @@ export const chat = {
       callback_query: {
         id: `cb-${++callbackId}`,
         data,
-        message: { message_id: reply.messageId, chat: { id: from }, text: shown.text, ...markup },
+        message: { message_id: reply.messageId, chat: { id: from }, text: shown.text, ...markup, ...inThread(shown.thread) },
       },
     });
   },
@@ -493,7 +666,13 @@ export const chat = {
   replies(): Reply[] {
     return telegram.sent
       .filter((s) => s.method === "sendMessage" && !s.failed)
-      .map((s) => toReply({ text: visibleText(s.body), keyboard: keyboardOf(s.body) ?? [] }, s.messageId));
+      .map((s) =>
+        toReply(
+          { text: visibleText(s.body), keyboard: keyboardOf(s.body) ?? [], thread: threadOf(s.body) },
+          s.messageId,
+          s.body.parse_mode === "HTML" ? String(s.body.text) : undefined,
+        ),
+      );
   },
   last(): Reply {
     const all = chat.replies();
@@ -555,10 +734,20 @@ export const ledger = {
       status: string;
       source: string;
       media_path: string | null;
+      telegram_thread_id: number | null;
+      card_message_id: number | null;
     }>(
-      `select id::text, event_index, status, source, media_path
+      `select id::text, event_index, status, source, media_path, telegram_thread_id, card_message_id
        from ingestions order by created_at, event_index`,
     );
+  },
+  /** The topics the bot will tidy away, by thread. */
+  utilityTopics() {
+    return sql<{ thread_id: number; label: string }>("select thread_id, label from utility_topics order by thread_id");
+  },
+  /** Moves every tidy-up clock back, as if the topics opened this many seconds earlier. */
+  async ageUtilityTopics(seconds: number): Promise<void> {
+    await sql("update utility_topics set opened_at = opened_at - make_interval(secs => $1)", [seconds]);
   },
   transactions() {
     return sql<Record<string, unknown>>(

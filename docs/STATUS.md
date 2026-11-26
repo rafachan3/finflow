@@ -2,7 +2,7 @@
 
 Living state of the project. Read this first; update it whenever work lands.
 
-**Last updated:** 2026-11-24
+**Last updated:** 2026-11-25
 **Current phase:** Phase 5 (Grafana) under way: D (This month) merged as #137 and applied 2026-11-09; feedback round 1 merged as #140 and applied 2026-11-10; round 2 (income in money, Trends dashboard, no time picker) merged as #141 and applied 2026-11-10; round 3 (unallocated cash, shorter tooltips, Trends grown to three panels) merged as #143 and applied 2026-11-10; round 4 (leaner cards, Trends at six panels) merged as #145 and applied 2026-11-10, waiting for the owner's look; the nightly now builds models on one thread (deadlock fix, DECISIONS 2026-11-15); round 5 (one income-and-buckets chart, per-bucket category tables, Ledger v1 with click-through) merged as #151 (`249efd3`) and applied 2026-11-15; round 6 (denser layouts, recurring, merchants, largest purchases, Ledger period) merged as #157 (`69d41fa`) and applied 2026-11-15; round 7 (design review fixes, weekday and pay-cycle views, recurring commitments, fuller Ledger; the Review dashboard is dropped) merged as #159 (`f6d49a6`) and applied 2026-11-16; round 8 (income line joined again, merchant and venue kept apart, Ledger periods and category table, plus three new dashboards: Tags and merchants, Income and financial future, Reliance on others) merged as #161, #162, #165, #166 (migration 0024, pushed, `dbt-nightly` dispatched and green), #167 and #168 (`6728598`) and applied 2026-11-16, waiting for the owner's look. **Owner step:** mark the support source in the database (`update income_sources set is_support = true where name = ...`); until then Reliance on others shows support as zero. **Next:** the owner's feedback on round 8. "Needs attention" is on hold until the owner rules (the recommendation is not to build it): on 2026-11-16 it would have listed nothing (nightly ledger health: no warnings, no future-dated entries), and of the 35 pairs the duplicate test first raised one was a real duplicate; the nightly ledger-health issue already covers it
 
 ## Phase progress
@@ -313,20 +313,20 @@ runs every case live with the model chain rotated per case, reports each
 429's `quotaValue`, and keeps one `eval-nightly` issue open while it fails.
 
 `/pending` (#29; DECISIONS.md 2026-10-28): the owner sends `/pending`
-and the bot resends the card of every row of that chat still `pending`,
-oldest first, with the buttons its checks allow today; with none it
-replies "No pending cards.". It asks Gemini nothing and runs before the
-date/correction wait, so it cannot be taken as a date or a correction.
-A card that fails to resend is logged and the rest still go out. This
-covers a card whose send failed after its row was saved. It is one entry
-of the command table now, and so in the command menu (below).
+and the bot lists a link to each open purchase's topic, oldest first,
+resending only a card that has no topic of its own or never arrived (see
+Telegram topics, Stage 1 below); with none it replies "No pending cards.".
+It asks Gemini nothing and runs before the date/correction wait, so it
+cannot be taken as a date or a correction. It is one entry of the command
+table, and so in the command menu (below).
 
-Batch position in acks (#30; DECISIONS.md 2026-10-28): confirming or
-discarding a card from a batch of 2+ replies `Saved. (k of n)` /
-`Discarded. (k of n)`, in the toast and the chat message. The position is
-read back from the tapped card's header, so a card resent by `/pending`
-(no label) and a single card keep plain `Saved.` / `Discarded.`.
-"Already handled." never carries it.
+Acks name the purchase (#30; DECISIONS.md 2026-10-28, superseded
+2026-11-25): the toast and the chat message for Confirm and Discard name the
+purchase, `Saved: Merchant · $amount.` and `Discarded: Merchant · $amount.`,
+so two cards of one message are told apart without a position. The earlier
+"(k of n)" batch position is gone. "Already handled." names the purchase and
+where it stands, plain `Already handled.` only for an unknown row. A single
+card, and one resent by `/pending`, get the same wording.
 
 Tax and tip (#31, #60; DECISIONS.md 2026-10-29, 2026-11-07): an expense's
 header is the total paid, tax and any tip included, even a tip printed below
@@ -683,6 +683,56 @@ DECISIONS.md 2026-11-07). The 20 cases passed live and were recorded locally on
 other 18 keep the recordings the journeys quote, with new hashes. No
 migration. The model reading a receipt's taxable codes is covered by
 `receipt-line-tag` since 2026-11-08.
+
+## Telegram topics, Stage 1 (built 2026-11-25, not deployed)
+
+Branch `feat/telegram-topics`; design in the untracked spec
+`docs/superpowers/specs/2026-11-25-telegram-topics-card-redesign-design.md`,
+Telegram facts and live checks in
+`docs/superpowers/research/2026-11-24-telegram-card-ux.md` ("Live results
+(Stage 1 build, 2026-11-25)"). DECISIONS.md has the 2026-11-25 entries.
+
+What changes for the owner: each purchase gets its own topic, named
+`Merchant · $amount`; a message with several purchases keeps its topic for the
+first and opens a topic for each further one, linked back with a one-line
+note. Confirm turns the card's buttons into one disabled `Saved` and renames
+the topic `✅ Merchant · $amount` instead of posting a message. Discard deletes
+the purchase's topic. Fix date and Edit wait only in the purchase's topic.
+Replies to commands and failures stay in their topic, and a command or
+no-purchase topic is deleted when its work is done (an hour after the last
+message at most, tidied by the next invocation; no scheduler). `/pending`
+links to each open purchase's topic.
+
+Deploy order: push migration 0027 (`supabase db push`, dry-run first) before
+the code merges; topic mode turns on in the last step of the deploy
+(`Register bot command menu and topic mode`). Every topic call is best effort:
+a refusal is logged and never blocks saving, the card or the reply.
+
+Known ceiling: the album auto-topic race is unverified live. The handler does
+no `media_group` handling, so two invocations of one album could both keep
+the same thread.
+
+Owner notes for the deploy:
+- A card from before topics that is waiting for a date or an Edit takes the
+  next main-view message as its answer, so a purchase sent then is not
+  logged. Finish such cards before topic mode goes live, or tap Keep as is.
+- Cards sent before the deploy have no stored card id, so `/pending` cannot
+  take their buttons away and sends a second live card in the new topic. Tap
+  either one; the other then answers `Already handled: …`.
+
+Still open from the research: the maximum number of topics and deleting a
+topic older than 48 hours (both unverified); a cross-topic quote is not
+shown, so the link-back is a plain link.
+
+Known limit: if the owner deletes a purchase topic by hand, Telegram
+probably does not tell the bot. The row keeps its thread and card id, so
+`/pending` lists a dead link and never resends the card; the purchase stays
+`pending` and still counts as a duplicate-check match. A later stage could
+clear the thread when a send fails with `message thread not found`.
+
+Next: Stage 2 (Variant A rich card), then Stage 3 (a text in a purchase topic
+becomes a correction; `findIngestionByThread` and `ingestions.card_message_id`
+are already filled for every card sent after Stage 1).
 
 ## Next concrete step
 

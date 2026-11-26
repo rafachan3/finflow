@@ -394,18 +394,34 @@ export async function discardIngestion(
   return !result.rowCount ? "already_handled" : "discarded";
 }
 
+/**
+ * The topic a waiting row listens in: its own, else the topic its message came
+ * in (a card whose own topic Telegram refused sits there). Null only for a row
+ * from before topics. A thread counts only on a topic message, as in topicThread.
+ */
+const WAIT_THREAD = `coalesce(telegram_thread_id,
+  CASE WHEN raw_payload #>> '{message,is_topic_message}' = 'true'
+    THEN (raw_payload #>> '{message,message_thread_id}')::int END)`;
+
 export async function findAwaitingIngestion(): Promise<{
   id: string;
   extraction: Extraction;
   status: "awaiting_date" | "awaiting_edit";
+  threadId: number | null;
+  /** The topic is this purchase's alone, so its name may follow the purchase. */
+  ownTopic: boolean;
 } | null> {
   const db = await getPool();
   const result = await db.query<{
     id: string;
     extraction: Extraction;
     status: "awaiting_date" | "awaiting_edit";
+    threadId: number | null;
+    ownTopic: boolean;
   }>(
-    `SELECT id, extraction, status FROM ingestions
+    `SELECT id, extraction, status, ${WAIT_THREAD} AS "threadId",
+            telegram_thread_id IS NOT NULL AS "ownTopic"
+     FROM ingestions
      WHERE status IN ('awaiting_date', 'awaiting_edit')
      ORDER BY created_at DESC
      LIMIT 1`,
@@ -413,33 +429,162 @@ export async function findAwaitingIngestion(): Promise<{
   return result.rows[0] ?? null;
 }
 
+type OpenIngestion = {
+  id: string;
+  extraction: Extraction;
+  status: "pending" | "awaiting_date" | "awaiting_edit";
+  /** The purchase's own topic; null before topics, or when its card shares another's. */
+  threadId: number | null;
+  /** The card's message; null until one arrived. */
+  cardMessageId: number | null;
+};
+
 /**
  * Open cards of this chat, oldest first: still `pending`, or waiting for a
  * date or correction. The chat comes from the saved update. Confirmed and
  * discarded rows are skipped.
  */
-export async function listPendingIngestions(
-  chatId: number,
-): Promise<
-  {
-    id: string;
-    extraction: Extraction;
-    status: "pending" | "awaiting_date" | "awaiting_edit";
-  }[]
-> {
+export async function listPendingIngestions(chatId: number): Promise<OpenIngestion[]> {
   const db = await getPool();
-  const result = await db.query<{
-    id: string;
-    extraction: Extraction;
-    status: "pending" | "awaiting_date" | "awaiting_edit";
-  }>(
-    `SELECT id, extraction, status FROM ingestions
+  const result = await db.query<OpenIngestion>(
+    `SELECT id, extraction, status, telegram_thread_id AS "threadId", card_message_id AS "cardMessageId"
+     FROM ingestions
      WHERE status IN ('pending', 'awaiting_date', 'awaiting_edit')
        AND raw_payload #>> '{message,chat,id}' = $1
      ORDER BY created_at, event_index`,
     [String(chatId)],
   );
   return result.rows;
+}
+
+/**
+ * The purchase's own topic. A topic it takes over from a command or a message
+ * with no purchase stops being one to tidy away, or the tidy-up would delete
+ * its card.
+ */
+export async function setIngestionTopic(ingestionId: string, threadId: number): Promise<void> {
+  const db = await getPool();
+  await db.query(
+    `WITH owned AS (
+       UPDATE ingestions SET telegram_thread_id = $2 WHERE id = $1
+       RETURNING (raw_payload #>> '{message,chat,id}')::bigint AS chat_id
+     )
+     DELETE FROM utility_topics u USING owned
+     WHERE u.chat_id = owned.chat_id AND u.thread_id = $2`,
+    [ingestionId, threadId],
+  );
+}
+
+/**
+ * A topic a command or a message with no purchase opened, to tidy away later.
+ * Each owner message in it restarts its hour and names it after that message.
+ */
+export async function registerUtilityTopic(chatId: number, threadId: number, label: string): Promise<void> {
+  const db = await getPool();
+  await db.query(
+    `INSERT INTO utility_topics (chat_id, thread_id, label) VALUES ($1, $2, $3)
+     ON CONFLICT (chat_id, thread_id) DO UPDATE SET label = excluded.label, opened_at = now()`,
+    [chatId, threadId, label],
+  );
+}
+
+/** Claims a utility topic: its label, or null when it is not one (or another invocation took it). */
+export async function takeUtilityTopic(chatId: number, threadId: number): Promise<string | null> {
+  const db = await getPool();
+  const result = await db.query<{ label: string }>(
+    "DELETE FROM utility_topics WHERE chat_id = $1 AND thread_id = $2 RETURNING label",
+    [chatId, threadId],
+  );
+  return result.rows[0]?.label ?? null;
+}
+
+/**
+ * Claims the utility topics opened longer ago than this. Claiming by delete
+ * means two concurrent invocations never both act on one topic. A topic a
+ * purchase owns is never claimed, even if a note was left behind on it.
+ */
+export async function takeStaleUtilityTopics(
+  chatId: number,
+  olderThanSeconds: number,
+): Promise<{ threadId: number; label: string }[]> {
+  const db = await getPool();
+  const result = await db.query<{ threadId: number; label: string }>(
+    `DELETE FROM utility_topics
+     WHERE chat_id = $1 AND opened_at < now() - make_interval(secs => $2)
+       AND NOT EXISTS (
+         SELECT 1 FROM ingestions i
+         WHERE i.telegram_thread_id = utility_topics.thread_id
+           AND i.raw_payload #>> '{message,chat,id}' = utility_topics.chat_id::text
+       )
+     RETURNING thread_id AS "threadId", label`,
+    [chatId, olderThanSeconds],
+  );
+  return result.rows;
+}
+
+/** The card the owner taps or replies to; null when none is live. */
+export async function setIngestionCardMessage(ingestionId: string, messageId: number | null): Promise<void> {
+  const db = await getPool();
+  await db.query("UPDATE ingestions SET card_message_id = $2 WHERE id = $1", [ingestionId, messageId]);
+}
+
+/** The purchase whose topic this is, latest first; null for a topic no purchase owns. */
+export async function findIngestionByThread(
+  chatId: number,
+  threadId: number,
+): Promise<{ id: string; status: string; extraction: Extraction } | null> {
+  const db = await getPool();
+  const result = await db.query<{ id: string; status: string; extraction: Extraction }>(
+    `SELECT id, status, extraction FROM ingestions
+     WHERE telegram_thread_id = $2
+       AND raw_payload #>> '{message,chat,id}' = $1
+     ORDER BY created_at DESC, event_index DESC
+     LIMIT 1`,
+    [String(chatId), threadId],
+  );
+  return result.rows[0] ?? null;
+}
+
+/**
+ * An open purchase of this chat whose card sits in this topic without owning
+ * it (its own topic was refused), oldest first; null when there is none.
+ */
+export async function findSharingIngestion(
+  chatId: number,
+  threadId: number,
+): Promise<{ id: string; extraction: Extraction } | null> {
+  const db = await getPool();
+  const result = await db.query<{ id: string; extraction: Extraction }>(
+    `SELECT id, extraction FROM ingestions
+     WHERE telegram_thread_id IS NULL AND ${WAIT_THREAD} = $2
+       AND status IN ('pending', 'awaiting_date', 'awaiting_edit')
+       AND raw_payload #>> '{message,chat,id}' = $1
+     ORDER BY created_at, event_index
+     LIMIT 1`,
+    [String(chatId), threadId],
+  );
+  return result.rows[0] ?? null;
+}
+
+/** One ingestion with its own topic and card message; null for an unknown id. */
+export async function getIngestion(ingestionId: string): Promise<{
+  status: string;
+  extraction: Extraction;
+  threadId: number | null;
+  cardMessageId: number | null;
+} | null> {
+  const db = await getPool();
+  const result = await db.query<{
+    status: string;
+    extraction: Extraction;
+    threadId: number | null;
+    cardMessageId: number | null;
+  }>(
+    `SELECT status, extraction, telegram_thread_id AS "threadId", card_message_id AS "cardMessageId"
+     FROM ingestions WHERE id = $1`,
+    [ingestionId],
+  );
+  return result.rows[0] ?? null;
 }
 
 /** The date of the oldest saved transaction (YYYY-MM-DD), or null for an empty ledger. */
@@ -689,16 +834,16 @@ export async function applyIngestionEdit(
 /**
  * Leaves a date or edit wait without changing the stored extraction: status
  * back to `pending` so Confirm works again. Idempotent; returns null when the
- * row is no longer waiting.
+ * row is no longer waiting. `threadId` is the topic the wait was in.
  */
 export async function restoreIngestionPending(
   ingestionId: string,
-): Promise<{ id: string; extraction: Extraction } | null> {
+): Promise<{ id: string; extraction: Extraction; threadId: number | null } | null> {
   const db = await getPool();
-  const result = await db.query<{ id: string; extraction: Extraction }>(
+  const result = await db.query<{ id: string; extraction: Extraction; threadId: number | null }>(
     `UPDATE ingestions SET status = 'pending'
      WHERE id = $1 AND status IN ('awaiting_date', 'awaiting_edit')
-     RETURNING id, extraction`,
+     RETURNING id, extraction, ${WAIT_THREAD} AS "threadId"`,
     [ingestionId],
   );
   return result.rows[0] ?? null;

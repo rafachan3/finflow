@@ -78,7 +78,7 @@ describe("the card proposes the series a payment matches", () => {
     expect(labels(shown)).toEqual([...REVIEW, "↻ Internet bill ✓"]);
 
     await chat.tap(shown, "Confirm");
-    expect(chat.acks()).toEqual(["Saved."]);
+    expect(chat.acks()).toEqual(["Saved: Internet bill · $64.99."]);
     expect((await ledger.links())["Internet bill 2026-10-15"]).toEqual({ series: "Internet bill", flagged: true });
   });
 
@@ -95,7 +95,7 @@ describe("the card proposes the series a payment matches", () => {
     expect(await sql("SELECT 1 FROM recurring_exclusions")).toEqual([]);
 
     await chat.tap(shown, "Confirm");
-    expect(chat.acks().at(-1)).toBe("Saved.");
+    expect(chat.acks().at(-1)).toBe("Saved: Internet bill · $64.99.");
     expect((await ledger.links())["Internet bill 2026-10-15"]).toEqual({ series: null, flagged: false });
     await chat.text("/recurring");
     expect(chat.last().text).not.toContain("to review");
@@ -178,15 +178,16 @@ describe("New recurring item on the Saved reply", () => {
   });
 
   it("a linked payment, or one Gemini does not call recurring, gets a plain Saved", async () => {
-    await card(golden("text-with-note").recorded, "14 lunch at Sandwich Shop on Oct 25");
-    await chat.tap(chat.last(), "Confirm");
-    expect(labels(chat.last())).toEqual([]);
+    const lunch = await card(golden("text-with-note").recorded, "14 lunch at Sandwich Shop on Oct 25");
+    await chat.tap(lunch, "Confirm");
+    expect(chat.last()).toEqual(lunch);
 
     await internetBill();
-    await card(billEvent());
-    await chat.tap(chat.last(), "Confirm");
-    expect(chat.last().text).toBe("Saved.");
-    expect(labels(chat.last())).toEqual([]);
+    const bill = await card(billEvent());
+    await chat.tap(bill, "Confirm");
+    // No buttons to offer, so no Saved message: the card itself says ✅ Saved.
+    expect(chat.last()).toEqual(bill);
+    expect(labels(chat.current(bill))).toEqual(["✅ Saved"]);
   });
 
   it("a payment excluded from the proposed series can still be tracked as its own", async () => {
@@ -204,7 +205,7 @@ describe("Confirm on a card with a series", () => {
     expect(labels(shown)).toEqual(REVIEW);
     await internetBill();
     await chat.tap(shown, "Confirm");
-    expect(chat.acks()).toEqual(["Saved."]);
+    expect(chat.acks()).toEqual(["Saved: Internet bill · $64.99."]);
     expect((await ledger.links())["Internet bill 2026-10-15"]).toEqual({ series: null, flagged: false });
   });
 
@@ -213,9 +214,9 @@ describe("Confirm on a card with a series", () => {
     const shown = await card(billEvent());
     await sql("DELETE FROM recurring_series WHERE id = $1", [internet]);
     await chat.tap(shown, "Confirm");
-    const ack = "Saved. Not linked: that recurring series is gone or no longer fits.";
-    expect(chat.acks()).toEqual([ack]);
-    expect(chat.last().text).toBe(ack);
+    const gone = "Not linked: that recurring series is gone or no longer fits.";
+    expect(chat.acks()).toEqual([`Saved: Internet bill · $64.99. ${gone}`]);
+    expect(chat.last().text).toBe(`Saved. ${gone}`);
     expect((await ledger.links())["Internet bill 2026-10-15"]).toEqual({ series: null, flagged: false });
   });
 
@@ -249,12 +250,27 @@ describe("Confirm on a card with a series", () => {
     expect(labels(chat.last())).toEqual([...REVIEW, "↻ Internet bill ✓"]);
   });
 
+  it("the series toggle tapped after Confirm changes nothing", async () => {
+    await internetBill();
+    const shown = await card(billEvent());
+    const toggle = shown.buttons.find((b) => b.text === "↻ Internet bill ✓")!;
+    await chat.tap(shown, "Confirm");
+    const edits = chat.calls("editMessageReplyMarkup").length;
+
+    // A tap raced with Confirm arrives carrying the saved card's keyboard.
+    expect((await chat.press(shown, toggle.data)).statusCode).toBe(200);
+
+    expect(chat.calls("editMessageReplyMarkup")).toHaveLength(edits);
+    expect(labels(chat.current(shown))).toEqual(["✅ Saved"]);
+    expect((await ledger.links())["Internet bill 2026-10-15"]).toEqual({ series: "Internet bill", flagged: true });
+  });
+
   it("a double tap on a card's Confirm saves and links once", async () => {
     await internetBill();
     const shown = await card(billEvent());
     await chat.tap(shown, "Confirm");
-    await chat.tap(shown, "Confirm");
-    expect(chat.acks()).toEqual(["Saved.", "Already handled."]);
+    await chat.press(shown, shown.buttons[0].data);
+    expect(chat.acks()).toEqual(["Saved: Internet bill · $64.99.", "Already handled: Internet bill · $64.99 was saved."]);
     expect(await ledger.transactions()).toHaveLength(5);
     expect((await ledger.links())["Internet bill 2026-10-15"]).toEqual({ series: "Internet bill", flagged: true });
   });

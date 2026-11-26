@@ -9,6 +9,8 @@ vi.mock("../src/config.js", () => ({
 }));
 vi.mock("../src/db.js", () => ({
   confirmIngestion: vi.fn(),
+  getIngestion: vi.fn(),
+  findSharingIngestion: vi.fn(),
   discardIngestion: vi.fn(),
   insertPendingIngestions: vi.fn(),
   loadTaxonomy: vi.fn(),
@@ -23,6 +25,7 @@ vi.mock("../src/db.js", () => ({
   oldestTransactionDate: vi.fn(),
   addMerchant: vi.fn(),
   findMentions: vi.fn(),
+  takeStaleUtilityTopics: vi.fn(async () => []),
 }));
 vi.mock("../src/gemini.js", () => ({
   extractFromText: vi.fn(),
@@ -30,7 +33,10 @@ vi.mock("../src/gemini.js", () => ({
   extractFromVoice: vi.fn(),
   patchExtraction: vi.fn(),
 }));
-vi.mock("../src/telegram.js", () => ({
+vi.mock("../src/telegram.js", async (importActual) => ({
+  topicThread: (await importActual<typeof import("../src/telegram.js")>()).topicThread,
+  savedCardKeyboard: (await importActual<typeof import("../src/telegram.js")>()).savedCardKeyboard,
+  editForumTopic: vi.fn(),
   answerCallbackQuery: vi.fn(),
   reviewKeyboard: vi.fn((id: string) => ({ confirm: id })),
   waitingKeyboard: vi.fn((id: string) => ({ waiting: id })),
@@ -74,6 +80,7 @@ import {
 import {
   answerCallbackQuery,
   downloadTelegramFile,
+  editForumTopic,
   editMessageReplyMarkup,
   reviewKeyboard,
   sendMessage,
@@ -220,7 +227,7 @@ describe("handler", () => {
       "t",
       1,
       expect.stringContaining("Confirm to save"),
-      { confirm: "ing-1" },
+      { confirm: "ing-1" }, { thread: undefined },
     );
     expect(String(vi.mocked(sendMessage).mock.calls[0][2]).split("\n")[0]).not.toMatch(/of 1\)/);
   });
@@ -264,7 +271,7 @@ describe("handler", () => {
       "t",
       1,
       expect.not.stringContaining("duplicate"),
-      { confirm: "ing-1" },
+      { confirm: "ing-1" }, { thread: undefined },
     );
     error.mockRestore();
   });
@@ -302,7 +309,7 @@ describe("handler", () => {
     await handler(event({ update_id: 33, message: { chat: { id: 1 }, text: "12.50 lunch" } }));
 
     expect(error).toHaveBeenCalledWith("merchant hint error", expect.any(Error));
-    expect(sendMessage).toHaveBeenCalledWith("t", 1, expect.not.stringContaining("💡"), { confirm: "ing-1" });
+    expect(sendMessage).toHaveBeenCalledWith("t", 1, expect.not.stringContaining("💡"), { confirm: "ing-1" }, { thread: undefined });
     error.mockRestore();
   });
 
@@ -317,7 +324,7 @@ describe("handler", () => {
 
     expect(res.statusCode).toBe(200);
     expect(sendMessage).toHaveBeenCalledOnce();
-    expect(sendMessage).toHaveBeenCalledWith("t", 1, expect.stringContaining("Added merchant: Maple Kiosk."));
+    expect(sendMessage).toHaveBeenCalledWith("t", 1, expect.stringContaining("Added merchant: Maple Kiosk."), undefined, { thread: undefined });
     expect(error).toHaveBeenCalledWith("mention offer error", expect.any(Error));
     error.mockRestore();
   });
@@ -345,8 +352,14 @@ describe("handler", () => {
   );
 
   it("Confirm on a card with a series links it (cr) or excludes it (cx), and says when it could not link", async () => {
-    const { confirmIngestion } = await import("../src/db.js");
+    const { confirmIngestion, getIngestion } = await import("../src/db.js");
     const id = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
+    vi.mocked(getIngestion).mockResolvedValue({
+      status: "confirmed",
+      extraction: { ...extraction, merchant: "Sandwich Shop" },
+      threadId: null,
+      cardMessageId: 5,
+    });
     const tap = (data: string) =>
       handler(event({ update_id: 36, callback_query: { id: "cb", data, message: { message_id: 5, chat: { id: 1 } } } }));
     vi.mocked(confirmIngestion).mockResolvedValue({ status: "confirmed", transactionId: "tx", seriesGone: false, looksRecurring: false });
@@ -359,9 +372,47 @@ describe("handler", () => {
       [id, { id: 12, link: false }],
     ]);
     expect(vi.mocked(answerCallbackQuery).mock.calls.map((c) => c[2])).toEqual([
-      "Saved.",
+      "Saved: Sandwich Shop · $12.50.",
+      "Saved: Sandwich Shop · $12.50. Not linked: that recurring series is gone or no longer fits.",
+    ]);
+    expect(vi.mocked(editMessageReplyMarkup).mock.calls[0]).toEqual([
+      "t",
+      1,
+      5,
+      { inline_keyboard: [[{ text: "✅ Saved", disabled: {} }]] },
+    ]);
+    // Only the series-gone note is worth a message; a plain save sends none.
+    expect(vi.mocked(sendMessage).mock.calls.map((c) => c[2])).toEqual([
       "Saved. Not linked: that recurring series is gone or no longer fits.",
     ]);
+  });
+
+  it("Confirm still renames the topic and sends its Saved message when the ✅ Saved button cannot be drawn", async () => {
+    const { confirmIngestion, getIngestion } = await import("../src/db.js");
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const id = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
+    vi.mocked(getIngestion).mockResolvedValue({
+      status: "confirmed",
+      extraction: { ...extraction, merchant: "Sandwich Shop" },
+      threadId: 7,
+      cardMessageId: 5,
+    });
+    vi.mocked(confirmIngestion).mockResolvedValue({ status: "confirmed", transactionId: "tx", seriesGone: true, looksRecurring: false });
+    vi.mocked(editMessageReplyMarkup).mockRejectedValueOnce(new Error("message can't be edited"));
+
+    const res = await bodyOf(
+      await handler(
+        event({ update_id: 37, callback_query: { id: "cb", data: `cx:${id}:12`, message: { message_id: 5, chat: { id: 1 } } } }),
+      ),
+    );
+
+    expect(res.statusCode).toBe(200);
+    expect(error).toHaveBeenCalledWith("saved card edit error", expect.any(Error));
+    expect(editForumTopic).toHaveBeenCalledWith("t", 1, 7, "✅ Sandwich Shop · $12.50");
+    expect(vi.mocked(sendMessage).mock.calls.map((c) => c[2])).toEqual([
+      "Saved. Not linked: that recurring series is gone or no longer fits.",
+    ]);
+    error.mockRestore();
   });
 
   it("does not persist or offer Confirm when checks fail", async () => {
@@ -382,9 +433,11 @@ describe("handler", () => {
       "t",
       1,
       expect.stringContaining("✗"),
+      undefined,
+      { thread: undefined },
     );
     const args = vi.mocked(sendMessage).mock.calls[0];
-    expect(args.length).toBe(3);
+    expect(args[3]).toBeUndefined();
   });
 
   it("defaults a missing Gemini date to today and warns", async () => {
@@ -411,7 +464,7 @@ describe("handler", () => {
       "t",
       1,
       expect.stringMatching(/defaulted to today/i),
-      { confirm: "ing-1" },
+      { confirm: "ing-1" }, { thread: undefined },
     );
   });
 
@@ -439,8 +492,7 @@ describe("handler", () => {
       "t",
       1,
       expect.stringMatching(/send the date/i),
-      { waiting: "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee" },
-    );
+      { waiting: "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee" }, { thread: undefined });
   });
 
   it.each([
@@ -465,8 +517,7 @@ describe("handler", () => {
     expect(sendMessage).toHaveBeenCalledWith(
       "t",
       1,
-      "Another card is waiting for a date or correction. Send it, or tap Keep as is / Discard on the waiting prompt, then try again.",
-    );
+      "Another card is waiting for a date or correction. Send it, or tap Keep as is / Discard on the waiting prompt, then try again.", undefined, { thread: undefined });
   });
 
   it("applies a date reply while awaiting and does not start a new extraction", async () => {
@@ -475,6 +526,8 @@ describe("handler", () => {
     vi.mocked(findAwaitingIngestion).mockResolvedValue({
       id: "ing-1",
       status: "awaiting_date",
+      threadId: null,
+      ownTopic: false,
       extraction: {
         ...extraction,
         date: "2026-08-18",
@@ -499,7 +552,7 @@ describe("handler", () => {
       "t",
       1,
       expect.stringContaining("2026-08-17"),
-      { confirm: "ing-1" },
+      { confirm: "ing-1" }, { thread: undefined },
     );
   });
 
@@ -507,6 +560,8 @@ describe("handler", () => {
     vi.mocked(findAwaitingIngestion).mockResolvedValue({
       id: "ing-1",
       status: "awaiting_date",
+      threadId: null,
+      ownTopic: false,
       extraction,
     });
 
@@ -523,8 +578,7 @@ describe("handler", () => {
       "t",
       1,
       expect.stringMatching(/waiting for a date/i),
-      { waiting: "ing-1" },
-    );
+      { waiting: "ing-1" }, { thread: undefined });
   });
 
   it("extracts a receipt photo, archives it, and offers Confirm", async () => {
@@ -606,7 +660,7 @@ describe("handler", () => {
       "t",
       1,
       expect.stringMatching(/date missing/i),
-      { confirm: "11111111-1111-1111-1111-111111111111" },
+      { confirm: "11111111-1111-1111-1111-111111111111" }, { thread: undefined },
     );
   });
 
@@ -614,6 +668,8 @@ describe("handler", () => {
     vi.mocked(findAwaitingIngestion).mockResolvedValue({
       id: "ing-1",
       status: "awaiting_date",
+      threadId: null,
+      ownTopic: false,
       extraction,
     });
 
@@ -633,8 +689,7 @@ describe("handler", () => {
       "t",
       1,
       expect.stringMatching(/waiting for a date/i),
-      { waiting: "ing-1" },
-    );
+      { waiting: "ing-1" }, { thread: undefined });
   });
 
   it("extracts a voice note, archives it, and offers Confirm", async () => {
@@ -698,7 +753,7 @@ describe("handler", () => {
       "t",
       1,
       expect.stringContaining("Confirm to save"),
-      { confirm: "11111111-1111-1111-1111-111111111111" },
+      { confirm: "11111111-1111-1111-1111-111111111111" }, { thread: undefined },
     );
     expect(extractFromText).not.toHaveBeenCalled();
     expect(extractFromPhoto).not.toHaveBeenCalled();
@@ -744,7 +799,7 @@ describe("handler", () => {
       "t",
       1,
       expect.stringMatching(/defaulted to today/i),
-      { confirm: "11111111-1111-1111-1111-111111111111" },
+      { confirm: "11111111-1111-1111-1111-111111111111" }, { thread: undefined },
     );
     expect(reviewKeyboard).not.toHaveBeenCalledWith(
       expect.anything(),
@@ -778,14 +833,18 @@ describe("handler", () => {
       "t",
       1,
       expect.stringContaining("✗"),
+      undefined,
+      { thread: undefined },
     );
-    expect(vi.mocked(sendMessage).mock.calls[0].length).toBe(3);
+    expect(vi.mocked(sendMessage).mock.calls[0][3]).toBeUndefined();
   });
 
   it("does not start a new voice note while awaiting a date", async () => {
     vi.mocked(findAwaitingIngestion).mockResolvedValue({
       id: "ing-1",
       status: "awaiting_date",
+      threadId: null,
+      ownTopic: false,
       extraction,
     });
 
@@ -805,8 +864,7 @@ describe("handler", () => {
       "t",
       1,
       expect.stringMatching(/waiting for a date/i),
-      { waiting: "ing-1" },
-    );
+      { waiting: "ing-1" }, { thread: undefined });
   });
 
   it("asks for a correction on Edit and does not confirm", async () => {
@@ -833,14 +891,14 @@ describe("handler", () => {
       "t",
       1,
       expect.stringMatching(/correction/i),
-      { waiting: "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee" },
-    );
+      { waiting: "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee" }, { thread: undefined });
   });
 
   it("Keep as is restores pending and resends the card without Gemini", async () => {
     vi.mocked(restoreIngestionPending).mockResolvedValue({
       id: "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
       extraction,
+      threadId: null,
     });
 
     await handler(
@@ -871,12 +929,19 @@ describe("handler", () => {
       "t",
       1,
       expect.stringContaining("CAD 12.50"),
-      { confirm: "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee" },
+      { confirm: "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee" }, { thread: undefined },
     );
   });
 
   it("Keep as is twice says Already handled and does not resend", async () => {
     vi.mocked(restoreIngestionPending).mockResolvedValue(null);
+    const { getIngestion } = await import("../src/db.js");
+    vi.mocked(getIngestion).mockResolvedValue({
+      status: "pending",
+      extraction: { ...extraction, merchant: "Sandwich Shop" },
+      threadId: null,
+      cardMessageId: null,
+    });
 
     await handler(
       event({
@@ -889,8 +954,9 @@ describe("handler", () => {
       }),
     );
 
-    expect(answerCallbackQuery).toHaveBeenCalledWith("t", "cb-keep2", "Already handled.");
-    expect(sendMessage).toHaveBeenCalledWith("t", 1, "Already handled.");
+    const ack = "Already handled: Sandwich Shop · $12.50 is waiting for Confirm.";
+    expect(answerCallbackQuery).toHaveBeenCalledWith("t", "cb-keep2", ack);
+    expect(sendMessage).toHaveBeenCalledWith("t", 1, ack, undefined, { thread: undefined });
     expect(reviewKeyboard).not.toHaveBeenCalled();
   });
 
@@ -903,6 +969,8 @@ describe("handler", () => {
     vi.mocked(findAwaitingIngestion).mockResolvedValue({
       id: "ing-1",
       status: "awaiting_edit",
+      threadId: null,
+      ownTopic: false,
       extraction,
     });
     vi.mocked(patchExtraction).mockResolvedValue(patched);
@@ -929,7 +997,7 @@ describe("handler", () => {
       "t",
       1,
       expect.stringContaining("14.50"),
-      { confirm: "ing-1" },
+      { confirm: "ing-1" }, { thread: undefined },
     );
   });
 
@@ -937,6 +1005,8 @@ describe("handler", () => {
     vi.mocked(findAwaitingIngestion).mockResolvedValue({
       id: "ing-1",
       status: "awaiting_edit",
+      threadId: null,
+      ownTopic: false,
       extraction,
     });
     vi.mocked(patchExtraction).mockResolvedValue({
@@ -956,14 +1026,15 @@ describe("handler", () => {
       "t",
       1,
       expect.stringContaining("✗"),
-      { waiting: "ing-1" },
-    );
+      { waiting: "ing-1" }, { thread: undefined });
   });
 
   it("does not start a new photo while awaiting_edit", async () => {
     vi.mocked(findAwaitingIngestion).mockResolvedValue({
       id: "ing-1",
       status: "awaiting_edit",
+      threadId: null,
+      ownTopic: false,
       extraction,
     });
 
@@ -984,8 +1055,7 @@ describe("handler", () => {
       "t",
       1,
       expect.stringMatching(/waiting for a correction/i),
-      { waiting: "ing-1" },
-    );
+      { waiting: "ing-1" }, { thread: undefined });
   });
 });
 
@@ -1006,8 +1076,7 @@ describe("extraction failures", () => {
     expect(sendMessage).toHaveBeenCalledWith(
       "t",
       1,
-      expect.stringMatching(/Gemini is overloaded/i),
-    );
+      expect.stringMatching(/Gemini is overloaded/i), undefined, { thread: undefined });
     expect(insertPendingIngestions).not.toHaveBeenCalled();
   });
 
@@ -1024,8 +1093,7 @@ describe("extraction failures", () => {
     expect(sendMessage).toHaveBeenCalledWith(
       "t",
       1,
-      expect.stringMatching(/Gemini is overloaded/i),
-    );
+      expect.stringMatching(/Gemini is overloaded/i), undefined, { thread: undefined });
   });
 
   it("keeps the input-specific message for other failures", async () => {
@@ -1038,8 +1106,7 @@ describe("extraction failures", () => {
     expect(sendMessage).toHaveBeenCalledWith(
       "t",
       1,
-      "Couldn't parse that. Try again in a sentence.",
-    );
+      "Couldn't parse that. Try again in a sentence.", undefined, { thread: undefined });
   });
 });
 
@@ -1147,7 +1214,7 @@ describe("multi-event messages", () => {
 
     await handler(event({ update_id: 55, message: { chat: { id: 1 }, text: "hm" } }));
 
-    expect(sendMessage).toHaveBeenCalledWith("t", 1, "Couldn't parse that. Try again in a sentence.");
+    expect(sendMessage).toHaveBeenCalledWith("t", 1, "Couldn't parse that. Try again in a sentence.", undefined, { thread: undefined });
     expect(insertPendingIngestions).not.toHaveBeenCalled();
   });
 
@@ -1176,6 +1243,6 @@ describe("multi-event messages", () => {
     await handler(event({ update_id: 57, message: { chat: { id: 1 }, text: "two" } }));
 
     expect(insertPendingIngestions).not.toHaveBeenCalled();
-    expect(vi.mocked(sendMessage).mock.calls[1]).toEqual(["t", 1, "Couldn't parse that. Try again in a sentence."]);
+    expect(vi.mocked(sendMessage).mock.calls[1]).toEqual(["t", 1, "Couldn't parse that. Try again in a sentence.", undefined, { thread: undefined }]);
   });
 });

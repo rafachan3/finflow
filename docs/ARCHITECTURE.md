@@ -95,13 +95,15 @@ dbt models and the agent read it, so numbers agree everywhere.
   PutObject, then INSERT). All state lives in Postgres, so it stays
   stateless. Slash commands (`src/commands.ts` is the table) skip
   extraction and come before the date/correction wait, so one is never
-  taken as a date or a correction. `/pending` resends the card of every
-  row still `pending` in that chat (rows are saved before their cards
-  are sent, so a failed send leaves a row with no card).
+  taken as a date or a correction. `/pending` lists every open row of that
+  chat, linked to its topic, and sends a card only where one is missing:
+  a row whose card never arrived (rows are saved before their cards are
+  sent, so a failed send leaves a row with no card) gets it in its topic,
+  and a row with no topic of its own gets a new topic and a new card.
   `/merchants`, `/addmerchant` and `/delmerchant` read and write the
   `merchants` lookup directly, with no Confirm; the next message's
   `loadTaxonomy` sees the change. The deploy workflow's last step
-  registers the same table as the Telegram command menu.
+  registers the same table as the Telegram command menu and sets topic mode.
   `/recurring` (`src/recurring-menu.ts`) sends one message whose buttons
   edit it in place: list, detail, pause/resume/rename/delete, add from a
   saved payment, the review that links past payments, and suggestions. Each tap reads the whole recurring book
@@ -112,6 +114,22 @@ dbt models and the agent read it, so numbers agree everywhere.
   series id in the prompt's text and is routed after commands and before
   the wait, so there is no waiting state; media, a stale prompt, or text
   that reads as an expense falls through to extraction. No Gemini call.
+- Topics (Stage 1): each purchase's card lives in its own Telegram topic.
+  A reply goes to the topic of the message or the tapped card; what the
+  bot sends on its own (the daily digest) posts in the main view. A row
+  stores its topic (`telegram_thread_id`) and its card
+  (`card_message_id`). Before the reply, the handler notes a topic no
+  purchase owns (a command's, or a message with no purchase such as a
+  failed extraction) in `utility_topics`, so a concurrent sweep never takes
+  a topic in use; after the reply it sweeps: the first owner message an
+  hour or more after the last one in a noted topic deletes it (Close on a
+  `/recurring` menu deletes its topic at once). That row is the one
+  exception to "nothing is written until extraction and validation pass":
+  it holds the chat, thread, command name or `No purchase`, and a
+  timestamp, no message content. A purchase that takes such a topic over
+  removes its row in the same statement that stores its thread. Topic
+  calls are best effort: a refusal is logged and never blocks saving, the
+  card or the reply.
 - Idempotency: one Telegram update may yield several `ingestions` rows
   (one per event), unique on `(telegram_update_id, event_index)`. Telegram
   retries webhooks, and a retry re-runs Gemini, which can return a
@@ -352,7 +370,7 @@ is part of any rebuild, and the "deploy your own" guide must say so.
 - The GitHub Actions deploy role may update the one function, and read exactly
   one parameter, `/finflow/telegram/bot-token` (`ssm:GetParameter` on its ARN,
   plus `kms:Decrypt` on the `aws/ssm` key via Parameter Store only), so a
-  deploy step can register the bot's command menu.
+  deploy step can register the bot's command menu and set topic mode.
 - S3 bucket: Block Public Access enabled, default encryption on, no bucket
   policy granting anything to `*`.
 - The MCP database role is `finflow_analyst`: `SELECT` on marts only, nothing

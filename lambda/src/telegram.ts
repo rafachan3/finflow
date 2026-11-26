@@ -52,13 +52,23 @@ async function postTelegram(
 /**
  * `html`: the text is Telegram HTML (parse_mode HTML), with link previews off.
  * `silent`: delivered with no notification sound.
+ * `thread`: the topic (message_thread_id) a sent message goes into; edits never take it.
  */
-export type Format = { html?: boolean; silent?: boolean };
+export type Format = { html?: boolean; silent?: boolean; thread?: number };
+
+/**
+ * The topic an incoming message is in. A thread id without the topic flag is
+ * a reply chain in the main view, not a topic: it counts for nothing.
+ */
+export function topicThread(message: { message_thread_id?: number; is_topic_message?: boolean }): number | undefined {
+  return message.is_topic_message ? message.message_thread_id : undefined;
+}
 
 function formatFields(format: Format): Record<string, unknown> {
   return {
     ...(format.html ? { parse_mode: "HTML", link_preview_options: { is_disabled: true } } : {}),
     ...(format.silent ? { disable_notification: true } : {}),
+    ...(format.thread !== undefined ? { message_thread_id: format.thread } : {}),
   };
 }
 
@@ -145,6 +155,83 @@ export async function registerCommandMenu(botToken: string): Promise<void> {
   await postTelegram(botToken, "setMyCommands", { commands: commandMenu() });
 }
 
+/**
+ * Topic mode: topics on, the owner may open topics, sidebar on. Idempotent,
+ * run by the deploy workflow.
+ */
+export async function applyTopicSettings(botToken: string): Promise<void> {
+  await postTelegram(botToken, "setMySettings", {
+    has_topics_enabled: true,
+    allows_users_to_create_topics: true,
+    has_topic_sidebar: true,
+  });
+}
+
+/** Opens a topic; its message_thread_id. Throws on refusal, callers decide what that costs. */
+export async function createForumTopic(botToken: string, chatId: number, name: string): Promise<number> {
+  const { result } = await callTelegram(botToken, "createForumTopic", { chat_id: chatId, name });
+  const id = (result as { message_thread_id?: unknown } | undefined)?.message_thread_id;
+  if (typeof id !== "number") throw new Error("createForumTopic returned no message_thread_id");
+  return id;
+}
+
+/** Renames a topic. Throws on refusal. */
+export async function editForumTopic(
+  botToken: string,
+  chatId: number,
+  threadId: number,
+  name: string,
+): Promise<void> {
+  await postTelegram(botToken, "editForumTopic", { chat_id: chatId, message_thread_id: threadId, name });
+}
+
+/** Deletes a topic and every message in it. Throws on refusal. */
+export async function deleteForumTopic(botToken: string, chatId: number, threadId: number): Promise<void> {
+  await postTelegram(botToken, "deleteForumTopic", { chat_id: chatId, message_thread_id: threadId });
+}
+
+/**
+ * Deletes a topic the bot is done with, or renames it to `fallbackName` when
+ * Telegram refuses the delete. Best effort: each refusal is logged, never thrown.
+ */
+export async function retireTopic(
+  botToken: string,
+  chatId: number,
+  threadId: number,
+  fallbackName: string,
+): Promise<"deleted" | "renamed" | "failed"> {
+  try {
+    await deleteForumTopic(botToken, chatId, threadId);
+    return "deleted";
+  } catch (err) {
+    console.error("topic delete refused", err);
+  }
+  try {
+    await editForumTopic(botToken, chatId, threadId, fallbackName);
+    return "renamed";
+  } catch (err) {
+    console.error("topic rename refused", err);
+    return "failed";
+  }
+}
+
+let cachedUsername: string | undefined;
+
+/** The bot's @username, read once per warm container. */
+export async function botUsername(botToken: string): Promise<string> {
+  if (cachedUsername === undefined) {
+    const { result } = await callTelegram(botToken, "getMe", {});
+    const name = (result as { username?: unknown } | undefined)?.username;
+    if (typeof name !== "string") throw new Error("getMe returned no username");
+    cachedUsername = name;
+  }
+  return cachedUsername;
+}
+
+export function topicLink(botUsername: string, threadId: number): string {
+  return `https://t.me/${botUsername}/${threadId}`;
+}
+
 export async function answerCallbackQuery(
   botToken: string,
   callbackQueryId: string,
@@ -160,6 +247,8 @@ export async function answerCallbackQuery(
 }
 
 type Button = { text: string; callback_data: string };
+/** A button that only shows a state: Telegram greys it out and sends nothing on a tap. */
+type InertButton = { text: string; disabled: Record<string, never> };
 
 /** The card's series button: `↻ Internet bill ✓` while Confirm links it, `↻ not Internet bill` once turned off. */
 function seriesLabel(name: string, linking: boolean): string {
@@ -203,10 +292,12 @@ export function reviewKeyboard(
  * "not this series" (`cx:`), and the toggle's label follows. The state lives
  * in the keyboard only; nothing is stored until Confirm.
  */
-export function toggleCardSeries(keyboard: Button[][]): Button[][] {
-  const linking = keyboard.flat().some((b) => b.callback_data.startsWith("cr:"));
+export function toggleCardSeries<B extends { text: string; callback_data?: string }>(keyboard: B[][]): B[][] {
+  // A late tap on a saved card carries its ✅ Saved button, which has no callback_data: nothing to toggle.
+  const linking = keyboard.flat().some((b) => b.callback_data?.startsWith("cr:"));
   return keyboard.map((row) =>
     row.map((b) => {
+      if (!b.callback_data) return b;
       if (b.callback_data.startsWith("rt:")) {
         const name = linking ? b.text.slice("↻ ".length, -" ✓".length) : b.text.slice("↻ not ".length);
         return { ...b, text: seriesLabel(name, !linking) };
@@ -219,10 +310,15 @@ export function toggleCardSeries(keyboard: Button[][]): Button[][] {
   );
 }
 
+/** A confirmed card's keyboard. Disabled with no callback_data, so it is shown greyed and a tap sends nothing. */
+export function savedCardKeyboard(): { inline_keyboard: InertButton[][] } {
+  return { inline_keyboard: [[{ text: "✅ Saved", disabled: {} }]] };
+}
+
 /**
  * Buttons on a date or correction wait prompt. Keep as is returns the card to
  * `pending` and resends it; Discard drops the row. No Fix date here: the owner
- * is already waiting for a date, and tapping it would only say "Already handled."
+ * is already waiting for a date, and tapping it would only say it was already handled.
  * `k:` / `d:` + uuid stay well under Telegram's 64-byte callback_data limit.
  */
 export function waitingKeyboard(ingestionId: string): { inline_keyboard: Button[][] } {

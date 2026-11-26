@@ -1170,6 +1170,8 @@ and `/pending` covers the gap.
 
 ## 2026-10-28 — Batch position in Confirm/Discard acks (#30)
 
+Superseded 2026-11-25: see "Acks name the purchase".
+
 - **Source of truth.** `withPosition` reads the " (k of n)" off the first
   line of the tapped card (`callback_query.message.text`) instead of storing
   `n`: only `event_index` is persisted, and `n` also counts offers that were
@@ -3830,3 +3832,105 @@ it to use. The owner accepts that the note is no longer their exact words.
   not an exact string, so a fair rewording still passes.
 - **Ruled out:** keeping the 2026-10-28 voice rule; a full rewrite that adds
   context they did not give; a second Gemini request just for the note.
+
+## 2026-11-25: Each purchase gets its own topic (Stage 1)
+
+One topic holds one purchase. The first saved purchase of a message keeps
+the topic the message opened (renamed `Merchant · $amount`); each further
+one gets a topic the bot creates.
+
+- **Link back:** a further purchase's topic opens with a one-line silent
+  message, `↩️ From your message`, linking to the message's topic
+  (`t.me/<bot>/<thread>`). Not a cross-topic `reply_parameters` quote: the
+  live check of 2026-11-25 found Telegram accepts it but
+  returns no `reply_to_message`, so whether the owner sees any link back
+  is unverified.
+- **Refused topic:** the card goes to the message's topic and the row
+  stores no `telegram_thread_id`, so a topic never holds two purchases'
+  rows and a lookup by thread always finds the purchase that owns it.
+- **Best effort:** create, rename and the link line are logged on refusal;
+  none blocks saving, the card or the reply.
+- **Ruled out:** a quote across topics; storing the shared topic on the
+  fallback row.
+
+## 2026-11-25: A waiting card listens only in its topic
+
+Fix date and Edit start a wait in the purchase's topic; only a message in
+that topic answers it. Any other message is a new purchase.
+
+- **The wait's topic:** the row's own topic, else the topic its message came
+  in (a card whose topic Telegram refused sits there). Read from the stored
+  update, so no schema change.
+- **Before topics:** a row with neither still takes the next message, as
+  before. Answered inside a topic, it adopts that topic, so the tidy-up does
+  not take that topic for one with no purchase.
+- **Rename:** only a purchase's own topic, and only when its
+  `Merchant · $amount` changed; a refused card's shared topic keeps the
+  first purchase's name.
+- **One wait at a time stays:** Fix date or Edit on a second card while one
+  waits still answers "busy". Ruled out: one wait per topic, since nothing
+  needs two at once and it would widen every waiting lookup.
+
+## 2026-11-25: Confirm marks the card saved in place
+
+Confirm no longer posts a `Saved.` message. The card's buttons become one
+`✅ Saved`, its own topic is renamed `✅ Merchant · $amount`, and the toast
+names the purchase.
+
+- **Toast:** `Saved: Merchant · $amount.` instead of `Saved. (k of n)`;
+  the name already tells two cards of one message apart.
+- **The button:** `disabled` with no `callback_data`. With callback_data
+  Telegram does not show it disabled; without it a tap sends nothing, so no
+  handler is needed (live check of 2026-11-25).
+- **`Saved.` still sent** when it carries the recurring buttons or the
+  series-gone note: the recurring add flow redraws the message its buttons
+  are on, and must not overwrite the card. It goes into the purchase's
+  topic.
+- **Best effort:** a refused rename is logged and never blocks Confirm.
+  A card from before topics, or one sharing another purchase's topic,
+  renames none.
+- **Ruled out:** a `sv` callback on the Saved button, and keeping the
+  chat message for every Confirm (one more message per purchase).
+
+## 2026-11-25: Command and no-purchase topics are deleted when done
+
+A topic a command or a message with no purchase opened (a failed
+extraction, a message that is not a purchase) is deleted by the first
+owner message an hour or more after the owner's last message in it.
+
+- **The clock is the next owner message,** not a schedule: the Lambda has
+  no scheduler of its own, the nudge's 09:00 run has no business with
+  topics, and a new schedule is new infra. The owner messages daily. If
+  topics linger, the nudge run is the upgrade path.
+- **One hour:** covers a `/recurring` or mention-review session, and is at
+  least the 15-minute prompt window. Each owner message in the topic
+  restarts it, noted before the reply so a concurrent invocation's sweep
+  never takes a topic in use; taps do not.
+- **The one write without a purchase:** a `utility_topics` row (chat,
+  thread, `/command` or `No purchase`, timestamp; no message content). It
+  is the exception to "nothing is written until extraction and validation
+  pass". A purchase that takes the topic over (sent in it, or a card from
+  before topics answered in it) removes the row when it stores its thread,
+  so the tidy-up never deletes a card.
+- **Refused delete:** the topic is renamed `⚙️ /command` (or
+  `⚙️ No purchase`) and not tried again; the row is claimed by delete
+  before the call, so two invocations never both act on it.
+- **Close** on a `/recurring` menu in its command's topic deletes the
+  topic at once; if that is refused, or elsewhere, it deletes the menu
+  message.
+- **Ruled out:** an EventBridge schedule or a timer; tidying from the
+  nudge run now; retrying a refused delete.
+
+## 2026-11-25: Acks name the purchase, not its position in the batch
+
+Supersedes 2026-10-28 (Batch position in Confirm/Discard acks, #30). With one
+topic per purchase the " (k of n)" label no longer fits: a card sits in its
+own topic, and `/pending` resends cards with no label.
+
+- **Wording:** `Saved: Merchant · $amount.` and `Discarded: Merchant · $amount.`
+  in the toast and, where one is sent, the chat message. The name already
+  tells two cards of one message apart.
+- **Gone:** `withPosition` and the read-back from the card's first line.
+- **Already handled:** names the purchase and where it stands
+  (`Already handled: Merchant · $amount was saved.`); a plain
+  `Already handled.` only for an unknown row.

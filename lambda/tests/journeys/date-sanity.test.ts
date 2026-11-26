@@ -41,10 +41,10 @@ describe("date sanity warning", () => {
 
     const before = chat.replies().length;
     await chat.text("/pending");
-    const resent = chat.replies().slice(before);
-    expect(resent).toHaveLength(1);
-    expect(dateWarnings(resent[0].text)).toEqual([YEAR_AGO]);
-    expect(labels(resent[0])).toEqual(REVIEW);
+    const [resent, list] = chat.replies().slice(before);
+    expect(list.text).toBe("Open purchases:\n• Sandwich Shop · $14.00");
+    expect(dateWarnings(resent.text)).toEqual([YEAR_AGO]);
+    expect(labels(resent)).toEqual(REVIEW);
   });
 
   it("a date in the future warns, and tomorrow does not", async () => {

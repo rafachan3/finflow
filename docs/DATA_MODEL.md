@@ -156,6 +156,8 @@ erDiagram
     text media_merchant "nullable — business the archived media names"
     text status "pending | awaiting_date | awaiting_edit | confirmed | discarded"
     uuid transaction_id FK "nullable until confirmed"
+    integer telegram_thread_id "nullable — the purchase's topic"
+    integer card_message_id "nullable — the card the owner taps or replies to"
     timestamptz created_at
   }
 
@@ -402,9 +404,13 @@ create table ingestions (
   status             text not null default 'pending'
                      check (status in ('pending','awaiting_date','awaiting_edit','confirmed','discarded')),
   transaction_id     uuid references transactions(id),
+  telegram_thread_id integer,                     -- the purchase's topic; null before topics, or when its card shares another purchase's topic
+  card_message_id    integer,                     -- the card the owner taps or replies to; null until a card is sent
   created_at         timestamptz not null default now()
   ,unique (telegram_update_id, event_index)       -- idempotent webhook retries
 );
+create index ingestions_thread_idx on ingestions (telegram_thread_id)
+  where telegram_thread_id is not null;
 
 -- Recurring series (migration 0016, Phase 4.5). The tables ship empty; the
 -- owner's series live only in their database. Anchor day, expected window,
@@ -542,6 +548,16 @@ create table nudge_runs (
 );
 create unique index nudge_runs_message_key on nudge_runs (chat_id, message_id)
   where message_id is not null;
+
+-- Topics a command or a message with no purchase opened (migration 0027);
+-- deleted by the webhook an hour later; holds no message content.
+create table utility_topics (
+  chat_id   bigint      not null,
+  thread_id integer     not null,
+  label     text        not null check (length(label) between 1 and 64),
+  opened_at timestamptz not null default now(),
+  primary key (chat_id, thread_id)
+);
 
 -- Pairs the owner ruled are not duplicates (migration 0021). The nightly
 -- ledger-health tests leave them out; the owner adds one with the SQL in

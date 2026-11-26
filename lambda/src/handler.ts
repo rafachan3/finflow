@@ -24,6 +24,7 @@ import {
   findAwaitingIngestion,
   findDuplicates,
   findFrequentMerchant,
+  findIngestionByThread,
   oldestTransactionDate,
   insertPendingIngestions,
   findMentions,
@@ -35,8 +36,15 @@ import {
   restoreIngestionPending,
   setIngestionAwaitingDate,
   setIngestionAwaitingEdit,
+  setIngestionCardMessage,
+  setIngestionTopic,
+  getIngestion,
+  findSharingIngestion,
+  registerUtilityTopic,
+  takeStaleUtilityTopics,
 } from "./db.js";
 import {
+  alreadyHandled,
   applyDatePolicy,
   dateWarnings,
   duplicateWarnings,
@@ -46,8 +54,8 @@ import {
   MISSING_DATE,
   normalizeTaxonomyNames,
   parseDateReply,
+  topicName,
   validateExtraction,
-  withPosition,
   type CheckResult,
   type Extraction,
   type TaxonomySnapshot,
@@ -74,13 +82,21 @@ import { handleRecurringTap, answerPrompt, parseRecurringTap, savedKeyboard, sen
 import { putReceipt } from "./s3.js";
 import {
   answerCallbackQuery,
+  botUsername,
+  createForumTopic,
   downloadTelegramFile,
+  editForumTopic,
   editMessageReplyMarkup,
   editMessageText,
+  esc,
   largestPhotoFileId,
+  retireTopic,
   reviewKeyboard,
+  savedCardKeyboard,
   sendMessage,
+  topicThread,
   toggleCardSeries,
+  topicLink,
   voiceFileId,
   waitingKeyboard,
 } from "./telegram.js";
@@ -98,6 +114,11 @@ type TelegramMessage = {
   /** Unix seconds. */
   date?: number;
   reply_to_message?: { text?: string; date?: number; from?: { is_bot?: boolean } };
+  /** The topic the message is in; none in the main view or before topics. */
+  message_thread_id?: number;
+  is_topic_message?: boolean;
+  forum_topic_created?: unknown;
+  forum_topic_edited?: unknown;
 };
 type TelegramCallbackQuery = {
   id: string;
@@ -154,10 +175,21 @@ async function busyWaiting(
   botToken: string,
   callbackId: string,
   chatId: number,
+  thread?: number,
 ): Promise<APIGatewayProxyResultV2> {
   await answerCallbackQuery(botToken, callbackId, "Finish the waiting card first.");
-  await sendMessage(botToken, chatId, BUSY_WAITING);
+  await sendMessage(botToken, chatId, BUSY_WAITING, undefined, { thread });
   return ok("ok");
+}
+
+/**
+ * Where the wait just started on `ingestionId` listens: the row's topic, else
+ * the tapped card's. A prompt elsewhere would be answered where the wait does
+ * not hear it.
+ */
+async function waitThread(ingestionId: string, tapped: number | undefined): Promise<number | undefined> {
+  const awaiting = await findAwaitingIngestion();
+  return (awaiting?.id === ingestionId ? awaiting.threadId : null) ?? tapped;
 }
 
 /**
@@ -173,6 +205,12 @@ async function retireCard(botToken: string, chatId: number, messageId: number | 
   } catch (err) {
     console.error("card retire error", err);
   }
+}
+
+/** The reply to a tap or answer that comes too late: which purchase, and where it stands. */
+async function handledAck(ingestionId: string): Promise<string> {
+  const row = await getIngestion(ingestionId);
+  return row ? alreadyHandled(topicName(row.extraction), row.status) : alreadyHandled();
 }
 
 function unauthorized(): APIGatewayProxyResultV2 {
@@ -225,16 +263,55 @@ function previewOffer(extraction: Extraction, checks: { ok: boolean; errors: str
   return { persist: false, confirm: false };
 }
 
+type Awaiting = NonNullable<Awaited<ReturnType<typeof findAwaitingIngestion>>>;
+
+/**
+ * The card of a waiting row after its date or correction, in `thread`, the
+ * topic the answer came in. A row from before topics answered inside a topic
+ * no purchase owns adopts it, so the tidy-up never takes it for a topic with
+ * no purchase; another purchase's topic is never adopted or renamed. The topic
+ * is renamed only when the purchase's name changed; topic calls are best effort.
+ */
+async function sendCorrectedCard(
+  botToken: string,
+  chatId: number,
+  awaiting: Awaiting,
+  extraction: Extraction,
+  checks: CheckResult,
+  thread: number | undefined,
+): Promise<void> {
+  let rename = awaiting.ownTopic && topicName(extraction) !== topicName(awaiting.extraction);
+  if (awaiting.threadId === null && thread !== undefined) {
+    try {
+      if ((await findIngestionByThread(chatId, thread)) === null) {
+        await setIngestionTopic(awaiting.id, thread);
+        rename = true;
+      }
+    } catch (err) {
+      console.error("topic adopt error", err);
+    }
+  }
+  await sendCard(botToken, chatId, awaiting.id, extraction, checks, { thread });
+  if (rename && thread !== undefined) {
+    try {
+      await editForumTopic(botToken, chatId, thread, topicName(extraction));
+    } catch (err) {
+      console.error("topic rename error", err);
+    }
+  }
+}
+
 async function handleAwaitingDate(
   text: string,
   chatId: number,
   botToken: string,
-  awaiting: { id: string; extraction: Extraction },
+  awaiting: Awaiting,
+  thread?: number,
 ): Promise<APIGatewayProxyResultV2> {
   const today = todayToronto();
   const parsed = parseDateReply(text, today);
   if (!parsed) {
-    await sendMessage(botToken, chatId, WAITING_DATE, waitingKeyboard(awaiting.id));
+    await sendMessage(botToken, chatId, WAITING_DATE, waitingKeyboard(awaiting.id), { thread });
     return ok("ok");
   }
 
@@ -251,17 +328,18 @@ async function handleAwaitingDate(
       chatId,
       formatPreview(extraction, checks),
       waitingKeyboard(awaiting.id),
+      { thread },
     );
     return ok("ok");
   }
 
   const applied = await applyIngestionDate(awaiting.id, extraction);
   if (!applied) {
-    await sendMessage(botToken, chatId, "Already handled.");
+    await sendMessage(botToken, chatId, await handledAck(awaiting.id), undefined, { thread });
     return ok("ok");
   }
 
-  await sendCard(botToken, chatId, awaiting.id, extraction, checks);
+  await sendCorrectedCard(botToken, chatId, awaiting, extraction, checks, thread);
   return ok("ok");
 }
 
@@ -269,8 +347,9 @@ async function handleAwaitingEdit(
   text: string,
   chatId: number,
   config: Awaited<ReturnType<typeof getConfig>>,
-  awaiting: { id: string; extraction: Extraction },
+  awaiting: Awaiting,
   from?: string,
+  thread?: number,
 ): Promise<APIGatewayProxyResultV2> {
   try {
     const today = todayToronto();
@@ -291,17 +370,18 @@ async function handleAwaitingEdit(
         chatId,
         formatPreview(extraction, checks),
         waitingKeyboard(awaiting.id),
+        { thread },
       );
       return ok("ok");
     }
 
     const applied = await applyIngestionEdit(awaiting.id, extraction);
     if (!applied) {
-      await sendMessage(config.botToken, chatId, "Already handled.");
+      await sendMessage(config.botToken, chatId, await handledAck(awaiting.id), undefined, { thread });
       return ok("ok");
     }
 
-    await sendCard(config.botToken, chatId, awaiting.id, extraction, checks);
+    await sendCorrectedCard(config.botToken, chatId, awaiting, extraction, checks, thread);
     return ok("ok");
   } catch (err) {
     console.error("edit extract error", err);
@@ -310,6 +390,7 @@ async function handleAwaitingEdit(
       chatId,
       failureReply(err, "Couldn't apply that. Try again."),
       waitingKeyboard(awaiting.id),
+      { thread },
     );
     return ok("ok");
   }
@@ -319,8 +400,9 @@ async function handleAwaitingEdit(
 async function handleAwaitingVoiceEdit(
   message: NonNullable<TelegramUpdate["message"]>,
   config: Awaited<ReturnType<typeof getConfig>>,
-  awaiting: { id: string; extraction: Extraction },
+  awaiting: Awaiting,
 ): Promise<APIGatewayProxyResultV2> {
+  const thread = topicThread(message);
   let text: string;
   let model: string;
   try {
@@ -340,6 +422,7 @@ async function handleAwaitingVoiceEdit(
         message.chat.id,
         "That voice note took too long to read. Try again, or type the correction.",
         waitingKeyboard(awaiting.id),
+        { thread },
       );
       return ok("ok");
     }
@@ -350,24 +433,29 @@ async function handleAwaitingVoiceEdit(
       message.chat.id,
       failureReply(err, "Couldn't read that voice note. Try again."),
       waitingKeyboard(awaiting.id),
+      { thread },
     );
     return ok("ok");
   }
   if (!text) {
-    await sendMessage(config.botToken, message.chat.id, WAITING_EDIT, waitingKeyboard(awaiting.id));
+    await sendMessage(config.botToken, message.chat.id, WAITING_EDIT, waitingKeyboard(awaiting.id), { thread });
     return ok("ok");
   }
-  return await handleAwaitingEdit(text, message.chat.id, config, awaiting, model);
+  return await handleAwaitingEdit(text, message.chat.id, config, awaiting, model, thread);
 }
 
-/** A saved row's card: the preview, any implausible-date or likely-duplicate warning, any merchant hint, and the buttons its checks allow. */
+/**
+ * A saved row's card: the preview, any implausible-date or likely-duplicate
+ * warning, any merchant hint, and the buttons its checks allow. Sent in
+ * `thread` when given; the row records the card's message id.
+ */
 async function sendCard(
   botToken: string,
   chatId: number,
   ingestionId: string,
   extraction: Extraction,
   checks: CheckResult,
-  position?: { index: number; count: number },
+  opts: { position?: { index: number; count: number }; thread?: number } = {},
 ): Promise<void> {
   const { confirm } = previewOffer(extraction, checks);
   let duplicates: string[] = [];
@@ -403,46 +491,117 @@ async function sendCard(
   }
   // A warning or hint only adds a line; Confirm still follows the checks alone.
   const shown = { ...checks, warnings: [...checks.warnings, ...dates, ...duplicates] };
-  await sendMessage(
+  const messageId = await sendMessage(
     botToken,
     chatId,
-    formatPreview(extraction, shown, position, hint, series ?? undefined),
+    formatPreview(extraction, shown, opts.position, hint, series ?? undefined),
     reviewKeyboard(ingestionId, { confirm, series: series ?? undefined }),
+    { thread: opts.thread },
   );
+  if (messageId === undefined) return;
+  try {
+    await setIngestionCardMessage(ingestionId, messageId);
+  } catch (err) {
+    // The card is out; without its id only a later topic lookup misses it.
+    console.error("card id store error", err);
+  }
 }
 
 /**
- * Resends every open card of the chat: a pending row as its Confirm card, a
- * waiting row as its date/correction prompt (Keep as is / Discard). Does not
- * flip awaiting → pending; that is Keep as is alone.
+ * A new topic for a further purchase of one message, opened by a line that
+ * links back to the message's topic. Undefined when Telegram refuses the topic.
  */
-async function resendPendingCards(chatId: number, botToken: string): Promise<void> {
+async function openPurchaseTopic(
+  botToken: string,
+  chatId: number,
+  extraction: Extraction,
+  messageThread: number,
+): Promise<number | undefined> {
+  let thread: number;
+  try {
+    thread = await createForumTopic(botToken, chatId, topicName(extraction));
+  } catch (err) {
+    console.error("topic create error", err);
+    return undefined;
+  }
+  try {
+    const link = topicLink(await botUsername(botToken), messageThread);
+    await sendMessage(botToken, chatId, `↩️ <a href="${link}">From your message</a>`, undefined, {
+      html: true,
+      silent: true,
+      thread,
+    });
+  } catch (err) {
+    console.error("topic link error", err);
+  }
+  return thread;
+}
+
+const WAITING_SUFFIX: Record<string, string> = {
+  awaiting_date: " (waiting for a date)",
+  awaiting_edit: " (waiting for a correction)",
+};
+
+/**
+ * Lists the chat's open purchases, oldest first, each linked to its topic, in
+ * the command's topic. A row with no topic of its own (from before topics, or
+ * sharing another purchase's) gets one, and its old card's buttons go; a row
+ * whose card never arrived gets it again in its topic. A pending row's card is
+ * its Confirm card, a waiting row's its date/correction prompt; the wait is
+ * unchanged. No card goes to the command's topic: the tidy-up deletes it.
+ */
+async function listOpenPurchases(chatId: number, botToken: string, thread?: number): Promise<void> {
   const rows = await listPendingIngestions(chatId);
   if (rows.length === 0) {
-    await sendMessage(botToken, chatId, NOTHING_PENDING);
+    await sendMessage(botToken, chatId, NOTHING_PENDING, undefined, { thread });
     return;
   }
   const taxonomy = await loadTaxonomy();
+  let username: string | undefined;
+  try {
+    username = await botUsername(botToken);
+  } catch (err) {
+    console.error("bot username error", err);
+  }
+  const lines: string[] = [];
   for (const row of rows) {
+    const name = topicName(row.extraction);
+    let own = row.threadId ?? undefined;
     try {
-      if (row.status === "awaiting_date") {
-        await sendMessage(botToken, chatId, ASK_DATE, waitingKeyboard(row.id));
-      } else if (row.status === "awaiting_edit") {
-        await sendMessage(botToken, chatId, ASK_EDIT, waitingKeyboard(row.id));
-      } else {
-        await sendCard(
-          botToken,
-          chatId,
-          row.id,
-          row.extraction,
-          validateExtraction(row.extraction, taxonomy),
-        );
+      if (own === undefined) {
+        // Cleared before the topic is stored, so any step failing below leaves the
+        // thread or the card null and the next /pending resends the card.
+        await setIngestionCardMessage(row.id, null);
+        try {
+          const created = await createForumTopic(botToken, chatId, name);
+          await setIngestionTopic(row.id, created);
+          own = created;
+        } catch (err) {
+          // The main view is never tidied away, so the card stays reachable there.
+          console.error("topic create error", err);
+        }
+        // A waiting row's card already lost its buttons when the wait began.
+        if (row.status === "pending") await retireCard(botToken, chatId, row.cardMessageId ?? undefined);
+      }
+      if (row.threadId === null || row.cardMessageId === null) {
+        if (row.status === "awaiting_date") {
+          await sendMessage(botToken, chatId, ASK_DATE, waitingKeyboard(row.id), { thread: own });
+        } else if (row.status === "awaiting_edit") {
+          await sendMessage(botToken, chatId, ASK_EDIT, waitingKeyboard(row.id), { thread: own });
+        } else {
+          await sendCard(botToken, chatId, row.id, row.extraction, validateExtraction(row.extraction, taxonomy), {
+            thread: own,
+          });
+        }
       }
     } catch (err) {
       // One bad card must not hide the rest; /pending again retries it.
       console.error("card send error", err);
     }
+    const label = own !== undefined && username ? `<a href="${topicLink(username, own)}">${esc(name)}</a>` : esc(name);
+    lines.push(`• ${label}${WAITING_SUFFIX[row.status] ?? ""}`);
   }
+  await sendMessage(botToken, chatId, ["Open purchases:", ...lines].join("\n"), undefined, { html: true, thread });
 }
 
 /** Sends one page of the mention review; false when there is nothing to offer. */
@@ -451,11 +610,12 @@ async function offerMentions(
   chatId: number,
   merchantId: number,
   after: string | null,
+  thread?: number,
 ): Promise<boolean> {
   const found = await findMentions(merchantId, after);
   if (!found || found.rows.length === 0) return false;
   const { text, keyboard } = mentionsMessage(merchantId, found.name, found, after !== null);
-  await sendMessage(botToken, chatId, text, { inline_keyboard: keyboard });
+  await sendMessage(botToken, chatId, text, { inline_keyboard: keyboard }, { thread });
   return true;
 }
 
@@ -486,8 +646,9 @@ async function handleMentionTap(
   } else if (tap.kind === "more") {
     await answerCallbackQuery(botToken, cb.id);
     await editMessageReplyMarkup(botToken, chatId, messageId, { inline_keyboard: withoutMore(keyboard) });
-    if (!(await offerMentions(botToken, chatId, tap.merchantId, tap.after))) {
-      await sendMessage(botToken, chatId, NO_MORE);
+    const thread = topicThread(cb.message!);
+    if (!(await offerMentions(botToken, chatId, tap.merchantId, tap.after, thread))) {
+      await sendMessage(botToken, chatId, NO_MORE, undefined, { thread });
     }
   } else {
     const picked = ticked(keyboard);
@@ -511,37 +672,37 @@ async function handleMentionTap(
   return ok("ok");
 }
 
-type CommandContext = { chatId: number; botToken: string; args: string };
+type CommandContext = { chatId: number; botToken: string; args: string; thread?: number };
 
 /** What each slash command does; the type makes a command with no entry here a compile error. */
 const RUN: Record<CommandName, (c: CommandContext) => Promise<void>> = {
-  pending: ({ chatId, botToken }) => resendPendingCards(chatId, botToken),
-  merchants: async ({ chatId, botToken }) => {
-    await sendMessage(botToken, chatId, formatMerchants(await listMerchants()));
+  pending: ({ chatId, botToken, thread }) => listOpenPurchases(chatId, botToken, thread),
+  merchants: async ({ chatId, botToken, thread }) => {
+    await sendMessage(botToken, chatId, formatMerchants(await listMerchants()), undefined, { thread });
   },
   // The typed command is the confirmation for the merchant and its exact-name links;
   // a row that only mentions it waits for the owner's pick in the review.
-  addmerchant: async ({ chatId, botToken, args }) => {
+  addmerchant: async ({ chatId, botToken, args, thread }) => {
     const clean = cleanMerchantName(args);
     if ("error" in clean) {
-      await sendMessage(botToken, chatId, clean.error);
+      await sendMessage(botToken, chatId, clean.error, undefined, { thread });
       return;
     }
     const result = await addMerchant(clean.name);
-    await sendMessage(botToken, chatId, addReply(result));
+    await sendMessage(botToken, chatId, addReply(result), undefined, { thread });
     // The reply is sent: a failed offer must not 500, or Telegram resends the command.
     try {
-      await offerMentions(botToken, chatId, result.id, null);
+      await offerMentions(botToken, chatId, result.id, null, thread);
     } catch (err) {
       console.error("mention offer error", err);
     }
   },
-  delmerchant: async ({ chatId, botToken, args }) => {
+  delmerchant: async ({ chatId, botToken, args, thread }) => {
     const name = collapseSpaces(args);
     const reply = name === "" ? DELETE_USAGE : deleteReply(await deleteMerchant(name), name);
-    await sendMessage(botToken, chatId, reply);
+    await sendMessage(botToken, chatId, reply, undefined, { thread });
   },
-  recurring: ({ chatId, botToken }) => sendRecurringList(botToken, chatId, todayToronto()),
+  recurring: ({ chatId, botToken, thread }) => sendRecurringList(botToken, chatId, todayToronto(), thread),
 };
 
 /** Check, persist, and present every event of one message, in order. */
@@ -590,14 +751,45 @@ async function offerEvents(args: {
     persisted.forEach((o, k) => savedIds.set(o, inserted[k].id));
   }
 
+  // One topic holds one purchase. The first saved one keeps the topic the
+  // message is in, unless an earlier purchase owns it (this update's rows have
+  // no thread yet); every other one gets a topic of its own.
+  const botToken = args.config.botToken;
+  const messageThread = topicThread(args.update.message!);
+  let keepThread = false;
+  if (messageThread !== undefined && persisted.length > 0) {
+    try {
+      keepThread = (await findIngestionByThread(chatId, messageThread)) === null;
+    } catch (err) {
+      console.error("topic owner lookup error", err);
+    }
+  }
+
   for (const [index, o] of offers.entries()) {
     const position = { index, count: offers.length };
     const savedId = savedIds.get(o);
     try {
-      if (savedId) {
-        await sendCard(args.config.botToken, chatId, savedId, o.extraction, o.checks, position);
+      if (!savedId) {
+        await sendMessage(botToken, chatId, formatPreview(o.extraction, o.checks, position), undefined, {
+          thread: messageThread,
+        });
+      } else if (messageThread === undefined) {
+        await sendCard(botToken, chatId, savedId, o.extraction, o.checks, { position });
+      } else if (keepThread) {
+        keepThread = false;
+        await setIngestionTopic(savedId, messageThread);
+        await sendCard(botToken, chatId, savedId, o.extraction, o.checks, { position, thread: messageThread });
+        try {
+          await editForumTopic(botToken, chatId, messageThread, topicName(o.extraction));
+        } catch (err) {
+          console.error("topic rename error", err);
+        }
       } else {
-        await sendMessage(args.config.botToken, chatId, formatPreview(o.extraction, o.checks, position));
+        // A refused topic leaves the card in the message's topic, and the row
+        // with no thread: that topic stays its first purchase's alone.
+        const thread = await openPurchaseTopic(botToken, chatId, o.extraction, messageThread);
+        if (thread !== undefined) await setIngestionTopic(savedId, thread);
+        await sendCard(botToken, chatId, savedId, o.extraction, o.checks, { position, thread: thread ?? messageThread });
       }
     } catch (err) {
       // Rows are saved: a "Couldn't parse" reply would make the owner resend and duplicate them.
@@ -638,6 +830,8 @@ async function handlePhoto(
       config.botToken,
       message.chat.id,
       failureReply(err, "Couldn't read that receipt. Try again."),
+      undefined,
+      { thread: topicThread(message) },
     );
     return ok("ok");
   }
@@ -673,6 +867,8 @@ async function handleVoice(
       config.botToken,
       message.chat.id,
       failureReply(err, "Couldn't parse that voice note. Try again."),
+      undefined,
+      { thread: topicThread(message) },
     );
     return ok("ok");
   }
@@ -686,14 +882,20 @@ async function handleMessage(
   if (!config.allowedChatIds.has(message.chat.id)) {
     return ok("ignored");
   }
+  // Telegram's notice of a topic opened or renamed is not the owner's message.
+  if (message.forum_topic_created || message.forum_topic_edited) {
+    return ok("ignored");
+  }
 
   // Before the wait: a command is never a date or a correction to send to Gemini.
+  const thread = topicThread(message);
   const command = parseCommand(message.text);
   if (command) {
     await RUN[command.name]({
       chatId: message.chat.id,
       botToken: config.botToken,
       args: command.args,
+      thread,
     });
     return ok("ok");
   }
@@ -705,7 +907,10 @@ async function handleMessage(
     return ok("ok");
   }
 
-  const awaiting = await findAwaitingIngestion();
+  // A wait listens only in its own topic; elsewhere a message is a new purchase.
+  // A row from before topics has none and takes the next message, as before.
+  const found = await findAwaitingIngestion();
+  const awaiting = found && (found.threadId === null || found.threadId === thread) ? found : null;
   if (awaiting) {
     const waiting =
       awaiting.status === "awaiting_edit" ? WAITING_EDIT : WAITING_DATE;
@@ -719,6 +924,7 @@ async function handleMessage(
         message.chat.id,
         waiting,
         waitingKeyboard(awaiting.id),
+        { thread },
       );
       return ok("ok");
     }
@@ -728,6 +934,8 @@ async function handleMessage(
         message.chat.id,
         config,
         awaiting,
+        undefined,
+        thread,
       );
     }
     return await handleAwaitingDate(
@@ -735,6 +943,7 @@ async function handleMessage(
       message.chat.id,
       config.botToken,
       awaiting,
+      thread,
     );
   }
 
@@ -764,6 +973,8 @@ async function handleMessage(
       config.botToken,
       message.chat.id,
       failureReply(err, "Couldn't parse that. Try again in a sentence."),
+      undefined,
+      { thread: topicThread(message) },
     );
     return ok("ok");
   }
@@ -780,6 +991,7 @@ async function handleCallback(
     return ok("ignored");
   }
 
+  const thread = topicThread(cb.message!);
   const review = parseMentionTap(cb.data);
   if (review) return handleMentionTap(cb, review, chatId, botToken);
 
@@ -792,6 +1004,7 @@ async function handleCallback(
     keyboard: cb.message?.reply_markup?.inline_keyboard ?? [],
     text: cb.message?.text,
     today,
+    thread,
   });
   // The scheduled digest's buttons: the nudge function sends it, but every tap reaches this webhook.
   const digest = parseDigestTap(cb.data);
@@ -828,50 +1041,70 @@ async function handleCallback(
   const ingestionId = match[2];
 
   let ack: string;
-  let ackButtons: object | undefined;
   if (action === "c" || withSeries) {
     const series = withSeries ? { id: Number(withSeries[3]), link: action === "cr" } : undefined;
     const result = await confirmIngestion(ingestionId, series);
     if (result === "already_handled") {
-      ack = "Already handled.";
+      ack = await handledAck(ingestionId);
     } else {
-      ack = `${withPosition("Saved.", cb.message?.text)}${result.seriesGone ? ` ${SERIES_GONE}` : ""}`;
-      // After the save, so it adds no step: one tap adds it to the series it
-      // fits by timing and amount, or opens /recurring's add flow on it.
-      if (result.looksRecurring) {
-        ackButtons = { inline_keyboard: await savedKeyboard(result.transactionId) };
+      const row = (await getIngestion(ingestionId))!;
+      const gone = result.seriesGone ? ` ${SERIES_GONE}` : "";
+      await answerCallbackQuery(botToken, cb.id, `Saved: ${topicName(row.extraction)}.${gone}`);
+      // The purchase is already saved, so a refused edit must not skip the rest or make Telegram resend the tap.
+      try {
+        await editMessageReplyMarkup(botToken, chatId, cb.message!.message_id!, savedCardKeyboard());
+      } catch (err) {
+        console.error("saved card edit error", err);
       }
+      // Only the purchase's own topic: a card from before topics, or one sharing another purchase's topic, renames none.
+      if (row.threadId !== null) {
+        try {
+          await editForumTopic(botToken, chatId, row.threadId, topicName(row.extraction, "✅ "));
+        } catch (err) {
+          console.error("saved topic rename failed", err);
+        }
+      }
+      // A message only when there is something to act on. It is not the card,
+      // because the recurring add flow redraws the message its buttons are on.
+      if (result.looksRecurring || result.seriesGone) {
+        // After the save, so it adds no step: one tap adds it to the series it
+        // fits by timing and amount, or opens /recurring's add flow on it.
+        const buttons = result.looksRecurring ? { inline_keyboard: await savedKeyboard(result.transactionId) } : undefined;
+        await sendMessage(botToken, chatId, `Saved.${gone}`, buttons, { thread: row.threadId ?? thread });
+      }
+      return ok("ok");
     }
   } else if (action === "f") {
     const started = await setIngestionAwaitingDate(ingestionId);
-    if (started === "busy") return busyWaiting(botToken, cb.id, chatId);
-    ack = started === "started" ? "Send the date." : "Already handled.";
+    if (started === "busy") return busyWaiting(botToken, cb.id, chatId, thread);
+    ack = started === "started" ? "Send the date." : await handledAck(ingestionId);
     await answerCallbackQuery(botToken, cb.id, ack);
     if (started === "started") {
       await retireCard(botToken, chatId, cb.message?.message_id);
-      await sendMessage(botToken, chatId, ASK_DATE, waitingKeyboard(ingestionId));
+      await sendMessage(botToken, chatId, ASK_DATE, waitingKeyboard(ingestionId), { thread: await waitThread(ingestionId, thread) });
     } else {
-      await sendMessage(botToken, chatId, ack);
+      await sendMessage(botToken, chatId, ack, undefined, { thread });
     }
     return ok("ok");
   } else if (action === "e") {
     const started = await setIngestionAwaitingEdit(ingestionId);
-    if (started === "busy") return busyWaiting(botToken, cb.id, chatId);
-    ack = started === "started" ? "Send the correction." : "Already handled.";
+    if (started === "busy") return busyWaiting(botToken, cb.id, chatId, thread);
+    ack = started === "started" ? "Send the correction." : await handledAck(ingestionId);
     await answerCallbackQuery(botToken, cb.id, ack);
     if (started === "started") {
       await retireCard(botToken, chatId, cb.message?.message_id);
-      await sendMessage(botToken, chatId, ASK_EDIT, waitingKeyboard(ingestionId));
+      await sendMessage(botToken, chatId, ASK_EDIT, waitingKeyboard(ingestionId), { thread: await waitThread(ingestionId, thread) });
     } else {
-      await sendMessage(botToken, chatId, ack);
+      await sendMessage(botToken, chatId, ack, undefined, { thread });
     }
     return ok("ok");
   } else if (action === "k") {
     // Keep as is: leave the wait, resend the Confirm card as stored. No Gemini.
     const restored = await restoreIngestionPending(ingestionId);
     if (!restored) {
-      await answerCallbackQuery(botToken, cb.id, "Already handled.");
-      await sendMessage(botToken, chatId, "Already handled.");
+      ack = await handledAck(ingestionId);
+      await answerCallbackQuery(botToken, cb.id, ack);
+      await sendMessage(botToken, chatId, ack, undefined, { thread });
       return ok("ok");
     }
     await answerCallbackQuery(botToken, cb.id, "Kept as is.");
@@ -883,16 +1116,88 @@ async function handleCallback(
       restored.id,
       restored.extraction,
       validateExtraction(restored.extraction, taxonomy),
+      { thread: restored.threadId ?? thread },
     );
     return ok("ok");
   } else {
     const result = await discardIngestion(ingestionId);
-    ack = result === "discarded" ? withPosition("Discarded.", cb.message?.text) : "Already handled.";
+    if (result === "discarded") {
+      const row = (await getIngestion(ingestionId))!;
+      ack = `Discarded: ${topicName(row.extraction)}.`;
+      await answerCallbackQuery(botToken, cb.id, ack);
+      // Only the purchase's own topic goes: a card from before topics, or one
+      // sharing another purchase's topic, has no thread and deletes nothing.
+      if (row.threadId === null) {
+        await sendMessage(botToken, chatId, ack, undefined, { thread });
+        return ok("ok");
+      }
+      // A card whose own topic was refused sits here, maybe with its wait
+      // prompt: the topic becomes that purchase's instead of going.
+      const sharing = await findSharingIngestion(chatId, row.threadId);
+      if (sharing) {
+        await setIngestionTopic(sharing.id, row.threadId);
+        try {
+          await editForumTopic(botToken, chatId, row.threadId, topicName(sharing.extraction));
+        } catch (err) {
+          console.error("topic hand-over rename error", err);
+        }
+        await retireCard(botToken, chatId, cb.message?.message_id);
+      } else if ((await retireTopic(botToken, chatId, row.threadId, topicName(row.extraction, "🗑 "))) !== "deleted") {
+        await retireCard(botToken, chatId, cb.message?.message_id);
+      }
+      return ok("ok");
+    }
+    ack = await handledAck(ingestionId);
   }
 
   await answerCallbackQuery(botToken, cb.id, ack);
-  await sendMessage(botToken, chatId, ack, ackButtons);
+  await sendMessage(botToken, chatId, ack, undefined, { thread });
   return ok("ok");
+}
+
+/**
+ * How long a command's or a no-purchase message's topic stays after the owner's
+ * last message in it. No timer deletes it: the Lambda has no scheduler of its
+ * own, the nudge's daily run has no business with topics, and a new schedule
+ * is new infra. The owner messages daily, so the next message is the clock.
+ */
+const UTILITY_TOPIC_TTL_SECONDS = 60 * 60;
+
+/** The owner's own message, not a stranger's or Telegram's topic notice: only these tidy topics. */
+function tidiesTopics(message: TelegramMessage, allowedChatIds: Set<number>): boolean {
+  return allowedChatIds.has(message.chat.id) && !message.forum_topic_created && !message.forum_topic_edited;
+}
+
+/**
+ * Before the reply: a topic no purchase owns yet is noted for tidying, and a
+ * message in one restarts its hour. A purchase the message brings takes the
+ * topic over and drops the note. Best effort: it never changes the reply.
+ */
+async function noteUtilityTopic(message: TelegramMessage): Promise<void> {
+  const thread = topicThread(message);
+  if (thread === undefined) return;
+  try {
+    if ((await findIngestionByThread(message.chat.id, thread)) === null) {
+      const command = parseCommand(message.text);
+      await registerUtilityTopic(message.chat.id, thread, command ? `/${command.name}` : "No purchase");
+    }
+  } catch (err) {
+    console.error("topic note error", err);
+  }
+}
+
+/**
+ * After the reply: deletes the noted topics past their hour, renamed ⚙️ when
+ * Telegram refuses and never tried again. Best effort: it never changes the reply.
+ */
+async function sweepUtilityTopics(botToken: string, chatId: number): Promise<void> {
+  try {
+    for (const stale of await takeStaleUtilityTopics(chatId, UTILITY_TOPIC_TTL_SECONDS)) {
+      await retireTopic(botToken, chatId, stale.threadId, `⚙️ ${stale.label}`);
+    }
+  } catch (err) {
+    console.error("topic sweep error", err);
+  }
 }
 
 export async function handler(
@@ -908,7 +1213,12 @@ export async function handler(
     const update = parseUpdate(event);
 
     if (update.message) {
-      return await handleMessage(update, config);
+      const tidy = tidiesTopics(update.message, config.allowedChatIds);
+      // Noted before the reply, so another invocation's sweep never takes a topic in use.
+      if (tidy) await noteUtilityTopic(update.message);
+      const response = await handleMessage(update, config);
+      if (tidy) await sweepUtilityTopics(config.botToken, update.message.chat.id);
+      return response;
     }
 
     if (update.callback_query) {

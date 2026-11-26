@@ -4,7 +4,7 @@
  * workflow registers the same table as the command menu.
  */
 export const COMMANDS = {
-  pending: "Resend open cards, including ones waiting for a date or edit",
+  pending: "List open purchases, each linked to its topic",
   merchants: "List merchants",
   addmerchant: "Add a merchant: /addmerchant Name",
   delmerchant: "Delete a merchant: /delmerchant Name",

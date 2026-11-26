@@ -116,8 +116,9 @@ describe("a note about one line or the whole purchase", () => {
     );
 
     await chat.text("/pending");
-    expect(noteLines(chat.last().text)).toEqual(["Note: we left before sunrise"]);
-    await chat.tap(chat.last(), "Confirm");
+    const [card] = chat.replies().slice(-2);
+    expect(noteLines(card.text)).toEqual(["Note: we left before sunrise"]);
+    await chat.tap(card, "Confirm");
     expect((await ledger.lineNotes()).map((l) => l.note)).toEqual([null, null, null]);
   });
 });

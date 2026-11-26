@@ -54,7 +54,8 @@ describe("frequent merchant hint", () => {
     // A card resent by /pending carries the same hint.
     const before = chat.replies().length;
     await chat.text("/pending");
-    expect(chat.replies().slice(before).map((r) => hints(r.text))).toEqual([[HINT]]);
+    // The list of open purchases comes after the card.
+    expect(chat.replies().slice(before, -1).map((r) => hints(r.text))).toEqual([[HINT]]);
   });
 
   it("two saved purchases are not enough", async () => {
