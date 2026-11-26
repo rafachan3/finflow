@@ -313,19 +313,19 @@ runs every case live with the model chain rotated per case, reports each
 429's `quotaValue`, and keeps one `eval-nightly` issue open while it fails.
 
 `/pending` (#29; DECISIONS.md 2026-10-28): the owner sends `/pending`
-and the bot resends the card of every row of that chat still `pending`,
-oldest first, with the buttons its checks allow today; with none it
-replies "No pending cards.". It asks Gemini nothing and runs before the
-date/correction wait, so it cannot be taken as a date or a correction.
-A card that fails to resend is logged and the rest still go out. This
-covers a card whose send failed after its row was saved. It is one entry
-of the command table now, and so in the command menu (below).
+and the bot lists a link to each open purchase's topic, oldest first,
+resending only a card that has no topic of its own or never arrived (see
+Telegram topics, Stage 1 below); with none it replies "No pending cards.".
+It asks Gemini nothing and runs before the date/correction wait, so it
+cannot be taken as a date or a correction. It is one entry of the command
+table, and so in the command menu (below).
 
 Acks name the purchase (#30; DECISIONS.md 2026-10-28, superseded
 2026-11-25): the toast and the chat message for Confirm and Discard name the
 purchase, `Saved: Merchant · $amount.` and `Discarded: Merchant · $amount.`,
 so two cards of one message are told apart without a position. The earlier
-"(k of n)" batch position is gone. "Already handled." is unchanged. A single
+"(k of n)" batch position is gone. "Already handled." names the purchase and
+where it stands, plain `Already handled.` only for an unknown row. A single
 card, and one resent by `/pending`, get the same wording.
 
 Tax and tip (#31, #60; DECISIONS.md 2026-10-29, 2026-11-07): an expense's
@@ -712,13 +712,23 @@ Known ceiling: the album auto-topic race is unverified live. The handler does
 no `media_group` handling, so two invocations of one album could both keep
 the same thread.
 
-Owner note for the deploy: a card from before topics that is waiting for an
-Edit will take the next main-view purchase as its correction. Finish such
-cards before topic mode goes live, or tap Keep as is.
+Owner notes for the deploy:
+- A card from before topics that is waiting for a date or an Edit takes the
+  next main-view message as its answer, so a purchase sent then is not
+  logged. Finish such cards before topic mode goes live, or tap Keep as is.
+- Cards sent before the deploy have no stored card id, so `/pending` cannot
+  take their buttons away and sends a second live card in the new topic. Tap
+  either one; the other then answers `Already handled: …`.
 
 Still open from the research: the maximum number of topics and deleting a
 topic older than 48 hours (both unverified); a cross-topic quote is not
 shown, so the link-back is a plain link.
+
+Known limit: if the owner deletes a purchase topic by hand, Telegram
+probably does not tell the bot. The row keeps its thread and card id, so
+`/pending` lists a dead link and never resends the card; the purchase stays
+`pending` and still counts as a duplicate-check match. A later stage could
+clear the thread when a send fails with `message thread not found`.
 
 Next: Stage 2 (Variant A rich card), then Stage 3 (a text in a purchase topic
 becomes a correction; `findIngestionByThread` and `ingestions.card_message_id`

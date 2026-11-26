@@ -3878,8 +3878,7 @@ Confirm no longer posts a `Saved.` message. The card's buttons become one
 names the purchase.
 
 - **Toast:** `Saved: Merchant · $amount.` instead of `Saved. (k of n)`;
-  the name already tells two cards of one message apart. Discard keeps its
-  `(k of n)` until it is reworked too.
+  the name already tells two cards of one message apart.
 - **The button:** `disabled` with no `callback_data`. With callback_data
   Telegram does not show it disabled; without it a tap sends nothing, so no
   handler is needed (live check of 2026-11-25).
@@ -3932,4 +3931,6 @@ own topic, and `/pending` resends cards with no label.
   in the toast and, where one is sent, the chat message. The name already
   tells two cards of one message apart.
 - **Gone:** `withPosition` and the read-back from the card's first line.
-- **Unchanged:** "Already handled." carries no name.
+- **Already handled:** names the purchase and where it stands
+  (`Already handled: Merchant · $amount was saved.`); a plain
+  `Already handled.` only for an unknown row.
