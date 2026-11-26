@@ -1170,6 +1170,8 @@ and `/pending` covers the gap.
 
 ## 2026-10-28 — Batch position in Confirm/Discard acks (#30)
 
+Superseded 2026-11-25: see "Acks name the purchase".
+
 - **Source of truth.** `withPosition` reads the " (k of n)" off the first
   line of the tapped card (`callback_query.message.text`) instead of storing
   `n`: only `event_index` is persisted, and `n` also counts offers that were
@@ -3919,3 +3921,15 @@ owner message an hour or more after the owner's last message in it.
   message.
 - **Ruled out:** an EventBridge schedule or a timer; tidying from the
   nudge run now; retrying a refused delete.
+
+## 2026-11-25: Acks name the purchase, not its position in the batch
+
+Supersedes 2026-10-28 (Batch position in Confirm/Discard acks, #30). With one
+topic per purchase the " (k of n)" label no longer fits: a card sits in its
+own topic, and `/pending` resends cards with no label.
+
+- **Wording:** `Saved: Merchant · $amount.` and `Discarded: Merchant · $amount.`
+  in the toast and, where one is sent, the chat message. The name already
+  tells two cards of one message apart.
+- **Gone:** `withPosition` and the read-back from the card's first line.
+- **Unchanged:** "Already handled." carries no name.
