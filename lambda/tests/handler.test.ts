@@ -32,6 +32,7 @@ vi.mock("../src/gemini.js", () => ({
   extractFromPhoto: vi.fn(),
   extractFromVoice: vi.fn(),
   patchExtraction: vi.fn(),
+  geminiDeadline: { at: Number.POSITIVE_INFINITY },
 }));
 vi.mock("../src/telegram.js", async (importActual) => ({
   topicThread: (await importActual<typeof import("../src/telegram.js")>()).topicThread,

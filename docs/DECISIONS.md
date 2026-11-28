@@ -3951,3 +3951,31 @@ string, so the card showed $0 with Confirm, and every Confirm hit
   are never negative lines: whole-order discounts are positive amounts in
   `discounts`, and the schema forbids a line at or below zero. Only a `0.00` can
   pass the two-decimal check, since the format has no sign.
+
+---
+
+## 2026-11-27: Gemini calls give up before the Lambda's deadline; the timeout stays 60 s
+
+A Gemini fetch had no timeout. On 2026-11-26 a hung request ran the ingest
+Lambda into its 60 s timeout 11 times; Telegram redelivered each one with
+backoff while holding the chat's later updates, so cards came ~10 min late
+and one redelivered correction, read after its card was discarded, became a
+new purchase.
+
+- **Deadline:** the handler sets `geminiDeadline` to the Lambda's remaining
+  time less 5 s (`REPLY_MARGIN_MS`, for the save and the reply, under 3 s that
+  day). Each attempt in `generateJson` aborts at it.
+- **Failover:** every model but the last stops 10 s early
+  (`LAST_MODEL_RESERVE_MS`), so a hang still leaves Flash-Lite, ~4 s that day,
+  time to answer; a model with no time left is skipped. The chain and the 2 s
+  waits are unchanged. Cost: a healthy first read is cut at ~45 s (reads that
+  day took 36-44 s; one Edit patch took 53 s and now falls to Flash-Lite).
+- **Out of time:** the existing overload reply, nothing saved, an Edit's wait
+  kept, and a 200, so Telegram does not redeliver.
+- **Timeout stays 60 s.** The Bot API server's webhook connection waits about
+  60 s (tdlib/telegram-bot-api `WebhookActor`, HTTP idle timeout 60; it never
+  redelivered a 55 s answer that day), so a longer Lambda would only let
+  Telegram resend an update that is still being handled.
+- **Ruled out:** raising the Lambda timeout to 90-120 s; an equal split of the
+  time between models (it would cut most healthy reads short); a new "took too long"
+  wording.
