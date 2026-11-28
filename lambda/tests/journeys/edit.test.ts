@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
-import { clock, GEMINI_FALLBACK_MODEL, GEMINI_MODEL, REASK_BUDGET_MS } from "../../src/gemini.js";
+import { clock, GEMINI_FALLBACK_MODEL, GEMINI_LITE_MODEL, GEMINI_MODEL, REASK_BUDGET_MS } from "../../src/gemini.js";
 import { golden } from "../golden/golden.js";
 import { sql } from "../integration/db-helpers.js";
-import { chat, gemini, labels, ledger, useJourneys } from "./harness.js";
+import { chat, gemini, labels, ledger, useJourneys, whileGeminiHangs } from "./harness.js";
 
 vi.mock("../../src/config.js", async () => {
   const { journeyConfig } = await import("./harness.js");
@@ -38,6 +38,29 @@ describe("correcting a card with Edit", () => {
     expect(await ledger.transactions()).toMatchObject([
       { amount: "14.50", date: "2026-10-25", notes: "I was too tired and didn't pack my lunch." },
     ]);
+  });
+
+  it("a correction Gemini never answers keeps the card waiting, and the bot says so before the Lambda's deadline", async () => {
+    const card = await lunchCard();
+    await chat.tap(card, "Edit");
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    try {
+      gemini.hang = new Set([GEMINI_MODEL, GEMINI_FALLBACK_MODEL, GEMINI_LITE_MODEL]);
+      const sent = Date.now();
+      const answer = await whileGeminiHangs(chat.text("it was 14.50"));
+
+      expect(answer.statusCode).toBe(200);
+      expect(Date.now() - sent).toBeLessThan(60_000);
+      expect(chat.last().text).toBe("Gemini is overloaded right now. Send it again in a minute.");
+      expect(labels(chat.last())).toEqual(["Keep as is", "Discard"]);
+    } finally {
+      vi.useRealTimers();
+    }
+
+    gemini.hang = new Set();
+    gemini.patch = golden("edit-amount").recorded;
+    await chat.text("it was 14.50");
+    expect(chat.last().text.split("\n")[0]).toBe("Expense · 2026-10-25 · CAD 14.50");
   });
 
   it("an Edit can say the order went through an app, and another that it did not, and Confirm saves no channel", async () => {

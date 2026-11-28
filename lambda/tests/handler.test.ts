@@ -32,6 +32,8 @@ vi.mock("../src/gemini.js", () => ({
   extractFromPhoto: vi.fn(),
   extractFromVoice: vi.fn(),
   patchExtraction: vi.fn(),
+  geminiDeadline: { at: Number.POSITIVE_INFINITY },
+  geminiAttempts: [],
 }));
 vi.mock("../src/telegram.js", async (importActual) => ({
   topicThread: (await importActual<typeof import("../src/telegram.js")>()).topicThread,
@@ -75,6 +77,7 @@ import {
   extractFromPhoto,
   extractFromText,
   extractFromVoice,
+  geminiAttempts,
   patchExtraction,
 } from "../src/gemini.js";
 import {
@@ -1107,6 +1110,38 @@ describe("extraction failures", () => {
       "t",
       1,
       "Couldn't parse that. Try again in a sentence.", undefined, { thread: undefined });
+  });
+});
+
+describe("the invocation log", () => {
+  it("logs one line per invocation with the update, its Gemini attempts and the outcome, and no message text or amount", async () => {
+    const lines: string[] = [];
+    vi.spyOn(console, "log").mockImplementation((...a: unknown[]) => void lines.push(a.map(String).join(" ")));
+    vi.mocked(extractFromText).mockImplementationOnce(async () => {
+      geminiAttempts.push({ model: "gemini-3.6-flash", ms: 45_000, result: "timeout" });
+      geminiAttempts.push({ model: "gemini-3.5-flash-lite", ms: 4_000, result: "ok" });
+      return [extraction];
+    });
+
+    await handler(event({ update_id: 43, message: { chat: { id: 1 }, text: "12.50 lunch at Sandwich Shop" } }));
+    await handler(event({ update_id: 44, callback_query: { id: "cb", data: "nonsense", message: { chat: { id: 2 } } } }));
+
+    const logged = lines.filter((l) => l.includes('"invocation"')).map((l) => JSON.parse(l).invocation);
+    expect(logged).toEqual([
+      {
+        update_id: 43,
+        kind: "message",
+        gemini: [
+          { model: "gemini-3.6-flash", ms: 45_000, result: "timeout" },
+          { model: "gemini-3.5-flash-lite", ms: 4_000, result: "ok" },
+        ],
+        status: 200,
+        outcome: "ok",
+        ms: expect.any(Number),
+      },
+      { update_id: 44, kind: "callback", gemini: [], status: 200, outcome: expect.any(String), ms: expect.any(Number) },
+    ]);
+    expect(lines.join("\n")).not.toMatch(/Sandwich|lunch|12\.50/);
   });
 });
 

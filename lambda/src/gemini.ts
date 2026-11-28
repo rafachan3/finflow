@@ -37,8 +37,22 @@ const ATTEMPTS = [
 /** The clock the re-ask's time budget reads; tests replace `now`. */
 export const clock = { now: () => Date.now() };
 
-// The ingest Lambda times out at 60 s and a fetch has no timeout of its own, so
-// a first call that already took this long leaves no room for a second one.
+/**
+ * When every Gemini call must have given up, as a Date.now() time. The
+ * handler sets it from the Lambda's remaining time on each invocation; with
+ * none set (the eval, unit tests) calls wait as long as Gemini takes.
+ */
+export const geminiDeadline = { at: Number.POSITIVE_INFINITY };
+
+/** Each Gemini attempt this invocation, for the handler's one log line; the handler empties it. */
+export const geminiAttempts: { model: string; ms: number; result: string }[] = [];
+
+// Every model but the last stops this long before the deadline, so a hang
+// still leaves the last model, the fastest (~4 s on 2026-11-26), time to answer.
+const LAST_MODEL_RESERVE_MS = 10_000;
+
+// The ingest Lambda times out at 60 s, so a first call that already took this
+// long leaves no room for a second one.
 export const REASK_BUDGET_MS = 20_000;
 
 /** The wait before each fallback attempt; tests replace `sleep` so a retry does not wait. */
@@ -370,23 +384,51 @@ export async function generateJson(args: {
       },
     }),
   };
-  let res: Response;
-  let body: GeminiResponse;
+  let res: Response | undefined;
+  let body: GeminiResponse = {};
   const start = Math.max(0, ATTEMPTS.findIndex((a) => a.model === args.from));
+  const lastAttempt = ATTEMPTS.length - 1;
+  const budget = (attempt: number) =>
+    geminiDeadline.at - Date.now() - (attempt < lastAttempt ? LAST_MODEL_RESERVE_MS : 0);
   let model = ATTEMPTS[start].model;
   for (let attempt = start; ; attempt++) {
-    res = await fetch(endpoint(model), request);
-    // Overload responses are not always JSON.
-    body = (await res.json().catch(() => ({}))) as GeminiResponse;
-    const next = ATTEMPTS[attempt + 1];
-    if (res.ok || !RETRYABLE_STATUS.has(res.status) || !next) {
-      break;
+    const ms = budget(attempt);
+    const timer = new AbortController();
+    // Infinity would overflow setTimeout into an immediate abort.
+    const abort = Number.isFinite(ms) ? setTimeout(() => timer.abort(), Math.max(0, ms)) : undefined;
+    const startedAt = Date.now();
+    let result = "error";
+    let failure: string;
+    try {
+      res = await fetch(endpoint(model), { ...request, signal: timer.signal });
+      // Overload responses are not always JSON.
+      body = (await res.json().catch((err: unknown) => {
+        if (timer.signal.aborted) throw err;
+        return {};
+      })) as GeminiResponse;
+      result = res.ok ? "ok" : `HTTP ${res.status}`;
+      if (res.ok || !RETRYABLE_STATUS.has(res.status)) break;
+      failure = `HTTP ${res.status}`;
+    } catch (err) {
+      if (!timer.signal.aborted) throw err;
+      res = undefined;
+      result = "timeout";
+      failure = `no answer in ${Math.round(Math.max(0, ms) / 1000)} s`;
+    } finally {
+      clearTimeout(abort);
+      geminiAttempts.push({ model, ms: Date.now() - startedAt, result });
     }
-    console.warn(
-      `Gemini HTTP ${res.status} on ${model}; retry ${attempt + 1} on ${next.model}`,
-    );
-    await retryWait.sleep(next.delayMs);
-    model = next.model;
+    // Skip a model that has no time left before the last one's reserve.
+    let next = attempt + 1;
+    while (next < lastAttempt && budget(next) - ATTEMPTS[next].delayMs <= 0) next++;
+    if (next > lastAttempt || budget(next) - ATTEMPTS[next].delayMs <= 0) break;
+    console.warn(`Gemini ${failure} on ${model}; retry ${next} on ${ATTEMPTS[next].model}`);
+    await retryWait.sleep(ATTEMPTS[next].delayMs);
+    attempt = next - 1;
+    model = ATTEMPTS[next].model;
+  }
+  if (!res) {
+    throw new Error("Gemini timed out");
   }
   if (!res.ok) {
     throw new Error(

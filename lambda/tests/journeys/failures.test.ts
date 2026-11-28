@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { golden } from "../golden/golden.js";
-import { chat, gemini, labels, ledger, useJourneys } from "./harness.js";
+import { chat, gemini, labels, ledger, useJourneys, whileGeminiHangs } from "./harness.js";
 
 vi.mock("../../src/config.js", async () => {
   const { journeyConfig } = await import("./harness.js");
@@ -34,6 +34,42 @@ describe("when something goes wrong", () => {
     );
     expect(chat.last().buttons.map((b) => b.text)).toContain("Confirm");
     expect(gemini.delays).toEqual([2000, 2000]);
+  });
+
+  it("a model that never answers is given up in time, and the last model still reads it", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    try {
+      gemini.extract = golden("text-with-note").recorded;
+      gemini.hang = new Set([ALL_MODELS[0]]);
+      const sent = Date.now();
+      const answer = await whileGeminiHangs(chat.text("14 lunch at Sandwich Shop on Oct 25, didnt pak it, was to tierd, my lunch i mean"));
+
+      expect(answer.statusCode).toBe(200);
+      expect(Date.now() - sent).toBeLessThan(60_000);
+      expect(gemini.calls.map((c) => c.model)).toEqual([ALL_MODELS[0], ALL_MODELS[2]]);
+      expect(chat.last().text).toContain("! read by a lighter model while Gemini was busy");
+      expect(chat.last().buttons.map((b) => b.text)).toContain("Confirm");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("Gemini never answers on any model: the bot says so before the Lambda's deadline, with a 200 and nothing saved", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    try {
+      gemini.extract = golden("text-with-note").recorded;
+      gemini.hang = new Set(ALL_MODELS);
+      const sent = Date.now();
+      const answer = await whileGeminiHangs(chat.text("14 lunch at Sandwich Shop"));
+
+      // A 200 is what stops Telegram redelivering it and holding the chat's later updates.
+      expect(answer.statusCode).toBe(200);
+      expect(Date.now() - sent).toBeLessThan(60_000);
+      expect(chat.last().text).toBe("Gemini is overloaded right now. Send it again in a minute.");
+      expect(await ledger.ingestions()).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("Gemini finds no purchase: the bot asks to try again in a sentence", async () => {

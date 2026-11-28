@@ -1,6 +1,7 @@
 import type {
   APIGatewayProxyEventV2,
   APIGatewayProxyResultV2,
+  Context,
 } from "aws-lambda";
 import {
   addReply,
@@ -60,7 +61,7 @@ import {
   type Extraction,
   type TaxonomySnapshot,
 } from "./extraction.js";
-import { extractFromPhoto, extractFromText, extractFromVoice, patchExtraction, REASK_BUDGET_MS, transcribeVoice } from "./gemini.js";
+import { extractFromPhoto, extractFromText, extractFromVoice, geminiAttempts, geminiDeadline, patchExtraction, REASK_BUDGET_MS, transcribeVoice } from "./gemini.js";
 import {
   ALREADY_LINKED,
   linkedSummary,
@@ -160,9 +161,9 @@ const NOTHING_PENDING = "No pending cards.";
 const GEMINI_OVERLOADED =
   "Gemini is overloaded right now. Send it again in a minute.";
 
-/** Server overload that survived generateJson's retries is not the owner's input. */
+/** Server overload or a hang that survived generateJson's retries is not the owner's input. */
 function failureReply(err: unknown, fallback: string): string {
-  return err instanceof Error && /^Gemini HTTP 50[034]\b/.test(err.message)
+  return err instanceof Error && /^Gemini (HTTP 50[034]\b|timed out$)/.test(err.message)
     ? GEMINI_OVERLOADED
     : fallback;
 }
@@ -1200,8 +1201,45 @@ async function sweepUtilityTopics(botToken: string, chatId: number): Promise<voi
   }
 }
 
+/**
+ * What Gemini leaves of the Lambda's remaining time: enough to save the rows
+ * and send the card or failure reply (under 3 s on 2026-11-26). A reply after
+ * the timeout is a failed delivery Telegram retries, holding the chat's later
+ * updates behind it.
+ */
+const REPLY_MARGIN_MS = 5_000;
+
 export async function handler(
   event: APIGatewayProxyEventV2,
+  context?: Pick<Context, "getRemainingTimeInMillis">,
+): Promise<APIGatewayProxyResultV2> {
+  const startedAt = Date.now();
+  geminiDeadline.at = context
+    ? startedAt + context.getRemainingTimeInMillis() - REPLY_MARGIN_MS
+    : Number.POSITIVE_INFINITY;
+  geminiAttempts.length = 0;
+  const seen: { update?: TelegramUpdate } = {};
+  const response = await route(event, seen);
+  // Ids, models and timings only: message text and amounts stay out of CloudWatch.
+  const { statusCode, body } = response as { statusCode?: number; body?: string };
+  console.log(
+    JSON.stringify({
+      invocation: {
+        update_id: seen.update?.update_id ?? null,
+        kind: seen.update?.message ? "message" : seen.update?.callback_query ? "callback" : "other",
+        gemini: geminiAttempts,
+        status: statusCode,
+        outcome: body,
+        ms: Date.now() - startedAt,
+      },
+    }),
+  );
+  return response;
+}
+
+async function route(
+  event: APIGatewayProxyEventV2,
+  seen: { update?: TelegramUpdate },
 ): Promise<APIGatewayProxyResultV2> {
   try {
     const config = await getConfig();
@@ -1211,6 +1249,7 @@ export async function handler(
     }
 
     const update = parseUpdate(event);
+    seen.update = update;
 
     if (update.message) {
       const tidy = tidiesTopics(update.message, config.allowedChatIds);

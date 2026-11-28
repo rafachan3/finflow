@@ -734,6 +734,13 @@ Next: Stage 2 (Variant A rich card), then Stage 3 (a text in a purchase topic
 becomes a correction; `findIngestionByThread` and `ingestions.card_message_id`
 are already filled for every card sent after Stage 1).
 
+## Gemini deadline (branch `fix/gemini-deadline`, 2026-11-27, not merged)
+
+Fix for the 2026-11-26 queue stall: each Gemini attempt aborts before the
+Lambda's deadline, a hang fails over to Flash-Lite, and out of time the bot
+sends the overload reply with a 200 so Telegram stops redelivering. The
+Lambda timeout stays 60 s (DECISIONS.md 2026-11-27). No Terraform change.
+
 ## Next concrete step
 
 Phase 4.5 is accepted (2026-11-07; check and output in Phase progress).

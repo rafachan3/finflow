@@ -1,9 +1,9 @@
 import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
-import type { APIGatewayProxyEventV2 } from "aws-lambda";
+import type { APIGatewayProxyEventV2, Context } from "aws-lambda";
 import { mockClient } from "aws-sdk-client-mock";
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
-import { afterAll, afterEach, beforeAll, beforeEach, expect } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, expect, vi } from "vitest";
 import { retryWait } from "../../src/gemini.js";
 import { closeHelpers, insertTransaction, resetData, sql, type TxSeed } from "../integration/db-helpers.js";
 import { testDbUrl } from "../integration/env.js";
@@ -186,6 +186,10 @@ export const gemini = {
   /** Every re-ask is refused with a 503, so the first answer is the only one. */
   reaskFails: false,
   overloaded: new Set<string>(),
+  /** Models whose requests never answer; the bot can only give up on them. */
+  hang: new Set<string>(),
+  /** Requests left hanging right now, not yet given up on. */
+  hanging: 0,
   /** The system instruction of the latest request, e.g. to read its Merchants: line. */
   lastSystem: "",
   /** The text parts of the latest request; an Edit's first is the card it corrects. */
@@ -290,6 +294,12 @@ const server = setupServer(
       gemini.calls.push({ model, kind });
       if (kind === "reask" && gemini.reaskFails) {
         return HttpResponse.json({ error: { message: "overloaded" } }, { status: 503 });
+      }
+      if (gemini.hang.has(model)) {
+        gemini.hanging++;
+        request.signal.addEventListener("abort", () => gemini.hanging--, { once: true });
+        // MSW rejects the fetch when its signal aborts; until then nothing answers.
+        await new Promise(() => {});
       }
       gemini.lastSystem = system;
       gemini.lastUserText = body.contents[0].parts.flatMap((p) => (p.text === undefined ? [] : [p.text]));
@@ -400,6 +410,8 @@ export function useJourneys(): void {
     gemini.reask = undefined;
     gemini.reaskFails = false;
     gemini.overloaded = new Set();
+    gemini.hang = new Set();
+    gemini.hanging = 0;
     s3.reset();
     s3.on(PutObjectCommand).resolves({});
     await resetData();
@@ -452,7 +464,27 @@ async function deliver(update: unknown, secret = SECRET): Promise<Result> {
     body: JSON.stringify(update),
     isBase64Encoded: false,
   } as unknown as APIGatewayProxyEventV2;
-  return (await handler(event)) as Result;
+  // The deployed function's 60 s timeout, read off the (possibly fake) clock.
+  const end = Date.now() + 60_000;
+  const context = { getRemainingTimeInMillis: () => end - Date.now() } as Context;
+  return (await handler(event, context)) as Result;
+}
+
+/**
+ * Awaits a delivery while Gemini hangs, under fake timers: whenever a request
+ * is left hanging, the clock jumps to the next timer, so only the bot's own
+ * deadline ends the wait.
+ */
+export async function whileGeminiHangs<T>(delivery: Promise<T>): Promise<T> {
+  let settled = false;
+  void delivery.finally(() => (settled = true)).catch(() => {});
+  const giveUp = Date.now() + 120_000;
+  while (!settled) {
+    if (Date.now() > giveUp) throw new Error("the bot never gave up on a hanging Gemini request");
+    if (gemini.hanging > 0) await vi.advanceTimersByTimeAsync(1_000);
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+  return delivery;
 }
 
 /**

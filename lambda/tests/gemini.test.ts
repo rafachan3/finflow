@@ -5,6 +5,7 @@ import {
   extractFromVoice,
   patchExtraction,
   clock,
+  geminiAttempts,
   REASK_BUDGET_MS,
   retryWait,
 } from "../src/gemini.js";
@@ -549,6 +550,24 @@ describe("extractFromText", () => {
       expect(modelOf(fetchMock, 1)).toBe("gemini-3.5-flash");
       expect("value" in result && result.value.amount).toBe("2000.00");
       expect("value" in result && result.value.meta?.model).toBe("gemini-3.5-flash");
+    });
+
+    it("records each attempt's model, time and result for the invocation log", async () => {
+      geminiAttempts.length = 0;
+      vi.stubGlobal(
+        "fetch",
+        vi
+          .fn()
+          .mockResolvedValueOnce(overloaded())
+          .mockResolvedValueOnce({ ok: true, json: async () => geminiJson(events(incomeJson)) }),
+      );
+
+      await run();
+
+      expect(geminiAttempts).toEqual([
+        { model: "gemini-3.6-flash", ms: expect.any(Number), result: "HTTP 503" },
+        { model: "gemini-3.5-flash", ms: expect.any(Number), result: "ok" },
+      ]);
     });
 
     it("retries a non-JSON 503 body too", async () => {
