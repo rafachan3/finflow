@@ -3962,12 +3962,17 @@ refused ("query is too old"), and a Confirm whose row the database refuses.
   returns, for every tap branch at once. An unanswered tap costs a spinner on
   the owner's phone; a thrown one skipped the `✅ Saved` edit, the rename or
   the topic delete, and looped.
-- **Deterministic save failures get a 200:** a Confirm that fails with
-  SQLSTATE class 22 (data exception) or 23 (constraint violation) rolls
-  back, answers `Couldn't save this one — tap Edit or Discard.`, and keeps
-  the card. Every resend would hit the same refusal.
-- **Everything else still 500s:** a dropped connection or timeout may pass
-  on Telegram's retry, and the row stays `pending`, so a retry saves once.
-- **Ruled out:** a 200 for every Confirm error (a transient error would be
-  lost silently); string-matching our own thrown errors (taxonomy checks)
-  as deterministic.
+- **Any save failure gets a 200 by default:** a Confirm whose save throws
+  rolls back, answers `Couldn't save this one — tap Confirm again, or
+  Edit/Discard.`, and keeps the row `pending` with the card's buttons. That
+  covers database refusals (an amount too large for numeric(12,2)) and our own
+  plain errors (`failed checks`, `subcategory not found`). A 200 loses
+  nothing, because the owner can tap Confirm again. A 500 makes Telegram
+  resend a deterministic failure for minutes, which is the 2026-11-26 loop.
+- **Only a lost connection still 500s:** SQLSTATE class 08, 53300 (too many
+  connections), 57P01-57P03 (shutdown), and Node ECONNRESET, ECONNREFUSED,
+  ETIMEDOUT. Telegram's resend may get past these, and since the row stays
+  `pending` a retry saves once.
+- **Ruled out:** a 200 only for SQLSTATE classes 22 and 23 (the first
+  version of this fix), because every error not on that list, our own
+  included, kept looping; string-matching our own error messages.

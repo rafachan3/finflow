@@ -415,6 +415,52 @@ describe("handler", () => {
     error.mockRestore();
   });
 
+  it.each(["08006", "53300", "57P01", "57P03", "ECONNRESET", "ECONNREFUSED", "ETIMEDOUT"])(
+    "a Confirm whose save loses its connection (%s) answers 500, so Telegram resends it",
+    async (code) => {
+      const { confirmIngestion } = await import("../src/db.js");
+      const error = vi.spyOn(console, "error").mockImplementation(() => {});
+      vi.mocked(confirmIngestion).mockRejectedValueOnce(Object.assign(new Error("connection lost"), { code }));
+
+      const res = await bodyOf(
+        await handler(
+          event({
+            update_id: 38,
+            callback_query: { id: "cb", data: "c:aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", message: { message_id: 5, chat: { id: 1 } } },
+          }),
+        ),
+      );
+
+      expect(res.statusCode).toBe(500);
+      expect(answerCallbackQuery).not.toHaveBeenCalled();
+      error.mockRestore();
+    },
+  );
+
+  it.each([
+    ["a check constraint", Object.assign(new Error("violates check constraint"), { code: "23514" })],
+    ["a plain error", new Error("subcategory not found: Food and drink / Nothing")],
+  ])("a Confirm whose save fails with %s answers the pop-up and 200, so Telegram does not resend it", async (_, err) => {
+    const { confirmIngestion } = await import("../src/db.js");
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.mocked(confirmIngestion).mockRejectedValueOnce(err);
+
+    const res = await bodyOf(
+      await handler(
+        event({
+          update_id: 39,
+          callback_query: { id: "cb", data: "c:aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", message: { message_id: 5, chat: { id: 1 } } },
+        }),
+      ),
+    );
+
+    expect(res.statusCode).toBe(200);
+    expect(vi.mocked(answerCallbackQuery).mock.calls.map((c) => c[2])).toEqual([
+      "Couldn't save this one — tap Confirm again, or Edit/Discard.",
+    ]);
+    error.mockRestore();
+  });
+
   it("does not persist or offer Confirm when checks fail", async () => {
     vi.mocked(extractFromText).mockResolvedValue([{
       ...extraction,

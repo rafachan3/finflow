@@ -2,6 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 import { retryWait } from "../../src/gemini.js";
 import { golden } from "../golden/golden.js";
 import { registerUtilityTopic } from "../../src/db.js";
+import { sql } from "../integration/db-helpers.js";
 import { chat, gemini, invokeNudge, labels, ledger, OWNER, takeTelegramRejections, useJourneys, type Reply } from "./harness.js";
 
 vi.mock("../../src/config.js", async () => {
@@ -382,11 +383,27 @@ describe("Confirm inside a purchase topic", () => {
     const result = await chat.tap(card, "Confirm");
 
     expect(result.statusCode).toBe(200);
-    expect(chat.acks()).toEqual(["Couldn't save this one — tap Edit or Discard."]);
+    expect(chat.acks()).toEqual(["Couldn't save this one — tap Confirm again, or Edit/Discard."]);
     expect(await ledger.transactions()).toEqual([]);
     expect((await ledger.ingestions())[0].status).toBe("pending");
     expect(labels(chat.current(card))).toEqual(labels(card));
     expect(chat.replies()).toHaveLength(sent);
+  });
+
+  it("a Confirm that fails the bot's own checks shows the same pop-up, saves nothing, and answers 200", async () => {
+    gemini.extract = golden("text-with-note").recorded;
+    await chat.text("14 lunch at Sandwich Shop");
+    const [card] = cards();
+    // The taxonomy moved on after the card was sent: Confirm's re-check throws a plain Error, not a database one.
+    await sql(`update ingestions set extraction = jsonb_set(extraction, '{items,0,subcategory}', '"No Such Subcategory"')`);
+
+    const result = await chat.tap(card, "Confirm");
+
+    expect(result.statusCode).toBe(200);
+    expect(chat.acks()).toEqual(["Couldn't save this one — tap Confirm again, or Edit/Discard."]);
+    expect(await ledger.transactions()).toEqual([]);
+    expect((await ledger.ingestions())[0].status).toBe("pending");
+    expect(labels(chat.current(card))).toEqual(labels(card));
   });
 
   it("a payment that looks recurring still gets its Saved reply with the recurring buttons, in its topic", async () => {

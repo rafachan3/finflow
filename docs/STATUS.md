@@ -732,10 +732,10 @@ clear the thread when a send fails with `message thread not found`.
 
 Fix 2026-11-27 (branch `fix/tap-never-loops`): a tap whose answer Telegram
 refuses ("query is too old") still finishes and returns 200, and a Confirm
-the database refuses (such as an amount too large to store) answers `Couldn't save this one —
-tap Edit or Discard.` with a 200 instead of a 500 that Telegram resent for
-minutes. Other save errors still 500 for Telegram's retry (DECISIONS.md
-2026-11-27).
+whose save fails answers `Couldn't save this one — tap Confirm again, or
+Edit/Discard.` with a 200 instead of a 500 that Telegram resent for minutes.
+Only a lost database connection still 500s for Telegram's retry
+(DECISIONS.md 2026-11-27).
 
 Next: Stage 2 (Variant A rich card), then Stage 3 (a text in a purchase topic
 becomes a correction; `findIngestionByThread` and `ingestions.card_message_id`
