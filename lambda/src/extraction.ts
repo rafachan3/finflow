@@ -423,6 +423,9 @@ export function validateExtraction(
   }
   if (headerCents === null) {
     errors.push(`amount must be two-decimal, got ${extraction.amount}`);
+  } else if (headerCents <= 0) {
+    // transactions.amount carries check (amount > 0); a 0.00 read would fail every Confirm.
+    errors.push(`amount must be more than 0.00, got ${extraction.amount}`);
   }
 
   if (extraction.type === "expense") {
@@ -482,6 +485,7 @@ export function validateExtraction(
         errors.push(`line amount must be two-decimal: ${item.amount}`);
         linesOk = false;
       } else {
+        if (cents <= 0) errors.push(`line amount must be more than 0.00: ${item.amount}`);
         lineSum += cents;
       }
       const sub = taxonomy.subcategories.find(
