@@ -356,6 +356,39 @@ describe("Confirm inside a purchase topic", () => {
     expect(chat.topicName(card.thread!)).toBe("Sandwich Shop · $14.00");
   });
 
+  it("Confirm still marks the card and topic ✅ and answers 200 when Telegram refuses the tap's answer", async () => {
+    gemini.extract = golden("text-with-note").recorded;
+    await chat.text("14 lunch at Sandwich Shop");
+    const [card] = cards();
+    chat.refuseNextAnswers(1);
+
+    const result = await chat.tap(card, "Confirm");
+
+    expect(result.statusCode).toBe(200);
+    expect(await ledger.transactions()).toHaveLength(1);
+    expect(labels(chat.current(card))).toEqual(["✅ Saved"]);
+    expect(chat.topicName(card.thread!)).toBe("✅ Sandwich Shop · $14.00");
+  });
+
+  it("a Confirm the database refuses shows a pop-up, saves nothing, keeps the card, and answers 200", async () => {
+    const [event] = (golden("text-with-note").recorded as { events: Record<string, unknown>[] }).events;
+    // Passes the bot's checks, but overflows numeric(12,2): Postgres refuses it (22003).
+    const items = (event.items as Record<string, unknown>[]).map((item) => ({ ...item, amount: "12345678901.00" }));
+    gemini.extract = { events: [{ ...event, amount: "12345678901.00", items }] };
+    await chat.text("12345678901 lunch at Sandwich Shop");
+    const [card] = cards();
+    const sent = chat.replies().length;
+
+    const result = await chat.tap(card, "Confirm");
+
+    expect(result.statusCode).toBe(200);
+    expect(chat.acks()).toEqual(["Couldn't save this one — tap Edit or Discard."]);
+    expect(await ledger.transactions()).toEqual([]);
+    expect((await ledger.ingestions())[0].status).toBe("pending");
+    expect(labels(chat.current(card))).toEqual(labels(card));
+    expect(chat.replies()).toHaveLength(sent);
+  });
+
   it("a payment that looks recurring still gets its Saved reply with the recurring buttons, in its topic", async () => {
     const [event] = (golden("text-with-note").recorded as { events: Record<string, unknown>[] }).events;
     gemini.extract = { events: [{ ...event, is_recurring: true }] };
@@ -418,6 +451,19 @@ describe("Discard inside a purchase topic", () => {
     expect(chat.topicName(card.thread!)).toBe("🗑 Sandwich Shop · $14.00");
     expect(labels(chat.current(card))).toEqual([]);
     expect((await ledger.ingestions())[0].status).toBe("discarded");
+  });
+
+  it("Discard still deletes the topic and answers 200 when Telegram refuses the tap's answer", async () => {
+    gemini.extract = golden("text-with-note").recorded;
+    await chat.text("14 lunch at Sandwich Shop");
+    const [card] = cards();
+    chat.refuseNextAnswers(1);
+
+    const result = await chat.tap(card, "Discard");
+
+    expect(result.statusCode).toBe(200);
+    expect((await ledger.ingestions())[0].status).toBe("discarded");
+    expect(chat.topicExists(card.thread!)).toBe(false);
   });
 
   it("a stale Confirm on a saved purchase names it", async () => {

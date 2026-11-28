@@ -53,6 +53,8 @@ const telegram = {
   sentAt: new Map<number, number>(),
   /** Deletes refused, as Telegram refuses a message older than 48 hours. */
   refuseDeletes: 0,
+  /** Tap answers refused, as Telegram refuses one for a tap queued too long. */
+  refuseAnswers: 0,
   /** Topic mode: a main-view message opens a topic first. */
   topicMode: false,
   /** The chat's open topics, by message_thread_id: their current name. */
@@ -250,6 +252,14 @@ const server = setupServer(
       telegram.shown.delete(id);
       return HttpResponse.json({ ok: true, result: true });
     }
+    if (method === "answerCallbackQuery" && telegram.refuseAnswers > 0) {
+      telegram.refuseAnswers--;
+      telegram.sent.push({ method, body, failed: true });
+      return HttpResponse.json(
+        { ok: false, description: "Bad Request: query is too old and response timeout expired or query ID is invalid" },
+        { status: 400 },
+      );
+    }
     if (TOPIC_CALLS.has(method)) return topicCall(method, body);
     if (method === "getMe") {
       telegram.sent.push({ method, body, failed });
@@ -381,6 +391,7 @@ export function useJourneys(): void {
     telegram.nextMessageId = 1;
     telegram.sentAt = new Map();
     telegram.refuseDeletes = 0;
+    telegram.refuseAnswers = 0;
     telegram.topicMode = false;
     telegram.topics = new Map();
     telegram.lastTopic = undefined;
@@ -638,6 +649,10 @@ export const chat = {
   /** The next n deletes are refused, as for a message older than 48 hours. */
   refuseNextDeletes(n: number) {
     telegram.refuseDeletes = n;
+  },
+  /** The next n tap answers are refused, as for a tap that waited too long in Telegram's queue. */
+  refuseNextAnswers(n: number) {
+    telegram.refuseAnswers = n;
   },
   /** A sent message as it shows now, after any edits. */
   current(reply: Reply): Reply {

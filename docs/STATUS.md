@@ -730,6 +730,13 @@ probably does not tell the bot. The row keeps its thread and card id, so
 `pending` and still counts as a duplicate-check match. A later stage could
 clear the thread when a send fails with `message thread not found`.
 
+Fix 2026-11-27 (branch `fix/tap-never-loops`): a tap whose answer Telegram
+refuses ("query is too old") still finishes and returns 200, and a Confirm
+the database refuses (such as an amount too large to store) answers `Couldn't save this one —
+tap Edit or Discard.` with a 200 instead of a 500 that Telegram resent for
+minutes. Other save errors still 500 for Telegram's retry (DECISIONS.md
+2026-11-27).
+
 Next: Stage 2 (Variant A rich card), then Stage 3 (a text in a purchase topic
 becomes a correction; `findIngestionByThread` and `ingestions.card_message_id`
 are already filled for every card sent after Stage 1).

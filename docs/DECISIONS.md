@@ -3951,3 +3951,23 @@ string, so the card showed $0 with Confirm, and every Confirm hit
   are never negative lines: whole-order discounts are positive amounts in
   `discounts`, and the schema forbids a line at or below zero. Only a `0.00` can
   pass the two-decimal check, since the format has no sign.
+
+## 2026-11-27: A tap never 500s for something a resend cannot fix
+
+A tap that 500s is resent by Telegram for minutes. Two cases did that after
+the work was done or could never be done: a queued tap whose answer Telegram
+refused ("query is too old"), and a Confirm whose row the database refuses.
+
+- **Tap answers are best effort:** `answerCallbackQuery` logs a refusal and
+  returns, for every tap branch at once. An unanswered tap costs a spinner on
+  the owner's phone; a thrown one skipped the `✅ Saved` edit, the rename or
+  the topic delete, and looped.
+- **Deterministic save failures get a 200:** a Confirm that fails with
+  SQLSTATE class 22 (data exception) or 23 (constraint violation) rolls
+  back, answers `Couldn't save this one — tap Edit or Discard.`, and keeps
+  the card. Every resend would hit the same refusal.
+- **Everything else still 500s:** a dropped connection or timeout may pass
+  on Telegram's retry, and the row stays `pending`, so a retry saves once.
+- **Ruled out:** a 200 for every Confirm error (a transient error would be
+  lost silently); string-matching our own thrown errors (taxonomy checks)
+  as deterministic.

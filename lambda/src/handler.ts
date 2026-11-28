@@ -167,6 +167,14 @@ function failureReply(err: unknown, fallback: string): string {
     : fallback;
 }
 
+const SAVE_REFUSED = "Couldn't save this one — tap Edit or Discard.";
+
+/** SQLSTATE class 22 (data exception) or 23 (constraint violation): the same row is refused every time. */
+function refusedByDatabase(err: unknown): boolean {
+  const code = typeof err === "object" && err !== null ? (err as { code?: unknown }).code : undefined;
+  return typeof code === "string" && /^2[23][0-9A-Z]{3}$/.test(code);
+}
+
 function ok(body: string): APIGatewayProxyResultV2 {
   return { statusCode: 200, body };
 }
@@ -1043,7 +1051,17 @@ async function handleCallback(
   let ack: string;
   if (action === "c" || withSeries) {
     const series = withSeries ? { id: Number(withSeries[3]), link: action === "cr" } : undefined;
-    const result = await confirmIngestion(ingestionId, series);
+    let result: Awaited<ReturnType<typeof confirmIngestion>>;
+    try {
+      result = await confirmIngestion(ingestionId, series);
+    } catch (err) {
+      // A row the database refuses fails the same on every resend, so it gets a
+      // 200; anything else (a dropped connection) still 500s for Telegram's retry.
+      if (!refusedByDatabase(err)) throw err;
+      console.error("confirm refused", err);
+      await answerCallbackQuery(botToken, cb.id, SAVE_REFUSED);
+      return ok("ok");
+    }
     if (result === "already_handled") {
       ack = await handledAck(ingestionId);
     } else {
