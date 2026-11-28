@@ -248,6 +248,28 @@ describe("validateExtraction", () => {
     }
   });
 
+  it("rejects an amount of 0.00 on the header and on a line, and keeps a balanced positive expense valid", () => {
+    const zero = { ...expense().items[0], amount: "0.00" };
+    const result = validateExtraction(expense({ amount: "0.00", items: [zero] }), taxonomy);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.errors).toEqual([
+        "amount must be more than 0.00, got 0.00",
+        "line amount must be more than 0.00: 0.00",
+      ]);
+    }
+    expect(validateExtraction(expense({ amount: "0.01", items: [{ ...zero, amount: "0.01" }] }), taxonomy).ok).toBe(true);
+  });
+
+  it("rejects an income of 0.00", () => {
+    const income = validateExtraction(
+      expense({ type: "income", amount: "0.00", items: [], income_source: "Salary" }),
+      taxonomy,
+    );
+    expect(income.ok).toBe(false);
+    if (!income.ok) expect(income.errors).toContain("amount must be more than 0.00, got 0.00");
+  });
+
   it("allows an unknown merchant (nullable FK)", () => {
     const result = validateExtraction(
       expense({ merchant: "New Cafe" }),

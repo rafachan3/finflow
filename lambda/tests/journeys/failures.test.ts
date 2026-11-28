@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { golden } from "../golden/golden.js";
-import { chat, gemini, ledger, useJourneys } from "./harness.js";
+import { chat, gemini, labels, ledger, useJourneys } from "./harness.js";
 
 vi.mock("../../src/config.js", async () => {
   const { journeyConfig } = await import("./harness.js");
@@ -43,6 +43,19 @@ describe("when something goes wrong", () => {
     expect(gemini.calls).toEqual([{ model: "gemini-3.6-flash", kind: "extract" }]);
     expect(chat.last().text).toBe("Couldn't parse that. Try again in a sentence.");
     expect(await ledger.ingestions()).toEqual([]);
+  });
+
+  it("an amount of 0.00 is shown as a failed check with no buttons, and nothing is saved", async () => {
+    const recorded = golden("text-with-note").recorded as { events: Record<string, unknown>[] };
+    const [event] = recorded.events;
+    const [line] = event.items as Record<string, unknown>[];
+    gemini.extract = { events: [{ ...event, amount: "0.00", items: [{ ...line, amount: "0.00" }] }] };
+    await chat.text("lunch at Sandwich Shop");
+
+    expect(chat.last().text).toContain("✗ amount must be more than 0.00, got 0.00");
+    expect(labels(chat.last())).toEqual([]);
+    expect(await ledger.ingestions()).toEqual([]);
+    expect(await ledger.transactions()).toEqual([]);
   });
 
   it("a card that fails to send after saving does not stop the next card or blame the message", async () => {

@@ -3934,3 +3934,20 @@ own topic, and `/pending` resends cards with no label.
 - **Already handled:** names the purchase and where it stands
   (`Already handled: Merchant · $amount was saved.`); a plain
   `Already handled.` only for an unknown row.
+
+---
+
+## 2026-11-27 — A purchase of $0 fails its checks instead of reaching Confirm
+
+Gemini read a message with no amount as `0.00`. That is a valid two-decimal
+string, so the card showed $0 with Confirm, and every Confirm hit
+`transactions.amount > 0`, rolled back and returned 500.
+
+- **Chosen:** `validateExtraction` rejects a header amount or an expense line of
+  0.00, with the same `✗` card as any failed check (no buttons, nothing stored).
+  It matches the schema, where `transactions.amount` and
+  `transaction_items.amount` both carry `check (amount > 0)`.
+- **Ruled out:** treating a negative line as a discount. Discounts and refunds
+  are never negative lines: whole-order discounts are positive amounts in
+  `discounts`, and the schema forbids a line at or below zero. Only a `0.00` can
+  pass the two-decimal check, since the format has no sign.
