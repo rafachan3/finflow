@@ -61,7 +61,7 @@ import {
   type Extraction,
   type TaxonomySnapshot,
 } from "./extraction.js";
-import { extractFromPhoto, extractFromText, extractFromVoice, geminiDeadline, patchExtraction, REASK_BUDGET_MS, transcribeVoice } from "./gemini.js";
+import { extractFromPhoto, extractFromText, extractFromVoice, geminiAttempts, geminiDeadline, patchExtraction, REASK_BUDGET_MS, transcribeVoice } from "./gemini.js";
 import {
   ALREADY_LINKED,
   linkedSummary,
@@ -1213,9 +1213,34 @@ export async function handler(
   event: APIGatewayProxyEventV2,
   context?: Pick<Context, "getRemainingTimeInMillis">,
 ): Promise<APIGatewayProxyResultV2> {
+  const startedAt = Date.now();
   geminiDeadline.at = context
-    ? Date.now() + context.getRemainingTimeInMillis() - REPLY_MARGIN_MS
+    ? startedAt + context.getRemainingTimeInMillis() - REPLY_MARGIN_MS
     : Number.POSITIVE_INFINITY;
+  geminiAttempts.length = 0;
+  const seen: { update?: TelegramUpdate } = {};
+  const response = await route(event, seen);
+  // Ids, models and timings only: message text and amounts stay out of CloudWatch.
+  const { statusCode, body } = response as { statusCode?: number; body?: string };
+  console.log(
+    JSON.stringify({
+      invocation: {
+        update_id: seen.update?.update_id ?? null,
+        kind: seen.update?.message ? "message" : seen.update?.callback_query ? "callback" : "other",
+        gemini: geminiAttempts,
+        status: statusCode,
+        outcome: body,
+        ms: Date.now() - startedAt,
+      },
+    }),
+  );
+  return response;
+}
+
+async function route(
+  event: APIGatewayProxyEventV2,
+  seen: { update?: TelegramUpdate },
+): Promise<APIGatewayProxyResultV2> {
   try {
     const config = await getConfig();
     const secret = headerSecret(event);
@@ -1224,6 +1249,7 @@ export async function handler(
     }
 
     const update = parseUpdate(event);
+    seen.update = update;
 
     if (update.message) {
       const tidy = tidiesTopics(update.message, config.allowedChatIds);

@@ -44,6 +44,9 @@ export const clock = { now: () => Date.now() };
  */
 export const geminiDeadline = { at: Number.POSITIVE_INFINITY };
 
+/** Each Gemini attempt this invocation, for the handler's one log line; the handler empties it. */
+export const geminiAttempts: { model: string; ms: number; result: string }[] = [];
+
 // Every model but the last stops this long before the deadline, so a hang
 // still leaves the last model, the fastest (~4 s on 2026-11-26), time to answer.
 const LAST_MODEL_RESERVE_MS = 10_000;
@@ -393,6 +396,8 @@ export async function generateJson(args: {
     const timer = new AbortController();
     // Infinity would overflow setTimeout into an immediate abort.
     const abort = Number.isFinite(ms) ? setTimeout(() => timer.abort(), Math.max(0, ms)) : undefined;
+    const startedAt = Date.now();
+    let result = "error";
     let failure: string;
     try {
       res = await fetch(endpoint(model), { ...request, signal: timer.signal });
@@ -401,14 +406,17 @@ export async function generateJson(args: {
         if (timer.signal.aborted) throw err;
         return {};
       })) as GeminiResponse;
+      result = res.ok ? "ok" : `HTTP ${res.status}`;
       if (res.ok || !RETRYABLE_STATUS.has(res.status)) break;
       failure = `HTTP ${res.status}`;
     } catch (err) {
       if (!timer.signal.aborted) throw err;
       res = undefined;
+      result = "timeout";
       failure = `no answer in ${Math.round(Math.max(0, ms) / 1000)} s`;
     } finally {
       clearTimeout(abort);
+      geminiAttempts.push({ model, ms: Date.now() - startedAt, result });
     }
     // Skip a model that has no time left before the last one's reserve.
     let next = attempt + 1;
