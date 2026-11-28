@@ -167,6 +167,17 @@ function failureReply(err: unknown, fallback: string): string {
     : fallback;
 }
 
+const SAVE_FAILED = "Couldn't save this one — tap Confirm again, or Edit/Discard.";
+
+/**
+ * A lost or refused connection (SQLSTATE class 08, 53300 too many connections,
+ * 57P01-57P03 shutdown, or a Node socket error), which Telegram's resend may get past.
+ */
+function connectionError(err: unknown): boolean {
+  const code = typeof err === "object" && err !== null ? (err as { code?: unknown }).code : undefined;
+  return typeof code === "string" && /^(08[0-9A-Z]{3}|53300|57P0[123]|ECONNRESET|ECONNREFUSED|ETIMEDOUT)$/.test(code);
+}
+
 function ok(body: string): APIGatewayProxyResultV2 {
   return { statusCode: 200, body };
 }
@@ -1043,7 +1054,18 @@ async function handleCallback(
   let ack: string;
   if (action === "c" || withSeries) {
     const series = withSeries ? { id: Number(withSeries[3]), link: action === "cr" } : undefined;
-    const result = await confirmIngestion(ingestionId, series);
+    let result: Awaited<ReturnType<typeof confirmIngestion>>;
+    try {
+      result = await confirmIngestion(ingestionId, series);
+    } catch (err) {
+      // Any other error fails the same on every resend, and a 500 makes Telegram
+      // resend it for minutes. The row stays pending with its buttons, so the
+      // owner can tap Confirm again and nothing is lost.
+      if (connectionError(err)) throw err;
+      console.error("confirm save error", err);
+      await answerCallbackQuery(botToken, cb.id, SAVE_FAILED);
+      return ok("ok");
+    }
     if (result === "already_handled") {
       ack = await handledAck(ingestionId);
     } else {

@@ -243,7 +243,13 @@ export async function answerCallbackQuery(
   if (text !== undefined) {
     body.text = text;
   }
-  await postTelegram(botToken, "answerCallbackQuery", body);
+  // Best effort: a refusal ("query is too old" on a tap that queued) must not
+  // skip the rest of the tap, or 500 and make Telegram resend it forever.
+  try {
+    await postTelegram(botToken, "answerCallbackQuery", body);
+  } catch (err) {
+    console.error("callback answer error", err);
+  }
 }
 
 type Button = { text: string; callback_data: string };

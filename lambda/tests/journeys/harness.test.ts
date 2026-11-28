@@ -57,7 +57,8 @@ describe("the journey fakes", () => {
   });
 
   it("reject a pop-up longer than 200 characters", async () => {
-    await expect(answerCallbackQuery("t", "cb", "x".repeat(201))).rejects.toThrow(/HTTP 400/);
+    // The answer is best effort, so the refusal does not throw; the recorded rejection still fails a journey.
+    await answerCallbackQuery("t", "cb", "x".repeat(201));
     expect(takeTelegramRejections()).toEqual([
       "answerCallbackQuery: text must be at most 200 characters",
     ]);

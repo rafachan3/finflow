@@ -3951,3 +3951,28 @@ string, so the card showed $0 with Confirm, and every Confirm hit
   are never negative lines: whole-order discounts are positive amounts in
   `discounts`, and the schema forbids a line at or below zero. Only a `0.00` can
   pass the two-decimal check, since the format has no sign.
+
+## 2026-11-27: A tap never 500s for something a resend cannot fix
+
+A tap that 500s is resent by Telegram for minutes. Two cases did that after
+the work was done or could never be done: a queued tap whose answer Telegram
+refused ("query is too old"), and a Confirm whose row the database refuses.
+
+- **Tap answers are best effort:** `answerCallbackQuery` logs a refusal and
+  returns, for every tap branch at once. An unanswered tap costs a spinner on
+  the owner's phone; a thrown one skipped the `✅ Saved` edit, the rename or
+  the topic delete, and looped.
+- **Any save failure gets a 200 by default:** a Confirm whose save throws
+  rolls back, answers `Couldn't save this one — tap Confirm again, or
+  Edit/Discard.`, and keeps the row `pending` with the card's buttons. That
+  covers database refusals (an amount too large for numeric(12,2)) and our own
+  plain errors (`failed checks`, `subcategory not found`). A 200 loses
+  nothing, because the owner can tap Confirm again. A 500 makes Telegram
+  resend a deterministic failure for minutes, which is the 2026-11-26 loop.
+- **Only a lost connection still 500s:** SQLSTATE class 08, 53300 (too many
+  connections), 57P01-57P03 (shutdown), and Node ECONNRESET, ECONNREFUSED,
+  ETIMEDOUT. Telegram's resend may get past these, and since the row stays
+  `pending` a retry saves once.
+- **Ruled out:** a 200 only for SQLSTATE classes 22 and 23 (the first
+  version of this fix), because every error not on that list, our own
+  included, kept looping; string-matching our own error messages.
